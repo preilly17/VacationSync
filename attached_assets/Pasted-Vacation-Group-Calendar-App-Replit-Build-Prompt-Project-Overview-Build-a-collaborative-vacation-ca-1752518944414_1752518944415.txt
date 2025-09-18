@@ -1,0 +1,239 @@
+Vacation Group Calendar App - Replit Build Prompt
+Project Overview
+Build a collaborative vacation calendar app where group members can post activities like a shared Google Calendar, others can accept/decline, and accepted activities automatically populate personal travel calendars with smart notifications.
+Core Concept
+Think Google Calendar meets Eventbrite for vacation groups - anyone can propose activities, everyone can see what's available, and your personal calendar only shows what you've accepted.
+Core Features
+1. User Account System
+
+Individual user accounts with email/password authentication
+User profiles: name, email, phone number, timezone
+Push notification preferences
+
+2. Trip Calendar Creation
+
+Anyone can create a "Trip Calendar" - shared calendar for the group
+Trip details: destination, dates, calendar name
+Invitation system: Share calendar link or invite via email
+Multiple people can be "co-organizers" with posting privileges
+
+3. Collaborative Activity Posting
+
+Anyone in group can post activities to the shared trip calendar
+Activity details:
+
+Name and description
+Date and time (start/end)
+Location (address with map integration)
+Estimated cost per person
+Maximum group size (optional)
+Category tags (food, sightseeing, transport, etc.)
+Photos or links for reference
+
+
+
+4. Accept/Decline System
+
+Each activity shows as a "proposal" on shared calendar
+Simple "Accept" / "Decline" buttons for each activity
+Real-time participant count - see who else is going
+Participant list - names of people who accepted
+Comments section - ask questions or suggest modifications
+
+5. Personal Travel Calendar
+
+Accepted activities automatically appear on your personal calendar
+Only shows activities you've accepted - clean, personalized view
+Calendar integration - export to Google Calendar, Apple Calendar
+Daily agenda view - clean timeline of your accepted activities
+Conflict detection - warns if activities overlap
+
+6. Smart Notifications
+
+1 hour notice: "Museum visit starts in 1 hour at Tokyo National Museum"
+30 minute notice: "Meet at Shibuya Station in 30 minutes for dinner"
+New activity alerts: "Sarah posted a new activity: Karaoke Night"
+Activity updates: "Temple visit moved to 2 PM"
+Capacity alerts: "Only 2 spots left for cooking class"
+
+7. Real-Time Collaboration
+
+Live updates when people accept/decline activities
+Activity modifications - poster can update details, participants get notified
+Group chat per activity - coordinate meeting details
+Status updates - "Running 10 minutes late" for accepted activities
+
+Technical Requirements
+Frontend
+
+React or React Native for mobile-first experience
+Calendar view (day, week, trip overview)
+Real-time updates using WebSockets
+Push notification support
+Responsive design for mobile and desktop
+
+Backend
+
+Node.js with Express
+PostgreSQL database
+Real-time: Socket.io for live updates
+Background jobs for scheduled notifications
+External APIs: Google Maps for locations
+
+Key API Endpoints
+POST /api/auth/register - Create user account
+POST /api/auth/login - User login
+POST /api/trip-calendars - Create new trip calendar
+GET /api/trip-calendars/:id - Get trip calendar and all activities
+POST /api/trip-calendars/:id/join - Join trip calendar via link
+POST /api/activities - Post new activity to trip calendar
+PUT /api/activities/:id - Update activity details
+POST /api/activities/:id/accept - Accept activity (adds to personal calendar)
+DELETE /api/activities/:id/accept - Decline activity (removes from personal calendar)
+GET /api/my-calendar/:tripId - Get user's personal calendar for trip
+POST /api/notifications/schedule - Schedule activity notifications
+Database Schema
+Users: id, name, email, phone, timezone, notification_preferences
+TripCalendars: id, name, destination, start_date, end_date, created_by, share_code
+TripMembers: id, trip_calendar_id, user_id, role (organizer/member), joined_at
+Activities: id, trip_calendar_id, posted_by, name, description, start_time, end_time, location, cost, max_capacity, category
+ActivityAcceptances: id, activity_id, user_id, accepted_at, notification_sent
+ActivityComments: id, activity_id, user_id, comment, created_at
+Notifications: id, user_id, activity_id, type, scheduled_time, sent_at
+User Flow
+Trip Setup
+
+Create Trip Calendar: Someone creates shared calendar for "Japan Trip 2025"
+Invite Group: Share link or email invites to travel companions
+Join Calendar: Everyone joins the shared trip calendar
+
+Activity Planning
+
+Post Activities: Anyone can post activities with details and cost
+
+"Ramen Tour in Shibuya - 7 PM, $25/person, max 8 people"
+"Tokyo Skytree visit - 2 PM, $20 entry fee"
+
+
+Browse & Decide: Everyone sees all proposed activities
+Accept/Decline: Click to accept activities you want to join
+
+Personal Calendar
+
+Auto-Population: Accepted activities appear on personal travel calendar
+Clean View: Only see activities you're actually doing
+Notifications: Get 1-hour and 30-minute reminders
+
+During Trip
+
+Real-Time Updates: Activity changes notify all participants
+Coordination: Use activity chat for meeting details
+Status Updates: Let group know if you're running late
+
+UI Components Needed
+Shared Trip Calendar View
+
+Calendar grid showing all proposed activities
+Activity cards with details, cost, participant count
+Accept/Decline buttons with real-time participant updates
+"Add Activity" button for posting new activities
+Filter options by category, date, cost range
+
+Activity Posting Form
+
+Title, description, date/time selectors
+Location picker with map integration
+Cost input and group size limits
+Category selection and photo upload
+
+Personal Calendar View
+
+Clean timeline of only accepted activities
+Daily agenda view with times and locations
+Export options to Google/Apple Calendar
+Conflict warnings for overlapping activities
+
+Activity Detail Pages
+
+Full activity information
+Participant list and comments
+Map integration for location
+Accept/decline status with easy toggle
+
+Notification System
+Smart Reminders
+
+1 hour before: "Tokyo National Museum visit starts at 2 PM (1 hour notice)"
+30 minutes before: "Meet at Shibuya Station entrance in 30 minutes"
+Location-based: Use GPS to adjust timing for travel distance
+Customizable timing: Users can set their preferred notice periods
+
+Activity Updates
+
+New activities posted: "Mike posted: Late Night Food Tour"
+Activity changes: "Cooking class moved from 3 PM to 5 PM"
+Capacity updates: "Only 1 spot left for helicopter tour"
+Participant updates: "Sarah and Tom joined the temple visit"
+
+Key Advantages of This Approach
+For Group Coordination
+
+Democratic planning - anyone can suggest activities
+No single coordinator burden - shared responsibility
+Flexibility - people can opt in/out easily
+Transparency - everyone sees all options
+
+For Individual Users
+
+Personalized calendar - only see what you're doing
+Automatic organization - no manual calendar management
+Smart notifications - never miss activities you want to join
+Conflict prevention - warns about overlapping commitments
+
+For Trip Dynamics
+
+Reduces FOMO - see all options before deciding
+Enables sub-groups naturally - different people accept different activities
+Cost transparency - know expenses upfront
+Realistic planning - capacity limits prevent over-booking
+
+Development Priorities
+MVP Features
+
+Shared calendar with activity posting
+Accept/decline functionality
+Personal calendar generation
+Basic notifications (1 hour, 30 minutes)
+Mobile-responsive design
+
+Phase 2
+
+Advanced notification customization
+Location-based timing adjustments
+Activity comments and coordination
+Calendar export functionality
+Real-time updates and live participant counts
+
+Phase 3
+
+Expense tracking integration
+Advanced filtering and search
+Photo sharing for activities
+Integration with booking platforms
+
+Success Metrics
+
+Activity engagement: 70%+ of posted activities get at least 3 acceptances
+Planning participation: 80%+ of group members post at least one activity
+Notification effectiveness: 90%+ attendance rate for accepted activities
+Conflict reduction: <5% of users have overlapping accepted activities
+User satisfaction: Eliminates need for constant group chat coordination
+
+Technical Considerations
+
+Timezone handling for international trips
+Offline calendar access for poor connectivity
+Battery optimization for location-based notifications
+Real-time sync across all devices
+Scalable for large groups (tested up to 20 people)
+

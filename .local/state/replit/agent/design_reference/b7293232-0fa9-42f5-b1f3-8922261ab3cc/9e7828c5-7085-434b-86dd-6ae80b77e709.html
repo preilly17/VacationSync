@@ -1,0 +1,906 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TripSync - Collaborative Vacation Calendar</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#FF385C',
+                        secondary: '#00A699',
+                        accent: '#FF8A00',
+                        neutral: {
+                            900: '#222222',
+                            600: '#717171',
+                            100: '#F7F7F7'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-neutral-100 font-sans">
+    <!-- Mobile Navigation Bar -->
+    <nav class="lg:hidden bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                    <i class="fas fa-calendar-alt text-white text-sm"></i>
+                </div>
+                <span class="text-lg font-semibold text-neutral-900">TripSync</span>
+            </div>
+            <div class="flex items-center space-x-3">
+                <button class="relative">
+                    <i class="fas fa-bell text-neutral-600 text-lg"></i>
+                    <span class="absolute -top-1 -right-1 w-3 h-3 bg-primary rounded-full"></span>
+                </button>
+                <div class="w-8 h-8 bg-secondary rounded-full overflow-hidden">
+                    <!-- Profile image of a young traveler with backpack -->
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=100&h=100" alt="User profile" class="w-full h-full object-cover" data-bind="user.profileImage">
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Desktop Sidebar -->
+    <div class="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 lg:bg-white lg:border-r lg:border-gray-200">
+        <div class="flex flex-col h-full">
+            <!-- Logo -->
+            <div class="flex items-center px-6 py-4 border-b border-gray-200">
+                <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                    <i class="fas fa-calendar-alt text-white text-lg"></i>
+                </div>
+                <span class="ml-3 text-xl font-semibold text-neutral-900">TripSync</span>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="flex-1 px-4 py-6 space-y-2">
+                <a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-primary bg-red-50 rounded-lg">
+                    <i class="fas fa-calendar-check mr-3"></i>
+                    Trip Calendar
+                </a>
+                <a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 hover:bg-gray-50 rounded-lg">
+                    <i class="fas fa-user-clock mr-3"></i>
+                    My Schedule
+                </a>
+                <a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 hover:bg-gray-50 rounded-lg">
+                    <i class="fas fa-users mr-3"></i>
+                    Trip Members
+                </a>
+                <a href="#" class="flex items-center px-3 py-2 text-sm font-medium text-neutral-600 hover:text-neutral-900 hover:bg-gray-50 rounded-lg">
+                    <i class="fas fa-cog mr-3"></i>
+                    Settings
+                </a>
+            </nav>
+
+            <!-- User Profile -->
+            <div class="px-4 py-4 border-t border-gray-200">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-secondary rounded-full overflow-hidden">
+                        <!-- Profile image of a young traveler with backpack -->
+                        <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=100&h=100" alt="User profile" class="w-full h-full object-cover" data-bind="user.profileImage">
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium text-neutral-900" data-bind="user.name">Alex Chen</p>
+                        <p class="text-xs text-neutral-600" data-bind="user.email">alex@example.com</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="lg:pl-64">
+        <!-- Trip Header -->
+        <div class="bg-white border-b border-gray-200 px-4 lg:px-8 py-6">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+                    <div class="mb-4 lg:mb-0">
+                        <h1 class="text-2xl lg:text-3xl font-bold text-neutral-900" data-bind="trip.name">Japan Adventure 2025</h1>
+                        <div class="flex flex-wrap items-center mt-2 space-x-6 text-sm text-neutral-600">
+                            <div class="flex items-center">
+                                <i class="fas fa-map-marker-alt mr-2"></i>
+                                <span data-bind="trip.destination">Tokyo, Japan</span>
+                            </div>
+                            <div class="flex items-center">
+                                <i class="fas fa-calendar mr-2"></i>
+                                <span data-bind="trip.dateRange">Mar 15-25, 2025</span>
+                            </div>
+                            <div class="flex items-center">
+                                <i class="fas fa-users mr-2"></i>
+                                <span data-bind="trip.memberCount">8 members</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <button class="px-4 py-2 text-sm font-medium text-neutral-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                            <i class="fas fa-user-plus mr-2"></i>
+                            Invite Members
+                        </button>
+                        <button class="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-red-600">
+                            <i class="fas fa-plus mr-2"></i>
+                            Add Activity
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Controls -->
+        <div class="bg-white px-4 lg:px-8 py-4 border-b border-gray-200">
+            <div class="max-w-7xl mx-auto">
+                <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex items-center space-x-4 mb-4 lg:mb-0">
+                        <div class="flex items-center bg-gray-100 rounded-lg p-1">
+                            <button class="px-3 py-1 text-sm font-medium text-white bg-primary rounded-md">Calendar</button>
+                            <button class="px-3 py-1 text-sm font-medium text-neutral-600 hover:text-neutral-900">My Schedule</button>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <button class="p-2 text-neutral-600 hover:text-neutral-900">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <span class="text-sm font-medium text-neutral-900">March 2025</span>
+                            <button class="p-2 text-neutral-600 hover:text-neutral-900">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <select class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                            <option>All Categories</option>
+                            <option>Food & Dining</option>
+                            <option>Sightseeing</option>
+                            <option>Transportation</option>
+                            <option>Entertainment</option>
+                        </select>
+                        <button class="p-2 text-neutral-600 hover:text-neutral-900">
+                            <i class="fas fa-filter"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Calendar Grid -->
+        <div class="px-4 lg:px-8 py-6">
+            <div class="max-w-7xl mx-auto">
+                <!-- Calendar Header -->
+                <div class="grid grid-cols-7 gap-px bg-gray-200 rounded-t-lg overflow-hidden mb-px">
+                    <div class="bg-white px-4 py-3 text-center">
+                        <span class="text-sm font-medium text-neutral-900">Sun</span>
+                    </div>
+                    <div class="bg-white px-4 py-3 text-center">
+                        <span class="text-sm font-medium text-neutral-900">Mon</span>
+                    </div>
+                    <div class="bg-white px-4 py-3 text-center">
+                        <span class="text-sm font-medium text-neutral-900">Tue</span>
+                    </div>
+                    <div class="bg-white px-4 py-3 text-center">
+                        <span class="text-sm font-medium text-neutral-900">Wed</span>
+                    </div>
+                    <div class="bg-white px-4 py-3 text-center">
+                        <span class="text-sm font-medium text-neutral-900">Thu</span>
+                    </div>
+                    <div class="bg-white px-4 py-3 text-center">
+                        <span class="text-sm font-medium text-neutral-900">Fri</span>
+                    </div>
+                    <div class="bg-white px-4 py-3 text-center">
+                        <span class="text-sm font-medium text-neutral-900">Sat</span>
+                    </div>
+                </div>
+
+                <!-- Calendar Days -->
+                <div class="grid grid-cols-7 gap-px bg-gray-200 rounded-b-lg overflow-hidden">
+                    <!-- @MAP: calendar.days.map(day => ( -->
+                    
+                    <!-- Week 1 -->
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">28</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">29</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">30</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">31</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">1</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">2</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">3</span>
+                    </div>
+
+                    <!-- Week 2 -->
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">4</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">5</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">6</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">7</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">8</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">9</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">10</span>
+                    </div>
+
+                    <!-- Week 3 -->
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">11</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">12</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">13</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">14</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2 border-2 border-primary">
+                        <span class="text-sm font-medium text-neutral-900">15</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Arrival Day -->
+                            <div class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded truncate">
+                                ✈️ Arrival
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">16</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Temple Visit -->
+                            <div class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded truncate">
+                                🏯 Temple Tour
+                            </div>
+                            <!-- Activity: Ramen Night -->
+                            <div class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded truncate">
+                                🍜 Ramen Night
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">17</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Shibuya Shopping -->
+                            <div class="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded truncate">
+                                🛍️ Shibuya
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Week 4 -->
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">18</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Cooking Class -->
+                            <div class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded truncate">
+                                👨‍🍳 Cooking Class
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">19</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Mt. Fuji -->
+                            <div class="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded truncate">
+                                🗻 Mt. Fuji
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">20</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Karaoke -->
+                            <div class="bg-pink-100 text-pink-800 text-xs px-2 py-1 rounded truncate">
+                                🎤 Karaoke
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">21</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">22</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Robot Show -->
+                            <div class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded truncate">
+                                🤖 Robot Show
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">23</span>
+                    </div>
+                    <div class="bg-white h-32 lg:h-40 p-2">
+                        <span class="text-sm font-medium text-neutral-900">24</span>
+                    </div>
+
+                    <!-- Week 5 -->
+                    <div class="bg-white h-32 lg:h-40 p-2 border-2 border-primary">
+                        <span class="text-sm font-medium text-neutral-900">25</span>
+                        <div class="mt-1 space-y-1">
+                            <!-- Activity: Departure -->
+                            <div class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded truncate">
+                                ✈️ Departure
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">26</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">27</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">28</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">29</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">30</span>
+                    </div>
+                    <div class="bg-gray-50 h-32 lg:h-40 p-2 text-neutral-400">
+                        <span class="text-sm">31</span>
+                    </div>
+                    
+                    <!-- @END_MAP )) -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Feed -->
+        <div class="px-4 lg:px-8 pb-6">
+            <div class="max-w-7xl mx-auto">
+                <div class="bg-white rounded-lg shadow-sm border border-gray-200">
+                    <div class="px-6 py-4 border-b border-gray-200">
+                        <h2 class="text-lg font-semibold text-neutral-900">Recent Activities</h2>
+                    </div>
+                    <div class="divide-y divide-gray-200">
+                        <!-- Activity Card 1 -->
+                        <!-- @COMPONENT: ActivityCard [activity object, user interactions] -->
+                        <div class="p-6">
+                            <div class="flex items-start space-x-4">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                                        <i class="fas fa-torii-gate text-green-600 text-lg"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between">
+                                        <h3 class="text-lg font-semibold text-neutral-900" data-bind="activity.name">Senso-ji Temple Visit</h3>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                            Sightseeing
+                                        </span>
+                                    </div>
+                                    <div class="mt-1 flex items-center text-sm text-neutral-600">
+                                        <i class="fas fa-calendar mr-2"></i>
+                                        <span data-bind="activity.datetime">Mar 16, 2025 at 2:00 PM</span>
+                                        <span class="mx-2">•</span>
+                                        <i class="fas fa-map-marker-alt mr-2"></i>
+                                        <span data-bind="activity.location">Asakusa, Tokyo</span>
+                                        <span class="mx-2">•</span>
+                                        <i class="fas fa-yen-sign mr-2"></i>
+                                        <span data-bind="activity.cost">¥500/person</span>
+                                    </div>
+                                    <p class="mt-2 text-sm text-neutral-600" data-bind="activity.description">
+                                        Visit Tokyo's oldest Buddhist temple, explore traditional shops on Nakamise Street, and experience authentic Japanese culture.
+                                    </p>
+                                    <div class="mt-4 flex items-center justify-between">
+                                        <div class="flex items-center space-x-4">
+                                            <div class="flex items-center">
+                                                <div class="flex -space-x-2">
+                                                    <!-- Participant avatars showing diverse group of travelers -->
+                                                    <img src="https://pixabay.com/get/gbcf9cc28f8accb5932e960c3247804ef5752d4d3599c5ff664ae391428c9115bf64b360c0099ab120855412a5abd50a5bdab8c89ca6f939ee762bfe58f8da457_1280.png" alt="Participant" class="w-6 h-6 rounded-full border-2 border-white">
+                                                    <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Participant" class="w-6 h-6 rounded-full border-2 border-white">
+                                                    <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Participant" class="w-6 h-6 rounded-full border-2 border-white">
+                                                    <div class="w-6 h-6 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center">
+                                                        <span class="text-xs font-medium text-gray-600">+2</span>
+                                                    </div>
+                                                </div>
+                                                <span class="ml-3 text-sm text-neutral-600" data-bind="activity.participantCount">5 going</span>
+                                            </div>
+                                            <div class="flex items-center text-sm text-neutral-600">
+                                                <i class="fas fa-users mr-1"></i>
+                                                <span data-bind="activity.capacityInfo">3 spots left</span>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <button class="px-4 py-2 text-sm font-medium text-neutral-600 border border-gray-300 rounded-lg hover:bg-gray-50" data-event="click:handleDecline">
+                                                Decline
+                                            </button>
+                                            <button class="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-red-600" data-event="click:handleAccept">
+                                                Accept
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- @END_COMPONENT: ActivityCard -->
+
+                        <!-- Activity Card 2 -->
+                        <div class="p-6">
+                            <div class="flex items-start space-x-4">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+                                        <i class="fas fa-bowl-rice text-red-600 text-lg"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between">
+                                        <h3 class="text-lg font-semibold text-neutral-900">Ramen Tasting Tour</h3>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                            Food & Dining
+                                        </span>
+                                    </div>
+                                    <div class="mt-1 flex items-center text-sm text-neutral-600">
+                                        <i class="fas fa-calendar mr-2"></i>
+                                        <span>Mar 16, 2025 at 7:00 PM</span>
+                                        <span class="mx-2">•</span>
+                                        <i class="fas fa-map-marker-alt mr-2"></i>
+                                        <span>Shibuya District</span>
+                                        <span class="mx-2">•</span>
+                                        <i class="fas fa-yen-sign mr-2"></i>
+                                        <span>¥3000/person</span>
+                                    </div>
+                                    <p class="mt-2 text-sm text-neutral-600">
+                                        Explore 3 top-rated ramen shops in Shibuya, taste different styles, and learn about the culture behind Japan's favorite noodle dish.
+                                    </p>
+                                    <div class="mt-4 flex items-center justify-between">
+                                        <div class="flex items-center space-x-4">
+                                            <div class="flex items-center">
+                                                <div class="flex -space-x-2">
+                                                    <!-- Already accepted - showing user's own avatar -->
+                                                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="You" class="w-6 h-6 rounded-full border-2 border-primary">
+                                                    <img src="https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Participant" class="w-6 h-6 rounded-full border-2 border-white">
+                                                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Participant" class="w-6 h-6 rounded-full border-2 border-white">
+                                                </div>
+                                                <span class="ml-3 text-sm text-neutral-600">3 going (including you)</span>
+                                            </div>
+                                            <div class="flex items-center text-sm text-neutral-600">
+                                                <i class="fas fa-users mr-1"></i>
+                                                <span>5 spots left</span>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <button class="px-4 py-2 text-sm font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50">
+                                                Leave
+                                            </button>
+                                            <button class="px-4 py-2 text-sm font-medium text-white bg-secondary rounded-lg">
+                                                <i class="fas fa-check mr-2"></i>
+                                                Accepted
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Activity Card 3 -->
+                        <div class="p-6">
+                            <div class="flex items-start space-x-4">
+                                <div class="flex-shrink-0">
+                                    <div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                                        <i class="fas fa-shopping-bag text-purple-600 text-lg"></i>
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between">
+                                        <h3 class="text-lg font-semibold text-neutral-900">Shibuya Shopping & Harajuku</h3>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                            Shopping
+                                        </span>
+                                    </div>
+                                    <div class="mt-1 flex items-center text-sm text-neutral-600">
+                                        <i class="fas fa-calendar mr-2"></i>
+                                        <span>Mar 17, 2025 at 11:00 AM</span>
+                                        <span class="mx-2">•</span>
+                                        <i class="fas fa-map-marker-alt mr-2"></i>
+                                        <span>Shibuya Crossing</span>
+                                        <span class="mx-2">•</span>
+                                        <i class="fas fa-yen-sign mr-2"></i>
+                                        <span>Free (shopping budget varies)</span>
+                                    </div>
+                                    <p class="mt-2 text-sm text-neutral-600">
+                                        Experience the world's busiest intersection, explore trendy shops in Shibuya, and visit colorful Harajuku for unique fashion finds.
+                                    </p>
+                                    <div class="mt-4 flex items-center justify-between">
+                                        <div class="flex items-center space-x-4">
+                                            <div class="flex items-center">
+                                                <div class="flex -space-x-2">
+                                                    <!-- A group of diverse young people excited for shopping -->
+                                                    <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Participant" class="w-6 h-6 rounded-full border-2 border-white">
+                                                    <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Participant" class="w-6 h-6 rounded-full border-2 border-white">
+                                                    <div class="w-6 h-6 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center">
+                                                        <span class="text-xs font-medium text-gray-600">+4</span>
+                                                    </div>
+                                                </div>
+                                                <span class="ml-3 text-sm text-neutral-600">6 going</span>
+                                            </div>
+                                            <div class="flex items-center text-sm text-neutral-600">
+                                                <i class="fas fa-infinity mr-1"></i>
+                                                <span>No limit</span>
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center space-x-2">
+                                            <button class="px-4 py-2 text-sm font-medium text-neutral-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                                                Decline
+                                            </button>
+                                            <button class="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-red-600">
+                                                Accept
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile Bottom Navigation -->
+    <div class="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
+        <div class="flex justify-around">
+            <button class="flex flex-col items-center py-2 text-primary">
+                <i class="fas fa-calendar-alt text-lg"></i>
+                <span class="text-xs mt-1 font-medium">Calendar</span>
+            </button>
+            <button class="flex flex-col items-center py-2 text-neutral-600">
+                <i class="fas fa-clock text-lg"></i>
+                <span class="text-xs mt-1">Schedule</span>
+            </button>
+            <button class="flex flex-col items-center py-2 text-neutral-600">
+                <div class="w-8 h-8 bg-primary rounded-full flex items-center justify-center mb-1">
+                    <i class="fas fa-plus text-white text-sm"></i>
+                </div>
+                <span class="text-xs text-primary font-medium">Add</span>
+            </button>
+            <button class="flex flex-col items-center py-2 text-neutral-600">
+                <i class="fas fa-users text-lg"></i>
+                <span class="text-xs mt-1">Members</span>
+            </button>
+            <button class="flex flex-col items-center py-2 text-neutral-600">
+                <i class="fas fa-cog text-lg"></i>
+                <span class="text-xs mt-1">Settings</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Activity Detail Modal (Hidden by default) -->
+    <!-- @COMPONENT: ActivityModal [activity data, participants] -->
+    <div id="activityModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-screen overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-xl font-bold text-neutral-900">Senso-ji Temple Visit</h2>
+                        <button class="text-neutral-400 hover:text-neutral-600">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Activity Image -->
+                    <!-- Beautiful traditional Japanese temple with cherry blossoms -->
+                    <img src="https://images.unsplash.com/photo-1578662996442-48f60103fc96?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&h=400" alt="Senso-ji Temple" class="w-full h-48 object-cover rounded-lg mb-4">
+                    
+                    <!-- Activity Details -->
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-sm font-medium text-neutral-600">Date & Time</label>
+                                <p class="text-neutral-900">Mar 16, 2025 at 2:00 PM</p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-neutral-600">Duration</label>
+                                <p class="text-neutral-900">3 hours</p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-neutral-600">Cost</label>
+                                <p class="text-neutral-900">¥500 per person</p>
+                            </div>
+                            <div>
+                                <label class="text-sm font-medium text-neutral-600">Capacity</label>
+                                <p class="text-neutral-900">5/8 confirmed</p>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="text-sm font-medium text-neutral-600">Location</label>
+                            <p class="text-neutral-900">2-3-1 Asakusa, Taito City, Tokyo</p>
+                            <div class="bg-gray-100 rounded-lg h-32 mt-2 flex items-center justify-center">
+                                <span class="text-neutral-600"><!-- MAP INTEGRATION: Google Maps embed --></span>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="text-sm font-medium text-neutral-600">Description</label>
+                            <p class="text-neutral-900">Visit Tokyo's oldest Buddhist temple, explore traditional shops on Nakamise Street, and experience authentic Japanese culture. We'll meet at the main gate and explore together.</p>
+                        </div>
+                        
+                        <!-- Participants -->
+                        <div>
+                            <label class="text-sm font-medium text-neutral-600">Who's Going (5)</label>
+                            <div class="mt-2 space-y-2">
+                                <!-- Participant list showing diverse group -->
+                                <div class="flex items-center space-x-3">
+                                    <img src="https://pixabay.com/get/gcb74d8fda7edffbca2c781d8eaea6a1edbab16cc92e5352d663af1bed3575a79c0ddcca970be3b2f86ada66c2a76e38dcc0d70e833b427789b54456f3a49b432_1280.png" alt="Sarah" class="w-8 h-8 rounded-full">
+                                    <span class="text-neutral-900 font-medium">Sarah Chen</span>
+                                    <span class="text-sm text-neutral-600">(Organizer)</span>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Mike" class="w-8 h-8 rounded-full">
+                                    <span class="text-neutral-900">Mike Rodriguez</span>
+                                </div>
+                                <div class="flex items-center space-x-3">
+                                    <img src="https://images.unsplash.com/photo-1438761681033-6461ffad8d80?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Emma" class="w-8 h-8 rounded-full">
+                                    <span class="text-neutral-900">Emma Thompson</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Comments Section -->
+                        <div>
+                            <label class="text-sm font-medium text-neutral-600">Comments & Questions</label>
+                            <div class="mt-2 space-y-3 bg-gray-50 rounded-lg p-4">
+                                <div class="flex space-x-3">
+                                    <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=50&h=50" alt="Mike" class="w-6 h-6 rounded-full">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="text-sm font-medium">Mike</span>
+                                            <span class="text-xs text-neutral-600">2 hours ago</span>
+                                        </div>
+                                        <p class="text-sm text-neutral-700">Should we meet at the main gate or the subway station?</p>
+                                    </div>
+                                </div>
+                                <div class="flex space-x-3">
+                                    <img src="https://pixabay.com/get/ga13c9c28763c7a1e4277a38d69606ed80e6e23676196d591eaa63171549648b7d3f091bea2e69aa09c3b804a6bc6d31244fd7e018b38c5230f2a017e94a3cc8e_1280.jpg" alt="Sarah" class="w-6 h-6 rounded-full">
+                                    <div class="flex-1">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="text-sm font-medium">Sarah</span>
+                                            <span class="text-xs text-neutral-600">1 hour ago</span>
+                                        </div>
+                                        <p class="text-sm text-neutral-700">Let's meet at the main gate - it's easier to find!</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="mt-3 flex space-x-2">
+                                <input type="text" placeholder="Add a comment..." class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <button class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-red-600">
+                                    <i class="fas fa-paper-plane"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex space-x-3 pt-4">
+                            <button class="flex-1 px-4 py-3 text-neutral-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                                Decline
+                            </button>
+                            <button class="flex-1 px-4 py-3 text-white bg-primary rounded-lg hover:bg-red-600">
+                                Accept & Add to My Calendar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: ActivityModal -->
+
+    <!-- Add Activity Modal (Hidden by default) -->
+    <!-- @COMPONENT: AddActivityModal [trip data, user permissions] -->
+    <div id="addActivityModal" class="fixed inset-0 bg-black bg-opacity-50 hidden z-50">
+        <div class="flex items-center justify-center min-h-screen p-4">
+            <div class="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-screen overflow-y-auto">
+                <div class="p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-bold text-neutral-900">Add New Activity</h2>
+                        <button class="text-neutral-400 hover:text-neutral-600">
+                            <i class="fas fa-times text-xl"></i>
+                        </button>
+                    </div>
+                    
+                    <form class="space-y-4" data-implementation="Should validate and submit activity data">
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-700 mb-1">Activity Name</label>
+                            <input type="text" placeholder="e.g., Tokyo Skytree Visit" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-700 mb-1">Description</label>
+                            <textarea rows="3" placeholder="Describe what you'll be doing..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"></textarea>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-700 mb-1">Date</label>
+                                <input type="date" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-700 mb-1">Time</label>
+                                <input type="time" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-700 mb-1">Location</label>
+                            <input type="text" placeholder="Address or landmark" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-700 mb-1">Cost per Person</label>
+                                <div class="relative">
+                                    <span class="absolute left-3 top-2 text-neutral-600">¥</span>
+                                    <input type="number" placeholder="0" class="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-neutral-700 mb-1">Max Participants</label>
+                                <input type="number" placeholder="No limit" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium text-neutral-700 mb-1">Category</label>
+                            <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent">
+                                <option value="">Select category</option>
+                                <option value="food">Food & Dining</option>
+                                <option value="sightseeing">Sightseeing</option>
+                                <option value="transport">Transportation</option>
+                                <option value="entertainment">Entertainment</option>
+                                <option value="shopping">Shopping</option>
+                                <option value="culture">Culture</option>
+                                <option value="outdoor">Outdoor</option>
+                            </select>
+                        </div>
+                        
+                        <div class="flex space-x-3 pt-4">
+                            <button type="button" class="flex-1 px-4 py-3 text-neutral-600 border border-gray-300 rounded-lg hover:bg-gray-50">
+                                Cancel
+                            </button>
+                            <button type="submit" class="flex-1 px-4 py-3 text-white bg-primary rounded-lg hover:bg-red-600">
+                                Create Activity
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: AddActivityModal -->
+
+    <!-- Toast Notification (Hidden by default) -->
+    <!-- @COMPONENT: ToastNotification [message, type, duration] -->
+    <div id="toast" class="fixed top-4 right-4 bg-white border border-gray-200 rounded-lg shadow-lg p-4 hidden z-50">
+        <div class="flex items-center space-x-3">
+            <div class="flex-shrink-0">
+                <div class="w-6 h-6 bg-green-100 rounded-full flex items-center justify-center">
+                    <i class="fas fa-check text-green-600 text-sm"></i>
+                </div>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-neutral-900">Activity accepted!</p>
+                <p class="text-xs text-neutral-600">Added to your personal calendar</p>
+            </div>
+            <button class="text-neutral-400 hover:text-neutral-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    </div>
+    <!-- @END_COMPONENT: ToastNotification -->
+
+    <script>
+        (function() {
+            // TODO: Implement real-time WebSocket connections for live updates
+            // TODO: Implement push notification service worker
+            // TODO: Implement calendar export functionality
+            // TODO: Implement map integration with Google Maps API
+            
+            // Basic modal functionality for demonstration
+            function showModal(modalId) {
+                document.getElementById(modalId).classList.remove('hidden');
+            }
+            
+            function hideModal(modalId) {
+                document.getElementById(modalId).classList.add('hidden');
+            }
+            
+            function showToast(message, type = 'success') {
+                const toast = document.getElementById('toast');
+                toast.classList.remove('hidden');
+                setTimeout(() => {
+                    toast.classList.add('hidden');
+                }, 3000);
+            }
+            
+            // Activity interaction handlers
+            document.addEventListener('click', function(e) {
+                // Accept activity button
+                if (e.target.closest('[data-event="click:handleAccept"]')) {
+                    e.preventDefault();
+                    // TODO: Send accept request to API
+                    showToast('Activity accepted! Added to your calendar.');
+                    
+                    // Update UI to show accepted state
+                    const button = e.target.closest('[data-event="click:handleAccept"]');
+                    button.innerHTML = '<i class="fas fa-check mr-2"></i>Accepted';
+                    button.className = 'px-4 py-2 text-sm font-medium text-white bg-secondary rounded-lg';
+                }
+                
+                // Decline activity button
+                if (e.target.closest('[data-event="click:handleDecline"]')) {
+                    e.preventDefault();
+                    // TODO: Send decline request to API
+                    showToast('Activity declined.', 'info');
+                }
+                
+                // Add activity button
+                if (e.target.closest('button') && e.target.closest('button').textContent.includes('Add Activity')) {
+                    showModal('addActivityModal');
+                }
+                
+                // Modal close buttons
+                if (e.target.closest('.fa-times')) {
+                    const modal = e.target.closest('.fixed');
+                    if (modal) {
+                        modal.classList.add('hidden');
+                    }
+                }
+            });
+            
+            // Form submission handler
+            document.addEventListener('submit', function(e) {
+                if (e.target.closest('#addActivityModal form')) {
+                    e.preventDefault();
+                    // TODO: Validate form data and submit to API
+                    hideModal('addActivityModal');
+                    showToast('Activity created! Waiting for responses from group members.');
+                }
+            });
+            
+            // Real-time updates simulation
+            function simulateRealTimeUpdates() {
+                // TODO: Replace with actual WebSocket implementation
+                setInterval(() => {
+                    // Simulate participant count updates
+                    console.log('Simulating real-time participant updates...');
+                }, 30000);
+            }
+            
+            // Initialize
+            simulateRealTimeUpdates();
+        })();
+    </script>
+</body>
+</html>

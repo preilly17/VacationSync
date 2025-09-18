@@ -1,0 +1,152 @@
+I want to add a simple restaurant search feature to my VacationSync app using only Foursquare data. Keep it straightforward - just search and link to booking platforms when possible.
+
+🔐 MY FOURSQUARE CREDENTIALS
+Foursquare API Key: QW0DJ0QV4OFFQ13NU15N4YVSI1A3L0Y5IVWSJWAT0XLFVY0H
+
+API Limit: 100,000 calls per month (free tier)
+
+🍽️ SIMPLE REQUIREMENTS
+What I Want:
+Restaurant search by city (e.g., "restaurants in Paris")
+Display results with name, rating, cuisine, price, address
+Link to booking - try to find booking platforms or restaurant websites
+Clean, simple interface - no complex features
+Foursquare Integration:
+typescript
+class SimpleRestaurantSearch {
+  async searchRestaurants(cityName: string, options?: {
+    limit?: number,        // default: 20
+    radius?: number,       // default: 5000 meters  
+    cuisine?: string,      // optional filter
+    priceRange?: string    // 1,2,3,4
+  }): Promise<Restaurant[]>
+  
+  async getRestaurantDetails(fsqId: string): Promise<RestaurantDetails>
+}
+Data I Want from Foursquare:
+Restaurant name
+Address and neighborhood
+Foursquare rating (out of 10)
+Price level (1-4 dollar signs)
+Cuisine type
+Phone number
+Website URL
+Distance from city center
+1-2 user tips if available
+
+🎨 SIMPLE USER INTERFACE
+Search Form:
+html
+<div class="restaurant-search">
+  <input type="text" placeholder="Enter city (e.g., Paris, Tokyo)" id="cityInput">
+  <select id="cuisineFilter">
+    <option value="">Any Cuisine</option>
+    <option value="italian">Italian</option>
+    <option value="french">French</option>
+    <option value="asian">Asian</option>
+    <option value="mexican">Mexican</option>
+  </select>
+  <button onclick="searchRestaurants()">Find Restaurants</button>
+</div>
+Simple Results Display:
+html
+<div class="restaurant-card">
+  <h3>Restaurant Name</h3>
+  <p class="cuisine-price">Italian • $$$</p>
+  <p class="rating">8.5/10 on Foursquare (1,200+ ratings)</p>
+  <p class="address">123 Main Street, City Center</p>
+  <p class="tip">"Amazing pasta, book ahead" - Foursquare user</p>
+  
+  <div class="booking-links">
+    <button class="primary" onclick="bookRestaurant()">Book Table</button>
+    <button class="secondary" onclick="callRestaurant()">Call Restaurant</button>
+  </div>
+</div>
+
+🔗 SIMPLE BOOKING STRATEGY
+Link Priority:
+Restaurant website (if Foursquare provides it)
+Generic OpenTable search (search by restaurant name + city)
+Phone number for calling
+Google search as last resort
+Booking Link Creation:
+typescript
+function createBookingLinks(restaurant: Restaurant) {
+  const links = [];
+  
+  // Try restaurant website first
+  if (restaurant.website) {
+    links.push({
+      text: "Restaurant Website",
+      url: restaurant.website,
+      type: "direct"
+    });
+  }
+  
+  // Generic OpenTable search (no API needed)
+  const openTableSearch = `https://www.opentable.com/s?term=${encodeURIComponent(restaurant.name + ' ' + restaurant.city)}`;
+  links.push({
+    text: "Search OpenTable", 
+    url: openTableSearch,
+    type: "search"
+  });
+  
+  // Phone number
+  if (restaurant.phone) {
+    links.push({
+      text: `Call ${restaurant.phone}`,
+      url: `tel:${restaurant.phone}`,
+      type: "phone"
+    });
+  }
+  
+  return links;
+}
+
+📊 BASIC CACHING
+Simple Cache Strategy:
+Cache restaurant search results for 2 hours
+Cache by city name to avoid repeat API calls
+Clear cache when user changes search parameters
+typescript
+const restaurantCache = new Map();
+
+async function searchWithCache(cityName: string) {
+  const cacheKey = `restaurants_${cityName.toLowerCase()}`;
+  
+  if (restaurantCache.has(cacheKey)) {
+    const cached = restaurantCache.get(cacheKey);
+    if (Date.now() - cached.timestamp < 2 * 60 * 60 * 1000) { // 2 hours
+      return cached.data;
+    }
+  }
+  
+  // Make fresh API call
+  const results = await foursquareAPI.searchRestaurants(cityName);
+  restaurantCache.set(cacheKey, {
+    data: results,
+    timestamp: Date.now()
+  });
+  
+  return results;
+}
+
+🧪 SIMPLE TESTING
+Test Cities:
+Major cities: "Paris", "Tokyo", "New York", "London"
+Smaller cities: "Austin", "Portland", "Florence"
+Expected Results:
+15-20 restaurants per city search
+Mix of price ranges and cuisines
+At least 50% should have website or phone for booking
+Results should be relevant to the city searched
+
+🎯 FINAL DELIVERABLES
+Just implement:
+Foursquare restaurant search by city name
+Simple results display with ratings and basic info
+Basic booking links (website, OpenTable search, phone)
+Clean, responsive interface
+Basic caching to save API calls
+Error handling for invalid cities or API failures
+That's it! No complex reservation systems, no multiple APIs, no advanced features. Just a working restaurant search that helps users find places to eat and provides ways to book them.

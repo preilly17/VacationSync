@@ -1,0 +1,78 @@
+I need help integrating the Amadeus Travel API into my VacationSync travel planner app. I have fresh API credentials from Amadeus that I need to set up securely.
+STEP 1: Help me set up environment variables securely
+
+Guide me through storing my Amadeus API key and secret in Replit's Secrets tab
+Show me exactly where to click and what to name the variables
+Make sure I understand how to access these in my code
+
+STEP 2: Create a complete Amadeus API integration
+Write TypeScript code that includes:
+Authentication:
+
+OAuth2 token request to get access token
+Automatic token refresh when needed
+Proper error handling for auth failures
+
+Search Functions:
+
+Flight Search: Search flights between origin/destination with dates, passenger count
+Hotel Search: Find hotels in a city with check-in/check-out dates
+Activity Search: Find activities and attractions by location (lat/lng or city)
+Location Search: Get airport/city codes from city names
+Airport Search: Find nearby airports for a given city
+
+STEP 3: Create a user-friendly interface
+
+HTML form where users can enter:
+
+Departure city
+Destination city
+Departure date
+Return date
+Number of travelers
+
+
+Display results in organized sections for flights, hotels, activities
+
+STEP 4: Error handling and user experience
+
+Handle API rate limits gracefully
+Show loading states while searching
+Display user-friendly error messages
+Validate user input before making API calls
+
+Technical specifications:
+
+Use TypeScript throughout
+Start with Amadeus test environment (test.api.amadeus.com)
+Use modern async/await syntax
+Include detailed console logging for debugging
+Make code modular with clear separation of concerns
+Add comments explaining each API call
+
+Required Amadeus endpoints:
+
+POST /v1/security/oauth2/token (authentication)
+GET /v2/shopping/flight-offers (flight search)
+GET /v3/shopping/hotel-offers (hotel search)
+GET /v1/shopping/activities (activities)
+GET /v1/reference-data/locations (location lookup)
+
+Expected workflow:
+
+User enters trip details in a form
+App gets access token from Amadeus
+App searches for location codes if needed
+App makes parallel searches for flights, hotels, activities
+Results are displayed in an organized, attractive layout
+User can see prices, descriptions, and booking options
+
+Additional requests:
+
+Include a simple test function to verify API connection works
+Add sample data/mock responses for testing
+Provide clear instructions for switching from test to production environment
+Show me how to handle common errors (invalid dates, no results found, etc.)
+
+Please provide complete, working code with step-by-step setup instructions. I need this to be beginner-friendly since I'm not very technical. Also include sample API responses so I understand what data I'm getting back.
+Make this a fully functional travel search application that I can deploy and use right away!"

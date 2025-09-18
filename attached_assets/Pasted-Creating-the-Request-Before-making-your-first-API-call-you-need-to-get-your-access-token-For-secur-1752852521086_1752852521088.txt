@@ -1,0 +1,51 @@
+Creating the Request
+Before making your first API call, you need to get your access token. For security purposes we implemented the oauth2 process that will give you your access token based on your API Key and API Secret. To retrieve the token, you need to send a POST request to the endpoint /v1/security/oauth2/token with the correct Content-Type header and body. Replace {client_id} with your API Key and {client_secret} with your API Secret in the command below and execute it:
+
+curl "https://test.api.amadeus.com/v1/security/oauth2/token" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d "grant_type=client_credentials&client_id={client_id}&client_secret={client_secret}"
+Warning
+Please take a look at our authorization guide to understand how the process works in depth.
+According to the documentation, you need to use v1/shopping/flight-destinations as the endpoint, followed by the mandatory query parameter origin. As you want to filter the offers to those cheaper than 200 EUR, you need to add the maxPrice parameter to your query as well.
+
+Our call is therefore:
+
+The documentation says you need to use v1/shopping/flight-destinations as endpoint followed by the mandatory parameter origin. As you want to filter the offers to those cheaper than 200 EUR, you need to add the maxPrice parameter as well.
+
+Our call is therefore:
+
+curl 'https://test.api.amadeus.com/v1/shopping/flight-destinations?origin=PAR&maxPrice=200' \
+      -H 'Authorization: Bearer ABCDEFGH12345'
+ 
+
+Note how we add the Authorization header to the request with the value Bearer string concatenated with the token previously requested.
+
+ 
+Evaluating the Response
+The response returns a JSON object containing a list of destinations matching our criteria:
+
+{
+    "data": [
+        {
+            "type": "flight-destination",
+            "origin": "PAR",
+            "destination": "CAS",
+            "departureDate": "2022-09-06",
+            "returnDate": "2022-09-11",
+            "price": {
+                "total": "161.90"
+            }
+        },
+        {
+            "type": "flight-destination",
+            "origin": "PAR",
+            "destination": "AYT",
+            "departureDate": "2022-10-16",
+            "returnDate": "2022-10-31",
+            "price": {
+                "total": "181.50"
+            }
+        }
+    ]
+}
+Congratulations! You have just made your first Amadeus for Developers API call!
