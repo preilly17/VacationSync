@@ -1,4 +1,5 @@
 // Enhanced location utilities with IndexedDB caching and search optimization
+import { apiFetch } from "./api";
 
 interface LocationResult {
   id: string;
@@ -231,7 +232,7 @@ class LocationUtils {
     
     // Make API request
     try {
-      const response = await fetch('/api/locations/search', {
+      const response = await apiFetch('/api/locations/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -299,7 +300,7 @@ class LocationUtils {
     }
     
     try {
-      const response = await fetch('/api/locations/stats');
+      const response = await apiFetch('/api/locations/stats');
       
       if (!response.ok) {
         throw new Error(`Stats failed: ${response.status}`);
@@ -320,7 +321,7 @@ class LocationUtils {
   // Refresh all location data
   static async refreshLocationData(): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await fetch('/api/locations/refresh', {
+      const response = await apiFetch('/api/locations/refresh', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

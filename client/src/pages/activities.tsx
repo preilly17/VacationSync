@@ -29,6 +29,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { apiFetch, buildApiUrl } from "@/lib/api";
 import type { TripWithDetails } from "@shared/schema";
 
 interface Activity {
@@ -76,7 +77,7 @@ export default function Activities() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = buildApiUrl("/api/login");
       }, 500);
       return;
     }
@@ -128,7 +129,7 @@ export default function Activities() {
         sortBy
       });
       
-      const response = await fetch(`/api/activities/discover?${params}`, {
+      const response = await apiFetch(`/api/activities/discover?${params}`, {
         credentials: 'include',
       });
       
@@ -187,7 +188,7 @@ export default function Activities() {
       // Combine date and time into ISO string
       const startDateTime = new Date(`${startDate}T${startTime}`).toISOString();
       
-      const response = await fetch(`/api/trips/${tripId}/activities`, {
+      const response = await apiFetch(`/api/trips/${tripId}/activities`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -223,7 +224,7 @@ export default function Activities() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = "/api/login";
+          window.location.href = buildApiUrl("/api/login");
         }, 500);
         return;
       }

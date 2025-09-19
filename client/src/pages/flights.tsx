@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { buildApiUrl } from "@/lib/api";
 import { format } from "date-fns";
 import { Plane, Clock, MapPin, User, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, ChevronDown, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -550,7 +551,9 @@ export default function FlightsPage() {
           description: "You need to be logged in to rank flights.",
           variant: "destructive",
         });
-        setTimeout(() => window.location.href = "/api/login", 500);
+        setTimeout(() => {
+          window.location.href = buildApiUrl("/api/login");
+        }, 500);
         return;
       }
       toast({
@@ -601,7 +604,9 @@ export default function FlightsPage() {
           description: "You need to be logged in to propose flights.",
           variant: "destructive",
         });
-        setTimeout(() => window.location.href = "/api/login", 500);
+        setTimeout(() => {
+          window.location.href = buildApiUrl("/api/login");
+        }, 500);
         return;
       }
       console.error("Error proposing flight:", error);

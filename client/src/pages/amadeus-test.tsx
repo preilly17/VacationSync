@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Plane, Building, MapPin, Calendar, Users, Database } from 'lucide-react';
 import { Link } from 'wouter';
+import { apiFetch } from '@/lib/api';
 
 interface FlightResult {
   id: string;
@@ -90,7 +91,7 @@ export default function AmadeusTest() {
     setFlightLoading(true);
     setFlightError(null);
     try {
-      const response = await fetch('/api/flights/search', {
+      const response = await apiFetch('/api/flights/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(flightForm)
@@ -114,7 +115,7 @@ export default function AmadeusTest() {
     setHotelLoading(true);
     setHotelError(null);
     try {
-      const response = await fetch('/api/hotels/search', {
+      const response = await apiFetch('/api/hotels/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(hotelForm)
@@ -138,7 +139,7 @@ export default function AmadeusTest() {
     setActivityLoading(true);
     setActivityError(null);
     try {
-      const response = await fetch('/api/activities/search', {
+      const response = await apiFetch('/api/activities/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(activityForm)

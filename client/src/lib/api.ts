@@ -1,6 +1,26 @@
 // client/src/lib/api.ts
-export async function fetchJSON(path: string) {
-  const res = await fetch(path);
+const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
+const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, "");
+
+export function buildApiUrl(path: string) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  if (!API_BASE_URL) {
+    return path;
+  }
+
+  const normalisedPath = path.startsWith("/") ? path.slice(1) : path;
+  return `${API_BASE_URL}/${normalisedPath}`;
+}
+
+export function apiFetch(path: string, init?: RequestInit) {
+  return fetch(buildApiUrl(path), init);
+}
+
+export async function fetchJSON(path: string, init?: RequestInit) {
+  const res = await apiFetch(path, init);
   const text = await res.text();
   // Try to parse JSON, but return raw text if it isn't JSON
   try {
