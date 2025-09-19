@@ -9,6 +9,7 @@ import { Calendar, MapPin, Users, CheckCircle, AlertCircle, Plane } from "lucide
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { apiFetch, buildApiUrl } from "@/lib/api";
 import { format } from "date-fns";
 
 export default function Join() {
@@ -31,7 +32,7 @@ export default function Join() {
     if (!authLoading && !isAuthenticated && shareCode) {
       // Pass the current path as returnTo parameter
       const returnUrl = encodeURIComponent(window.location.pathname);
-      window.location.href = `/api/login?returnTo=${returnUrl}`;
+      window.location.href = buildApiUrl(`/api/login?returnTo=${returnUrl}`);
       return;
     }
   }, [isAuthenticated, authLoading, shareCode]);
@@ -44,7 +45,7 @@ export default function Join() {
       try {
         setLoading(true);
         // First check if user is already a member by trying to get trip details
-        const tripResponse = await fetch(`/api/trips/share/${shareCode}`, {
+        const tripResponse = await apiFetch(`/api/trips/share/${shareCode}`, {
           credentials: 'include',
         });
         
@@ -78,7 +79,7 @@ export default function Join() {
 
   const joinTripMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/trips/join/${shareCode}`, {
+      const response = await apiFetch(`/api/trips/join/${shareCode}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

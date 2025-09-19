@@ -19,6 +19,7 @@ import {
   Users
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/api";
 import type { TripWithDetails } from "@shared/schema";
 
 interface Activity {
@@ -95,7 +96,7 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
         sortBy
       });
       
-      const response = await fetch(`/api/activities/discover?${params}`, {
+      const response = await apiFetch(`/api/activities/discover?${params}`, {
         credentials: 'include',
       });
       

@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiFetch, buildApiUrl } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
@@ -216,7 +217,7 @@ export default function HotelsPage() {
         return;
       }
 
-      const response = await fetch("/api/hotels/search", {
+      const response = await apiFetch("/api/hotels/search", {
         method: "POST",
         headers: {
           'Content-Type': 'application/json',
@@ -581,7 +582,9 @@ export default function HotelsPage() {
           description: "You need to be logged in to propose hotels.",
           variant: "destructive",
         });
-        setTimeout(() => window.location.href = "/api/login", 500);
+        setTimeout(() => {
+          window.location.href = buildApiUrl("/api/login");
+        }, 500);
         return;
       }
       toast({
@@ -616,7 +619,9 @@ export default function HotelsPage() {
           description: "You need to be logged in to rank hotels.",
           variant: "destructive",
         });
-        setTimeout(() => window.location.href = "/api/login", 500);
+        setTimeout(() => {
+          window.location.href = buildApiUrl("/api/login");
+        }, 500);
         return;
       }
       toast({
@@ -671,7 +676,9 @@ export default function HotelsPage() {
           description: "You need to be logged in to add hotels.",
           variant: "destructive",
         });
-        setTimeout(() => window.location.href = "/api/login", 500);
+        setTimeout(() => {
+          window.location.href = buildApiUrl("/api/login");
+        }, 500);
         return;
       }
       toast({
@@ -706,7 +713,9 @@ export default function HotelsPage() {
           description: "You need to be logged in to update hotels.",
           variant: "destructive",
         });
-        setTimeout(() => window.location.href = "/api/login", 500);
+        setTimeout(() => {
+          window.location.href = buildApiUrl("/api/login");
+        }, 500);
         return;
       }
       toast({
@@ -737,7 +746,9 @@ export default function HotelsPage() {
           description: "You need to be logged in to delete hotels.",
           variant: "destructive",
         });
-        setTimeout(() => window.location.href = "/api/login", 500);
+        setTimeout(() => {
+          window.location.href = buildApiUrl("/api/login");
+        }, 500);
         return;
       }
       toast({

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Plane, Globe, Building } from "lucide-react";
+import { apiFetch } from "@/lib/api";
 
 interface LocationResult {
   type: 'airport' | 'city' | 'metro' | 'state' | 'country';
@@ -70,7 +71,7 @@ export default function SmartLocationSearch({
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true);
       try {
-        const response = await fetch(`/api/locations/search?q=${encodeURIComponent(query)}`);
+        const response = await apiFetch(`/api/locations/search?q=${encodeURIComponent(query)}`);
         if (response.ok) {
           const data = await response.json();
           // ROOT CAUSE 2 FIX: Ensure results is always an array

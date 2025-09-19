@@ -34,6 +34,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { apiFetch, buildApiUrl } from "@/lib/api";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { ActivityCard } from "@/components/activity-card";
 import { AddActivityModal } from "@/components/add-activity-modal";
@@ -87,7 +88,7 @@ export default function Trip() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = "/api/login";
+        window.location.href = buildApiUrl("/api/login");
       }, 500);
     }
   }, [authLoading, isAuthenticated, toast]);
@@ -98,7 +99,7 @@ export default function Trip() {
     enabled: !!id && isAuthenticated,
     retry: (failureCount, error) => {
       if (isUnauthorizedError(error)) {
-        window.location.href = "/api/login";
+        window.location.href = buildApiUrl("/api/login");
         return false;
       }
       return failureCount < 3;
@@ -1218,7 +1219,7 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
         endDate: new Date(trip.endDate).toISOString().split('T')[0]
       });
       
-      const response = await fetch(`/api/weather?${params}`);
+      const response = await apiFetch(`/api/weather?${params}`);
       if (!response.ok) {
         throw new Error(`Weather API error: ${response.status}`);
       }

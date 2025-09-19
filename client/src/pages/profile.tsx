@@ -20,6 +20,7 @@ import { useOnboarding } from "@/hooks/useOnboarding";
 import { Smartphone, Settings, User as UserIcon, MapPin, Plane, PlayCircle, ArrowLeft, Search } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
+import { apiFetch } from "@/lib/api";
 
 const profileFormSchema = z.object({
   cashAppUsername: z.string().optional(),
@@ -67,7 +68,7 @@ export default function Profile() {
     }
 
     try {
-      const response = await fetch(`/api/locations/search?q=${encodeURIComponent(query)}`);
+      const response = await apiFetch(`/api/locations/search?q=${encodeURIComponent(query)}`);
       if (response.ok) {
         const results = await response.json();
         setLocationResults(results);

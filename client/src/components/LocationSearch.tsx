@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, Search, MapPin, Plane, Building, Globe, X, Star, Clock, DollarSign } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 interface LocationResult {
   id: string;
@@ -95,7 +96,7 @@ export default function LocationSearch({
 
   const loadPopularDestinations = async () => {
     try {
-      const response = await fetch('/api/locations/search', {
+      const response = await apiFetch('/api/locations/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -148,7 +149,7 @@ export default function LocationSearch({
     setShowingPopular(false);
     
     try {
-      const response = await fetch('/api/locations/search', {
+      const response = await apiFetch('/api/locations/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -205,7 +206,7 @@ export default function LocationSearch({
       
       if (result.type === 'CITY') {
         try {
-          const airportResponse = await fetch('/api/locations/search', {
+          const airportResponse = await apiFetch('/api/locations/search', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

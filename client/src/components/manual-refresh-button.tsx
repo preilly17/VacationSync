@@ -1,13 +1,14 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import { buildApiUrl } from "@/lib/api";
 
 export function ManualRefreshButton() {
   const handleRefresh = () => {
     // Clear all storage and force a complete refresh
     localStorage.clear();
     sessionStorage.clear();
-    window.location.href = '/api/logout';
+    window.location.href = buildApiUrl("/api/logout");
   };
 
   return (

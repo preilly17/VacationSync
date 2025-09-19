@@ -19,6 +19,7 @@ import { ManualRefreshButton } from "@/components/manual-refresh-button";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { buildApiUrl } from "@/lib/api";
 import type { TripWithDetails } from "@shared/schema";
 
 export default function Home() {
@@ -166,7 +167,7 @@ export default function Home() {
                   localStorage.clear();
                   sessionStorage.clear();
                   // Force a full page reload to logout endpoint
-                  window.location.replace('/api/logout');
+                  window.location.replace(buildApiUrl("/api/logout"));
                 }}
               >
                 Logout

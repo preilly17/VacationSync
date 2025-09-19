@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Search, Database, MapPin, Plane, Building, Globe, RefreshCw, Download, TestTube, CheckCircle, XCircle } from 'lucide-react';
 import LocationTestSuite, { TestResult } from '@/lib/locationTests';
+import { apiFetch } from '@/lib/api';
 
 interface LocationResult {
   id: string;
@@ -68,7 +69,7 @@ export default function LocationDatabase() {
   const loadStats = async () => {
     setStatsLoading(true);
     try {
-      const response = await fetch('/api/locations/stats');
+      const response = await apiFetch('/api/locations/stats');
       if (response.ok) {
         const data = await response.json();
         setStats(data);
@@ -88,7 +89,7 @@ export default function LocationDatabase() {
     setSearchResults([]);
     
     try {
-      const response = await fetch('/api/locations/search', {
+      const response = await apiFetch('/api/locations/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -122,7 +123,7 @@ export default function LocationDatabase() {
     setRefreshProgress(null);
     
     try {
-      const response = await fetch('/api/locations/refresh', {
+      const response = await apiFetch('/api/locations/refresh', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
