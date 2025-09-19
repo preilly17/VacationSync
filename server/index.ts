@@ -65,7 +65,7 @@ app.use((req, res, next) => {
   }
 
   // ✅ Use Render's PORT if available, fallback to 5000 for local dev
-  const port = process.env.PORT ? parseInt(process.env.PORT) : 5000;
+  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
   const host = "0.0.0.0";
 
   server.listen(
@@ -79,4 +79,5 @@ app.use((req, res, next) => {
     }
   );
 })();
+
 
