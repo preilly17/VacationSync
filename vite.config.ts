@@ -25,7 +25,7 @@ export default defineConfig({
   },
   root: path.resolve(import.meta.dirname, "client"), // still point to client
 build: {
-  outDir: "../dist", // ✅ relative to client → ends up in VacationSync/dist
+  outDir: "dist", // ✅ relative to client → ends up in VacationSync/dist
   emptyOutDir: true,
 },
 
