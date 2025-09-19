@@ -5,7 +5,7 @@
       "use": "@vercel/static-build"
     }
   ],
-  "outputDirectory": "dist"
+  "outputDirectory": "client/dist"
 }
 
 
