@@ -23,18 +23,18 @@ export default defineConfig({
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
   },
-  root: path.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true,
-  },
+  root: path.resolve(import.meta.dirname, "client"), // still point to client
+build: {
+  outDir: "../dist", // ✅ relative to client → ends up in VacationSync/dist
+  emptyOutDir: true,
+},
+
   server: {
     fs: {
       strict: true,
       deny: ["**/.*"],
     },
     proxy: {
-      // Forward backend calls to Flask on port 3000
       "/health": "http://127.0.0.1:3000",
       "/search": "http://127.0.0.1:3000",
     },
