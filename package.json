@@ -16,6 +16,7 @@
     "@duffel/api": "^4.15.1",
     "@fawazahmed0/currency-api": "^2025.7.29",
     "@hookform/resolvers": "^3.10.0",
+    "@neondatabase/serverless": "^1.0.1",
     "amadeus": "^11.0.0",
     "axios": "^1.10.0",
     "bcryptjs": "^3.0.2",
@@ -84,4 +85,3 @@
     "bufferutil": "^4.0.8"
   }
 }
-
