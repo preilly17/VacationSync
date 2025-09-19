@@ -7,6 +7,7 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -37,8 +38,26 @@ app.use((req, res, next) => {
   next();
 });
 
+// Setup routes first
+const server = setupRoutes(app);
+
+// Global error handler
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Internal Server Error";
+  res.status(status).json({ message });
+  log(`❌ Error: ${message}`);
+});
+
+// ✅ Always start server, even if DB or Vite fails
+const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+const host = "0.0.0.0";
+server.listen({ port, host, reusePort: true }, () => {
+  log(`🚀 Server running on http://${host}:${port}`);
+});
+
+// Run setup tasks *after* server starts
 (async () => {
-  // Initialize travel tips database with seed data
   try {
     await seedTravelTipsDatabase();
     log("🌱 Travel tips database initialization completed");
@@ -46,38 +65,16 @@ app.use((req, res, next) => {
     log(`❌ Failed to initialize travel tips database: ${error}`);
   }
 
-  const server = setupRoutes(app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  if (app.get("env") === "development") {
-    // Only setup Vite in development
-    await setupVite(app, server);
-  } else {
-    // Serve static frontend in production
-    serveStatic(app);
-  }
-
-  // ✅ Use Render's PORT if available, fallback to 5000 for local dev
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
-  const host = "0.0.0.0";
-
-  server.listen(
-    {
-      port,
-      host,
-      reusePort: true,
-    },
-    () => {
-      log(`🚀 Server running on http://${host}:${port}`);
+  try {
+    if (app.get("env") === "development") {
+      await setupVite(app, server);
+    } else {
+      serveStatic(app);
     }
-  );
+  } catch (error) {
+    log(`⚠️ Vite/static setup failed: ${error}`);
+  }
 })();
+
 
 
