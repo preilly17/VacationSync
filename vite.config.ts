@@ -23,12 +23,11 @@ export default defineConfig({
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
   },
-  root: path.resolve(import.meta.dirname, "client"), // still point to client
-build: {
-  outDir: "dist", // ✅ relative to client → ends up in VacationSync/dist
-  emptyOutDir: true,
-},
-
+  root: path.resolve(import.meta.dirname, "client"),
+  build: {
+    outDir: "dist",
+    emptyOutDir: true,
+  },
   server: {
     fs: {
       strict: true,
