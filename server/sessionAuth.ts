@@ -29,13 +29,49 @@ const PgStore = connectPg(session);
 
 function buildSessionOptions(): SessionOptions {
   const isProduction = process.env.NODE_ENV === "production";
-  const sameSite = (process.env.SESSION_COOKIE_SAMESITE as "lax" | "none" | "strict" | undefined)
-    ?? (isProduction ? "none" : "lax");
+  const sameSiteEnv = process.env.SESSION_COOKIE_SAMESITE as
+    | "lax"
+    | "none"
+    | "strict"
+    | undefined;
   const cookieDomain = process.env.SESSION_COOKIE_DOMAIN;
+
+  const secureSetting = process.env.SESSION_COOKIE_SECURE?.toLowerCase();
+  let secure: CookieOptions["secure"];
+  switch (secureSetting) {
+    case "true":
+    case "1":
+      secure = true;
+      break;
+    case "false":
+    case "0":
+      secure = false;
+      break;
+    case "auto":
+      secure = "auto";
+      break;
+    case undefined:
+      secure = isProduction ? "auto" : false;
+      break;
+    default:
+      console.warn(
+        `⚠️ Unrecognized SESSION_COOKIE_SECURE value "${secureSetting}" – falling back to ${isProduction ? '"auto"' : '"false"'}.`,
+      );
+      secure = isProduction ? "auto" : false;
+      break;
+  }
+
+  let sameSite = sameSiteEnv ?? (isProduction ? "none" : "lax");
+  if (secure === false && sameSite === "none") {
+    console.warn(
+      "⚠️ SESSION_COOKIE_SAMESITE was set to \"none\" but secure cookies are disabled; falling back to \"lax\" to satisfy browser requirements.",
+    );
+    sameSite = "lax";
+  }
 
   const cookie: CookieOptions = {
     httpOnly: true,
-    secure: isProduction,
+    secure,
     sameSite,
     maxAge: ONE_WEEK_MS,
   };
