@@ -1,0 +1,9 @@
+{
+  "name": "vacation-sync-client-build",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm install --prefix ..",
+    "build": "npm run build:client --prefix ..",
+    "vercel-build": "npm run build"
+  }
+}
