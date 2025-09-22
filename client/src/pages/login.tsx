@@ -71,7 +71,7 @@ export default function Login() {
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
-      setLocation(safeReturnTo ?? "/home"); // ✅ redirect into app
+      setLocation(safeReturnTo ?? "/"); // ✅ redirect into app
     },
     onError: (error: any) => {
       let errorMessage = "Invalid username/email or password.";
