@@ -1,16 +1,10 @@
 // Comprehensive Travel Tips Service for VacationSync
 // Generates personalized travel tips based on destination, activities, and user preferences
 
-import memoize from 'memoizee';
-import { query } from './db';
-import { storage } from './storage';
-import { 
-  tripCalendars, 
-  activities, 
-  users, 
-  tripMembers,
-  travelTips,
-  userTipPreferences,
+import memoize from "memoizee";
+import { query } from "./db";
+import { storage } from "./storage";
+import {
   type TripCalendar,
   type Activity,
   type User,
@@ -18,9 +12,62 @@ import {
   type InsertTravelTip,
   type UserTipPreferences as DBUserTipPreferences,
   type InsertUserTipPreferences,
-  type TravelTipWithDetails
-} from '@shared/schema';
-import { eq, and, inArray, sql, desc, like, or } from 'drizzle-orm';
+  type TravelTipWithDetails,
+} from "@shared/schema";
+
+type TripCalendarRow = {
+  id: number;
+  name: string;
+  destination: string;
+  start_date: Date;
+  end_date: Date;
+  share_code: string;
+  created_by: string;
+  created_at: Date | null;
+};
+
+const mapTripCalendar = (row: TripCalendarRow): TripCalendar => ({
+  id: row.id,
+  name: row.name,
+  destination: row.destination,
+  startDate: row.start_date,
+  endDate: row.end_date,
+  shareCode: row.share_code,
+  createdBy: row.created_by,
+  createdAt: row.created_at,
+});
+
+type ActivityRow = {
+  id: number;
+  trip_calendar_id: number;
+  posted_by: string;
+  name: string;
+  description: string | null;
+  start_time: Date;
+  end_time: Date | null;
+  location: string | null;
+  cost: string | null;
+  max_capacity: number | null;
+  category: string;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+const mapActivity = (row: ActivityRow): Activity => ({
+  id: row.id,
+  tripCalendarId: row.trip_calendar_id,
+  postedBy: row.posted_by,
+  name: row.name,
+  description: row.description,
+  startTime: row.start_time,
+  endTime: row.end_time,
+  location: row.location,
+  cost: row.cost,
+  maxCapacity: row.max_capacity,
+  category: row.category,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
 
 // Use database types directly
 export type TravelTip = DBTravelTip;
@@ -749,32 +796,63 @@ const getUserPreferencesFromCache = memoize(
 const getTripDataFromCache = memoize(
   async (tripId: number): Promise<{ trip: TripCalendar; activities: Activity[] } | null> => {
     try {
-      // Get trip details
-      const [trip] = await db
-        .select()
-        .from(tripCalendars)
-        .where(eq(tripCalendars.id, tripId));
+      const { rows: tripRows } = await query<TripCalendarRow>(
+        `
+        SELECT id,
+               name,
+               destination,
+               start_date,
+               end_date,
+               share_code,
+               created_by,
+               created_at
+        FROM trip_calendars
+        WHERE id = $1
+        LIMIT 1
+        `,
+        [tripId],
+      );
 
-      if (!trip) {
+      if (tripRows.length === 0) {
         return null;
       }
 
-      // Get trip activities
-      const tripActivities = await db
-        .select()
-        .from(activities)
-        .where(eq(activities.tripCalendarId, tripId));
+      const trip = mapTripCalendar(tripRows[0]);
+
+      const { rows: activityRows } = await query<ActivityRow>(
+        `
+        SELECT id,
+               trip_calendar_id,
+               posted_by,
+               name,
+               description,
+               start_time,
+               end_time,
+               location,
+               cost::text AS cost,
+               max_capacity,
+               category,
+               created_at,
+               updated_at
+        FROM activities
+        WHERE trip_calendar_id = $1
+        ORDER BY start_time ASC
+        `,
+        [tripId],
+      );
+
+      const tripActivities = activityRows.map(mapActivity);
 
       return {
         trip,
-        activities: tripActivities
+        activities: tripActivities,
       };
     } catch (error) {
-      console.error('Error fetching trip data:', error);
+      console.error("Error fetching trip data:", error);
       return null;
     }
   },
-  { maxAge: 2 * 60 * 1000 } // Cache for 2 minutes
+  { maxAge: 2 * 60 * 1000 },
 );
 
 // Smart Matching Algorithm Functions
