@@ -4,13 +4,25 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { useLocation } from "wouter";
-import { Link } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Plane, User, Lock, Eye, EyeOff } from "lucide-react";
 
 const loginSchema = z.object({
@@ -26,9 +38,12 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
 
-  const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : "");
+  const searchParams = new URLSearchParams(
+    typeof window !== "undefined" ? window.location.search : ""
+  );
   const returnToParam = searchParams.get("returnTo");
-  const safeReturnTo = returnToParam && returnToParam.startsWith("/") ? returnToParam : null;
+  const safeReturnTo =
+    returnToParam && returnToParam.startsWith("/") ? returnToParam : null;
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -40,9 +55,13 @@ export default function Login() {
 
   const loginMutation = useMutation({
     mutationFn: async (data: LoginFormData) => {
-      const response = await apiRequest('/api/auth/login', {
-        method: 'POST',
+      const response = await apiRequest("/api/auth/login", {
+        method: "POST",
         body: JSON.stringify(data),
+        credentials: "include", // ✅ ensure session cookie is included
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
       return response.json();
     },
@@ -52,17 +71,18 @@ export default function Login() {
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
-      setLocation(safeReturnTo ?? '/');
+      setLocation(safeReturnTo ?? "/home"); // ✅ redirect into app
     },
     onError: (error: any) => {
       let errorMessage = "Invalid username/email or password.";
-      
+
       if (error.message.includes("not found")) {
-        errorMessage = "Account not found. Please check your credentials or create a new account.";
+        errorMessage =
+          "Account not found. Please check your credentials or create a new account.";
       } else if (error.message.includes("password")) {
         errorMessage = "Incorrect password. Please try again.";
       }
-      
+
       toast({
         title: "Login failed",
         description: errorMessage,
@@ -101,7 +121,11 @@ export default function Login() {
                     <FormControl>
                       <div className="relative">
                         <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input placeholder="john@example.com or johndoe" className="pl-10" {...field} />
+                        <Input
+                          placeholder="john@example.com or johndoe"
+                          className="pl-10"
+                          {...field}
+                        />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -118,11 +142,11 @@ export default function Login() {
                     <FormControl>
                       <div className="relative">
                         <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input 
+                        <Input
                           type={showPassword ? "text" : "password"}
-                          placeholder="••••••••" 
-                          className="pl-10 pr-10" 
-                          {...field} 
+                          placeholder="••••••••"
+                          className="pl-10 pr-10"
+                          {...field}
                         />
                         <Button
                           type="button"
@@ -144,8 +168,8 @@ export default function Login() {
                 )}
               />
 
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 className="w-full bg-primary hover:bg-red-600 text-white"
                 disabled={loginMutation.isPending}
               >
@@ -157,14 +181,20 @@ export default function Login() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Don't have an account?{" "}
-              <Link href="/register" className="text-primary hover:underline font-medium">
+              <Link
+                href="/register"
+                className="text-primary hover:underline font-medium"
+              >
                 Create one here
               </Link>
             </p>
           </div>
 
           <div className="mt-4 text-center">
-            <Link href="/forgot-password" className="text-sm text-gray-500 hover:underline">
+            <Link
+              href="/forgot-password"
+              className="text-sm text-gray-500 hover:underline"
+            >
               Forgot your password?
             </Link>
           </div>
