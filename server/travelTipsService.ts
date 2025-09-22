@@ -2,7 +2,7 @@
 // Generates personalized travel tips based on destination, activities, and user preferences
 
 import memoize from 'memoizee';
-import { db } from './db';
+import { query } from './db';
 import { storage } from './storage';
 import { 
   tripCalendars, 
