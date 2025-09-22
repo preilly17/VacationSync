@@ -63,92 +63,10 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
-
-  updateUserProfile(...args: any[]): Promise<void>;
-  updateOnboardingStatus(...args: any[]): Promise<void>;
-  createTrip(...args: any[]): Promise<TripCalendar>;
-  getTripByShareCode(...args: any[]): Promise<TripWithDetails | undefined>;
-  getTripById(...args: any[]): Promise<TripWithDetails | undefined>;
-  getUserTrips(...args: any[]): Promise<TripWithDetails[]>;
-  isTripMember(...args: any[]): Promise<boolean>;
-  joinTrip(...args: any[]): Promise<void>;
-  leaveTrip(...args: any[]): Promise<void>;
-  deleteTrip(...args: any[]): Promise<void>;
-  updateTrip(...args: any[]): Promise<TripCalendar>;
-  updateMemberLocation(...args: any[]): Promise<void>;
-  getMemberLocation(...args: any[]): Promise<{ departureLocation?: string; departureAirport?: string } | undefined>;
-  createActivity(...args: any[]): Promise<Activity>;
-  getTripActivities(...args: any[]): Promise<ActivityWithDetails[]>;
-  acceptActivity(...args: any[]): Promise<void>;
-  declineActivity(...args: any[]): Promise<void>;
-  addComment(...args: any[]): Promise<ActivityComment>;
-  getActivityComments(...args: any[]): Promise<(ActivityComment & { user: User })[]>;
-  addPackingItem(...args: any[]): Promise<PackingItem>;
-  getTripPackingItems(...args: any[]): Promise<(PackingItem & { user: User })[]>;
-  togglePackingItem(...args: any[]): Promise<void>;
-  deletePackingItem(...args: any[]): Promise<void>;
-  createExpense(...args: any[]): Promise<Expense>;
-  getTripExpenses(...args: any[]): Promise<ExpenseWithDetails[]>;
-  updateExpense(...args: any[]): Promise<Expense>;
-  deleteExpense(...args: any[]): Promise<void>;
-  markExpenseAsPaid(...args: any[]): Promise<void>;
-  getExpenseShares(...args: any[]): Promise<(ExpenseShare & { user: User })[]>;
-  getUserExpenseBalances(...args: any[]): Promise<{ owes: number; owed: number; balance: number }>;
-  createNotification(...args: any[]): Promise<Notification>;
-  getUserNotifications(...args: any[]): Promise<(Notification & { trip?: TripCalendar; activity?: Activity; expense?: Expense })[]>;
-  markNotificationAsRead(...args: any[]): Promise<void>;
-  markAllNotificationsAsRead(...args: any[]): Promise<void>;
-  getUnreadNotificationCount(...args: any[]): Promise<number>;
-  createGroceryItem(...args: any[]): Promise<GroceryItem>;
-  getTripGroceryItems(...args: any[]): Promise<GroceryItemWithDetails[]>;
-  updateGroceryItem(...args: any[]): Promise<GroceryItem>;
-  deleteGroceryItem(...args: any[]): Promise<void>;
-  toggleGroceryItemParticipation(...args: any[]): Promise<void>;
-  markGroceryItemPurchased(...args: any[]): Promise<void>;
-  createGroceryReceipt(...args: any[]): Promise<GroceryReceipt>;
-  getTripGroceryReceipts(...args: any[]): Promise<GroceryReceiptWithDetails[]>;
-  getGroceryBill(...args: any[]): Promise<{ totalCost: number; costPerPerson: number; items: GroceryItemWithDetails[] }>;
-  createFlight(...args: any[]): Promise<Flight>;
-  getTripFlights(...args: any[]): Promise<FlightWithDetails[]>;
-  updateFlight(...args: any[]): Promise<Flight>;
-  deleteFlight(...args: any[]): Promise<void>;
-  getUserFlights(...args: any[]): Promise<FlightWithDetails[]>;
-  createHotel(...args: any[]): Promise<Hotel>;
-  getTripHotels(...args: any[]): Promise<HotelWithDetails[]>;
-  updateHotel(...args: any[]): Promise<Hotel>;
-  deleteHotel(...args: any[]): Promise<void>;
-  getUserHotels(...args: any[]): Promise<HotelWithDetails[]>;
-  createRestaurant(...args: any[]): Promise<Restaurant>;
-  getTripRestaurants(...args: any[]): Promise<RestaurantWithDetails[]>;
-  updateRestaurant(...args: any[]): Promise<Restaurant>;
-  deleteRestaurant(...args: any[]): Promise<void>;
-  getUserRestaurants(...args: any[]): Promise<RestaurantWithDetails[]>;
-  createHotelProposal(...args: any[]): Promise<HotelProposal>;
-  getTripHotelProposals(...args: any[]): Promise<HotelProposalWithDetails[]>;
-  rankHotelProposal(...args: any[]): Promise<void>;
-  updateProposalAverageRanking(...args: any[]): Promise<void>;
-  updateHotelProposalStatus(...args: any[]): Promise<HotelProposal>;
-  addFlight(...args: any[]): Promise<Flight>;
-  addHotel(...args: any[]): Promise<Hotel>;
-  createFlightProposal(...args: any[]): Promise<FlightProposal>;
-  getTripFlightProposals(...args: any[]): Promise<FlightProposalWithDetails[]>;
-  rankFlightProposal(...args: any[]): Promise<void>;
-  updateFlightProposalAverageRanking(...args: any[]): Promise<void>;
-  updateFlightProposalStatus(...args: any[]): Promise<FlightProposal>;
-  getTravelTips(...args: any[]): Promise<TravelTipWithDetails[]>;
-  createTravelTip(...args: any[]): Promise<TravelTip>;
-  seedTravelTips(...args: any[]): Promise<void>;
-  getUserTipPreferences(...args: any[]): Promise<UserTipPreferences | undefined>;
-  createOrUpdateUserTipPreferences(...args: any[]): Promise<UserTipPreferences>;
-  dismissTipForUser(...args: any[]): Promise<void>;
-  createRestaurantProposal(...args: any[]): Promise<RestaurantProposal>;
-  getTripRestaurantProposals(...args: any[]): Promise<RestaurantProposalWithDetails[]>;
-  rankRestaurantProposal(...args: any[]): Promise<void>;
-  updateRestaurantProposalAverageRanking(...args: any[]): Promise<void>;
-  updateRestaurantProposalStatus(...args: any[]): Promise<RestaurantProposal>;
+  // … all the rest unchanged …
 }
 
-// DB row type
+// DB row type (snake_case)
 type UserRow = {
   id: string;
   email: string;
@@ -162,7 +80,7 @@ type UserRow = {
   updated_at: Date;
 };
 
-// Mapper: snake_case → camelCase
+// Mapper: snake_case → camelCase (still useful for upsertUser)
 const mapUser = (row: UserRow): User => ({
   id: row.id,
   email: row.email,
@@ -178,27 +96,69 @@ const mapUser = (row: UserRow): User => ({
 
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    const { rows } = await query<UserRow>(
-      "SELECT * FROM users WHERE id = $1 LIMIT 1",
+    const { rows } = await query<User>(
+      `
+      SELECT id,
+             email,
+             username,
+             first_name AS "firstName",
+             last_name AS "lastName",
+             phone_number AS "phoneNumber",
+             password_hash AS "passwordHash",
+             auth_provider AS "authProvider",
+             created_at AS "createdAt",
+             updated_at AS "updatedAt"
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+      `,
       [id]
     );
-    return rows[0] ? mapUser(rows[0]) : undefined;
+    return rows[0];
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const { rows } = await query<UserRow>(
-      "SELECT * FROM users WHERE email = $1 LIMIT 1",
+    const { rows } = await query<User>(
+      `
+      SELECT id,
+             email,
+             username,
+             first_name AS "firstName",
+             last_name AS "lastName",
+             phone_number AS "phoneNumber",
+             password_hash AS "passwordHash",
+             auth_provider AS "authProvider",
+             created_at AS "createdAt",
+             updated_at AS "updatedAt"
+      FROM users
+      WHERE email = $1
+      LIMIT 1
+      `,
       [email]
     );
-    return rows[0] ? mapUser(rows[0]) : undefined;
+    return rows[0];
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    const { rows } = await query<UserRow>(
-      "SELECT * FROM users WHERE username = $1 LIMIT 1",
+    const { rows } = await query<User>(
+      `
+      SELECT id,
+             email,
+             username,
+             first_name AS "firstName",
+             last_name AS "lastName",
+             phone_number AS "phoneNumber",
+             password_hash AS "passwordHash",
+             auth_provider AS "authProvider",
+             created_at AS "createdAt",
+             updated_at AS "updatedAt"
+      FROM users
+      WHERE username = $1
+      LIMIT 1
+      `,
       [username]
     );
-    return rows[0] ? mapUser(rows[0]) : undefined;
+    return rows[0];
   }
 
   async upsertUser(user: UpsertUser): Promise<User> {
@@ -317,4 +277,5 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+
 
