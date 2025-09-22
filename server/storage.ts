@@ -86,14 +86,27 @@ type UserRow = {
 const mapUser = (row: UserRow): User => ({
   id: row.id,
   email: row.email,
-  username: row.username,
-  firstName: row.first_name,
-  lastName: row.last_name,
-  phoneNumber: row.phone_number,
-  passwordHash: row.password_hash,
-  authProvider: row.auth_provider,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
+  username: row.username ?? null,
+  firstName: row.first_name ?? null,
+  lastName: row.last_name ?? null,
+  phoneNumber: row.phone_number ?? null,
+  passwordHash: row.password_hash ?? null,
+  profileImageUrl: null,
+  cashAppUsername: null,
+  cashAppPhone: null,
+  venmoUsername: null,
+  venmoPhone: null,
+  timezone: null,
+  defaultLocation: null,
+  defaultLocationCode: null,
+  defaultCity: null,
+  defaultCountry: null,
+  authProvider: row.auth_provider ?? null,
+  notificationPreferences: null,
+  hasSeenHomeOnboarding: false,
+  hasSeenTripOnboarding: false,
+  createdAt: row.created_at ?? null,
+  updatedAt: row.updated_at ?? null,
 });
 
 type UserDetailsRow = {
@@ -216,9 +229,103 @@ type PackingItemWithUserRow = {
   created_at: Date | null;
 } & PrefixedUserRow<"user_">;
 
+type ExpenseRow = {
+  id: number;
+  trip_id: number;
+  paid_by: string;
+  amount: string;
+  currency: string;
+  exchange_rate: string | null;
+  original_currency: string | null;
+  converted_amounts: Record<string, unknown> | null;
+  description: string;
+  category: string;
+  activity_id: number | null;
+  split_type: "equal" | "percentage" | "exact";
+  split_data: Record<string, unknown> | null;
+  receipt_url: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type ExpenseWithPaidByRow = ExpenseRow & PrefixedUserRow<"paid_by_">;
+
+type ExpenseShareRow = {
+  id: number;
+  expense_id: number;
+  user_id: string;
+  amount: string;
+  is_paid: boolean;
+  paid_at: Date | null;
+  created_at: Date | null;
+};
+
+type ExpenseShareWithUserRow = {
+  id: number;
+  expense_id: number;
+  share_participant_id: string;
+  amount: string;
+  is_paid: boolean;
+  paid_at: Date | null;
+  created_at: Date | null;
+} & PrefixedUserRow<"share_user_">;
+
+type NotificationRow = {
+  id: number;
+  user_id: string;
+  type: string;
+  title: string;
+  message: string;
+  trip_id: number | null;
+  activity_id: number | null;
+  expense_id: number | null;
+  is_read: boolean;
+  created_at: Date | null;
+};
+
+type NotificationWithDetailsRow = NotificationRow & {
+  joined_trip_id: number | null;
+  trip_name: string | null;
+  trip_destination: string | null;
+  trip_start_date: Date | null;
+  trip_end_date: Date | null;
+  trip_share_code: string | null;
+  trip_created_by: string | null;
+  trip_created_at: Date | null;
+  joined_activity_id: number | null;
+  activity_trip_calendar_id: number | null;
+  activity_posted_by: string | null;
+  activity_name: string | null;
+  activity_description: string | null;
+  activity_start_time: Date | null;
+  activity_end_time: Date | null;
+  activity_location: string | null;
+  activity_cost: string | null;
+  activity_max_capacity: number | null;
+  activity_category: string | null;
+  activity_created_at: Date | null;
+  activity_updated_at: Date | null;
+  joined_expense_id: number | null;
+  expense_trip_id: number | null;
+  expense_paid_by: string | null;
+  expense_amount: string | null;
+  expense_currency: string | null;
+  expense_exchange_rate: string | null;
+  expense_original_currency: string | null;
+  expense_converted_amounts: Record<string, unknown> | null;
+  expense_description: string | null;
+  expense_category: string | null;
+  expense_activity_id: number | null;
+  expense_split_type: "equal" | "percentage" | "exact" | null;
+  expense_split_data: Record<string, unknown> | null;
+  expense_receipt_url: string | null;
+  expense_created_at: Date | null;
+  expense_updated_at: Date | null;
+};
+
 const mapUserFromPrefix = (
   row: Record<string, unknown>,
-  prefix: "user_" | "creator_" | "poster_",
+  prefix: string,
 ): User => ({
   id: (row[`${prefix}id`] as string) ?? "",
   email: (row[`${prefix}email`] as string) ?? "",
@@ -335,6 +442,64 @@ const mapPackingItem = (row: PackingItemRow): PackingItem => ({
   itemType: row.item_type,
   isChecked: row.is_checked,
   assignedUserId: row.assigned_user_id,
+  createdAt: row.created_at,
+});
+
+const mapExpense = (row: ExpenseRow): Expense => ({
+  id: row.id,
+  tripId: row.trip_id,
+  paidBy: row.paid_by,
+  amount: row.amount,
+  currency: row.currency,
+  exchangeRate: row.exchange_rate,
+  originalCurrency: row.original_currency,
+  convertedAmounts: (row.converted_amounts ?? null) as any,
+  description: row.description,
+  category: row.category,
+  activityId: row.activity_id,
+  splitType: row.split_type,
+  splitData: (row.split_data ?? null) as any,
+  receiptUrl: row.receipt_url,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapExpenseShare = (row: ExpenseShareRow): ExpenseShare => ({
+  id: row.id,
+  expenseId: row.expense_id,
+  userId: row.user_id,
+  amount: row.amount,
+  isPaid: row.is_paid,
+  paidAt: row.paid_at,
+  createdAt: row.created_at,
+});
+
+const mapExpenseWithDetails = (
+  row: ExpenseWithPaidByRow & {
+    shares: (ExpenseShare & { user: User })[];
+    activity?: Activity;
+  },
+): ExpenseWithDetails => {
+  const baseExpense = mapExpense(row);
+  return {
+    ...baseExpense,
+    paidBy: mapUserFromPrefix(row, "paid_by_"),
+    activity: row.activity,
+    shares: row.shares,
+    totalAmount: Number(baseExpense.amount ?? 0),
+  } as unknown as ExpenseWithDetails;
+};
+
+const mapNotification = (row: NotificationRow): Notification => ({
+  id: row.id,
+  userId: row.user_id,
+  type: row.type,
+  title: row.title,
+  message: row.message,
+  tripId: row.trip_id,
+  activityId: row.activity_id,
+  expenseId: row.expense_id,
+  isRead: row.is_read,
   createdAt: row.created_at,
 });
 
@@ -474,11 +639,18 @@ export class DatabaseStorage implements IStorage {
     const values: unknown[] = [];
     let index = 1;
 
-    for (const [key, column] of Object.entries(fieldMap)) {
-      const typedKey = key as keyof typeof fieldMap;
-      if (data[typedKey] !== undefined) {
+    const typedData = data as Partial<
+      Record<keyof typeof fieldMap, unknown>
+    >;
+
+    for (const [key, column] of Object.entries(fieldMap) as [
+      keyof typeof fieldMap,
+      string,
+    ][]) {
+      const value = typedData[key];
+      if (value !== undefined) {
         setClauses.push(`${column} = $${index}`);
-        values.push(data[typedKey]);
+        values.push(value);
         index += 1;
       }
     }
@@ -1542,18 +1714,976 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Packing item not found");
     }
   }
-  async createExpense(): Promise<Expense> { throw new Error("Not implemented"); }
-  async getTripExpenses(): Promise<ExpenseWithDetails[]> { throw new Error("Not implemented"); }
-  async updateExpense(): Promise<Expense> { throw new Error("Not implemented"); }
-  async deleteExpense(): Promise<void> { throw new Error("Not implemented"); }
-  async markExpenseAsPaid(): Promise<void> { throw new Error("Not implemented"); }
-  async getExpenseShares(): Promise<(ExpenseShare & { user: User })[]> { throw new Error("Not implemented"); }
-  async getUserExpenseBalances(): Promise<{ owes: number; owed: number; balance: number }> { throw new Error("Not implemented"); }
-  async createNotification(): Promise<Notification> { throw new Error("Not implemented"); }
-  async getUserNotifications(): Promise<(Notification & { trip?: TripCalendar; activity?: Activity; expense?: Expense })[]> { throw new Error("Not implemented"); }
-  async markNotificationAsRead(): Promise<void> { throw new Error("Not implemented"); }
-  async markAllNotificationsAsRead(): Promise<void> { throw new Error("Not implemented"); }
-  async getUnreadNotificationCount(): Promise<number> { throw new Error("Not implemented"); }
+  async createExpense(
+    expense: InsertExpense & { selectedMembers?: string[] },
+    userId: string,
+  ): Promise<Expense> {
+    await query("BEGIN");
+    try {
+      const { rows } = await query<ExpenseRow>(
+        `
+        INSERT INTO expenses (
+          trip_id,
+          paid_by,
+          amount,
+          currency,
+          exchange_rate,
+          original_currency,
+          converted_amounts,
+          description,
+          category,
+          activity_id,
+          split_type,
+          split_data,
+          receipt_url
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13
+        )
+        RETURNING
+          id,
+          trip_id,
+          paid_by,
+          amount,
+          currency,
+          exchange_rate,
+          original_currency,
+          converted_amounts,
+          description,
+          category,
+          activity_id,
+          split_type,
+          split_data,
+          receipt_url,
+          created_at,
+          updated_at
+        `,
+        [
+          expense.tripId,
+          expense.paidBy ?? userId,
+          expense.amount,
+          expense.currency,
+          expense.exchangeRate ?? null,
+          expense.originalCurrency ?? null,
+          expense.convertedAmounts ?? null,
+          expense.description,
+          expense.category,
+          expense.activityId ?? null,
+          expense.splitType ?? "equal",
+          expense.splitData ?? null,
+          expense.receiptUrl ?? null,
+        ],
+      );
+
+      const row = rows[0];
+      if (!row) {
+        throw new Error("Failed to create expense");
+      }
+
+      const splitData = (expense.splitData ?? null) as
+        | Record<string, unknown>
+        | null;
+      const membersFromSplitData = Array.isArray(
+        (splitData as Record<string, unknown>)?.members as unknown[],
+      )
+        ? ((splitData as { members: string[] }).members ?? [])
+        : undefined;
+      const selectedMembers = Array.isArray(expense.selectedMembers)
+        ? expense.selectedMembers
+        : undefined;
+      const participantIds = membersFromSplitData ?? selectedMembers ?? [];
+
+      if (participantIds.length > 0) {
+        const totalAmount = Number(expense.amount);
+        const splitType = expense.splitType ?? "equal";
+        const exactAmounts =
+          (splitData?.amounts as Record<string, unknown> | undefined) ??
+          undefined;
+        const percentages =
+          (splitData?.percentages as Record<string, unknown> | undefined) ??
+          undefined;
+        const splitAmountValue = splitData?.splitAmount;
+
+        for (const participantId of participantIds) {
+          let shareAmount =
+            participantIds.length > 0
+              ? totalAmount / participantIds.length
+              : 0;
+
+          if (splitType === "exact" && exactAmounts) {
+            const value = exactAmounts[participantId];
+            if (typeof value === "number") {
+              shareAmount = value;
+            } else if (typeof value === "string") {
+              const parsed = Number(value);
+              if (!Number.isNaN(parsed)) {
+                shareAmount = parsed;
+              }
+            }
+          } else if (splitType === "percentage" && percentages) {
+            const value = percentages[participantId];
+            let percentageAmount = 0;
+            if (typeof value === "number") {
+              percentageAmount = value;
+            } else if (typeof value === "string") {
+              const parsed = Number(value);
+              if (!Number.isNaN(parsed)) {
+                percentageAmount = parsed;
+              }
+            }
+            shareAmount = totalAmount * (percentageAmount / 100);
+          } else if (splitAmountValue !== undefined) {
+            if (typeof splitAmountValue === "number") {
+              shareAmount = splitAmountValue;
+            } else if (typeof splitAmountValue === "string") {
+              const parsed = Number(splitAmountValue);
+              if (!Number.isNaN(parsed)) {
+                shareAmount = parsed;
+              }
+            }
+          }
+
+          await query(
+            `
+            INSERT INTO expense_shares (
+              expense_id,
+              user_id,
+              amount,
+              is_paid
+            )
+            VALUES ($1, $2, $3, FALSE)
+            `,
+            [row.id, participantId, shareAmount],
+          );
+        }
+      }
+
+      await query("COMMIT");
+
+      return mapExpense(row);
+    } catch (error) {
+      await query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async getTripExpenses(tripId: number): Promise<ExpenseWithDetails[]> {
+    const { rows: expenseRows } = await query<ExpenseWithPaidByRow>(
+      `
+      SELECT
+        e.id,
+        e.trip_id,
+        e.paid_by,
+        e.amount,
+        e.currency,
+        e.exchange_rate,
+        e.original_currency,
+        e.converted_amounts,
+        e.description,
+        e.category,
+        e.activity_id,
+        e.split_type,
+        e.split_data,
+        e.receipt_url,
+        e.created_at,
+        e.updated_at,
+        u.id AS paid_by_id,
+        u.email AS paid_by_email,
+        u.username AS paid_by_username,
+        u.first_name AS paid_by_first_name,
+        u.last_name AS paid_by_last_name,
+        u.phone_number AS paid_by_phone_number,
+        u.password_hash AS paid_by_password_hash,
+        u.profile_image_url AS paid_by_profile_image_url,
+        u.cash_app_username AS paid_by_cash_app_username,
+        u.cash_app_phone AS paid_by_cash_app_phone,
+        u.venmo_username AS paid_by_venmo_username,
+        u.venmo_phone AS paid_by_venmo_phone,
+        u.timezone AS paid_by_timezone,
+        u.default_location AS paid_by_default_location,
+        u.default_location_code AS paid_by_default_location_code,
+        u.default_city AS paid_by_default_city,
+        u.default_country AS paid_by_default_country,
+        u.auth_provider AS paid_by_auth_provider,
+        u.notification_preferences AS paid_by_notification_preferences,
+        u.has_seen_home_onboarding AS paid_by_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS paid_by_has_seen_trip_onboarding,
+        u.created_at AS paid_by_created_at,
+        u.updated_at AS paid_by_updated_at
+      FROM expenses e
+      JOIN users u ON u.id = e.paid_by
+      WHERE e.trip_id = $1
+      ORDER BY e.created_at DESC NULLS LAST, e.id DESC
+      `,
+      [tripId],
+    );
+
+    if (expenseRows.length === 0) {
+      return [];
+    }
+
+    const expenseIds = expenseRows.map((row) => row.id);
+
+    const { rows: shareRows } = await query<ExpenseShareWithUserRow>(
+      `
+      SELECT
+        es.id,
+        es.expense_id,
+        es.user_id AS share_participant_id,
+        es.amount,
+        es.is_paid,
+        es.paid_at,
+        es.created_at,
+        su.id AS share_user_id,
+        su.email AS share_user_email,
+        su.username AS share_user_username,
+        su.first_name AS share_user_first_name,
+        su.last_name AS share_user_last_name,
+        su.phone_number AS share_user_phone_number,
+        su.password_hash AS share_user_password_hash,
+        su.profile_image_url AS share_user_profile_image_url,
+        su.cash_app_username AS share_user_cash_app_username,
+        su.cash_app_phone AS share_user_cash_app_phone,
+        su.venmo_username AS share_user_venmo_username,
+        su.venmo_phone AS share_user_venmo_phone,
+        su.timezone AS share_user_timezone,
+        su.default_location AS share_user_default_location,
+        su.default_location_code AS share_user_default_location_code,
+        su.default_city AS share_user_default_city,
+        su.default_country AS share_user_default_country,
+        su.auth_provider AS share_user_auth_provider,
+        su.notification_preferences AS share_user_notification_preferences,
+        su.has_seen_home_onboarding AS share_user_has_seen_home_onboarding,
+        su.has_seen_trip_onboarding AS share_user_has_seen_trip_onboarding,
+        su.created_at AS share_user_created_at,
+        su.updated_at AS share_user_updated_at
+      FROM expense_shares es
+      JOIN users su ON su.id = es.user_id
+      WHERE es.expense_id = ANY($1::int[])
+      ORDER BY es.created_at ASC NULLS LAST, es.id ASC
+      `,
+      [expenseIds],
+    );
+
+    const sharesByExpenseId = new Map<
+      number,
+      (ExpenseShare & { user: User })[]
+    >();
+
+    for (const row of shareRows) {
+      const share = mapExpenseShare({
+        id: row.id,
+        expense_id: row.expense_id,
+        user_id: row.share_participant_id,
+        amount: row.amount,
+        is_paid: row.is_paid,
+        paid_at: row.paid_at,
+        created_at: row.created_at,
+      });
+      const user = mapUserFromPrefix(row, "share_user_");
+      const existingShares = sharesByExpenseId.get(row.expense_id) ?? [];
+      existingShares.push({ ...share, user });
+      sharesByExpenseId.set(row.expense_id, existingShares);
+    }
+
+    const activityIds = expenseRows
+      .map((row) => row.activity_id)
+      .filter((id): id is number => id !== null);
+
+    const activityMap = new Map<number, Activity>();
+    if (activityIds.length > 0) {
+      const { rows: activityRows } = await query<ActivityRow>(
+        `
+        SELECT
+          id,
+          trip_calendar_id,
+          posted_by,
+          name,
+          description,
+          start_time,
+          end_time,
+          location,
+          cost,
+          max_capacity,
+          category,
+          created_at,
+          updated_at
+        FROM activities
+        WHERE id = ANY($1::int[])
+        `,
+        [activityIds],
+      );
+
+      for (const row of activityRows) {
+        activityMap.set(row.id, mapActivity(row));
+      }
+    }
+
+    return expenseRows.map((row) =>
+      mapExpenseWithDetails({
+        ...row,
+        shares: sharesByExpenseId.get(row.id) ?? [],
+        activity: row.activity_id ? activityMap.get(row.activity_id) : undefined,
+      }),
+    );
+  }
+
+  async updateExpense(
+    expenseId: number,
+    updates: Partial<InsertExpense> & { selectedMembers?: string[] },
+    userId: string,
+  ): Promise<Expense> {
+    const { rows: existingRows } = await query<ExpenseRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        paid_by,
+        amount,
+        currency,
+        exchange_rate,
+        original_currency,
+        converted_amounts,
+        description,
+        category,
+        activity_id,
+        split_type,
+        split_data,
+        receipt_url,
+        created_at,
+        updated_at
+      FROM expenses
+      WHERE id = $1
+      `,
+      [expenseId],
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new Error("Expense not found");
+    }
+
+    if (existing.paid_by !== userId) {
+      throw new Error("Only the payer can update this expense");
+    }
+
+    await query("BEGIN");
+    try {
+      const setClauses: string[] = [];
+      const values: unknown[] = [];
+      let index = 1;
+
+      if (updates.description !== undefined) {
+        setClauses.push(`description = $${index}`);
+        values.push(updates.description);
+        index += 1;
+      }
+
+      if (updates.amount !== undefined) {
+        setClauses.push(`amount = $${index}`);
+        values.push(updates.amount);
+        index += 1;
+      }
+
+      if (updates.currency !== undefined) {
+        setClauses.push(`currency = $${index}`);
+        values.push(updates.currency);
+        index += 1;
+      }
+
+      if (updates.exchangeRate !== undefined) {
+        setClauses.push(`exchange_rate = $${index}`);
+        values.push(updates.exchangeRate);
+        index += 1;
+      }
+
+      if (updates.originalCurrency !== undefined) {
+        setClauses.push(`original_currency = $${index}`);
+        values.push(updates.originalCurrency);
+        index += 1;
+      }
+
+      if (updates.convertedAmounts !== undefined) {
+        setClauses.push(`converted_amounts = $${index}`);
+        values.push(updates.convertedAmounts);
+        index += 1;
+      }
+
+      if (updates.category !== undefined) {
+        setClauses.push(`category = $${index}`);
+        values.push(updates.category);
+        index += 1;
+      }
+
+      if (updates.activityId !== undefined) {
+        setClauses.push(`activity_id = $${index}`);
+        values.push(updates.activityId ?? null);
+        index += 1;
+      }
+
+      if (updates.splitType !== undefined) {
+        setClauses.push(`split_type = $${index}`);
+        values.push(updates.splitType);
+        index += 1;
+      }
+
+      if (updates.splitData !== undefined) {
+        setClauses.push(`split_data = $${index}`);
+        values.push(updates.splitData);
+        index += 1;
+      }
+
+      if (updates.receiptUrl !== undefined) {
+        setClauses.push(`receipt_url = $${index}`);
+        values.push(updates.receiptUrl);
+        index += 1;
+      }
+
+      if (updates.paidBy !== undefined) {
+        setClauses.push(`paid_by = $${index}`);
+        values.push(updates.paidBy);
+        index += 1;
+      }
+
+      if (setClauses.length > 0) {
+        setClauses.push(`updated_at = NOW()`);
+      } else {
+        setClauses.push(`updated_at = NOW()`);
+      }
+
+      const sql = `
+        UPDATE expenses
+        SET ${setClauses.join(", ")}
+        WHERE id = $${index} AND paid_by = $${index + 1}
+        RETURNING
+          id,
+          trip_id,
+          paid_by,
+          amount,
+          currency,
+          exchange_rate,
+          original_currency,
+          converted_amounts,
+          description,
+          category,
+          activity_id,
+          split_type,
+          split_data,
+          receipt_url,
+          created_at,
+          updated_at
+      `;
+
+      values.push(expenseId, existing.paid_by);
+
+      const { rows: updatedRows } = await query<ExpenseRow>(sql, values);
+      const updatedExpense = updatedRows[0];
+      if (!updatedExpense) {
+        throw new Error("Failed to update expense");
+      }
+
+      const shouldUpdateShares =
+        updates.splitData !== undefined ||
+        updates.selectedMembers !== undefined ||
+        updates.amount !== undefined ||
+        updates.splitType !== undefined;
+
+      if (shouldUpdateShares) {
+        await query(`DELETE FROM expense_shares WHERE expense_id = $1`, [
+          expenseId,
+        ]);
+
+        const splitData = (updates.splitData ?? updatedExpense.split_data) as
+          | Record<string, unknown>
+          | null;
+        const membersFromSplitData = Array.isArray(
+          (splitData as Record<string, unknown>)?.members as unknown[],
+        )
+          ? ((splitData as { members: string[] }).members ?? [])
+          : undefined;
+        const selectedMembers = Array.isArray(updates.selectedMembers)
+          ? updates.selectedMembers
+          : undefined;
+        const participantIds =
+          membersFromSplitData ??
+          selectedMembers ??
+          (Array.isArray(
+            (updatedExpense.split_data as Record<string, unknown>)?.members as unknown[],
+          )
+            ? (
+                (updatedExpense.split_data as { members: string[] }).members ??
+                []
+              )
+            : []);
+
+        if (participantIds.length > 0) {
+          const totalAmount =
+            updates.amount !== undefined
+              ? Number(updates.amount)
+              : Number(updatedExpense.amount);
+          const splitType = updates.splitType ?? updatedExpense.split_type;
+          const exactAmounts =
+            (splitData?.amounts as Record<string, unknown> | undefined) ??
+            undefined;
+          const percentages =
+            (splitData?.percentages as Record<string, unknown> | undefined) ??
+            undefined;
+          const splitAmountValue = splitData?.splitAmount;
+
+          for (const participantId of participantIds) {
+            let shareAmount =
+              participantIds.length > 0
+                ? totalAmount / participantIds.length
+                : 0;
+
+            if (splitType === "exact" && exactAmounts) {
+              const value = exactAmounts[participantId];
+              if (typeof value === "number") {
+                shareAmount = value;
+              } else if (typeof value === "string") {
+                const parsed = Number(value);
+                if (!Number.isNaN(parsed)) {
+                  shareAmount = parsed;
+                }
+              }
+            } else if (splitType === "percentage" && percentages) {
+              const value = percentages[participantId];
+              let percentageAmount = 0;
+              if (typeof value === "number") {
+                percentageAmount = value;
+              } else if (typeof value === "string") {
+                const parsed = Number(value);
+                if (!Number.isNaN(parsed)) {
+                  percentageAmount = parsed;
+                }
+              }
+              shareAmount = totalAmount * (percentageAmount / 100);
+            } else if (splitAmountValue !== undefined) {
+              if (typeof splitAmountValue === "number") {
+                shareAmount = splitAmountValue;
+              } else if (typeof splitAmountValue === "string") {
+                const parsed = Number(splitAmountValue);
+                if (!Number.isNaN(parsed)) {
+                  shareAmount = parsed;
+                }
+              }
+            }
+
+            await query(
+              `
+              INSERT INTO expense_shares (
+                expense_id,
+                user_id,
+                amount,
+                is_paid
+              )
+              VALUES ($1, $2, $3, FALSE)
+              `,
+              [expenseId, participantId, shareAmount],
+            );
+          }
+        }
+      }
+
+      await query("COMMIT");
+      return mapExpense(updatedExpense);
+    } catch (error) {
+      await query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async deleteExpense(expenseId: number, userId: string): Promise<void> {
+    const { rows } = await query<ExpenseRow>(
+      `
+      SELECT
+        id,
+        paid_by
+      FROM expenses
+      WHERE id = $1
+      `,
+      [expenseId],
+    );
+
+    const expense = rows[0];
+    if (!expense) {
+      throw new Error("Expense not found");
+    }
+
+    if (expense.paid_by !== userId) {
+      throw new Error("Only the payer can delete this expense");
+    }
+
+    await query("BEGIN");
+    try {
+      await query(`DELETE FROM expense_shares WHERE expense_id = $1`, [
+        expenseId,
+      ]);
+      await query(`DELETE FROM notifications WHERE expense_id = $1`, [
+        expenseId,
+      ]);
+      const { rows: deleted } = await query<{ id: number }>(
+        `
+        DELETE FROM expenses
+        WHERE id = $1 AND paid_by = $2
+        RETURNING id
+        `,
+        [expenseId, userId],
+      );
+
+      if (!deleted[0]) {
+        throw new Error("Expense not found");
+      }
+
+      await query("COMMIT");
+    } catch (error) {
+      await query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async markExpenseAsPaid(expenseId: number, userId: string): Promise<void> {
+    const { rows } = await query<{ id: number }>(
+      `
+      UPDATE expense_shares
+      SET is_paid = TRUE,
+          paid_at = COALESCE(paid_at, NOW())
+      WHERE expense_id = $1 AND user_id = $2
+      RETURNING id
+      `,
+      [expenseId, userId],
+    );
+
+    if (!rows[0]) {
+      throw new Error("Expense share not found");
+    }
+  }
+
+  async getExpenseShares(
+    expenseId: number,
+  ): Promise<(ExpenseShare & { user: User })[]> {
+    const { rows } = await query<ExpenseShareWithUserRow>(
+      `
+      SELECT
+        es.id,
+        es.expense_id,
+        es.user_id AS share_participant_id,
+        es.amount,
+        es.is_paid,
+        es.paid_at,
+        es.created_at,
+        su.id AS share_user_id,
+        su.email AS share_user_email,
+        su.username AS share_user_username,
+        su.first_name AS share_user_first_name,
+        su.last_name AS share_user_last_name,
+        su.phone_number AS share_user_phone_number,
+        su.password_hash AS share_user_password_hash,
+        su.profile_image_url AS share_user_profile_image_url,
+        su.cash_app_username AS share_user_cash_app_username,
+        su.cash_app_phone AS share_user_cash_app_phone,
+        su.venmo_username AS share_user_venmo_username,
+        su.venmo_phone AS share_user_venmo_phone,
+        su.timezone AS share_user_timezone,
+        su.default_location AS share_user_default_location,
+        su.default_location_code AS share_user_default_location_code,
+        su.default_city AS share_user_default_city,
+        su.default_country AS share_user_default_country,
+        su.auth_provider AS share_user_auth_provider,
+        su.notification_preferences AS share_user_notification_preferences,
+        su.has_seen_home_onboarding AS share_user_has_seen_home_onboarding,
+        su.has_seen_trip_onboarding AS share_user_has_seen_trip_onboarding,
+        su.created_at AS share_user_created_at,
+        su.updated_at AS share_user_updated_at
+      FROM expense_shares es
+      JOIN users su ON su.id = es.user_id
+      WHERE es.expense_id = $1
+      ORDER BY es.created_at ASC NULLS LAST, es.id ASC
+      `,
+      [expenseId],
+    );
+
+    return rows.map((row) => {
+      const share = mapExpenseShare({
+        id: row.id,
+        expense_id: row.expense_id,
+        user_id: row.share_participant_id,
+        amount: row.amount,
+        is_paid: row.is_paid,
+        paid_at: row.paid_at,
+        created_at: row.created_at,
+      });
+
+      return {
+        ...share,
+        user: mapUserFromPrefix(row, "share_user_"),
+      };
+    });
+  }
+
+  async getUserExpenseBalances(
+    tripId: number,
+    userId: string,
+  ): Promise<{ owes: number; owed: number; balance: number }> {
+    const { rows } = await query<{ owes: string; owed: string }>(
+      `
+      SELECT
+        COALESCE(SUM(CASE WHEN es.user_id = $2 AND es.is_paid = FALSE THEN es.amount::numeric ELSE 0 END), 0)::text AS owes,
+        COALESCE(SUM(CASE WHEN e.paid_by = $2 AND es.user_id <> $2 AND es.is_paid = FALSE THEN es.amount::numeric ELSE 0 END), 0)::text AS owed
+      FROM expenses e
+      JOIN expense_shares es ON es.expense_id = e.id
+      WHERE e.trip_id = $1
+      `,
+      [tripId, userId],
+    );
+
+    const owes = rows[0] ? Number(rows[0].owes ?? 0) : 0;
+    const owed = rows[0] ? Number(rows[0].owed ?? 0) : 0;
+
+    return {
+      owes,
+      owed,
+      balance: owed - owes,
+    };
+  }
+
+  async createNotification(
+    notification: InsertNotification,
+  ): Promise<Notification> {
+    const { rows } = await query<NotificationRow>(
+      `
+      INSERT INTO notifications (
+        user_id,
+        type,
+        title,
+        message,
+        trip_id,
+        activity_id,
+        expense_id,
+        is_read
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8, FALSE))
+      RETURNING
+        id,
+        user_id,
+        type,
+        title,
+        message,
+        trip_id,
+        activity_id,
+        expense_id,
+        is_read,
+        created_at
+      `,
+      [
+        notification.userId,
+        notification.type,
+        notification.title,
+        notification.message,
+        notification.tripId ?? null,
+        notification.activityId ?? null,
+        notification.expenseId ?? null,
+        notification.isRead ?? false,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create notification");
+    }
+
+    return mapNotification(row);
+  }
+
+  async getUserNotifications(
+    userId: string,
+  ): Promise<
+    (Notification & { trip?: TripCalendar; activity?: Activity; expense?: Expense })[]
+  > {
+    const { rows } = await query<NotificationWithDetailsRow>(
+      `
+      SELECT
+        n.id,
+        n.user_id,
+        n.type,
+        n.title,
+        n.message,
+        n.trip_id,
+        n.activity_id,
+        n.expense_id,
+        n.is_read,
+        n.created_at,
+        t.id AS joined_trip_id,
+        t.name AS trip_name,
+        t.destination AS trip_destination,
+        t.start_date AS trip_start_date,
+        t.end_date AS trip_end_date,
+        t.share_code AS trip_share_code,
+        t.created_by AS trip_created_by,
+        t.created_at AS trip_created_at,
+        a.id AS joined_activity_id,
+        a.trip_calendar_id AS activity_trip_calendar_id,
+        a.posted_by AS activity_posted_by,
+        a.name AS activity_name,
+        a.description AS activity_description,
+        a.start_time AS activity_start_time,
+        a.end_time AS activity_end_time,
+        a.location AS activity_location,
+        a.cost AS activity_cost,
+        a.max_capacity AS activity_max_capacity,
+        a.category AS activity_category,
+        a.created_at AS activity_created_at,
+        a.updated_at AS activity_updated_at,
+        e.id AS joined_expense_id,
+        e.trip_id AS expense_trip_id,
+        e.paid_by AS expense_paid_by,
+        e.amount AS expense_amount,
+        e.currency AS expense_currency,
+        e.exchange_rate AS expense_exchange_rate,
+        e.original_currency AS expense_original_currency,
+        e.converted_amounts AS expense_converted_amounts,
+        e.description AS expense_description,
+        e.category AS expense_category,
+        e.activity_id AS expense_activity_id,
+        e.split_type AS expense_split_type,
+        e.split_data AS expense_split_data,
+        e.receipt_url AS expense_receipt_url,
+        e.created_at AS expense_created_at,
+        e.updated_at AS expense_updated_at
+      FROM notifications n
+      LEFT JOIN trip_calendars t ON t.id = n.trip_id
+      LEFT JOIN activities a ON a.id = n.activity_id
+      LEFT JOIN expenses e ON e.id = n.expense_id
+      WHERE n.user_id = $1
+      ORDER BY n.created_at DESC NULLS LAST, n.id DESC
+      `,
+      [userId],
+    );
+
+    return rows.map((row) => {
+      const notification = mapNotification(row);
+      const result: Notification & {
+        trip?: TripCalendar;
+        activity?: Activity;
+        expense?: Expense;
+      } = { ...notification };
+
+      if (row.joined_trip_id !== null) {
+        const tripRow: TripRow = {
+          id: row.joined_trip_id,
+          name: row.trip_name as string,
+          destination: row.trip_destination as string,
+          start_date: row.trip_start_date as Date,
+          end_date: row.trip_end_date as Date,
+          share_code: row.trip_share_code as string,
+          created_by: row.trip_created_by as string,
+          created_at: row.trip_created_at,
+        };
+        result.trip = mapTrip(tripRow);
+      }
+
+      if (row.joined_activity_id !== null) {
+        const activityRow: ActivityRow = {
+          id: row.joined_activity_id,
+          trip_calendar_id: row.activity_trip_calendar_id as number,
+          posted_by: row.activity_posted_by as string,
+          name: row.activity_name as string,
+          description: row.activity_description,
+          start_time: row.activity_start_time as Date,
+          end_time: row.activity_end_time,
+          location: row.activity_location,
+          cost: row.activity_cost,
+          max_capacity: row.activity_max_capacity,
+          category: row.activity_category as string,
+          created_at: row.activity_created_at,
+          updated_at: row.activity_updated_at,
+        };
+        result.activity = mapActivity(activityRow);
+      }
+
+      if (row.joined_expense_id !== null) {
+        const expenseRow: ExpenseRow = {
+          id: row.joined_expense_id,
+          trip_id: row.expense_trip_id as number,
+          paid_by: row.expense_paid_by as string,
+          amount: (row.expense_amount ?? "0").toString(),
+          currency: row.expense_currency as string,
+          exchange_rate: row.expense_exchange_rate,
+          original_currency: row.expense_original_currency,
+          converted_amounts: row.expense_converted_amounts,
+          description: row.expense_description as string,
+          category: row.expense_category as string,
+          activity_id: row.expense_activity_id,
+          split_type: (row.expense_split_type ?? "equal") as
+            | "equal"
+            | "percentage"
+            | "exact",
+          split_data: row.expense_split_data,
+          receipt_url: row.expense_receipt_url,
+          created_at: row.expense_created_at,
+          updated_at: row.expense_updated_at,
+        };
+        result.expense = mapExpense(expenseRow);
+      }
+
+      return result;
+    });
+  }
+
+  async markNotificationAsRead(
+    notificationId: number,
+    userId: string,
+  ): Promise<void> {
+    const { rows } = await query<{ id: number }>(
+      `
+      UPDATE notifications
+      SET is_read = TRUE
+      WHERE id = $1 AND user_id = $2
+      RETURNING id
+      `,
+      [notificationId, userId],
+    );
+
+    if (!rows[0]) {
+      throw new Error("Notification not found");
+    }
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
+    await query(
+      `
+      UPDATE notifications
+      SET is_read = TRUE
+      WHERE user_id = $1 AND is_read = FALSE
+      `,
+      [userId],
+    );
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const { rows } = await query<{ count: string }>(
+      `
+      SELECT COUNT(*)::text AS count
+      FROM notifications
+      WHERE user_id = $1 AND is_read = FALSE
+      `,
+      [userId],
+    );
+
+    return rows[0] ? Number(rows[0].count ?? 0) : 0;
+  }
   async createGroceryItem(): Promise<GroceryItem> { throw new Error("Not implemented"); }
   async getTripGroceryItems(): Promise<GroceryItemWithDetails[]> { throw new Error("Not implemented"); }
   async updateGroceryItem(): Promise<GroceryItem> { throw new Error("Not implemented"); }
