@@ -2,6 +2,8 @@ import type { Express, RequestHandler } from "express";
 import session, { type CookieOptions, type SessionOptions } from "express-session";
 import connectPg from "connect-pg-simple";
 
+import { pool } from "./db";
+
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 declare module "express-session" {
@@ -53,7 +55,7 @@ function buildSessionOptions(): SessionOptions {
 
   if (process.env.DATABASE_URL) {
     options.store = new PgStore({
-      conString: process.env.DATABASE_URL,
+      pool,
       tableName: "sessions",
       createTableIfMissing: false,
     });
