@@ -21,7 +21,7 @@ import { format } from "date-fns";
 import { CalendarIcon, MapPin, Phone, Clock, Star, Users, ExternalLink, Search, Filter, ChefHat, DollarSign, SortAsc, Utensils, Globe, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
-import { apiFetch, buildApiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { TripWithDetails, RestaurantWithDetails } from "@shared/schema";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
@@ -178,7 +178,7 @@ export default function RestaurantsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -281,7 +281,7 @@ export default function RestaurantsPage() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
       }, 500);
       return;
     }

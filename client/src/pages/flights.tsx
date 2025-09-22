@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { buildApiUrl } from "@/lib/api";
 import { format } from "date-fns";
 import { Plane, Clock, MapPin, User, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, ChevronDown, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -552,7 +551,7 @@ export default function FlightsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -605,7 +604,7 @@ export default function FlightsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }

@@ -11,7 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { buildApiUrl } from "@/lib/api";
 import type { PackingItem, User } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -70,7 +69,7 @@ export function PackingList({ tripId }: PackingListProps) {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -99,7 +98,7 @@ export function PackingList({ tripId }: PackingListProps) {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -132,7 +131,7 @@ export function PackingList({ tripId }: PackingListProps) {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }

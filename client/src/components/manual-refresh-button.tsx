@@ -1,14 +1,20 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
-import { buildApiUrl } from "@/lib/api";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export function ManualRefreshButton() {
-  const handleRefresh = () => {
-    // Clear all storage and force a complete refresh
+  const handleRefresh = async () => {
     localStorage.clear();
     sessionStorage.clear();
-    window.location.href = buildApiUrl("/api/logout");
+    try {
+      await apiRequest('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Error refreshing session:', error);
+    } finally {
+      queryClient.clear();
+      window.location.href = '/login';
+    }
   };
 
   return (

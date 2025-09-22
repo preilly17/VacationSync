@@ -34,7 +34,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { apiFetch, buildApiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { ActivityCard } from "@/components/activity-card";
 import { AddActivityModal } from "@/components/add-activity-modal";
@@ -88,7 +88,7 @@ export default function Trip() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
       }, 500);
     }
   }, [authLoading, isAuthenticated, toast]);
@@ -99,7 +99,7 @@ export default function Trip() {
     enabled: !!id && isAuthenticated,
     retry: (failureCount, error) => {
       if (isUnauthorizedError(error)) {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
         return false;
       }
       return failureCount < 3;

@@ -1,25 +1,30 @@
 import express, { type Request, Response, NextFunction } from "express";
-import session from "express-session"; // ✅ add import
+import cors, { type CorsOptions } from "cors";
 import { setupRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedTravelTipsDatabase } from "./travelTipsService";
+import { createSessionMiddleware } from "./sessionAuth";
 
 const app = express();
+app.set("trust proxy", 1);
+
+const corsOrigins = (process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const corsOptions: CorsOptions = {
+  origin: corsOrigins.length ? corsOrigins : true,
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// ✅ Add session middleware
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "supersecretfallback",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 1000 * 60 * 60 * 24, // 1 day
-    },
-  })
-);
+app.use(createSessionMiddleware());
 
 // Logging middleware
 app.use((req, res, next) => {

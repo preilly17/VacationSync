@@ -1,6 +1,6 @@
 import express from 'express';
 import session from 'express-session';
-import { setupAuth } from './replitAuth';
+import { setupAuth } from './sessionAuth';
 
 const app = express();
 

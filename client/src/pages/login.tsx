@@ -26,6 +26,10 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
 
+  const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : "");
+  const returnToParam = searchParams.get("returnTo");
+  const safeReturnTo = returnToParam && returnToParam.startsWith("/") ? returnToParam : null;
+
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -42,13 +46,13 @@ export default function Login() {
       });
       return response.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (_data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
         title: "Welcome back!",
         description: "You have successfully logged in.",
       });
-      setLocation('/');
+      setLocation(safeReturnTo ?? '/');
     },
     onError: (error: any) => {
       let errorMessage = "Invalid username/email or password.";

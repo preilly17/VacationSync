@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { apiFetch, buildApiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
@@ -583,7 +583,7 @@ export default function HotelsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -620,7 +620,7 @@ export default function HotelsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -677,7 +677,7 @@ export default function HotelsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -714,7 +714,7 @@ export default function HotelsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
@@ -747,7 +747,7 @@ export default function HotelsPage() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }
