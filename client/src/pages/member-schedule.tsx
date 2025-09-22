@@ -17,7 +17,6 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { buildApiUrl } from "@/lib/api";
 import { ActivityCard } from "@/components/activity-card";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { Sidebar } from "@/components/sidebar";
@@ -44,7 +43,7 @@ export default function MemberSchedule() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
       }, 500);
       return;
     }
@@ -71,7 +70,7 @@ export default function MemberSchedule() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
       }, 500);
     }
   }, [tripError, toast]);

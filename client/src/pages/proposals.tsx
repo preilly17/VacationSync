@@ -12,7 +12,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { buildApiUrl } from "@/lib/api";
 import { format, formatDistanceToNow } from "date-fns";
 import { 
   ArrowLeft,
@@ -68,7 +67,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
       }, 500);
     }
   }, [authLoading, isAuthenticated, toast]);
@@ -79,7 +78,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     enabled: !!tripId && isAuthenticated,
     retry: (failureCount, error) => {
       if (isUnauthorizedError(error)) {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
         return false;
       }
       return failureCount < 3;
@@ -128,7 +127,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     },
     onError: (error) => {
       if (isUnauthorizedError(error)) {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
         return;
       }
       toast({
@@ -156,7 +155,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     },
     onError: (error) => {
       if (isUnauthorizedError(error)) {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
         return;
       }
       toast({
@@ -184,7 +183,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     },
     onError: (error) => {
       if (isUnauthorizedError(error)) {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
         return;
       }
       toast({

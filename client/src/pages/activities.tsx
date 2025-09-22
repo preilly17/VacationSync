@@ -29,7 +29,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { apiFetch, buildApiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import type { TripWithDetails } from "@shared/schema";
 
 interface Activity {
@@ -77,7 +77,7 @@ export default function Activities() {
         variant: "destructive",
       });
       setTimeout(() => {
-        window.location.href = buildApiUrl("/api/login");
+        window.location.href = "/login";
       }, 500);
       return;
     }
@@ -224,7 +224,7 @@ export default function Activities() {
           variant: "destructive",
         });
         setTimeout(() => {
-          window.location.href = buildApiUrl("/api/login");
+          window.location.href = "/login";
         }, 500);
         return;
       }

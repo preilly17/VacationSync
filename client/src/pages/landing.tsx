@@ -2,7 +2,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Calendar, Users, MapPin, Bell, Plane, Camera, Heart, Compass, Star } from "lucide-react";
 import { HeroTravelMascot, TravelMascot, TravelDecorations } from "@/components/TravelMascot";
-import { buildApiUrl } from "@/lib/api";
 
 export default function Landing() {
   return (
@@ -46,7 +45,7 @@ export default function Landing() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <Button
               size="lg"
-              onClick={() => (window.location.href = buildApiUrl("/api/login"))}
+              onClick={() => (window.location.href = "/login")}
               className="sunset-gradient hover:opacity-90 text-white text-lg px-8 py-4 font-semibold shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105"
             >
               <Plane className="mr-2 w-5 h-5" />

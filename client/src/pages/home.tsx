@@ -19,7 +19,6 @@ import { ManualRefreshButton } from "@/components/manual-refresh-button";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { buildApiUrl } from "@/lib/api";
 import type { TripWithDetails } from "@shared/schema";
 
 export default function Home() {
@@ -161,13 +160,18 @@ export default function Home() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => {
+                onClick={async () => {
                   console.log("Logout button clicked");
-                  // Clear any cached data before logout
                   localStorage.clear();
                   sessionStorage.clear();
-                  // Force a full page reload to logout endpoint
-                  window.location.replace(buildApiUrl("/api/logout"));
+                  try {
+                    await apiRequest('/api/auth/logout', { method: 'POST' });
+                  } catch (error) {
+                    console.error('Error logging out:', error);
+                  } finally {
+                    queryClient.clear();
+                    window.location.href = '/login';
+                  }
                 }}
               >
                 Logout

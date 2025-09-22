@@ -9,7 +9,7 @@ import { Calendar, MapPin, Users, CheckCircle, AlertCircle, Plane } from "lucide
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { apiFetch, buildApiUrl } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { format } from "date-fns";
 
 export default function Join() {
@@ -30,9 +30,10 @@ export default function Join() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated && shareCode) {
-      // Pass the current path as returnTo parameter
-      const returnUrl = encodeURIComponent(window.location.pathname);
-      window.location.href = buildApiUrl(`/api/login?returnTo=${returnUrl}`);
+      // Pass the current path (including query string) as returnTo parameter
+      const currentPath = `${window.location.pathname}${window.location.search}`;
+      const returnUrl = encodeURIComponent(currentPath);
+      window.location.href = `/login?returnTo=${returnUrl}`;
       return;
     }
   }, [isAuthenticated, authLoading, shareCode]);

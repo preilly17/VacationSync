@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { insertTripCalendarSchema, insertActivitySchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema } from "@shared/schema";
 import { z } from "zod";
@@ -111,6 +111,18 @@ import { googleMapsService } from "./googleMapsService";
 import { locationService } from "./locationService";
 import { searchLocations, getAirportFromLocation, getAirportCodes } from "./locationDatabase";
 import { getCurrentWeather, getWeatherForecast, getFullWeatherData, getWeatherAdvice, formatTemperature } from "./weatherService";
+
+function getRequestUserId(req: any): string | undefined {
+  if (req.session?.userId) {
+    return req.session.userId;
+  }
+
+  if (req.user?.id) {
+    return req.user.id;
+  }
+
+  return req.user?.claims?.sub;
+}
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -261,26 +273,30 @@ export function setupRoutes(app: Express) {
         }
       }
       
-      if (!req.isAuthenticated()) {
+      const userId = getRequestUserId(req);
+
+      if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      
-      const userId = req.user.claims.sub;
+
       const user = await storage.getUser(userId);
-      
+
       if (!user) {
-        console.log("User not found, creating user");  
-        // Create user if doesn't exist
-        const newUser = await storage.upsertUser({
-          id: req.user.claims.sub,
-          email: req.user.claims.email,
-          firstName: req.user.claims.first_name,
-          lastName: req.user.claims.last_name,
-          profileImageUrl: req.user.claims.profile_image_url,
-        });
-        return res.json(newUser);
+        if (req.user?.claims) {
+          console.log("User not found, creating user from OIDC claims");
+          const newUser = await storage.upsertUser({
+            id: req.user.claims.sub,
+            email: req.user.claims.email,
+            firstName: req.user.claims.first_name,
+            lastName: req.user.claims.last_name,
+            profileImageUrl: req.user.claims.profile_image_url,
+          });
+          return res.json(newUser);
+        }
+
+        return res.status(404).json({ message: "User not found" });
       }
-      
+
       res.json(user);
     } catch (error: unknown) {
       console.error("Error fetching user:", error);
@@ -291,7 +307,7 @@ export function setupRoutes(app: Express) {
   // Profile update endpoint
   app.put('/api/profile', async (req: any, res) => {
     try {
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Check for custom auth session
       if (req.session?.userId && req.session?.authProvider === 'custom') {
@@ -345,7 +361,7 @@ export function setupRoutes(app: Express) {
         return res.status(400).json({ message: 'Invalid onboarding type' });
       }
 
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -533,7 +549,7 @@ export function setupRoutes(app: Express) {
   // Trip routes
   app.post("/api/trips", async (req: any, res) => {
     try {
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -569,7 +585,7 @@ export function setupRoutes(app: Express) {
 
   app.get("/api/trips", async (req: any, res) => {
     try {
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -590,7 +606,7 @@ export function setupRoutes(app: Express) {
 
   app.get("/api/trips/:id", async (req: any, res) => {
     try {
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -622,7 +638,7 @@ export function setupRoutes(app: Express) {
 
   app.put("/api/trips/:id", async (req: any, res) => {
     try {
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1346,7 +1362,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/flights', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1375,7 +1391,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/my-location', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1404,7 +1420,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/activities', async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1475,7 +1491,7 @@ export function setupRoutes(app: Express) {
   app.delete('/api/trips/:id', async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1548,7 +1564,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/packing', async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1570,7 +1586,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/packing', async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1601,7 +1617,7 @@ export function setupRoutes(app: Express) {
   app.patch('/api/packing/:id/toggle', async (req: any, res) => {
     try {
       const itemId = parseInt(req.params.id);
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1623,7 +1639,7 @@ export function setupRoutes(app: Express) {
   app.delete('/api/packing/:id', async (req: any, res) => {
     try {
       const itemId = parseInt(req.params.id);
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1646,7 +1662,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/expenses', async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      let userId = req.user?.id || req.user?.claims?.sub;
+      let userId = getRequestUserId(req);
       
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
@@ -1668,7 +1684,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/expenses', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1691,7 +1707,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/expenses/balances', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1709,7 +1725,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/groceries', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1726,7 +1742,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/groceries', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1753,7 +1769,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/groceries/bill', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1908,7 +1924,7 @@ export function setupRoutes(app: Express) {
   app.get('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1925,7 +1941,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -1967,7 +1983,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/restaurant-proposals/:id/rank', isAuthenticated, async (req: any, res) => {
     try {
       const proposalId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       const { ranking, notes } = req.body;
       
       if (!userId) {
@@ -2010,7 +2026,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/flights', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -2050,7 +2066,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/hotels', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
-      const userId = req.user?.id || req.user?.claims?.sub;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -2268,7 +2284,7 @@ export function setupRoutes(app: Express) {
   // Notification routes with proper authentication and validation
   app.get("/api/notifications", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -2284,7 +2300,7 @@ export function setupRoutes(app: Express) {
 
   app.get("/api/notifications/unread-count", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -2300,7 +2316,7 @@ export function setupRoutes(app: Express) {
 
   app.patch("/api/notifications/:id/read", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -2337,7 +2353,7 @@ export function setupRoutes(app: Express) {
 
   app.patch("/api/notifications/mark-all-read", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = getRequestUserId(req);
       
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
@@ -2354,7 +2370,7 @@ export function setupRoutes(app: Express) {
   // Travel Tips API Routes
   app.get("/api/trips/:tripId/travel-tips", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = getRequestUserId(req);
       const tripId = parseInt(req.params.tripId, 10);
       
       if (!userId) {
