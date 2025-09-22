@@ -6,6 +6,7 @@ import {
   type InsertTripCalendar,
   type TripMember,
   type Activity,
+  type ActivityAcceptance,
   type InsertActivity,
   type ActivityWithDetails,
   type TripWithDetails,
@@ -150,9 +151,74 @@ type TripMemberWithUserRow = TripMemberRow & PrefixedUserRow<"user_">;
 
 type TripWithCreatorRow = TripRow & PrefixedUserRow<"creator_">;
 
+type ActivityRow = {
+  id: number;
+  trip_calendar_id: number;
+  posted_by: string;
+  name: string;
+  description: string | null;
+  start_time: Date;
+  end_time: Date | null;
+  location: string | null;
+  cost: string | null;
+  max_capacity: number | null;
+  category: string;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type ActivityWithPosterRow = ActivityRow & PrefixedUserRow<"poster_">;
+
+type ActivityAcceptanceWithUserRow = {
+  id: number;
+  activity_id: number;
+  acceptance_user_id: string;
+  accepted_at: Date | null;
+} & PrefixedUserRow<"user_">;
+
+type ActivityCommentRow = {
+  id: number;
+  activity_id: number;
+  user_id: string;
+  comment: string;
+  created_at: Date | null;
+};
+
+type ActivityCommentWithUserRow = {
+  id: number;
+  activity_id: number;
+  comment_user_id: string;
+  comment: string;
+  created_at: Date | null;
+} & PrefixedUserRow<"user_">;
+
+type PackingItemRow = {
+  id: number;
+  trip_id: number;
+  user_id: string;
+  item: string;
+  category: string | null;
+  item_type: "personal" | "group";
+  is_checked: boolean;
+  assigned_user_id: string | null;
+  created_at: Date | null;
+};
+
+type PackingItemWithUserRow = {
+  id: number;
+  trip_id: number;
+  item_user_id: string;
+  item: string;
+  category: string | null;
+  item_type: "personal" | "group";
+  is_checked: boolean;
+  assigned_user_id: string | null;
+  created_at: Date | null;
+} & PrefixedUserRow<"user_">;
+
 const mapUserFromPrefix = (
   row: Record<string, unknown>,
-  prefix: "user_" | "creator_",
+  prefix: "user_" | "creator_" | "poster_",
 ): User => ({
   id: (row[`${prefix}id`] as string) ?? "",
   email: (row[`${prefix}email`] as string) ?? "",
@@ -216,6 +282,60 @@ const mapTripWithDetails = (
   creator,
   members,
   memberCount: members.length,
+});
+
+const mapActivity = (row: ActivityRow): Activity => ({
+  id: row.id,
+  tripCalendarId: row.trip_calendar_id,
+  postedBy: row.posted_by,
+  name: row.name,
+  description: row.description,
+  startTime: row.start_time,
+  endTime: row.end_time,
+  location: row.location,
+  cost: row.cost,
+  maxCapacity: row.max_capacity,
+  category: row.category,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapActivityWithDetails = (
+  row: ActivityRow & {
+    poster: User;
+    acceptances: (ActivityAcceptance & { user: User })[];
+    comments: (ActivityComment & { user: User })[];
+    isAccepted?: boolean;
+    hasResponded?: boolean;
+  },
+): ActivityWithDetails => ({
+  ...mapActivity(row),
+  poster: row.poster,
+  acceptances: row.acceptances,
+  comments: row.comments,
+  acceptedCount: row.acceptances.length,
+  isAccepted: row.isAccepted,
+  hasResponded: row.hasResponded,
+});
+
+const mapComment = (row: any): ActivityComment => ({
+  id: row.id,
+  activityId: row.activity_id,
+  userId: row.user_id ?? row.comment_user_id ?? "",
+  comment: row.comment,
+  createdAt: row.created_at ?? null,
+});
+
+const mapPackingItem = (row: PackingItemRow): PackingItem => ({
+  id: row.id,
+  tripId: row.trip_id,
+  userId: row.user_id,
+  item: row.item,
+  category: row.category,
+  itemType: row.item_type,
+  isChecked: row.is_checked,
+  assignedUserId: row.assigned_user_id,
+  createdAt: row.created_at,
 });
 
 const SHARE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -941,16 +1061,487 @@ export class DatabaseStorage implements IStorage {
 
     return rows[0]?.exists ?? false;
   }
-  async createActivity(): Promise<Activity> { throw new Error("Not implemented"); }
-  async getTripActivities(): Promise<ActivityWithDetails[]> { throw new Error("Not implemented"); }
-  async acceptActivity(): Promise<void> { throw new Error("Not implemented"); }
-  async declineActivity(): Promise<void> { throw new Error("Not implemented"); }
-  async addComment(): Promise<ActivityComment> { throw new Error("Not implemented"); }
-  async getActivityComments(): Promise<(ActivityComment & { user: User })[]> { throw new Error("Not implemented"); }
-  async addPackingItem(): Promise<PackingItem> { throw new Error("Not implemented"); }
-  async getTripPackingItems(): Promise<(PackingItem & { user: User })[]> { throw new Error("Not implemented"); }
-  async togglePackingItem(): Promise<void> { throw new Error("Not implemented"); }
-  async deletePackingItem(): Promise<void> { throw new Error("Not implemented"); }
+  async createActivity(
+    activity: InsertActivity,
+    userId: string,
+  ): Promise<Activity> {
+    const costValue =
+      activity.cost === undefined || activity.cost === null
+        ? null
+        : typeof activity.cost === "string"
+          ? activity.cost.trim() === ""
+            ? null
+            : activity.cost
+          : activity.cost;
+
+    const maxCapacityInput = activity.maxCapacity;
+    const parsedMaxCapacity =
+      maxCapacityInput === undefined || maxCapacityInput === null || maxCapacityInput === ""
+        ? null
+        : Number(maxCapacityInput);
+    const maxCapacityValue =
+      parsedMaxCapacity === null || Number.isNaN(parsedMaxCapacity)
+        ? null
+        : parsedMaxCapacity;
+
+    const { rows } = await query<ActivityRow>(
+      `
+      INSERT INTO activities (
+        trip_calendar_id,
+        posted_by,
+        name,
+        description,
+        start_time,
+        end_time,
+        location,
+        cost,
+        max_capacity,
+        category
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING
+        id,
+        trip_calendar_id,
+        posted_by,
+        name,
+        description,
+        start_time,
+        end_time,
+        location,
+        cost,
+        max_capacity,
+        category,
+        created_at,
+        updated_at
+      `,
+      [
+        activity.tripCalendarId,
+        userId,
+        activity.name,
+        activity.description ?? null,
+        activity.startTime,
+        activity.endTime ?? null,
+        activity.location ?? null,
+        costValue,
+        maxCapacityValue,
+        activity.category,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create activity");
+    }
+
+    return mapActivity(row);
+  }
+
+  async getTripActivities(
+    tripId: number,
+    userId: string,
+  ): Promise<ActivityWithDetails[]> {
+    const { rows: activityRows } = await query<ActivityWithPosterRow>(
+      `
+      SELECT
+        a.id,
+        a.trip_calendar_id,
+        a.posted_by,
+        a.name,
+        a.description,
+        a.start_time,
+        a.end_time,
+        a.location,
+        a.cost,
+        a.max_capacity,
+        a.category,
+        a.created_at,
+        a.updated_at,
+        u.id AS poster_id,
+        u.email AS poster_email,
+        u.username AS poster_username,
+        u.first_name AS poster_first_name,
+        u.last_name AS poster_last_name,
+        u.phone_number AS poster_phone_number,
+        u.password_hash AS poster_password_hash,
+        u.profile_image_url AS poster_profile_image_url,
+        u.cash_app_username AS poster_cash_app_username,
+        u.cash_app_phone AS poster_cash_app_phone,
+        u.venmo_username AS poster_venmo_username,
+        u.venmo_phone AS poster_venmo_phone,
+        u.timezone AS poster_timezone,
+        u.default_location AS poster_default_location,
+        u.default_location_code AS poster_default_location_code,
+        u.default_city AS poster_default_city,
+        u.default_country AS poster_default_country,
+        u.auth_provider AS poster_auth_provider,
+        u.notification_preferences AS poster_notification_preferences,
+        u.has_seen_home_onboarding AS poster_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS poster_has_seen_trip_onboarding,
+        u.created_at AS poster_created_at,
+        u.updated_at AS poster_updated_at
+      FROM activities a
+      JOIN users u ON u.id = a.posted_by
+      WHERE a.trip_calendar_id = $1
+      ORDER BY a.start_time ASC, a.id ASC
+      `,
+      [tripId],
+    );
+
+    if (activityRows.length === 0) {
+      return [];
+    }
+
+    const activityIds = activityRows.map((row) => row.id);
+
+    const { rows: acceptanceRows } = await query<ActivityAcceptanceWithUserRow>(
+      `
+      SELECT
+        aa.id,
+        aa.activity_id,
+        aa.user_id AS acceptance_user_id,
+        aa.accepted_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at
+      FROM activity_acceptances aa
+      JOIN users u ON u.id = aa.user_id
+      WHERE aa.activity_id = ANY($1::int[])
+      ORDER BY aa.accepted_at ASC, aa.id ASC
+      `,
+      [activityIds],
+    );
+
+    const { rows: commentRows } = await query<ActivityCommentWithUserRow>(
+      `
+      SELECT
+        ac.id,
+        ac.activity_id,
+        ac.user_id AS comment_user_id,
+        ac.comment,
+        ac.created_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at
+      FROM activity_comments ac
+      JOIN users u ON u.id = ac.user_id
+      WHERE ac.activity_id = ANY($1::int[])
+      ORDER BY ac.created_at ASC, ac.id ASC
+      `,
+      [activityIds],
+    );
+
+    const acceptanceMap = new Map<number, (ActivityAcceptance & { user: User })[]>();
+    for (const row of acceptanceRows) {
+      const acceptance: ActivityAcceptance & { user: User } = {
+        id: row.id,
+        activityId: row.activity_id,
+        userId: row.acceptance_user_id,
+        acceptedAt: row.accepted_at,
+        user: mapUserFromPrefix(row, "user_"),
+      };
+      const list = acceptanceMap.get(row.activity_id) ?? [];
+      list.push(acceptance);
+      acceptanceMap.set(row.activity_id, list);
+    }
+
+    const commentMap = new Map<number, (ActivityComment & { user: User })[]>();
+    for (const row of commentRows) {
+      const comment: ActivityComment & { user: User } = {
+        ...mapComment(row),
+        user: mapUserFromPrefix(row, "user_"),
+      };
+      const list = commentMap.get(row.activity_id) ?? [];
+      list.push(comment);
+      commentMap.set(row.activity_id, list);
+    }
+
+    return activityRows.map((row) => {
+      const poster = mapUserFromPrefix(row, "poster_");
+      const acceptances = acceptanceMap.get(row.id) ?? [];
+      const comments = commentMap.get(row.id) ?? [];
+      const isAccepted = acceptances.some((acceptance) => acceptance.userId === userId) || undefined;
+      const hasResponded = isAccepted;
+
+      return mapActivityWithDetails({
+        ...row,
+        poster,
+        acceptances,
+        comments,
+        isAccepted,
+        hasResponded,
+      });
+    });
+  }
+
+  async acceptActivity(activityId: number, userId: string): Promise<void> {
+    await query(
+      `
+      INSERT INTO activity_acceptances (activity_id, user_id, accepted_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (activity_id, user_id) DO UPDATE
+        SET accepted_at = NOW()
+      `,
+      [activityId, userId],
+    );
+  }
+
+  async declineActivity(activityId: number, userId: string): Promise<void> {
+    await query(
+      `
+      DELETE FROM activity_acceptances
+      WHERE activity_id = $1 AND user_id = $2
+      `,
+      [activityId, userId],
+    );
+  }
+
+  async addComment(
+    comment: InsertActivityComment,
+    userId: string,
+  ): Promise<ActivityComment> {
+    const { rows } = await query<ActivityCommentRow>(
+      `
+      INSERT INTO activity_comments (activity_id, user_id, comment)
+      VALUES ($1, $2, $3)
+      RETURNING id, activity_id, user_id, comment, created_at
+      `,
+      [comment.activityId, userId, comment.comment],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to add comment");
+    }
+
+    return mapComment(row);
+  }
+
+  async getActivityComments(
+    activityId: number,
+  ): Promise<(ActivityComment & { user: User })[]> {
+    const { rows } = await query<ActivityCommentWithUserRow>(
+      `
+      SELECT
+        ac.id,
+        ac.activity_id,
+        ac.user_id AS comment_user_id,
+        ac.comment,
+        ac.created_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at
+      FROM activity_comments ac
+      JOIN users u ON u.id = ac.user_id
+      WHERE ac.activity_id = $1
+      ORDER BY ac.created_at ASC, ac.id ASC
+      `,
+      [activityId],
+    );
+
+    return rows.map((row) => ({
+      ...mapComment(row),
+      user: mapUserFromPrefix(row, "user_"),
+    }));
+  }
+
+  async addPackingItem(
+    item: InsertPackingItem,
+    userId: string,
+  ): Promise<PackingItem> {
+    const { rows } = await query<PackingItemRow>(
+      `
+      INSERT INTO packing_items (
+        trip_id,
+        user_id,
+        item,
+        category,
+        item_type,
+        is_checked,
+        assigned_user_id
+      )
+      VALUES ($1, $2, $3, $4, $5, COALESCE($6, FALSE), $7)
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        item,
+        category,
+        item_type,
+        is_checked,
+        assigned_user_id,
+        created_at
+      `,
+      [
+        item.tripId,
+        userId,
+        item.item,
+        item.category ?? null,
+        item.itemType ?? "personal",
+        item.isChecked ?? false,
+        item.assignedUserId ?? null,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to add packing item");
+    }
+
+    return mapPackingItem(row);
+  }
+
+  async getTripPackingItems(
+    tripId: number,
+  ): Promise<(PackingItem & { user: User })[]> {
+    const { rows } = await query<PackingItemWithUserRow>(
+      `
+      SELECT
+        pi.id,
+        pi.trip_id,
+        pi.user_id AS item_user_id,
+        pi.item,
+        pi.category,
+        pi.item_type,
+        pi.is_checked,
+        pi.assigned_user_id,
+        pi.created_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at
+      FROM packing_items pi
+      JOIN users u ON u.id = pi.user_id
+      WHERE pi.trip_id = $1
+      ORDER BY pi.created_at ASC, pi.id ASC
+      `,
+      [tripId],
+    );
+
+    return rows.map((row) => ({
+      ...mapPackingItem({
+        id: row.id,
+        trip_id: row.trip_id,
+        user_id: row.item_user_id,
+        item: row.item,
+        category: row.category,
+        item_type: row.item_type,
+        is_checked: row.is_checked,
+        assigned_user_id: row.assigned_user_id,
+        created_at: row.created_at,
+      }),
+      user: mapUserFromPrefix(row, "user_"),
+    }));
+  }
+
+  async togglePackingItem(itemId: number, _userId: string): Promise<void> {
+    const { rows } = await query<{ id: number }>(
+      `
+      UPDATE packing_items
+      SET is_checked = NOT is_checked
+      WHERE id = $1
+      RETURNING id
+      `,
+      [itemId],
+    );
+
+    if (!rows[0]) {
+      throw new Error("Packing item not found");
+    }
+  }
+
+  async deletePackingItem(itemId: number, _userId: string): Promise<void> {
+    const { rows } = await query<{ id: number }>(
+      `
+      DELETE FROM packing_items
+      WHERE id = $1
+      RETURNING id
+      `,
+      [itemId],
+    );
+
+    if (!rows[0]) {
+      throw new Error("Packing item not found");
+    }
+  }
   async createExpense(): Promise<Expense> { throw new Error("Not implemented"); }
   async getTripExpenses(): Promise<ExpenseWithDetails[]> { throw new Error("Not implemented"); }
   async updateExpense(): Promise<Expense> { throw new Error("Not implemented"); }
