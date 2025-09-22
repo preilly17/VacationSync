@@ -323,6 +323,138 @@ type NotificationWithDetailsRow = NotificationRow & {
   expense_updated_at: Date | null;
 };
 
+type FlightRow = {
+  id: number;
+  trip_id: number;
+  user_id: string;
+  flight_number: string;
+  airline: string;
+  airline_code: string;
+  departure_airport: string;
+  departure_code: string;
+  departure_time: Date;
+  departure_terminal: string | null;
+  departure_gate: string | null;
+  arrival_airport: string;
+  arrival_code: string;
+  arrival_time: Date;
+  arrival_terminal: string | null;
+  arrival_gate: string | null;
+  booking_reference: string | null;
+  seat_number: string | null;
+  seat_class: string | null;
+  price: string | null;
+  currency: string;
+  flight_type: string;
+  status: string;
+  layovers: Record<string, unknown> | null;
+  booking_source: string | null;
+  purchase_url: string | null;
+  aircraft: string | null;
+  flight_duration: number | null;
+  baggage: Record<string, unknown> | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type FlightWithDetailsRow = FlightRow &
+  PrefixedUserRow<"user_"> & {
+    trip_name: string;
+    trip_destination: string;
+    trip_start_date: Date;
+    trip_end_date: Date;
+    trip_share_code: string;
+    trip_created_by: string;
+    trip_created_at: Date | null;
+  };
+
+type HotelRow = {
+  id: number;
+  trip_id: number;
+  user_id: string;
+  hotel_name: string;
+  hotel_chain: string | null;
+  hotel_rating: number | string | null;
+  address: string;
+  city: string;
+  country: string;
+  zip_code: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  check_in_date: Date;
+  check_out_date: Date;
+  room_type: string | null;
+  room_count: number | null;
+  guest_count: number | null;
+  booking_reference: string | null;
+  total_price: string | null;
+  price_per_night: string | null;
+  currency: string;
+  status: string;
+  booking_source: string | null;
+  purchase_url: string | null;
+  amenities: Record<string, unknown> | null;
+  images: Record<string, unknown> | null;
+  policies: Record<string, unknown> | null;
+  contact_info: Record<string, unknown> | null;
+  booking_platform: string | null;
+  booking_url: string | null;
+  cancellation_policy: string | null;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type HotelWithDetailsRow = HotelRow &
+  PrefixedUserRow<"user_"> & {
+    trip_name: string;
+    trip_destination: string;
+    trip_start_date: Date;
+    trip_end_date: Date;
+    trip_share_code: string;
+    trip_created_by: string;
+    trip_created_at: Date | null;
+  };
+
+type RestaurantRow = {
+  id: number;
+  trip_id: number;
+  user_id: string;
+  name: string;
+  cuisine_type: string | null;
+  address: string;
+  city: string;
+  country: string;
+  zip_code: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  phone_number: string | null;
+  website: string | null;
+  open_table_url: string | null;
+  price_range: string;
+  rating: string | null;
+  reservation_date: Date;
+  reservation_time: string;
+  party_size: number;
+  confirmation_number: string | null;
+  reservation_status: string;
+  special_requests: string | null;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type RestaurantWithDetailsRow = RestaurantRow &
+  PrefixedUserRow<"user_"> & {
+    trip_name: string;
+    trip_destination: string;
+    trip_start_date: Date;
+    trip_end_date: Date;
+    trip_share_code: string;
+    trip_created_by: string;
+    trip_created_at: Date | null;
+  };
+
 const mapUserFromPrefix = (
   row: Record<string, unknown>,
   prefix: string,
@@ -502,6 +634,179 @@ const mapNotification = (row: NotificationRow): Notification => ({
   isRead: row.is_read,
   createdAt: row.created_at,
 });
+
+const mapFlight = (row: FlightRow): Flight => ({
+  id: row.id,
+  tripId: row.trip_id,
+  userId: row.user_id,
+  flightNumber: row.flight_number,
+  airline: row.airline,
+  airlineCode: row.airline_code,
+  departureAirport: row.departure_airport,
+  departureCode: row.departure_code,
+  departureTime: row.departure_time,
+  departureTerminal: row.departure_terminal,
+  departureGate: row.departure_gate,
+  arrivalAirport: row.arrival_airport,
+  arrivalCode: row.arrival_code,
+  arrivalTime: row.arrival_time,
+  arrivalTerminal: row.arrival_terminal,
+  arrivalGate: row.arrival_gate,
+  bookingReference: row.booking_reference,
+  seatNumber: row.seat_number,
+  seatClass: row.seat_class,
+  price: row.price,
+  currency: row.currency,
+  flightType: row.flight_type,
+  status: row.status,
+  layovers: (row.layovers ?? null) as any,
+  bookingSource: row.booking_source,
+  purchaseUrl: row.purchase_url,
+  aircraft: row.aircraft,
+  flightDuration: row.flight_duration,
+  baggage: (row.baggage ?? null) as any,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapFlightWithDetails = (row: FlightWithDetailsRow): FlightWithDetails => {
+  const tripRow: TripRow = {
+    id: row.trip_id,
+    name: row.trip_name,
+    destination: row.trip_destination,
+    start_date: row.trip_start_date,
+    end_date: row.trip_end_date,
+    share_code: row.trip_share_code,
+    created_by: row.trip_created_by,
+    created_at: row.trip_created_at,
+  };
+
+  return {
+    ...mapFlight(row),
+    user: mapUserFromPrefix(row, "user_"),
+    trip: mapTrip(tripRow),
+  };
+};
+
+const mapHotel = (row: HotelRow): Hotel => ({
+  id: row.id,
+  tripId: row.trip_id,
+  userId: row.user_id,
+  hotelName: row.hotel_name,
+  hotelChain: row.hotel_chain,
+  hotelRating:
+    row.hotel_rating === null
+      ? null
+      : typeof row.hotel_rating === "number"
+        ? row.hotel_rating
+        : Number(row.hotel_rating),
+  address: row.address,
+  city: row.city,
+  country: row.country,
+  zipCode: row.zip_code,
+  latitude: row.latitude,
+  longitude: row.longitude,
+  checkInDate: row.check_in_date,
+  checkOutDate: row.check_out_date,
+  roomType: row.room_type,
+  roomCount:
+    row.room_count === null
+      ? null
+      : typeof row.room_count === "number"
+        ? row.room_count
+        : Number(row.room_count),
+  guestCount:
+    row.guest_count === null
+      ? null
+      : typeof row.guest_count === "number"
+        ? row.guest_count
+        : Number(row.guest_count),
+  bookingReference: row.booking_reference,
+  totalPrice: row.total_price,
+  pricePerNight: row.price_per_night,
+  currency: row.currency,
+  status: row.status,
+  bookingSource: row.booking_source,
+  purchaseUrl: row.purchase_url,
+  amenities: (row.amenities ?? null) as any,
+  images: (row.images ?? null) as any,
+  policies: (row.policies ?? null) as any,
+  contactInfo: (row.contact_info ?? null) as any,
+  bookingPlatform: row.booking_platform,
+  bookingUrl: row.booking_url,
+  cancellationPolicy: row.cancellation_policy,
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapHotelWithDetails = (row: HotelWithDetailsRow): HotelWithDetails => {
+  const tripRow: TripRow = {
+    id: row.trip_id,
+    name: row.trip_name,
+    destination: row.trip_destination,
+    start_date: row.trip_start_date,
+    end_date: row.trip_end_date,
+    share_code: row.trip_share_code,
+    created_by: row.trip_created_by,
+    created_at: row.trip_created_at,
+  };
+
+  return {
+    ...mapHotel(row),
+    user: mapUserFromPrefix(row, "user_"),
+    trip: mapTrip(tripRow),
+  };
+};
+
+const mapRestaurant = (row: RestaurantRow): Restaurant => ({
+  id: row.id,
+  tripId: row.trip_id,
+  userId: row.user_id,
+  name: row.name,
+  cuisineType: row.cuisine_type,
+  address: row.address,
+  city: row.city,
+  country: row.country,
+  zipCode: row.zip_code,
+  latitude: row.latitude,
+  longitude: row.longitude,
+  phoneNumber: row.phone_number,
+  website: row.website,
+  openTableUrl: row.open_table_url,
+  priceRange: row.price_range,
+  rating: row.rating,
+  reservationDate: row.reservation_date,
+  reservationTime: row.reservation_time,
+  partySize: row.party_size,
+  confirmationNumber: row.confirmation_number,
+  reservationStatus: row.reservation_status,
+  specialRequests: row.special_requests,
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapRestaurantWithDetails = (
+  row: RestaurantWithDetailsRow,
+): RestaurantWithDetails => {
+  const tripRow: TripRow = {
+    id: row.trip_id,
+    name: row.trip_name,
+    destination: row.trip_destination,
+    start_date: row.trip_start_date,
+    end_date: row.trip_end_date,
+    share_code: row.trip_share_code,
+    created_by: row.trip_created_by,
+    created_at: row.trip_created_at,
+  };
+
+  return {
+    ...mapRestaurant(row),
+    user: mapUserFromPrefix(row, "user_"),
+    trip: mapTrip(tripRow),
+  };
+};
 
 const SHARE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -2693,21 +2998,1570 @@ export class DatabaseStorage implements IStorage {
   async createGroceryReceipt(): Promise<GroceryReceipt> { throw new Error("Not implemented"); }
   async getTripGroceryReceipts(): Promise<GroceryReceiptWithDetails[]> { throw new Error("Not implemented"); }
   async getGroceryBill(): Promise<{ totalCost: number; costPerPerson: number; items: GroceryItemWithDetails[] }> { throw new Error("Not implemented"); }
-  async createFlight(): Promise<Flight> { throw new Error("Not implemented"); }
-  async getTripFlights(): Promise<FlightWithDetails[]> { throw new Error("Not implemented"); }
-  async updateFlight(): Promise<Flight> { throw new Error("Not implemented"); }
-  async deleteFlight(): Promise<void> { throw new Error("Not implemented"); }
-  async getUserFlights(): Promise<FlightWithDetails[]> { throw new Error("Not implemented"); }
-  async createHotel(): Promise<Hotel> { throw new Error("Not implemented"); }
-  async getTripHotels(): Promise<HotelWithDetails[]> { throw new Error("Not implemented"); }
-  async updateHotel(): Promise<Hotel> { throw new Error("Not implemented"); }
-  async deleteHotel(): Promise<void> { throw new Error("Not implemented"); }
-  async getUserHotels(): Promise<HotelWithDetails[]> { throw new Error("Not implemented"); }
-  async createRestaurant(): Promise<Restaurant> { throw new Error("Not implemented"); }
-  async getTripRestaurants(): Promise<RestaurantWithDetails[]> { throw new Error("Not implemented"); }
-  async updateRestaurant(): Promise<Restaurant> { throw new Error("Not implemented"); }
-  async deleteRestaurant(): Promise<void> { throw new Error("Not implemented"); }
-  async getUserRestaurants(): Promise<RestaurantWithDetails[]> { throw new Error("Not implemented"); }
+  async createFlight(flight: InsertFlight, userId: string): Promise<Flight> {
+    const priceValue =
+      flight.price === undefined || flight.price === null
+        ? null
+        : typeof flight.price === "number"
+          ? flight.price.toString()
+          : flight.price;
+
+    const { rows } = await query<FlightRow>(
+      `
+      INSERT INTO flights (
+        trip_id,
+        user_id,
+        flight_number,
+        airline,
+        airline_code,
+        departure_airport,
+        departure_code,
+        departure_time,
+        departure_terminal,
+        departure_gate,
+        arrival_airport,
+        arrival_code,
+        arrival_time,
+        arrival_terminal,
+        arrival_gate,
+        booking_reference,
+        seat_number,
+        seat_class,
+        price,
+        currency,
+        flight_type,
+        status,
+        layovers,
+        booking_source,
+        purchase_url,
+        aircraft,
+        flight_duration,
+        baggage
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25, $26, $27, $28
+      )
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        flight_number,
+        airline,
+        airline_code,
+        departure_airport,
+        departure_code,
+        departure_time,
+        departure_terminal,
+        departure_gate,
+        arrival_airport,
+        arrival_code,
+        arrival_time,
+        arrival_terminal,
+        arrival_gate,
+        booking_reference,
+        seat_number,
+        seat_class,
+        price,
+        currency,
+        flight_type,
+        status,
+        layovers,
+        booking_source,
+        purchase_url,
+        aircraft,
+        flight_duration,
+        baggage,
+        created_at,
+        updated_at
+      `,
+      [
+        flight.tripId,
+        userId,
+        flight.flightNumber,
+        flight.airline,
+        flight.airlineCode,
+        flight.departureAirport,
+        flight.departureCode,
+        flight.departureTime,
+        flight.departureTerminal ?? null,
+        flight.departureGate ?? null,
+        flight.arrivalAirport,
+        flight.arrivalCode,
+        flight.arrivalTime,
+        flight.arrivalTerminal ?? null,
+        flight.arrivalGate ?? null,
+        flight.bookingReference ?? null,
+        flight.seatNumber ?? null,
+        flight.seatClass ?? null,
+        priceValue,
+        flight.currency,
+        flight.flightType,
+        flight.status,
+        flight.layovers ?? null,
+        flight.bookingSource ?? null,
+        flight.purchaseUrl ?? null,
+        flight.aircraft ?? null,
+        flight.flightDuration ?? null,
+        flight.baggage ?? null,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create flight");
+    }
+
+    return mapFlight(row);
+  }
+
+  async getTripFlights(tripId: number): Promise<FlightWithDetails[]> {
+    const { rows } = await query<FlightWithDetailsRow>(
+      `
+      SELECT
+        f.id,
+        f.trip_id,
+        f.user_id,
+        f.flight_number,
+        f.airline,
+        f.airline_code,
+        f.departure_airport,
+        f.departure_code,
+        f.departure_time,
+        f.departure_terminal,
+        f.departure_gate,
+        f.arrival_airport,
+        f.arrival_code,
+        f.arrival_time,
+        f.arrival_terminal,
+        f.arrival_gate,
+        f.booking_reference,
+        f.seat_number,
+        f.seat_class,
+        f.price,
+        f.currency,
+        f.flight_type,
+        f.status,
+        f.layovers,
+        f.booking_source,
+        f.purchase_url,
+        f.aircraft,
+        f.flight_duration,
+        f.baggage,
+        f.created_at,
+        f.updated_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at,
+        t.name AS trip_name,
+        t.destination AS trip_destination,
+        t.start_date AS trip_start_date,
+        t.end_date AS trip_end_date,
+        t.share_code AS trip_share_code,
+        t.created_by AS trip_created_by,
+        t.created_at AS trip_created_at
+      FROM flights f
+      JOIN users u ON u.id = f.user_id
+      JOIN trip_calendars t ON t.id = f.trip_id
+      WHERE f.trip_id = $1
+      ORDER BY f.departure_time ASC NULLS LAST, f.id ASC
+      `,
+      [tripId],
+    );
+
+    return rows.map(mapFlightWithDetails);
+  }
+
+  async updateFlight(
+    flightId: number,
+    updates: Partial<InsertFlight>,
+    userId: string,
+  ): Promise<Flight> {
+    const { rows: existingRows } = await query<FlightRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        user_id,
+        flight_number,
+        airline,
+        airline_code,
+        departure_airport,
+        departure_code,
+        departure_time,
+        departure_terminal,
+        departure_gate,
+        arrival_airport,
+        arrival_code,
+        arrival_time,
+        arrival_terminal,
+        arrival_gate,
+        booking_reference,
+        seat_number,
+        seat_class,
+        price,
+        currency,
+        flight_type,
+        status,
+        layovers,
+        booking_source,
+        purchase_url,
+        aircraft,
+        flight_duration,
+        baggage,
+        created_at,
+        updated_at
+      FROM flights
+      WHERE id = $1
+      `,
+      [flightId],
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new Error("Flight not found");
+    }
+
+    if (existing.user_id !== userId) {
+      throw new Error("Only the creator can update this flight");
+    }
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    const setField = (column: string, value: unknown) => {
+      setClauses.push(`${column} = $${index}`);
+      values.push(value);
+      index += 1;
+    };
+
+    if (updates.flightNumber !== undefined) {
+      setField("flight_number", updates.flightNumber);
+    }
+    if (updates.airline !== undefined) {
+      setField("airline", updates.airline);
+    }
+    if (updates.airlineCode !== undefined) {
+      setField("airline_code", updates.airlineCode);
+    }
+    if (updates.departureAirport !== undefined) {
+      setField("departure_airport", updates.departureAirport);
+    }
+    if (updates.departureCode !== undefined) {
+      setField("departure_code", updates.departureCode);
+    }
+    if (updates.departureTime !== undefined) {
+      setField("departure_time", updates.departureTime);
+    }
+    if (updates.departureTerminal !== undefined) {
+      setField("departure_terminal", updates.departureTerminal ?? null);
+    }
+    if (updates.departureGate !== undefined) {
+      setField("departure_gate", updates.departureGate ?? null);
+    }
+    if (updates.arrivalAirport !== undefined) {
+      setField("arrival_airport", updates.arrivalAirport);
+    }
+    if (updates.arrivalCode !== undefined) {
+      setField("arrival_code", updates.arrivalCode);
+    }
+    if (updates.arrivalTime !== undefined) {
+      setField("arrival_time", updates.arrivalTime);
+    }
+    if (updates.arrivalTerminal !== undefined) {
+      setField("arrival_terminal", updates.arrivalTerminal ?? null);
+    }
+    if (updates.arrivalGate !== undefined) {
+      setField("arrival_gate", updates.arrivalGate ?? null);
+    }
+    if (updates.bookingReference !== undefined) {
+      setField("booking_reference", updates.bookingReference ?? null);
+    }
+    if (updates.seatNumber !== undefined) {
+      setField("seat_number", updates.seatNumber ?? null);
+    }
+    if (updates.seatClass !== undefined) {
+      setField("seat_class", updates.seatClass ?? null);
+    }
+    if (updates.price !== undefined) {
+      const priceValue =
+        updates.price === null
+          ? null
+          : typeof updates.price === "number"
+            ? updates.price.toString()
+            : updates.price;
+      setField("price", priceValue);
+    }
+    if (updates.currency !== undefined) {
+      setField("currency", updates.currency);
+    }
+    if (updates.flightType !== undefined) {
+      setField("flight_type", updates.flightType);
+    }
+    if (updates.status !== undefined) {
+      setField("status", updates.status);
+    }
+    if (updates.layovers !== undefined) {
+      setField("layovers", updates.layovers ?? null);
+    }
+    if (updates.bookingSource !== undefined) {
+      setField("booking_source", updates.bookingSource ?? null);
+    }
+    if (updates.purchaseUrl !== undefined) {
+      setField("purchase_url", updates.purchaseUrl ?? null);
+    }
+    if (updates.aircraft !== undefined) {
+      setField("aircraft", updates.aircraft ?? null);
+    }
+    if (updates.flightDuration !== undefined) {
+      setField("flight_duration", updates.flightDuration ?? null);
+    }
+    if (updates.baggage !== undefined) {
+      setField("baggage", updates.baggage ?? null);
+    }
+
+    if (setClauses.length === 0) {
+      return mapFlight(existing);
+    }
+
+    setClauses.push("updated_at = NOW()");
+
+    const sql = `
+      UPDATE flights
+      SET ${setClauses.join(", ")}
+      WHERE id = $${index}
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        flight_number,
+        airline,
+        airline_code,
+        departure_airport,
+        departure_code,
+        departure_time,
+        departure_terminal,
+        departure_gate,
+        arrival_airport,
+        arrival_code,
+        arrival_time,
+        arrival_terminal,
+        arrival_gate,
+        booking_reference,
+        seat_number,
+        seat_class,
+        price,
+        currency,
+        flight_type,
+        status,
+        layovers,
+        booking_source,
+        purchase_url,
+        aircraft,
+        flight_duration,
+        baggage,
+        created_at,
+        updated_at
+    `;
+
+    values.push(flightId);
+
+    const { rows } = await query<FlightRow>(sql, values);
+    const updatedRow = rows[0];
+    if (!updatedRow) {
+      throw new Error("Failed to update flight");
+    }
+
+    return mapFlight(updatedRow);
+  }
+
+  async deleteFlight(flightId: number, userId: string): Promise<void> {
+    const { rows } = await query<{ user_id: string }>(
+      `
+      SELECT user_id
+      FROM flights
+      WHERE id = $1
+      `,
+      [flightId],
+    );
+
+    const existing = rows[0];
+    if (!existing) {
+      throw new Error("Flight not found");
+    }
+
+    if (existing.user_id !== userId) {
+      throw new Error("Only the creator can delete this flight");
+    }
+
+    await query(
+      `
+      DELETE FROM flights
+      WHERE id = $1
+      `,
+      [flightId],
+    );
+  }
+
+  async getUserFlights(userId: string): Promise<FlightWithDetails[]> {
+    const { rows } = await query<FlightWithDetailsRow>(
+      `
+      SELECT
+        f.id,
+        f.trip_id,
+        f.user_id,
+        f.flight_number,
+        f.airline,
+        f.airline_code,
+        f.departure_airport,
+        f.departure_code,
+        f.departure_time,
+        f.departure_terminal,
+        f.departure_gate,
+        f.arrival_airport,
+        f.arrival_code,
+        f.arrival_time,
+        f.arrival_terminal,
+        f.arrival_gate,
+        f.booking_reference,
+        f.seat_number,
+        f.seat_class,
+        f.price,
+        f.currency,
+        f.flight_type,
+        f.status,
+        f.layovers,
+        f.booking_source,
+        f.purchase_url,
+        f.aircraft,
+        f.flight_duration,
+        f.baggage,
+        f.created_at,
+        f.updated_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at,
+        t.name AS trip_name,
+        t.destination AS trip_destination,
+        t.start_date AS trip_start_date,
+        t.end_date AS trip_end_date,
+        t.share_code AS trip_share_code,
+        t.created_by AS trip_created_by,
+        t.created_at AS trip_created_at
+      FROM flights f
+      JOIN users u ON u.id = f.user_id
+      JOIN trip_calendars t ON t.id = f.trip_id
+      WHERE f.user_id = $1
+      ORDER BY f.departure_time ASC NULLS LAST, f.id ASC
+      `,
+      [userId],
+    );
+
+    return rows.map(mapFlightWithDetails);
+  }
+
+  async createHotel(hotel: InsertHotel, userId: string): Promise<Hotel> {
+    const hotelRatingValue =
+      hotel.hotelRating === undefined || hotel.hotelRating === null
+        ? null
+        : typeof hotel.hotelRating === "number"
+          ? hotel.hotelRating
+          : Number(hotel.hotelRating);
+    const totalPriceValue =
+      hotel.totalPrice === undefined || hotel.totalPrice === null
+        ? null
+        : typeof hotel.totalPrice === "number"
+          ? hotel.totalPrice.toString()
+          : hotel.totalPrice;
+    const pricePerNightValue =
+      hotel.pricePerNight === undefined || hotel.pricePerNight === null
+        ? null
+        : typeof hotel.pricePerNight === "number"
+          ? hotel.pricePerNight.toString()
+          : hotel.pricePerNight;
+    const latitudeValue =
+      hotel.latitude === undefined || hotel.latitude === null
+        ? null
+        : typeof hotel.latitude === "string"
+          ? hotel.latitude
+          : hotel.latitude.toString();
+    const longitudeValue =
+      hotel.longitude === undefined || hotel.longitude === null
+        ? null
+        : typeof hotel.longitude === "string"
+          ? hotel.longitude
+          : hotel.longitude.toString();
+
+    const { rows } = await query<HotelRow>(
+      `
+      INSERT INTO hotels (
+        trip_id,
+        user_id,
+        hotel_name,
+        hotel_chain,
+        hotel_rating,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        check_in_date,
+        check_out_date,
+        room_type,
+        room_count,
+        guest_count,
+        booking_reference,
+        total_price,
+        price_per_night,
+        currency,
+        status,
+        booking_source,
+        purchase_url,
+        amenities,
+        images,
+        policies,
+        contact_info,
+        booking_platform,
+        booking_url,
+        cancellation_policy,
+        notes
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
+        $31
+      )
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        hotel_name,
+        hotel_chain,
+        hotel_rating,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        check_in_date,
+        check_out_date,
+        room_type,
+        room_count,
+        guest_count,
+        booking_reference,
+        total_price,
+        price_per_night,
+        currency,
+        status,
+        booking_source,
+        purchase_url,
+        amenities,
+        images,
+        policies,
+        contact_info,
+        booking_platform,
+        booking_url,
+        cancellation_policy,
+        notes,
+        created_at,
+        updated_at
+      `,
+      [
+        hotel.tripId,
+        userId,
+        hotel.hotelName,
+        hotel.hotelChain ?? null,
+        hotelRatingValue,
+        hotel.address,
+        hotel.city,
+        hotel.country,
+        hotel.zipCode ?? null,
+        latitudeValue,
+        longitudeValue,
+        hotel.checkInDate,
+        hotel.checkOutDate,
+        hotel.roomType ?? null,
+        hotel.roomCount ?? null,
+        hotel.guestCount ?? null,
+        hotel.bookingReference ?? null,
+        totalPriceValue,
+        pricePerNightValue,
+        hotel.currency,
+        hotel.status,
+        hotel.bookingSource ?? null,
+        hotel.purchaseUrl ?? null,
+        hotel.amenities ?? null,
+        hotel.images ?? null,
+        hotel.policies ?? null,
+        hotel.contactInfo ?? null,
+        hotel.bookingPlatform ?? null,
+        hotel.bookingUrl ?? null,
+        hotel.cancellationPolicy ?? null,
+        hotel.notes ?? null,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create hotel");
+    }
+
+    return mapHotel(row);
+  }
+
+  async getTripHotels(tripId: number): Promise<HotelWithDetails[]> {
+    const { rows } = await query<HotelWithDetailsRow>(
+      `
+      SELECT
+        h.id,
+        h.trip_id,
+        h.user_id,
+        h.hotel_name,
+        h.hotel_chain,
+        h.hotel_rating,
+        h.address,
+        h.city,
+        h.country,
+        h.zip_code,
+        h.latitude,
+        h.longitude,
+        h.check_in_date,
+        h.check_out_date,
+        h.room_type,
+        h.room_count,
+        h.guest_count,
+        h.booking_reference,
+        h.total_price,
+        h.price_per_night,
+        h.currency,
+        h.status,
+        h.booking_source,
+        h.purchase_url,
+        h.amenities,
+        h.images,
+        h.policies,
+        h.contact_info,
+        h.booking_platform,
+        h.booking_url,
+        h.cancellation_policy,
+        h.notes,
+        h.created_at,
+        h.updated_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at,
+        t.name AS trip_name,
+        t.destination AS trip_destination,
+        t.start_date AS trip_start_date,
+        t.end_date AS trip_end_date,
+        t.share_code AS trip_share_code,
+        t.created_by AS trip_created_by,
+        t.created_at AS trip_created_at
+      FROM hotels h
+      JOIN users u ON u.id = h.user_id
+      JOIN trip_calendars t ON t.id = h.trip_id
+      WHERE h.trip_id = $1
+      ORDER BY h.check_in_date ASC NULLS LAST, h.id ASC
+      `,
+      [tripId],
+    );
+
+    return rows.map(mapHotelWithDetails);
+  }
+
+  async updateHotel(
+    hotelId: number,
+    updates: Partial<InsertHotel>,
+    userId: string,
+  ): Promise<Hotel> {
+    const { rows: existingRows } = await query<HotelRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        user_id,
+        hotel_name,
+        hotel_chain,
+        hotel_rating,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        check_in_date,
+        check_out_date,
+        room_type,
+        room_count,
+        guest_count,
+        booking_reference,
+        total_price,
+        price_per_night,
+        currency,
+        status,
+        booking_source,
+        purchase_url,
+        amenities,
+        images,
+        policies,
+        contact_info,
+        booking_platform,
+        booking_url,
+        cancellation_policy,
+        notes,
+        created_at,
+        updated_at
+      FROM hotels
+      WHERE id = $1
+      `,
+      [hotelId],
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new Error("Hotel not found");
+    }
+
+    if (existing.user_id !== userId) {
+      throw new Error("Only the creator can update this hotel");
+    }
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    const setField = (column: string, value: unknown) => {
+      setClauses.push(`${column} = $${index}`);
+      values.push(value);
+      index += 1;
+    };
+
+    if (updates.hotelName !== undefined) {
+      setField("hotel_name", updates.hotelName);
+    }
+    if (updates.hotelChain !== undefined) {
+      setField("hotel_chain", updates.hotelChain ?? null);
+    }
+    if (updates.hotelRating !== undefined) {
+      const ratingValue =
+        updates.hotelRating === null
+          ? null
+          : typeof updates.hotelRating === "number"
+            ? updates.hotelRating
+            : Number(updates.hotelRating);
+      setField("hotel_rating", ratingValue);
+    }
+    if (updates.address !== undefined) {
+      setField("address", updates.address);
+    }
+    if (updates.city !== undefined) {
+      setField("city", updates.city);
+    }
+    if (updates.country !== undefined) {
+      setField("country", updates.country);
+    }
+    if (updates.zipCode !== undefined) {
+      setField("zip_code", updates.zipCode ?? null);
+    }
+    if (updates.latitude !== undefined) {
+      const latitudeValue =
+        updates.latitude === null
+          ? null
+          : typeof updates.latitude === "string"
+            ? updates.latitude
+            : updates.latitude.toString();
+      setField("latitude", latitudeValue);
+    }
+    if (updates.longitude !== undefined) {
+      const longitudeValue =
+        updates.longitude === null
+          ? null
+          : typeof updates.longitude === "string"
+            ? updates.longitude
+            : updates.longitude.toString();
+      setField("longitude", longitudeValue);
+    }
+    if (updates.checkInDate !== undefined) {
+      setField("check_in_date", updates.checkInDate);
+    }
+    if (updates.checkOutDate !== undefined) {
+      setField("check_out_date", updates.checkOutDate);
+    }
+    if (updates.roomType !== undefined) {
+      setField("room_type", updates.roomType ?? null);
+    }
+    if (updates.roomCount !== undefined) {
+      setField("room_count", updates.roomCount ?? null);
+    }
+    if (updates.guestCount !== undefined) {
+      setField("guest_count", updates.guestCount ?? null);
+    }
+    if (updates.bookingReference !== undefined) {
+      setField("booking_reference", updates.bookingReference ?? null);
+    }
+    if (updates.totalPrice !== undefined) {
+      const totalPriceValue =
+        updates.totalPrice === null
+          ? null
+          : typeof updates.totalPrice === "number"
+            ? updates.totalPrice.toString()
+            : updates.totalPrice;
+      setField("total_price", totalPriceValue);
+    }
+    if (updates.pricePerNight !== undefined) {
+      const pricePerNightValue =
+        updates.pricePerNight === null
+          ? null
+          : typeof updates.pricePerNight === "number"
+            ? updates.pricePerNight.toString()
+            : updates.pricePerNight;
+      setField("price_per_night", pricePerNightValue);
+    }
+    if (updates.currency !== undefined) {
+      setField("currency", updates.currency);
+    }
+    if (updates.status !== undefined) {
+      setField("status", updates.status);
+    }
+    if (updates.bookingSource !== undefined) {
+      setField("booking_source", updates.bookingSource ?? null);
+    }
+    if (updates.purchaseUrl !== undefined) {
+      setField("purchase_url", updates.purchaseUrl ?? null);
+    }
+    if (updates.amenities !== undefined) {
+      setField("amenities", updates.amenities ?? null);
+    }
+    if (updates.images !== undefined) {
+      setField("images", updates.images ?? null);
+    }
+    if (updates.policies !== undefined) {
+      setField("policies", updates.policies ?? null);
+    }
+    if (updates.contactInfo !== undefined) {
+      setField("contact_info", updates.contactInfo ?? null);
+    }
+    if (updates.bookingPlatform !== undefined) {
+      setField("booking_platform", updates.bookingPlatform ?? null);
+    }
+    if (updates.bookingUrl !== undefined) {
+      setField("booking_url", updates.bookingUrl ?? null);
+    }
+    if (updates.cancellationPolicy !== undefined) {
+      setField("cancellation_policy", updates.cancellationPolicy ?? null);
+    }
+    if (updates.notes !== undefined) {
+      setField("notes", updates.notes ?? null);
+    }
+
+    if (setClauses.length === 0) {
+      return mapHotel(existing);
+    }
+
+    setClauses.push("updated_at = NOW()");
+
+    const sql = `
+      UPDATE hotels
+      SET ${setClauses.join(", ")}
+      WHERE id = $${index}
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        hotel_name,
+        hotel_chain,
+        hotel_rating,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        check_in_date,
+        check_out_date,
+        room_type,
+        room_count,
+        guest_count,
+        booking_reference,
+        total_price,
+        price_per_night,
+        currency,
+        status,
+        booking_source,
+        purchase_url,
+        amenities,
+        images,
+        policies,
+        contact_info,
+        booking_platform,
+        booking_url,
+        cancellation_policy,
+        notes,
+        created_at,
+        updated_at
+    `;
+
+    values.push(hotelId);
+
+    const { rows } = await query<HotelRow>(sql, values);
+    const updatedRow = rows[0];
+    if (!updatedRow) {
+      throw new Error("Failed to update hotel");
+    }
+
+    return mapHotel(updatedRow);
+  }
+
+  async deleteHotel(hotelId: number, userId: string): Promise<void> {
+    const { rows } = await query<{ user_id: string }>(
+      `
+      SELECT user_id
+      FROM hotels
+      WHERE id = $1
+      `,
+      [hotelId],
+    );
+
+    const existing = rows[0];
+    if (!existing) {
+      throw new Error("Hotel not found");
+    }
+
+    if (existing.user_id !== userId) {
+      throw new Error("Only the creator can delete this hotel");
+    }
+
+    await query(
+      `
+      DELETE FROM hotels
+      WHERE id = $1
+      `,
+      [hotelId],
+    );
+  }
+
+  async getUserHotels(userId: string): Promise<HotelWithDetails[]> {
+    const { rows } = await query<HotelWithDetailsRow>(
+      `
+      SELECT
+        h.id,
+        h.trip_id,
+        h.user_id,
+        h.hotel_name,
+        h.hotel_chain,
+        h.hotel_rating,
+        h.address,
+        h.city,
+        h.country,
+        h.zip_code,
+        h.latitude,
+        h.longitude,
+        h.check_in_date,
+        h.check_out_date,
+        h.room_type,
+        h.room_count,
+        h.guest_count,
+        h.booking_reference,
+        h.total_price,
+        h.price_per_night,
+        h.currency,
+        h.status,
+        h.booking_source,
+        h.purchase_url,
+        h.amenities,
+        h.images,
+        h.policies,
+        h.contact_info,
+        h.booking_platform,
+        h.booking_url,
+        h.cancellation_policy,
+        h.notes,
+        h.created_at,
+        h.updated_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at,
+        t.name AS trip_name,
+        t.destination AS trip_destination,
+        t.start_date AS trip_start_date,
+        t.end_date AS trip_end_date,
+        t.share_code AS trip_share_code,
+        t.created_by AS trip_created_by,
+        t.created_at AS trip_created_at
+      FROM hotels h
+      JOIN users u ON u.id = h.user_id
+      JOIN trip_calendars t ON t.id = h.trip_id
+      WHERE h.user_id = $1
+      ORDER BY h.check_in_date ASC NULLS LAST, h.id ASC
+      `,
+      [userId],
+    );
+
+    return rows.map(mapHotelWithDetails);
+  }
+
+  async createRestaurant(
+    restaurant: InsertRestaurant,
+    userId: string,
+  ): Promise<Restaurant> {
+    const latitudeValue =
+      restaurant.latitude === undefined || restaurant.latitude === null
+        ? null
+        : typeof restaurant.latitude === "string"
+          ? restaurant.latitude
+          : restaurant.latitude.toString();
+    const longitudeValue =
+      restaurant.longitude === undefined || restaurant.longitude === null
+        ? null
+        : typeof restaurant.longitude === "string"
+          ? restaurant.longitude
+          : restaurant.longitude.toString();
+    const ratingValue =
+      restaurant.rating === undefined || restaurant.rating === null
+        ? null
+        : typeof restaurant.rating === "string"
+          ? restaurant.rating
+          : restaurant.rating.toString();
+
+    const { rows } = await query<RestaurantRow>(
+      `
+      INSERT INTO restaurants (
+        trip_id,
+        user_id,
+        name,
+        cuisine_type,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        phone_number,
+        website,
+        open_table_url,
+        price_range,
+        rating,
+        reservation_date,
+        reservation_time,
+        party_size,
+        confirmation_number,
+        reservation_status,
+        special_requests,
+        notes
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        $21, $22
+      )
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        name,
+        cuisine_type,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        phone_number,
+        website,
+        open_table_url,
+        price_range,
+        rating,
+        reservation_date,
+        reservation_time,
+        party_size,
+        confirmation_number,
+        reservation_status,
+        special_requests,
+        notes,
+        created_at,
+        updated_at
+      `,
+      [
+        restaurant.tripId,
+        userId,
+        restaurant.name,
+        restaurant.cuisineType ?? null,
+        restaurant.address,
+        restaurant.city,
+        restaurant.country,
+        restaurant.zipCode ?? null,
+        latitudeValue,
+        longitudeValue,
+        restaurant.phoneNumber ?? null,
+        restaurant.website ?? null,
+        restaurant.openTableUrl ?? null,
+        restaurant.priceRange,
+        ratingValue,
+        restaurant.reservationDate,
+        restaurant.reservationTime,
+        restaurant.partySize,
+        restaurant.confirmationNumber ?? null,
+        restaurant.reservationStatus,
+        restaurant.specialRequests ?? null,
+        restaurant.notes ?? null,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create restaurant");
+    }
+
+    return mapRestaurant(row);
+  }
+
+  async getTripRestaurants(
+    tripId: number,
+  ): Promise<RestaurantWithDetails[]> {
+    const { rows } = await query<RestaurantWithDetailsRow>(
+      `
+      SELECT
+        r.id,
+        r.trip_id,
+        r.user_id,
+        r.name,
+        r.cuisine_type,
+        r.address,
+        r.city,
+        r.country,
+        r.zip_code,
+        r.latitude,
+        r.longitude,
+        r.phone_number,
+        r.website,
+        r.open_table_url,
+        r.price_range,
+        r.rating,
+        r.reservation_date,
+        r.reservation_time,
+        r.party_size,
+        r.confirmation_number,
+        r.reservation_status,
+        r.special_requests,
+        r.notes,
+        r.created_at,
+        r.updated_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at,
+        t.name AS trip_name,
+        t.destination AS trip_destination,
+        t.start_date AS trip_start_date,
+        t.end_date AS trip_end_date,
+        t.share_code AS trip_share_code,
+        t.created_by AS trip_created_by,
+        t.created_at AS trip_created_at
+      FROM restaurants r
+      JOIN users u ON u.id = r.user_id
+      JOIN trip_calendars t ON t.id = r.trip_id
+      WHERE r.trip_id = $1
+      ORDER BY r.reservation_date ASC NULLS LAST, r.reservation_time ASC, r.id ASC
+      `,
+      [tripId],
+    );
+
+    return rows.map(mapRestaurantWithDetails);
+  }
+
+  async updateRestaurant(
+    restaurantId: number,
+    updates: Partial<InsertRestaurant>,
+    userId: string,
+  ): Promise<Restaurant> {
+    const { rows: existingRows } = await query<RestaurantRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        user_id,
+        name,
+        cuisine_type,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        phone_number,
+        website,
+        open_table_url,
+        price_range,
+        rating,
+        reservation_date,
+        reservation_time,
+        party_size,
+        confirmation_number,
+        reservation_status,
+        special_requests,
+        notes,
+        created_at,
+        updated_at
+      FROM restaurants
+      WHERE id = $1
+      `,
+      [restaurantId],
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new Error("Restaurant not found");
+    }
+
+    if (existing.user_id !== userId) {
+      throw new Error("Only the creator can update this restaurant");
+    }
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    const setField = (column: string, value: unknown) => {
+      setClauses.push(`${column} = $${index}`);
+      values.push(value);
+      index += 1;
+    };
+
+    if (updates.name !== undefined) {
+      setField("name", updates.name);
+    }
+    if (updates.cuisineType !== undefined) {
+      setField("cuisine_type", updates.cuisineType ?? null);
+    }
+    if (updates.address !== undefined) {
+      setField("address", updates.address);
+    }
+    if (updates.city !== undefined) {
+      setField("city", updates.city);
+    }
+    if (updates.country !== undefined) {
+      setField("country", updates.country);
+    }
+    if (updates.zipCode !== undefined) {
+      setField("zip_code", updates.zipCode ?? null);
+    }
+    if (updates.latitude !== undefined) {
+      const latitudeValue =
+        updates.latitude === null
+          ? null
+          : typeof updates.latitude === "string"
+            ? updates.latitude
+            : updates.latitude.toString();
+      setField("latitude", latitudeValue);
+    }
+    if (updates.longitude !== undefined) {
+      const longitudeValue =
+        updates.longitude === null
+          ? null
+          : typeof updates.longitude === "string"
+            ? updates.longitude
+            : updates.longitude.toString();
+      setField("longitude", longitudeValue);
+    }
+    if (updates.phoneNumber !== undefined) {
+      setField("phone_number", updates.phoneNumber ?? null);
+    }
+    if (updates.website !== undefined) {
+      setField("website", updates.website ?? null);
+    }
+    if (updates.openTableUrl !== undefined) {
+      setField("open_table_url", updates.openTableUrl ?? null);
+    }
+    if (updates.priceRange !== undefined) {
+      setField("price_range", updates.priceRange);
+    }
+    if (updates.rating !== undefined) {
+      const ratingValue =
+        updates.rating === null
+          ? null
+          : typeof updates.rating === "string"
+            ? updates.rating
+            : updates.rating.toString();
+      setField("rating", ratingValue);
+    }
+    if (updates.reservationDate !== undefined) {
+      setField("reservation_date", updates.reservationDate);
+    }
+    if (updates.reservationTime !== undefined) {
+      setField("reservation_time", updates.reservationTime);
+    }
+    if (updates.partySize !== undefined) {
+      setField("party_size", updates.partySize);
+    }
+    if (updates.confirmationNumber !== undefined) {
+      setField("confirmation_number", updates.confirmationNumber ?? null);
+    }
+    if (updates.reservationStatus !== undefined) {
+      setField("reservation_status", updates.reservationStatus);
+    }
+    if (updates.specialRequests !== undefined) {
+      setField("special_requests", updates.specialRequests ?? null);
+    }
+    if (updates.notes !== undefined) {
+      setField("notes", updates.notes ?? null);
+    }
+
+    if (setClauses.length === 0) {
+      return mapRestaurant(existing);
+    }
+
+    setClauses.push("updated_at = NOW()");
+
+    const sql = `
+      UPDATE restaurants
+      SET ${setClauses.join(", ")}
+      WHERE id = $${index}
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        name,
+        cuisine_type,
+        address,
+        city,
+        country,
+        zip_code,
+        latitude,
+        longitude,
+        phone_number,
+        website,
+        open_table_url,
+        price_range,
+        rating,
+        reservation_date,
+        reservation_time,
+        party_size,
+        confirmation_number,
+        reservation_status,
+        special_requests,
+        notes,
+        created_at,
+        updated_at
+    `;
+
+    values.push(restaurantId);
+
+    const { rows } = await query<RestaurantRow>(sql, values);
+    const updatedRow = rows[0];
+    if (!updatedRow) {
+      throw new Error("Failed to update restaurant");
+    }
+
+    return mapRestaurant(updatedRow);
+  }
+
+  async deleteRestaurant(
+    restaurantId: number,
+    userId: string,
+  ): Promise<void> {
+    const { rows } = await query<{ user_id: string }>(
+      `
+      SELECT user_id
+      FROM restaurants
+      WHERE id = $1
+      `,
+      [restaurantId],
+    );
+
+    const existing = rows[0];
+    if (!existing) {
+      throw new Error("Restaurant not found");
+    }
+
+    if (existing.user_id !== userId) {
+      throw new Error("Only the creator can delete this restaurant");
+    }
+
+    await query(
+      `
+      DELETE FROM restaurants
+      WHERE id = $1
+      `,
+      [restaurantId],
+    );
+  }
+
+  async getUserRestaurants(
+    userId: string,
+  ): Promise<RestaurantWithDetails[]> {
+    const { rows } = await query<RestaurantWithDetailsRow>(
+      `
+      SELECT
+        r.id,
+        r.trip_id,
+        r.user_id,
+        r.name,
+        r.cuisine_type,
+        r.address,
+        r.city,
+        r.country,
+        r.zip_code,
+        r.latitude,
+        r.longitude,
+        r.phone_number,
+        r.website,
+        r.open_table_url,
+        r.price_range,
+        r.rating,
+        r.reservation_date,
+        r.reservation_time,
+        r.party_size,
+        r.confirmation_number,
+        r.reservation_status,
+        r.special_requests,
+        r.notes,
+        r.created_at,
+        r.updated_at,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cash_app_username AS user_cash_app_username,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at,
+        t.name AS trip_name,
+        t.destination AS trip_destination,
+        t.start_date AS trip_start_date,
+        t.end_date AS trip_end_date,
+        t.share_code AS trip_share_code,
+        t.created_by AS trip_created_by,
+        t.created_at AS trip_created_at
+      FROM restaurants r
+      JOIN users u ON u.id = r.user_id
+      JOIN trip_calendars t ON t.id = r.trip_id
+      WHERE r.user_id = $1
+      ORDER BY r.reservation_date ASC NULLS LAST, r.reservation_time ASC, r.id ASC
+      `,
+      [userId],
+    );
+
+    return rows.map(mapRestaurantWithDetails);
+  }
   async createHotelProposal(): Promise<HotelProposal> { throw new Error("Not implemented"); }
   async getTripHotelProposals(): Promise<HotelProposalWithDetails[]> { throw new Error("Not implemented"); }
   async rankHotelProposal(): Promise<void> { throw new Error("Not implemented"); }
