@@ -1,6 +1,5 @@
+// server/db.ts
 import { Pool } from "pg";
-import { drizzle } from "drizzle-orm/node-postgres";
-import * as schema from "@shared/schema";
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -8,8 +7,13 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+// Create a connection pool for queries
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false }, // Render requires SSL
 });
-export const db = drizzle({ client: pool, schema });
+
+// Small helper function so other files can do: await query(...)
+export const query = <T>(text: string, params: unknown[] = []) => {
+  return pool.query<T>(text, params);
+};
