@@ -1743,17 +1743,17 @@ export function setupRoutes(app: Express) {
     try {
       const tripId = parseInt(req.params.id);
       const userId = getRequestUserId(req);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
       const validatedData = insertGroceryItemSchema.parse({
         ...req.body,
         tripId,
         addedBy: userId
       });
-      
+
       const groceryItem = await storage.createGroceryItem(validatedData, userId);
       res.json(groceryItem);
     } catch (error: unknown) {
@@ -1762,6 +1762,100 @@ export function setupRoutes(app: Express) {
         res.status(400).json({ message: "Invalid grocery item data", errors: (error as any).errors });
       } else {
         res.status(500).json({ message: "Failed to add grocery item" });
+      }
+    }
+  });
+
+  app.post('/api/groceries/:id/participate', isAuthenticated, async (req: any, res) => {
+    try {
+      const itemId = parseInt(req.params.id, 10);
+      if (Number.isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid grocery item ID" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const requestedUserId =
+        typeof req.body?.userId === "string" && req.body.userId.trim().length > 0
+          ? req.body.userId.trim()
+          : undefined;
+      const targetUserId = requestedUserId ?? userId;
+
+      await storage.toggleGroceryItemParticipation(itemId, targetUserId);
+      const groceryItem = await storage.getGroceryItemWithDetails(itemId);
+      res.json(groceryItem);
+    } catch (error: unknown) {
+      console.error("Error updating grocery participation:", error);
+      if (error instanceof Error && error.message === "Grocery item not found") {
+        res.status(404).json({ message: "Grocery item not found" });
+      } else {
+        res.status(500).json({ message: "Failed to update grocery participation" });
+      }
+    }
+  });
+
+  app.patch('/api/groceries/:id/purchase', isAuthenticated, async (req: any, res) => {
+    try {
+      const itemId = parseInt(req.params.id, 10);
+      if (Number.isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid grocery item ID" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const { actualCost, isPurchased } = req.body ?? {};
+      let parsedActualCost: string | number | null | undefined = undefined;
+
+      if (actualCost === null) {
+        parsedActualCost = null;
+      } else if (typeof actualCost === "number") {
+        parsedActualCost = actualCost;
+      } else if (typeof actualCost === "string") {
+        const trimmed = actualCost.trim();
+        parsedActualCost = trimmed === "" ? null : trimmed;
+      }
+
+      const purchaseState = typeof isPurchased === "boolean" ? isPurchased : true;
+
+      await storage.markGroceryItemPurchased(itemId, parsedActualCost, purchaseState);
+      const groceryItem = await storage.getGroceryItemWithDetails(itemId);
+      res.json(groceryItem);
+    } catch (error: unknown) {
+      console.error("Error marking grocery item purchased:", error);
+      if (error instanceof Error && error.message === "Grocery item not found") {
+        res.status(404).json({ message: "Grocery item not found" });
+      } else {
+        res.status(500).json({ message: "Failed to update grocery item" });
+      }
+    }
+  });
+
+  app.delete('/api/groceries/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const itemId = parseInt(req.params.id, 10);
+      if (Number.isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid grocery item ID" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      await storage.deleteGroceryItem(itemId);
+      res.status(204).send();
+    } catch (error: unknown) {
+      console.error("Error deleting grocery item:", error);
+      if (error instanceof Error && error.message === "Grocery item not found") {
+        res.status(404).json({ message: "Grocery item not found" });
+      } else {
+        res.status(500).json({ message: "Failed to delete grocery item" });
       }
     }
   });

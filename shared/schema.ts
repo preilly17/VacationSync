@@ -260,6 +260,16 @@ export const insertNotificationSchema = z.object({
 
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 
+const groceryNoteDetailsSchema = z.object({
+  text: z.string().nullable().optional(),
+  allergies: z.array(z.string()).optional(),
+  exclusions: z.array(z.string()).optional(),
+});
+
+export const groceryNotesSchema = z.union([z.string(), groceryNoteDetailsSchema]);
+
+export type GroceryNotes = z.infer<typeof groceryNotesSchema>;
+
 export interface GroceryItem {
   id: number;
   tripId: number;
@@ -268,7 +278,7 @@ export interface GroceryItem {
   category: string;
   quantity: string | null;
   estimatedCost: string | null;
-  notes: string | null;
+  notes: GroceryNotes | null;
   isPurchased: boolean;
   actualCost: string | null;
   receiptLineItem: string | null;
@@ -282,7 +292,7 @@ export const insertGroceryItemSchema = z.object({
   category: z.string().min(1, "Category is required"),
   quantity: z.string().nullable().optional(),
   estimatedCost: z.union([z.string(), z.number()]).nullable().optional(),
-  notes: z.string().nullable().optional(),
+  notes: groceryNotesSchema.nullable().optional(),
   isPurchased: z.boolean().optional(),
   actualCost: z.union([z.string(), z.number()]).nullable().optional(),
   receiptLineItem: z.string().nullable().optional(),

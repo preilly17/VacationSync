@@ -628,7 +628,11 @@ export default function Trip() {
                 )}
 
                 {activeTab === "groceries" && (
-                  <GroceryList tripId={parseInt(id || "0")} user={user} />
+                  <GroceryList
+                    tripId={parseInt(id || "0")}
+                    user={user}
+                    members={trip?.members ?? []}
+                  />
                 )}
 
                 {activeTab === "proposals" && (

@@ -23,6 +23,7 @@ import {
   type InsertNotification,
   type GroceryItem,
   type InsertGroceryItem,
+  type GroceryNotes,
   type GroceryItemWithDetails,
   type GroceryItemParticipant,
   type InsertGroceryItemParticipant,
@@ -730,6 +731,64 @@ const mapExpenseWithDetails = (
   } as unknown as ExpenseWithDetails;
 };
 
+const normalizeGroceryTags = (input: unknown): string[] =>
+  Array.isArray(input)
+    ? input
+        .map((value) =>
+          typeof value === "string"
+            ? value.trim()
+            : value == null
+              ? ""
+              : String(value).trim(),
+        )
+        .filter((value) => value.length > 0)
+    : [];
+
+const parseGroceryNotes = (raw: string | null): GroceryNotes | null => {
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const text = typeof (parsed as any).text === "string" ? (parsed as any).text.trim() : "";
+      const allergies = normalizeGroceryTags((parsed as any).allergies);
+      const exclusions = normalizeGroceryTags((parsed as any).exclusions);
+      if (!text && allergies.length === 0 && exclusions.length === 0) {
+        return null;
+      }
+      return {
+        ...(text ? { text } : {}),
+        ...(allergies.length ? { allergies } : {}),
+        ...(exclusions.length ? { exclusions } : {}),
+      } as GroceryNotes;
+    }
+  } catch {
+    // ignore malformed JSON and fall back to legacy text
+  }
+
+  const legacy = raw.trim();
+  return legacy.length > 0 ? legacy : null;
+};
+
+const serializeGroceryNotes = (notes: GroceryNotes | null | undefined): string | null => {
+  if (notes === null || notes === undefined) return null;
+  if (typeof notes === "string") {
+    const trimmed = notes.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  const text = typeof notes.text === "string" ? notes.text.trim() : "";
+  const allergies = normalizeGroceryTags(notes.allergies);
+  const exclusions = normalizeGroceryTags(notes.exclusions);
+
+  const payload: Record<string, unknown> = {};
+  if (text) payload.text = text;
+  if (allergies.length) payload.allergies = allergies;
+  if (exclusions.length) payload.exclusions = exclusions;
+
+  return Object.keys(payload).length > 0 ? JSON.stringify(payload) : null;
+};
+
 const mapGroceryItem = (row: GroceryItemRow): GroceryItem => ({
   id: row.id,
   tripId: row.trip_id,
@@ -738,7 +797,7 @@ const mapGroceryItem = (row: GroceryItemRow): GroceryItem => ({
   category: row.category,
   quantity: row.quantity,
   estimatedCost: row.estimated_cost,
-  notes: row.notes,
+  notes: parseGroceryNotes(row.notes),
   isPurchased: row.is_purchased,
   actualCost: row.actual_cost,
   receiptLineItem: row.receipt_line_item,
@@ -3285,6 +3344,8 @@ export class DatabaseStorage implements IStorage {
           ? item.actualCost.toString()
           : item.actualCost;
 
+    const notesValue = serializeGroceryNotes(item.notes ?? null);
+
     const { rows } = await query<GroceryItemRow>(
       `
       INSERT INTO grocery_items (
@@ -3333,7 +3394,7 @@ export class DatabaseStorage implements IStorage {
         item.category,
         item.quantity ?? null,
         estimatedCostValue,
-        item.notes ?? null,
+        notesValue,
         item.isPurchased ?? false,
         actualCostValue,
         item.receiptLineItem ?? null,
@@ -3455,6 +3516,38 @@ ${selectUserColumns("participant_user", "participant_user_")}
     });
   }
 
+  async getGroceryItemTripId(itemId: number): Promise<number> {
+    const { rows } = await query<{ trip_id: number }>(
+      `
+      SELECT trip_id
+      FROM grocery_items
+      WHERE id = $1
+      `,
+      [itemId],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Grocery item not found");
+    }
+
+    return row.trip_id;
+  }
+
+  async getGroceryItemWithDetails(
+    itemId: number,
+  ): Promise<GroceryItemWithDetails> {
+    const tripId = await this.getGroceryItemTripId(itemId);
+    const items = await this.getTripGroceryItems(tripId);
+    const item = items.find((entry) => entry.id === itemId);
+
+    if (!item) {
+      throw new Error("Grocery item not found");
+    }
+
+    return item;
+  }
+
   async updateGroceryItem(
     itemId: number,
     updates: Partial<InsertGroceryItem>,
@@ -3488,7 +3581,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       addClause("estimated_cost", value);
     }
     if (updates.notes !== undefined) {
-      addClause("notes", updates.notes ?? null);
+      addClause("notes", serializeGroceryNotes(updates.notes ?? null));
     }
     if (updates.isPurchased !== undefined) {
       addClause("is_purchased", updates.isPurchased);
