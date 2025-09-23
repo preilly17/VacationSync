@@ -323,6 +323,51 @@ type NotificationWithDetailsRow = NotificationRow & {
   expense_updated_at: Date | null;
 };
 
+type GroceryItemRow = {
+  id: number;
+  trip_id: number;
+  added_by: string;
+  item: string;
+  category: string;
+  quantity: string | null;
+  estimated_cost: string | null;
+  notes: string | null;
+  is_purchased: boolean;
+  actual_cost: string | null;
+  receipt_line_item: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type GroceryItemWithAddedByRow = GroceryItemRow & PrefixedUserRow<"added_by_">;
+
+type GroceryItemParticipantRow = {
+  id: number;
+  grocery_item_id: number;
+  user_id: string;
+  will_consume: boolean;
+  created_at: Date | null;
+};
+
+type GroceryItemParticipantWithUserRow = GroceryItemParticipantRow &
+  PrefixedUserRow<"participant_user_">;
+
+type GroceryReceiptRow = {
+  id: number;
+  trip_id: number;
+  uploaded_by: string;
+  receipt_image_url: string | null;
+  store_name: string | null;
+  total_amount: string;
+  purchase_date: Date;
+  parsed_items: Record<string, unknown> | null;
+  is_processed: boolean;
+  created_at: Date | null;
+};
+
+type GroceryReceiptWithUploaderRow = GroceryReceiptRow &
+  PrefixedUserRow<"uploaded_by_">;
+
 type FlightRow = {
   id: number;
   trip_id: number;
@@ -522,6 +567,31 @@ const mapUserFromPrefix = (
   updatedAt: (row[`${prefix}updated_at`] as Date | null) ?? null,
 });
 
+const selectUserColumns = (alias: string, prefix: string) => `
+        ${alias}.id AS ${prefix}id,
+        ${alias}.email AS ${prefix}email,
+        ${alias}.username AS ${prefix}username,
+        ${alias}.first_name AS ${prefix}first_name,
+        ${alias}.last_name AS ${prefix}last_name,
+        ${alias}.phone_number AS ${prefix}phone_number,
+        ${alias}.password_hash AS ${prefix}password_hash,
+        ${alias}.profile_image_url AS ${prefix}profile_image_url,
+        ${alias}.cash_app_username AS ${prefix}cash_app_username,
+        ${alias}.cash_app_phone AS ${prefix}cash_app_phone,
+        ${alias}.venmo_username AS ${prefix}venmo_username,
+        ${alias}.venmo_phone AS ${prefix}venmo_phone,
+        ${alias}.timezone AS ${prefix}timezone,
+        ${alias}.default_location AS ${prefix}default_location,
+        ${alias}.default_location_code AS ${prefix}default_location_code,
+        ${alias}.default_city AS ${prefix}default_city,
+        ${alias}.default_country AS ${prefix}default_country,
+        ${alias}.auth_provider AS ${prefix}auth_provider,
+        ${alias}.notification_preferences AS ${prefix}notification_preferences,
+        ${alias}.has_seen_home_onboarding AS ${prefix}has_seen_home_onboarding,
+        ${alias}.has_seen_trip_onboarding AS ${prefix}has_seen_trip_onboarding,
+        ${alias}.created_at AS ${prefix}created_at,
+        ${alias}.updated_at AS ${prefix}updated_at`;
+
 const mapTrip = (row: TripRow): TripCalendar => ({
   id: row.id,
   name: row.name,
@@ -658,6 +728,82 @@ const mapExpenseWithDetails = (
     shares: row.shares,
     totalAmount: Number(baseExpense.amount ?? 0),
   } as unknown as ExpenseWithDetails;
+};
+
+const mapGroceryItem = (row: GroceryItemRow): GroceryItem => ({
+  id: row.id,
+  tripId: row.trip_id,
+  addedBy: row.added_by,
+  item: row.item,
+  category: row.category,
+  quantity: row.quantity,
+  estimatedCost: row.estimated_cost,
+  notes: row.notes,
+  isPurchased: row.is_purchased,
+  actualCost: row.actual_cost,
+  receiptLineItem: row.receipt_line_item,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapGroceryItemParticipant = (
+  row: GroceryItemParticipantRow,
+): GroceryItemParticipant => ({
+  id: row.id,
+  groceryItemId: row.grocery_item_id,
+  userId: row.user_id,
+  willConsume: row.will_consume,
+  createdAt: row.created_at,
+});
+
+const mapGroceryItemWithDetails = (
+  row: GroceryItemRow & {
+    addedByUser: User;
+    participants: (GroceryItemParticipant & { user: User })[];
+  },
+): GroceryItemWithDetails => {
+  const baseItem = mapGroceryItem(row);
+  const participants = row.participants ?? [];
+  const numericCost = parseFloat(baseItem.actualCost ?? baseItem.estimatedCost ?? "0");
+  const costPerPerson = participants.length > 0 && Number.isFinite(numericCost)
+    ? numericCost / participants.length
+    : 0;
+
+  return {
+    ...baseItem,
+    addedBy: row.addedByUser,
+    participants,
+    participantCount: participants.length,
+    costPerPerson: Number.isFinite(costPerPerson) ? costPerPerson : 0,
+  } as GroceryItemWithDetails;
+};
+
+const mapGroceryReceipt = (row: GroceryReceiptRow): GroceryReceipt => ({
+  id: row.id,
+  tripId: row.trip_id,
+  uploadedBy: row.uploaded_by,
+  receiptImageUrl: row.receipt_image_url,
+  storeName: row.store_name,
+  totalAmount: row.total_amount,
+  purchaseDate: row.purchase_date,
+  parsedItems: (row.parsed_items ?? null) as any,
+  isProcessed: row.is_processed,
+  createdAt: row.created_at,
+});
+
+const mapGroceryReceiptWithDetails = (
+  row: GroceryReceiptRow & {
+    uploadedByUser: User;
+    items: GroceryItemWithDetails[];
+  },
+): GroceryReceiptWithDetails => {
+  const baseReceipt = mapGroceryReceipt(row);
+
+  return {
+    ...baseReceipt,
+    uploadedBy: row.uploadedByUser,
+    items: row.items,
+  } as GroceryReceiptWithDetails;
 };
 
 const mapNotification = (row: NotificationRow): Notification => ({
@@ -3084,15 +3230,680 @@ export class DatabaseStorage implements IStorage {
 
     return rows[0] ? Number(rows[0].count ?? 0) : 0;
   }
-  async createGroceryItem(): Promise<GroceryItem> { throw new Error("Not implemented"); }
-  async getTripGroceryItems(): Promise<GroceryItemWithDetails[]> { throw new Error("Not implemented"); }
-  async updateGroceryItem(): Promise<GroceryItem> { throw new Error("Not implemented"); }
-  async deleteGroceryItem(): Promise<void> { throw new Error("Not implemented"); }
-  async toggleGroceryItemParticipation(): Promise<void> { throw new Error("Not implemented"); }
-  async markGroceryItemPurchased(): Promise<void> { throw new Error("Not implemented"); }
-  async createGroceryReceipt(): Promise<GroceryReceipt> { throw new Error("Not implemented"); }
-  async getTripGroceryReceipts(): Promise<GroceryReceiptWithDetails[]> { throw new Error("Not implemented"); }
-  async getGroceryBill(): Promise<{ totalCost: number; costPerPerson: number; items: GroceryItemWithDetails[] }> { throw new Error("Not implemented"); }
+  async createGroceryItem(
+    item: InsertGroceryItem,
+    userId: string,
+  ): Promise<GroceryItem> {
+    const estimatedCostValue =
+      item.estimatedCost === undefined || item.estimatedCost === null
+        ? null
+        : typeof item.estimatedCost === "number"
+          ? item.estimatedCost.toString()
+          : item.estimatedCost;
+
+    const actualCostValue =
+      item.actualCost === undefined || item.actualCost === null
+        ? null
+        : typeof item.actualCost === "number"
+          ? item.actualCost.toString()
+          : item.actualCost;
+
+    const { rows } = await query<GroceryItemRow>(
+      `
+      INSERT INTO grocery_items (
+        trip_id,
+        added_by,
+        item,
+        category,
+        quantity,
+        estimated_cost,
+        notes,
+        is_purchased,
+        actual_cost,
+        receipt_line_item
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        COALESCE($8, FALSE),
+        $9,
+        $10
+      )
+      RETURNING
+        id,
+        trip_id,
+        added_by,
+        item,
+        category,
+        quantity,
+        estimated_cost,
+        notes,
+        is_purchased,
+        actual_cost,
+        receipt_line_item,
+        created_at,
+        updated_at
+      `,
+      [
+        item.tripId,
+        userId,
+        item.item,
+        item.category,
+        item.quantity ?? null,
+        estimatedCostValue,
+        item.notes ?? null,
+        item.isPurchased ?? false,
+        actualCostValue,
+        item.receiptLineItem ?? null,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create grocery item");
+    }
+
+    return mapGroceryItem(row);
+  }
+
+  async getTripGroceryItems(
+    tripId: number,
+  ): Promise<GroceryItemWithDetails[]> {
+    const { rows } = await query<GroceryItemWithAddedByRow>(
+      `
+      SELECT
+        gi.id,
+        gi.trip_id,
+        gi.added_by,
+        gi.item,
+        gi.category,
+        gi.quantity,
+        gi.estimated_cost,
+        gi.notes,
+        gi.is_purchased,
+        gi.actual_cost,
+        gi.receipt_line_item,
+        gi.created_at,
+        gi.updated_at,
+${selectUserColumns("added_by_user", "added_by_")}
+      FROM grocery_items gi
+      JOIN users added_by_user ON added_by_user.id = gi.added_by
+      WHERE gi.trip_id = $1
+      ORDER BY gi.created_at ASC, gi.id ASC
+      `,
+      [tripId],
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const itemIds = rows.map((row) => row.id);
+
+    const { rows: participantRows } = await query<
+      GroceryItemParticipantWithUserRow
+    >(
+      `
+      SELECT
+        gip.id,
+        gip.grocery_item_id,
+        gip.user_id,
+        gip.will_consume,
+        gip.created_at,
+${selectUserColumns("participant_user", "participant_user_")}
+      FROM grocery_item_participants gip
+      JOIN users participant_user ON participant_user.id = gip.user_id
+      WHERE gip.grocery_item_id = ANY($1::int[])
+      ORDER BY gip.created_at ASC, gip.id ASC
+      `,
+      [itemIds],
+    );
+
+    const participantsByItemId = new Map<
+      number,
+      (GroceryItemParticipant & { user: User })[]
+    >();
+
+    for (const row of participantRows) {
+      const participantRow: GroceryItemParticipantRow = {
+        id: row.id,
+        grocery_item_id: row.grocery_item_id,
+        user_id: row.user_id,
+        will_consume: row.will_consume,
+        created_at: row.created_at,
+      };
+
+      const participant = mapGroceryItemParticipant(participantRow);
+      const user = mapUserFromPrefix(row, "participant_user_");
+
+      const existing = participantsByItemId.get(participant.groceryItemId);
+      if (existing) {
+        existing.push({ ...participant, user });
+      } else {
+        participantsByItemId.set(participant.groceryItemId, [
+          { ...participant, user },
+        ]);
+      }
+    }
+
+    return rows.map((row) => {
+      const itemRow: GroceryItemRow = {
+        id: row.id,
+        trip_id: row.trip_id,
+        added_by: row.added_by,
+        item: row.item,
+        category: row.category,
+        quantity: row.quantity,
+        estimated_cost: row.estimated_cost,
+        notes: row.notes,
+        is_purchased: row.is_purchased,
+        actual_cost: row.actual_cost,
+        receipt_line_item: row.receipt_line_item,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      };
+
+      const participants = participantsByItemId.get(row.id) ?? [];
+
+      return mapGroceryItemWithDetails({
+        ...itemRow,
+        addedByUser: mapUserFromPrefix(row, "added_by_"),
+        participants,
+      });
+    });
+  }
+
+  async updateGroceryItem(
+    itemId: number,
+    updates: Partial<InsertGroceryItem>,
+  ): Promise<GroceryItem> {
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 2;
+
+    const addClause = (column: string, value: unknown) => {
+      setClauses.push(`${column} = $${paramIndex}`);
+      values.push(value);
+      paramIndex += 1;
+    };
+
+    if (updates.item !== undefined) {
+      addClause("item", updates.item);
+    }
+    if (updates.category !== undefined) {
+      addClause("category", updates.category);
+    }
+    if (updates.quantity !== undefined) {
+      addClause("quantity", updates.quantity ?? null);
+    }
+    if (updates.estimatedCost !== undefined) {
+      const value =
+        updates.estimatedCost === null
+          ? null
+          : typeof updates.estimatedCost === "number"
+            ? updates.estimatedCost.toString()
+            : updates.estimatedCost;
+      addClause("estimated_cost", value);
+    }
+    if (updates.notes !== undefined) {
+      addClause("notes", updates.notes ?? null);
+    }
+    if (updates.isPurchased !== undefined) {
+      addClause("is_purchased", updates.isPurchased);
+    }
+    if (updates.actualCost !== undefined) {
+      const value =
+        updates.actualCost === null
+          ? null
+          : typeof updates.actualCost === "number"
+            ? updates.actualCost.toString()
+            : updates.actualCost;
+      addClause("actual_cost", value);
+    }
+    if (updates.receiptLineItem !== undefined) {
+      addClause("receipt_line_item", updates.receiptLineItem ?? null);
+    }
+
+    const setSql =
+      setClauses.length > 0 ? `${setClauses.join(", ")}, ` : "";
+
+    const { rows } = await query<GroceryItemRow>(
+      `
+      UPDATE grocery_items
+      SET ${setSql}updated_at = NOW()
+      WHERE id = $1
+      RETURNING
+        id,
+        trip_id,
+        added_by,
+        item,
+        category,
+        quantity,
+        estimated_cost,
+        notes,
+        is_purchased,
+        actual_cost,
+        receipt_line_item,
+        created_at,
+        updated_at
+      `,
+      [itemId, ...values],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Grocery item not found");
+    }
+
+    return mapGroceryItem(row);
+  }
+
+  async deleteGroceryItem(itemId: number): Promise<void> {
+    await query(
+      `
+      DELETE FROM grocery_item_participants
+      WHERE grocery_item_id = $1
+      `,
+      [itemId],
+    );
+
+    const { rows } = await query<{ id: number }>(
+      `
+      DELETE FROM grocery_items
+      WHERE id = $1
+      RETURNING id
+      `,
+      [itemId],
+    );
+
+    if (!rows[0]) {
+      throw new Error("Grocery item not found");
+    }
+  }
+
+  async toggleGroceryItemParticipation(
+    groceryItemId: number,
+    userId: string,
+    willConsume = true,
+  ): Promise<void> {
+    const { rows } = await query<{ id: number }>(
+      `
+      SELECT id
+      FROM grocery_item_participants
+      WHERE grocery_item_id = $1 AND user_id = $2
+      `,
+      [groceryItemId, userId],
+    );
+
+    if (rows[0]) {
+      await query(
+        `
+        DELETE FROM grocery_item_participants
+        WHERE grocery_item_id = $1 AND user_id = $2
+        `,
+        [groceryItemId, userId],
+      );
+      return;
+    }
+
+    await query(
+      `
+      INSERT INTO grocery_item_participants (
+        grocery_item_id,
+        user_id,
+        will_consume
+      )
+      VALUES ($1, $2, COALESCE($3, TRUE))
+      `,
+      [groceryItemId, userId, willConsume],
+    );
+  }
+
+  async markGroceryItemPurchased(
+    itemId: number,
+    actualCost?: string | number | null,
+    isPurchased = true,
+  ): Promise<void> {
+    if (actualCost === undefined) {
+      const { rows } = await query<{ id: number }>(
+        `
+        UPDATE grocery_items
+        SET is_purchased = $2,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING id
+        `,
+        [itemId, isPurchased],
+      );
+
+      if (!rows[0]) {
+        throw new Error("Grocery item not found");
+      }
+      return;
+    }
+
+    const actualCostValue =
+      actualCost === null
+        ? null
+        : typeof actualCost === "number"
+          ? actualCost.toString()
+          : actualCost;
+
+    const { rows } = await query<{ id: number }>(
+      `
+      UPDATE grocery_items
+      SET is_purchased = $3,
+          actual_cost = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id
+      `,
+      [itemId, actualCostValue, isPurchased],
+    );
+
+    if (!rows[0]) {
+      throw new Error("Grocery item not found");
+    }
+  }
+
+  async createGroceryReceipt(
+    receipt: InsertGroceryReceipt,
+    userId: string,
+  ): Promise<GroceryReceipt> {
+    const totalAmountValue =
+      receipt.totalAmount === undefined || receipt.totalAmount === null
+        ? "0"
+        : receipt.totalAmount.toString();
+
+    const purchaseDateValue =
+      typeof receipt.purchaseDate === "string"
+        ? new Date(receipt.purchaseDate)
+        : receipt.purchaseDate;
+
+    const { rows } = await query<GroceryReceiptRow>(
+      `
+      INSERT INTO grocery_receipts (
+        trip_id,
+        uploaded_by,
+        receipt_image_url,
+        store_name,
+        total_amount,
+        purchase_date,
+        parsed_items,
+        is_processed
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        COALESCE($8, FALSE)
+      )
+      RETURNING
+        id,
+        trip_id,
+        uploaded_by,
+        receipt_image_url,
+        store_name,
+        total_amount,
+        purchase_date,
+        parsed_items,
+        is_processed,
+        created_at
+      `,
+      [
+        receipt.tripId,
+        userId,
+        receipt.receiptImageUrl ?? null,
+        receipt.storeName ?? null,
+        totalAmountValue,
+        purchaseDateValue,
+        receipt.parsedItems ?? null,
+        receipt.isProcessed ?? false,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create grocery receipt");
+    }
+
+    return mapGroceryReceipt(row);
+  }
+
+  async getTripGroceryReceipts(
+    tripId: number,
+  ): Promise<GroceryReceiptWithDetails[]> {
+    const { rows } = await query<GroceryReceiptWithUploaderRow>(
+      `
+      SELECT
+        gr.id,
+        gr.trip_id,
+        gr.uploaded_by,
+        gr.receipt_image_url,
+        gr.store_name,
+        gr.total_amount,
+        gr.purchase_date,
+        gr.parsed_items,
+        gr.is_processed,
+        gr.created_at,
+${selectUserColumns("u", "uploaded_by_")}
+      FROM grocery_receipts gr
+      JOIN users u ON u.id = gr.uploaded_by
+      WHERE gr.trip_id = $1
+      ORDER BY gr.purchase_date DESC, gr.id DESC
+      `,
+      [tripId],
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const receiptsMap = new Map<
+      number,
+      {
+        receipt: GroceryReceiptRow;
+        uploadedByUser: User;
+        items: Map<
+          number,
+          {
+            item: GroceryItemRow;
+            addedByUser: User;
+            participants: (GroceryItemParticipant & { user: User })[];
+          }
+        >;
+      }
+    >();
+
+    for (const row of rows) {
+      receiptsMap.set(row.id, {
+        receipt: {
+          id: row.id,
+          trip_id: row.trip_id,
+          uploaded_by: row.uploaded_by,
+          receipt_image_url: row.receipt_image_url,
+          store_name: row.store_name,
+          total_amount: row.total_amount,
+          purchase_date: row.purchase_date,
+          parsed_items: row.parsed_items,
+          is_processed: row.is_processed,
+          created_at: row.created_at,
+        },
+        uploadedByUser: mapUserFromPrefix(row, "uploaded_by_"),
+        items: new Map(),
+      });
+    }
+
+    const receiptIds = rows.map((row) => row.id);
+
+    const { rows: itemRows } = await query<
+      {
+        receipt_id: number;
+        item_id: number | null;
+        item_trip_id: number | null;
+        item_added_by_id: string | null;
+        item_name: string | null;
+        item_category: string | null;
+        item_quantity: string | null;
+        item_estimated_cost: string | null;
+        item_notes: string | null;
+        item_is_purchased: boolean | null;
+        item_actual_cost: string | null;
+        item_receipt_line_item: string | null;
+        item_created_at: Date | null;
+        item_updated_at: Date | null;
+        participant_id: number | null;
+        participant_grocery_item_id: number | null;
+        participant_user_id_raw: string | null;
+        participant_will_consume: boolean | null;
+        participant_created_at: Date | null;
+      } & PrefixedUserRow<"item_added_by_"> & PrefixedUserRow<"participant_user_">
+    >(
+      `
+      SELECT
+        gr.id AS receipt_id,
+        gi.id AS item_id,
+        gi.trip_id AS item_trip_id,
+        gi.added_by AS item_added_by_id,
+        gi.item AS item_name,
+        gi.category AS item_category,
+        gi.quantity AS item_quantity,
+        gi.estimated_cost AS item_estimated_cost,
+        gi.notes AS item_notes,
+        gi.is_purchased AS item_is_purchased,
+        gi.actual_cost AS item_actual_cost,
+        gi.receipt_line_item AS item_receipt_line_item,
+        gi.created_at AS item_created_at,
+        gi.updated_at AS item_updated_at,
+${selectUserColumns("added_by_user", "item_added_by_")},
+        gip.id AS participant_id,
+        gip.grocery_item_id AS participant_grocery_item_id,
+        gip.user_id AS participant_user_id_raw,
+        gip.will_consume AS participant_will_consume,
+        gip.created_at AS participant_created_at,
+${selectUserColumns("participant_user", "participant_user_")}
+      FROM grocery_receipts gr
+      JOIN grocery_items gi ON gi.receipt_line_item = gr.id::text
+      JOIN users added_by_user ON added_by_user.id = gi.added_by
+      LEFT JOIN grocery_item_participants gip ON gip.grocery_item_id = gi.id
+      LEFT JOIN users participant_user ON participant_user.id = gip.user_id
+      WHERE gr.id = ANY($1::int[])
+      ORDER BY gr.id, gi.created_at, gi.id, gip.created_at, gip.id
+      `,
+      [receiptIds],
+    );
+
+    for (const row of itemRows) {
+      if (!row.item_id) {
+        continue;
+      }
+
+      const receiptEntry = receiptsMap.get(row.receipt_id);
+      if (!receiptEntry) {
+        continue;
+      }
+
+      let itemEntry = receiptEntry.items.get(row.item_id);
+      if (!itemEntry) {
+        const itemRow: GroceryItemRow = {
+          id: row.item_id,
+          trip_id: row.item_trip_id ?? receiptEntry.receipt.trip_id,
+          added_by: row.item_added_by_id ?? "",
+          item: row.item_name ?? "",
+          category: row.item_category ?? "",
+          quantity: row.item_quantity,
+          estimated_cost: row.item_estimated_cost,
+          notes: row.item_notes,
+          is_purchased: row.item_is_purchased ?? false,
+          actual_cost: row.item_actual_cost,
+          receipt_line_item: row.item_receipt_line_item,
+          created_at: row.item_created_at,
+          updated_at: row.item_updated_at,
+        };
+
+        itemEntry = {
+          item: itemRow,
+          addedByUser: mapUserFromPrefix(row, "item_added_by_"),
+          participants: [],
+        };
+
+        receiptEntry.items.set(row.item_id, itemEntry);
+      }
+
+      if (row.participant_id) {
+        const participantRow: GroceryItemParticipantRow = {
+          id: row.participant_id,
+          grocery_item_id: row.participant_grocery_item_id ?? itemEntry.item.id,
+          user_id: row.participant_user_id_raw ?? "",
+          will_consume: row.participant_will_consume ?? true,
+          created_at: row.participant_created_at,
+        };
+
+        itemEntry.participants.push({
+          ...mapGroceryItemParticipant(participantRow),
+          user: mapUserFromPrefix(row, "participant_user_"),
+        });
+      }
+    }
+
+    return Array.from(receiptsMap.values()).map((entry) =>
+      mapGroceryReceiptWithDetails({
+        ...entry.receipt,
+        uploadedByUser: entry.uploadedByUser,
+        items: Array.from(entry.items.values()).map((item) =>
+          mapGroceryItemWithDetails({
+            ...item.item,
+            addedByUser: item.addedByUser,
+            participants: item.participants,
+          }),
+        ),
+      }),
+    );
+  }
+
+  async getGroceryBill(
+    tripId: number,
+  ): Promise<{
+    totalCost: number;
+    costPerPerson: number;
+    items: GroceryItemWithDetails[];
+  }> {
+    const items = await this.getTripGroceryItems(tripId);
+
+    const totalCost = items.reduce((sum, item) => {
+      const value = parseFloat(item.actualCost ?? item.estimatedCost ?? "0");
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+
+    const uniqueParticipants = new Set<string>();
+    for (const item of items) {
+      for (const participant of item.participants) {
+        if (participant.userId) {
+          uniqueParticipants.add(participant.userId);
+        }
+      }
+    }
+
+    const costPerPerson =
+      uniqueParticipants.size > 0
+        ? totalCost / uniqueParticipants.size
+        : totalCost;
+
+    return {
+      totalCost,
+      costPerPerson: Number.isFinite(costPerPerson) ? costPerPerson : 0,
+      items,
+    };
+  }
   async createFlight(flight: InsertFlight, userId: string): Promise<Flight> {
     const priceValue =
       flight.price === undefined || flight.price === null
