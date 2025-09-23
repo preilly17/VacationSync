@@ -122,16 +122,35 @@ export function AddExpenseModal({
   const amountValue = form.watch("amount") || "";
   const currencyValue = form.watch("currency") || "USD";
   const selectedMemberIds = form.watch("selectedMembers") ?? [];
-  const conversionMatches =
+  const showConversion = requestCurrency !== currencyValue;
+  const conversionPreview =
+    showConversion &&
     conversionData !== null &&
     conversionData.fromCurrency === currencyValue &&
-    conversionData.toCurrency === requestCurrency;
+    conversionData.toCurrency === requestCurrency
+      ? conversionData
+      : null;
 
   useEffect(() => {
-    if (requestCurrency === currencyValue && conversionData) {
+    if (!showConversion && conversionData) {
       setConversionData(null);
     }
-  }, [conversionData, currencyValue, requestCurrency]);
+  }, [conversionData, showConversion]);
+
+  const members = trip?.members ?? [];
+  const parsedAmount = Number.parseFloat(amountValue);
+  const totalAmount = Number.isFinite(parsedAmount) ? parsedAmount : 0;
+  const memberCount = selectedMemberIds.length;
+  const hasSplits = memberCount > 0;
+  const perPersonAmount = hasSplits
+    ? conversionPreview
+      ? conversionPreview.convertedAmount / memberCount
+      : totalAmount / memberCount
+    : 0;
+  const displayCurrency = conversionPreview ? requestCurrency : currencyValue;
+
+  const formatMoney = (value: number) =>
+    Number.isFinite(value) ? value.toFixed(2) : "0.00";
 
   const createExpenseMutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -183,19 +202,22 @@ export function AddExpenseModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="!flex w-full max-w-[820px] min-h-0 flex-col !gap-0 overflow-hidden !p-0 sm:w-[92vw] md:w-[820px] max-h-[calc(100vh-2rem)] sm:max-h-[92vh]">
+      <DialogContent
+        className="flex w-full max-w-[820px] flex-col overflow-hidden p-0 sm:w-[92vw]"
+        style={{ maxHeight: "min(92vh, calc(100vh - 2rem))" }}
+      >
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="flex h-full min-h-0 flex-1 flex-col"
+            className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
           >
-            <header className="flex shrink-0 items-center border-b border-border px-6 py-5 pr-12">
+            <header className="flex items-center border-b border-border px-6 py-5 pr-12">
               <DialogTitle className="text-lg font-semibold">
                 Add New Expense
               </DialogTitle>
             </header>
 
-            <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-28 overscroll-contain sm:pb-10">
+            <div className="min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-24 overscroll-contain sm:pb-8">
               <FormField
                 control={form.control}
                 name="description"
@@ -222,7 +244,7 @@ export function AddExpenseModal({
                     form.setValue("currency", currency)
                   }
                   tripId={tripId}
-                  showConversion={requestCurrency !== currencyValue}
+                  showConversion={showConversion}
                   onConversionChange={(conversion) =>
                     setConversionData(conversion)
                   }
@@ -252,24 +274,24 @@ export function AddExpenseModal({
                     </Select>
                   </div>
                   <p className="min-h-[18px] text-xs text-blue-700">
-                    {requestCurrency === currencyValue
-                      ? "Using original expense currency - no conversion needed"
-                      : `Payment requests will use ${requestCurrency} (converted from ${currencyValue})`}
+                    {showConversion
+                      ? `Payment requests will use ${requestCurrency} (converted from ${currencyValue})`
+                      : "Using original expense currency - no conversion needed"}
                   </p>
                 </div>
 
                 <div className="flex min-h-[44px] flex-col justify-center rounded-lg border border-green-200 bg-green-50 p-3">
-                  {requestCurrency !== currencyValue ? (
-                    conversionMatches ? (
+                  {showConversion ? (
+                    conversionPreview ? (
                       <div className="flex flex-col gap-2 text-sm text-green-800 sm:flex-row sm:items-center sm:justify-between">
                         <span>
                           {currencyValue} {amountValue || "0"} = {requestCurrency}{" "}
-                          {conversionData?.convertedAmount.toFixed(2)}
+                          {conversionPreview.convertedAmount.toFixed(2)}
                         </span>
                         <span className="text-xs text-green-600">
-                          Rate: 1 {conversionData?.fromCurrency} ={" "}
-                          {conversionData?.rate.toFixed(4)}{" "}
-                          {conversionData?.toCurrency}
+                          Rate: 1 {conversionPreview.fromCurrency} ={" "}
+                          {conversionPreview.rate.toFixed(4)}{" "}
+                          {conversionPreview.toCurrency}
                         </span>
                       </div>
                     ) : (
@@ -341,8 +363,8 @@ export function AddExpenseModal({
                           Select members to split this expense with
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="flex flex-col gap-3">
-                        {trip?.members?.map((member) => {
+                      <CardContent className="space-y-3">
+                        {members.map((member) => {
                           const isSelected = field.value.includes(
                             member.user.id,
                           );
@@ -414,25 +436,10 @@ export function AddExpenseModal({
                                   </div>
                                 </div>
                               </div>
-                              {isSelected && field.value.length > 0 && (
+                              {isSelected && hasSplits && (
                                 <div className="flex shrink-0 flex-col items-start gap-1 text-left sm:items-end sm:text-right">
                                   <p className="text-sm font-medium">
-                                    {(() => {
-                                      const expenseCurrency = currencyValue;
-                                      const originalAmount = parseFloat(
-                                        amountValue || "0",
-                                      );
-
-                                      if (
-                                        requestCurrency !== expenseCurrency &&
-                                        conversionMatches &&
-                                        conversionData
-                                      ) {
-                                        return `${requestCurrency} ${(conversionData.convertedAmount / field.value.length).toFixed(2)}`;
-                                      }
-
-                                      return `${expenseCurrency} ${(originalAmount / field.value.length).toFixed(2)}`;
-                                    })()}
+                                    {`${displayCurrency} ${formatMoney(perPersonAmount)}`}
                                   </p>
                                   <p className="text-xs text-gray-500">
                                     per person
@@ -451,7 +458,7 @@ export function AddExpenseModal({
                 )}
               />
 
-              {selectedMemberIds.length > 0 && (
+              {hasSplits && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-sm font-medium">
@@ -459,36 +466,14 @@ export function AddExpenseModal({
                       Payment App Quick Links
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="flex flex-col gap-3">
+                  <CardContent className="space-y-3">
                     {selectedMemberIds.map((memberId) => {
-                      const member = trip?.members?.find(
+                      const member = members.find(
                         (m) => m.user.id === memberId,
                       )?.user;
                       if (!member) return null;
 
-                      const expenseCurrency = currencyValue;
-                      const originalAmount = parseFloat(amountValue || "0");
-                      const matchedConversion = conversionMatches
-                        ? conversionData
-                        : null;
-                      const conversionActive =
-                        requestCurrency !== expenseCurrency && matchedConversion
-                          ? matchedConversion
-                          : null;
-
-                      const splitAmount = conversionActive
-                        ? (
-                            conversionActive.convertedAmount /
-                            selectedMemberIds.length
-                          ).toFixed(2)
-                        : (
-                            originalAmount /
-                            selectedMemberIds.length
-                          ).toFixed(2);
-
-                      const displayCurrency = conversionActive
-                        ? requestCurrency
-                        : expenseCurrency;
+                      const splitAmount = formatMoney(perPersonAmount);
 
                       return (
                         <div
@@ -520,8 +505,9 @@ export function AddExpenseModal({
                                   member,
                                   splitAmount,
                                 );
-                                const expenseName =
-                                  form.getValues().description;
+                                const expenseName = form.getValues(
+                                  "description",
+                                );
                                 const venmoUrl = generateVenmoUrl(
                                   member,
                                   splitAmount,
@@ -632,7 +618,7 @@ export function AddExpenseModal({
               />
             </div>
 
-            <footer className="sticky bottom-0 z-10 flex min-h-[72px] shrink-0 flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
+            <footer className="row-start-3 sticky bottom-0 z-10 flex min-h-[72px] flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button
                 type="button"
                 variant="outline"
