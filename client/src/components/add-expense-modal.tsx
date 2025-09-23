@@ -119,6 +119,20 @@ export function AddExpenseModal({
     },
   });
 
+  const amountValue = form.watch("amount") || "";
+  const currencyValue = form.watch("currency") || "USD";
+  const selectedMemberIds = form.watch("selectedMembers") ?? [];
+  const conversionMatches =
+    conversionData !== null &&
+    conversionData.fromCurrency === currencyValue &&
+    conversionData.toCurrency === requestCurrency;
+
+  useEffect(() => {
+    if (requestCurrency === currencyValue && conversionData) {
+      setConversionData(null);
+    }
+  }, [conversionData, currencyValue, requestCurrency]);
+
   const createExpenseMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const totalAmount = parseFloat(data.amount);
@@ -169,11 +183,11 @@ export function AddExpenseModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex w-full max-w-[820px] flex-col overflow-hidden p-0 gap-0 max-h-[calc(100vh-2rem)] sm:w-[92vw] sm:max-h-[92vh] md:w-[820px]">
+      <DialogContent className="flex w-full max-w-[820px] min-h-0 flex-col gap-0 overflow-hidden p-0 sm:w-[92vw] md:w-[820px] max-h-[calc(100vh-2rem)] sm:max-h-[92vh]">
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="flex h-full min-h-0 flex-1 flex-col"
+            className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
           >
             <header className="flex items-center border-b border-border px-6 py-5 pr-12">
               <DialogTitle className="text-lg font-semibold">
@@ -181,7 +195,7 @@ export function AddExpenseModal({
               </DialogTitle>
             </header>
 
-            <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-24 overscroll-contain sm:pb-8">
+            <div className="min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-28 overscroll-contain sm:pb-10">
               <FormField
                 control={form.control}
                 name="description"
@@ -191,7 +205,9 @@ export function AddExpenseModal({
                     <FormControl>
                       <Input placeholder="What did you spend on?" {...field} />
                     </FormControl>
-                    <FormMessage />
+                    <div className="min-h-[18px]">
+                      <FormMessage className="text-xs" />
+                    </div>
                   </FormItem>
                 )}
               />
@@ -199,16 +215,14 @@ export function AddExpenseModal({
               <div className="space-y-3">
                 <FormLabel>Amount &amp; Currency</FormLabel>
                 <CurrencyConverter
-                  amount={form.watch("amount") || ""}
+                  amount={amountValue}
                   onAmountChange={(amount) => form.setValue("amount", amount)}
-                  currency={form.watch("currency") || "USD"}
+                  currency={currencyValue}
                   onCurrencyChange={(currency) =>
                     form.setValue("currency", currency)
                   }
                   tripId={tripId}
-                  showConversion={
-                    requestCurrency !== (form.watch("currency") || "USD")
-                  }
+                  showConversion={requestCurrency !== currencyValue}
                   onConversionChange={(conversion) =>
                     setConversionData(conversion)
                   }
@@ -238,25 +252,24 @@ export function AddExpenseModal({
                     </Select>
                   </div>
                   <p className="min-h-[18px] text-xs text-blue-700">
-                    {requestCurrency === (form.watch("currency") || "USD")
+                    {requestCurrency === currencyValue
                       ? "Using original expense currency - no conversion needed"
-                      : `Payment requests will use ${requestCurrency} (converted from ${form.watch("currency") || "USD"})`}
+                      : `Payment requests will use ${requestCurrency} (converted from ${currencyValue})`}
                   </p>
                 </div>
 
                 <div className="flex min-h-[44px] flex-col justify-center rounded-lg border border-green-200 bg-green-50 p-3">
-                  {requestCurrency !== (form.watch("currency") || "USD") ? (
-                    conversionData ? (
+                  {requestCurrency !== currencyValue ? (
+                    conversionMatches ? (
                       <div className="flex flex-col gap-2 text-sm text-green-800 sm:flex-row sm:items-center sm:justify-between">
                         <span>
-                          {form.watch("currency")} {form.watch("amount")} ={" "}
-                          {requestCurrency}{" "}
-                          {conversionData.convertedAmount.toFixed(2)}
+                          {currencyValue} {amountValue || "0"} = {requestCurrency}{" "}
+                          {conversionData?.convertedAmount.toFixed(2)}
                         </span>
                         <span className="text-xs text-green-600">
-                          Rate: 1 {conversionData.fromCurrency} ={" "}
-                          {conversionData.rate.toFixed(4)}{" "}
-                          {conversionData.toCurrency}
+                          Rate: 1 {conversionData?.fromCurrency} ={" "}
+                          {conversionData?.rate.toFixed(4)}{" "}
+                          {conversionData?.toCurrency}
                         </span>
                       </div>
                     ) : (
@@ -309,7 +322,9 @@ export function AddExpenseModal({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <div className="min-h-[18px]">
+                      <FormMessage className="text-xs" />
+                    </div>
                   </FormItem>
                 )}
               />
@@ -326,7 +341,7 @@ export function AddExpenseModal({
                           Select members to split this expense with
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-3">
+                      <CardContent className="flex flex-col gap-3">
                         {trip?.members?.map((member) => {
                           const isSelected = field.value.includes(
                             member.user.id,
@@ -334,9 +349,9 @@ export function AddExpenseModal({
                           return (
                             <div
                               key={member.user.id}
-                              className="flex flex-col gap-3 rounded-lg border p-3 transition hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
+                              className="flex flex-wrap items-start gap-3 rounded-lg border p-3 transition hover:bg-muted/60 sm:items-center"
                             >
-                              <div className="flex items-start gap-3 sm:items-center">
+                              <div className="flex flex-1 items-start gap-3 sm:items-center">
                                 <Checkbox
                                   id={member.user.id}
                                   checked={isSelected}
@@ -362,12 +377,12 @@ export function AddExpenseModal({
                                       "U"}
                                   </AvatarFallback>
                                 </Avatar>
-                                <div className="min-w-0">
+                                <div className="min-w-0 flex-1">
                                   <p className="truncate text-sm font-medium">
                                     {member.user.firstName}{" "}
                                     {member.user.lastName}
                                   </p>
-                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                     {(member.user.cashAppUsername ||
                                       member.user.phoneNumber) && (
                                       <Badge
@@ -400,17 +415,17 @@ export function AddExpenseModal({
                                 </div>
                               </div>
                               {isSelected && field.value.length > 0 && (
-                                <div className="sm:text-right">
+                                <div className="flex shrink-0 flex-col items-start gap-1 text-left sm:items-end sm:text-right">
                                   <p className="text-sm font-medium">
                                     {(() => {
-                                      const expenseCurrency =
-                                        form.watch("currency") || "USD";
+                                      const expenseCurrency = currencyValue;
                                       const originalAmount = parseFloat(
-                                        form.watch("amount") || "0",
+                                        amountValue || "0",
                                       );
 
                                       if (
                                         requestCurrency !== expenseCurrency &&
+                                        conversionMatches &&
                                         conversionData
                                       ) {
                                         return `${requestCurrency} ${(conversionData.convertedAmount / field.value.length).toFixed(2)}`;
@@ -429,12 +444,14 @@ export function AddExpenseModal({
                         })}
                       </CardContent>
                     </Card>
-                    <FormMessage className="min-h-[18px]" />
+                    <div className="min-h-[18px]">
+                      <FormMessage className="text-xs" />
+                    </div>
                   </FormItem>
                 )}
               />
 
-              {form.watch("selectedMembers")?.length > 0 && (
+              {selectedMemberIds.length > 0 && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-sm font-medium">
@@ -442,35 +459,41 @@ export function AddExpenseModal({
                       Payment App Quick Links
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-3">
-                    {form.watch("selectedMembers")?.map((memberId) => {
+                  <CardContent className="flex flex-col gap-3">
+                    {selectedMemberIds.map((memberId) => {
                       const member = trip?.members?.find(
                         (m) => m.user.id === memberId,
                       )?.user;
                       if (!member) return null;
 
-                      const expenseCurrency = form.watch("currency") || "USD";
-                      const originalAmount = parseFloat(
-                        form.watch("amount") || "0",
-                      );
+                      const expenseCurrency = currencyValue;
+                      const originalAmount = parseFloat(amountValue || "0");
+                      const matchedConversion = conversionMatches
+                        ? conversionData
+                        : null;
+                      const conversionActive =
+                        requestCurrency !== expenseCurrency && matchedConversion
+                          ? matchedConversion
+                          : null;
 
-                      const splitAmount =
-                        requestCurrency !== expenseCurrency && conversionData
-                          ? (
-                              conversionData.convertedAmount /
-                              form.watch("selectedMembers").length
-                            ).toFixed(2)
-                          : (
-                              originalAmount /
-                              form.watch("selectedMembers").length
-                            ).toFixed(2);
+                      const splitAmount = conversionActive
+                        ? (
+                            conversionActive.convertedAmount /
+                            selectedMemberIds.length
+                          ).toFixed(2)
+                        : (
+                            originalAmount /
+                            selectedMemberIds.length
+                          ).toFixed(2);
 
-                      const displayCurrency = requestCurrency;
+                      const displayCurrency = conversionActive
+                        ? requestCurrency
+                        : expenseCurrency;
 
                       return (
                         <div
                           key={memberId}
-                          className="flex flex-col gap-3 rounded-lg bg-gray-50 p-3 sm:flex-row sm:items-center sm:justify-between"
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"
                         >
                           <div className="flex items-center gap-2">
                             <Avatar className="h-6 w-6">
@@ -487,7 +510,7 @@ export function AddExpenseModal({
                               {member.firstName} {member.lastName}
                             </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          <div className="flex flex-1 flex-wrap items-center gap-2 sm:justify-end">
                             <span className="whitespace-nowrap text-sm font-medium">
                               {displayCurrency} {splitAmount}
                             </span>
@@ -601,13 +624,15 @@ export function AddExpenseModal({
                         value={field.value || ""}
                       />
                     </FormControl>
-                    <FormMessage />
+                    <div className="min-h-[18px]">
+                      <FormMessage className="text-xs" />
+                    </div>
                   </FormItem>
                 )}
               />
             </div>
 
-            <footer className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
+            <footer className="sticky bottom-0 z-10 flex min-h-[72px] shrink-0 flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button
                 type="button"
                 variant="outline"
