@@ -211,7 +211,7 @@ export function AddExpenseModal({
             onSubmit={form.handleSubmit(onSubmit)}
             className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
           >
-            <header className="flex items-center border-b border-border px-6 py-5 pr-12">
+            <header className="flex shrink-0 items-center border-b border-border px-6 py-5 pr-12">
               <DialogTitle className="text-lg font-semibold">
                 Add New Expense
               </DialogTitle>
