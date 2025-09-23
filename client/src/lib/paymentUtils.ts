@@ -8,7 +8,9 @@ export interface PaymentUser {
   lastName?: string | null;
   phoneNumber?: string | null;
   cashAppUsername?: string | null;
+  cashAppUsernameLegacy?: string | null;
   cashAppPhone?: string | null;
+  cashAppPhoneLegacy?: string | null;
   venmoUsername?: string | null;
   venmoPhone?: string | null;
 }
@@ -38,16 +40,18 @@ export function formatPhoneForPayment(phone: string): string {
  */
 export function generateCashAppUrl(user: PaymentUser, amount: string): string | null {
   // Try phone number first (more direct integration)
-  if (user.cashAppPhone || user.phoneNumber) {
-    const phone = formatPhoneForPayment(user.cashAppPhone || user.phoneNumber!);
+  const cashAppPhone = user.cashAppPhone || user.cashAppPhoneLegacy;
+  if (cashAppPhone || user.phoneNumber) {
+    const phone = formatPhoneForPayment(cashAppPhone || user.phoneNumber!);
     return `https://cash.app/$${phone}/${amount}`;
   }
-  
+
   // Fallback to username
-  if (user.cashAppUsername) {
-    return `https://cash.app/$${user.cashAppUsername}/${amount}`;
+  const cashAppUsername = user.cashAppUsername || user.cashAppUsernameLegacy;
+  if (cashAppUsername) {
+    return `https://cash.app/$${cashAppUsername}/${amount}`;
   }
-  
+
   return null;
 }
 
@@ -78,9 +82,11 @@ export function generateVenmoUrl(user: PaymentUser, amount: string, note?: strin
  */
 export function hasPaymentMethods(user: PaymentUser): boolean {
   return !!(
-    user.cashAppUsername || 
-    user.cashAppPhone || 
-    user.venmoUsername || 
+    user.cashAppUsername ||
+    user.cashAppUsernameLegacy ||
+    user.cashAppPhone ||
+    user.cashAppPhoneLegacy ||
+    user.venmoUsername ||
     user.venmoPhone ||
     user.phoneNumber
   );
@@ -91,8 +97,14 @@ export function hasPaymentMethods(user: PaymentUser): boolean {
  */
 export function getAvailablePaymentMethods(user: PaymentUser): string[] {
   const methods: string[] = [];
-  
-  if (user.cashAppUsername || user.cashAppPhone || user.phoneNumber) {
+
+  if (
+    user.cashAppUsername ||
+    user.cashAppUsernameLegacy ||
+    user.cashAppPhone ||
+    user.cashAppPhoneLegacy ||
+    user.phoneNumber
+  ) {
     methods.push('CashApp');
   }
   

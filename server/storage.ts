@@ -61,6 +61,23 @@ import {
   type InsertUserTipPreferences,
 } from "@shared/schema";
 
+const toNumber = (value: string | number): number => {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(parsed)) {
+    throw new Error(`Invalid numeric value received from database: ${value}`);
+  }
+  return parsed;
+};
+
+const toNumberOrNull = (
+  value: string | number | null | undefined,
+): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return toNumber(value);
+};
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -94,7 +111,9 @@ const mapUser = (row: UserRow): User => ({
   passwordHash: row.password_hash ?? null,
   profileImageUrl: null,
   cashAppUsername: null,
+  cashAppUsernameLegacy: null,
   cashAppPhone: null,
+  cashAppPhoneLegacy: null,
   venmoUsername: null,
   venmoPhone: null,
   timezone: null,
@@ -120,6 +139,8 @@ type UserDetailsRow = {
   password_hash: string | null;
   profile_image_url: string | null;
   cashapp_username: string | null;
+  cash_app_username: string | null | undefined;
+  cashapp_phone: string | null | undefined;
   cash_app_phone: string | null;
   venmo_username: string | null;
   venmo_phone: string | null;
@@ -542,31 +563,48 @@ type InsertTravelTipInput = Omit<InsertTravelTip, "isActive"> & {
 const mapUserFromPrefix = (
   row: Record<string, unknown>,
   prefix: string,
-): User => ({
-  id: (row[`${prefix}id`] as string) ?? "",
-  email: (row[`${prefix}email`] as string) ?? "",
-  username: (row[`${prefix}username`] as string | null) ?? null,
-  firstName: (row[`${prefix}first_name`] as string | null) ?? null,
-  lastName: (row[`${prefix}last_name`] as string | null) ?? null,
-  phoneNumber: (row[`${prefix}phone_number`] as string | null) ?? null,
-  passwordHash: (row[`${prefix}password_hash`] as string | null) ?? null,
-  profileImageUrl: (row[`${prefix}profile_image_url`] as string | null) ?? null,
-  cashAppUsername: (row[`${prefix}cashapp_username`] as string | null) ?? null,
-  cashAppPhone: (row[`${prefix}cash_app_phone`] as string | null) ?? null,
-  venmoUsername: (row[`${prefix}venmo_username`] as string | null) ?? null,
-  venmoPhone: (row[`${prefix}venmo_phone`] as string | null) ?? null,
-  timezone: (row[`${prefix}timezone`] as string | null) ?? null,
-  defaultLocation: (row[`${prefix}default_location`] as string | null) ?? null,
-  defaultLocationCode: (row[`${prefix}default_location_code`] as string | null) ?? null,
-  defaultCity: (row[`${prefix}default_city`] as string | null) ?? null,
-  defaultCountry: (row[`${prefix}default_country`] as string | null) ?? null,
-  authProvider: (row[`${prefix}auth_provider`] as string | null) ?? null,
-  notificationPreferences: (row[`${prefix}notification_preferences`] as User["notificationPreferences"]) ?? null,
-  hasSeenHomeOnboarding: Boolean(row[`${prefix}has_seen_home_onboarding`]),
-  hasSeenTripOnboarding: Boolean(row[`${prefix}has_seen_trip_onboarding`]),
-  createdAt: (row[`${prefix}created_at`] as Date | null) ?? null,
-  updatedAt: (row[`${prefix}updated_at`] as Date | null) ?? null,
-});
+): User => {
+  const cashAppUsernameLegacy =
+    (row[`${prefix}cashapp_username`] as string | null | undefined) ?? null;
+  const cashAppUsername =
+    (row[`${prefix}cash_app_username`] as string | null | undefined) ??
+    cashAppUsernameLegacy;
+  const cashAppPhoneLegacy =
+    (row[`${prefix}cashapp_phone`] as string | null | undefined) ?? null;
+  const cashAppPhone =
+    (row[`${prefix}cash_app_phone`] as string | null | undefined) ??
+    cashAppPhoneLegacy;
+
+  return {
+    id: (row[`${prefix}id`] as string) ?? "",
+    email: (row[`${prefix}email`] as string) ?? "",
+    username: (row[`${prefix}username`] as string | null) ?? null,
+    firstName: (row[`${prefix}first_name`] as string | null) ?? null,
+    lastName: (row[`${prefix}last_name`] as string | null) ?? null,
+    phoneNumber: (row[`${prefix}phone_number`] as string | null) ?? null,
+    passwordHash: (row[`${prefix}password_hash`] as string | null) ?? null,
+    profileImageUrl: (row[`${prefix}profile_image_url`] as string | null) ?? null,
+    cashAppUsername,
+    cashAppUsernameLegacy,
+    cashAppPhone,
+    cashAppPhoneLegacy,
+    venmoUsername: (row[`${prefix}venmo_username`] as string | null) ?? null,
+    venmoPhone: (row[`${prefix}venmo_phone`] as string | null) ?? null,
+    timezone: (row[`${prefix}timezone`] as string | null) ?? null,
+    defaultLocation: (row[`${prefix}default_location`] as string | null) ?? null,
+    defaultLocationCode: (row[`${prefix}default_location_code`] as string | null) ?? null,
+    defaultCity: (row[`${prefix}default_city`] as string | null) ?? null,
+    defaultCountry: (row[`${prefix}default_country`] as string | null) ?? null,
+    authProvider: (row[`${prefix}auth_provider`] as string | null) ?? null,
+    notificationPreferences:
+      (row[`${prefix}notification_preferences`] as User["notificationPreferences"]) ??
+      null,
+    hasSeenHomeOnboarding: Boolean(row[`${prefix}has_seen_home_onboarding`]),
+    hasSeenTripOnboarding: Boolean(row[`${prefix}has_seen_trip_onboarding`]),
+    createdAt: (row[`${prefix}created_at`] as Date | null) ?? null,
+    updatedAt: (row[`${prefix}updated_at`] as Date | null) ?? null,
+  };
+};
 
 const selectUserColumns = (alias: string, prefix: string) => `
         ${alias}.id AS ${prefix}id,
@@ -578,6 +616,8 @@ const selectUserColumns = (alias: string, prefix: string) => `
         ${alias}.password_hash AS ${prefix}password_hash,
         ${alias}.profile_image_url AS ${prefix}profile_image_url,
         ${alias}.cashapp_username AS ${prefix}cashapp_username,
+        ${alias}.cash_app_username AS ${prefix}cash_app_username,
+        ${alias}.cashapp_phone AS ${prefix}cashapp_phone,
         ${alias}.cash_app_phone AS ${prefix}cash_app_phone,
         ${alias}.venmo_username AS ${prefix}venmo_username,
         ${alias}.venmo_phone AS ${prefix}venmo_phone,
@@ -641,7 +681,7 @@ const mapActivity = (row: ActivityRow): Activity => ({
   startTime: row.start_time,
   endTime: row.end_time,
   location: row.location,
-  cost: row.cost,
+  cost: toNumberOrNull(row.cost),
   maxCapacity: row.max_capacity,
   category: row.category,
   createdAt: row.created_at,
@@ -690,9 +730,9 @@ const mapExpense = (row: ExpenseRow): Expense => ({
   id: row.id,
   tripId: row.trip_id,
   paidBy: row.paid_by,
-  amount: row.amount,
+  amount: toNumber(row.amount),
   currency: row.currency,
-  exchangeRate: row.exchange_rate,
+  exchangeRate: toNumberOrNull(row.exchange_rate),
   originalCurrency: row.original_currency,
   convertedAmounts: (row.converted_amounts ?? null) as any,
   description: row.description,
@@ -709,7 +749,7 @@ const mapExpenseShare = (row: ExpenseShareRow): ExpenseShare => ({
   id: row.id,
   expenseId: row.expense_id,
   userId: row.user_id,
-  amount: row.amount,
+  amount: toNumber(row.amount),
   isPaid: row.is_paid,
   paidAt: row.paid_at,
   createdAt: row.created_at,
@@ -727,7 +767,7 @@ const mapExpenseWithDetails = (
     paidBy: mapUserFromPrefix(row, "paid_by_"),
     activity: row.activity,
     shares: row.shares,
-    totalAmount: Number(baseExpense.amount ?? 0),
+    totalAmount: baseExpense.amount,
   } as unknown as ExpenseWithDetails;
 };
 
@@ -796,10 +836,10 @@ const mapGroceryItem = (row: GroceryItemRow): GroceryItem => ({
   item: row.item,
   category: row.category,
   quantity: row.quantity,
-  estimatedCost: row.estimated_cost,
+  estimatedCost: toNumberOrNull(row.estimated_cost),
   notes: parseGroceryNotes(row.notes),
   isPurchased: row.is_purchased,
-  actualCost: row.actual_cost,
+  actualCost: toNumberOrNull(row.actual_cost),
   receiptLineItem: row.receipt_line_item,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
@@ -823,10 +863,11 @@ const mapGroceryItemWithDetails = (
 ): GroceryItemWithDetails => {
   const baseItem = mapGroceryItem(row);
   const participants = row.participants ?? [];
-  const numericCost = parseFloat(baseItem.actualCost ?? baseItem.estimatedCost ?? "0");
-  const costPerPerson = participants.length > 0 && Number.isFinite(numericCost)
-    ? numericCost / participants.length
-    : 0;
+  const numericCost = baseItem.actualCost ?? baseItem.estimatedCost;
+  const costPerPerson =
+    numericCost != null && participants.length > 0
+      ? numericCost / participants.length
+      : 0;
 
   return {
     ...baseItem,
@@ -843,7 +884,7 @@ const mapGroceryReceipt = (row: GroceryReceiptRow): GroceryReceipt => ({
   uploadedBy: row.uploaded_by,
   receiptImageUrl: row.receipt_image_url,
   storeName: row.store_name,
-  totalAmount: row.total_amount,
+  totalAmount: toNumber(row.total_amount),
   purchaseDate: row.purchase_date,
   parsedItems: (row.parsed_items ?? null) as any,
   isProcessed: row.is_processed,
@@ -898,7 +939,7 @@ const mapFlight = (row: FlightRow): Flight => ({
   bookingReference: row.booking_reference,
   seatNumber: row.seat_number,
   seatClass: row.seat_class,
-  price: row.price,
+  price: toNumberOrNull(row.price),
   currency: row.currency,
   flightType: row.flight_type,
   status: row.status,
@@ -937,18 +978,13 @@ const mapHotel = (row: HotelRow): Hotel => ({
   userId: row.user_id,
   hotelName: row.hotel_name,
   hotelChain: row.hotel_chain,
-  hotelRating:
-    row.hotel_rating === null
-      ? null
-      : typeof row.hotel_rating === "number"
-        ? row.hotel_rating
-        : Number(row.hotel_rating),
+  hotelRating: toNumberOrNull(row.hotel_rating as string | number | null),
   address: row.address,
   city: row.city,
   country: row.country,
   zipCode: row.zip_code,
-  latitude: row.latitude,
-  longitude: row.longitude,
+  latitude: toNumberOrNull(row.latitude),
+  longitude: toNumberOrNull(row.longitude),
   checkInDate: row.check_in_date,
   checkOutDate: row.check_out_date,
   roomType: row.room_type,
@@ -965,8 +1001,8 @@ const mapHotel = (row: HotelRow): Hotel => ({
         ? row.guest_count
         : Number(row.guest_count),
   bookingReference: row.booking_reference,
-  totalPrice: row.total_price,
-  pricePerNight: row.price_per_night,
+  totalPrice: toNumberOrNull(row.total_price),
+  pricePerNight: toNumberOrNull(row.price_per_night),
   currency: row.currency,
   status: row.status,
   bookingSource: row.booking_source,
@@ -1012,13 +1048,13 @@ const mapRestaurant = (row: RestaurantRow): Restaurant => ({
   city: row.city,
   country: row.country,
   zipCode: row.zip_code,
-  latitude: row.latitude,
-  longitude: row.longitude,
+  latitude: toNumberOrNull(row.latitude),
+  longitude: toNumberOrNull(row.longitude),
   phoneNumber: row.phone_number,
   website: row.website,
   openTableUrl: row.open_table_url,
   priceRange: row.price_range,
-  rating: row.rating,
+  rating: toNumberOrNull(row.rating),
   reservationDate: row.reservation_date,
   reservationTime: row.reservation_time,
   partySize: row.party_size,
@@ -1093,9 +1129,9 @@ const mapUserTipPreferences = (
   userId: row.user_id,
   preferredCategories:
     (row.preferred_categories as UserTipPreferences["preferredCategories"]) ??
-    [],
+    null,
   dismissedTips:
-    (row.dismissed_tips as UserTipPreferences["dismissedTips"]) ?? [],
+    (row.dismissed_tips as UserTipPreferences["dismissedTips"]) ?? null,
   preferredLanguage: row.preferred_language,
   showSeasonalTips: row.show_seasonal_tips,
   showLocationTips: row.show_location_tips,
@@ -1744,6 +1780,8 @@ export class DatabaseStorage implements IStorage {
         creator.password_hash AS creator_password_hash,
         creator.profile_image_url AS creator_profile_image_url,
         creator.cashapp_username AS creator_cashapp_username,
+        creator.cash_app_username AS creator_cash_app_username,
+        creator.cashapp_phone AS creator_cashapp_phone,
         creator.cash_app_phone AS creator_cash_app_phone,
         creator.venmo_username AS creator_venmo_username,
         creator.venmo_phone AS creator_venmo_phone,
@@ -1792,6 +1830,8 @@ export class DatabaseStorage implements IStorage {
         creator.password_hash AS creator_password_hash,
         creator.profile_image_url AS creator_profile_image_url,
         creator.cashapp_username AS creator_cashapp_username,
+        creator.cash_app_username AS creator_cash_app_username,
+        creator.cashapp_phone AS creator_cashapp_phone,
         creator.cash_app_phone AS creator_cash_app_phone,
         creator.venmo_username AS creator_venmo_username,
         creator.venmo_phone AS creator_venmo_phone,
@@ -1838,6 +1878,8 @@ export class DatabaseStorage implements IStorage {
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -1879,14 +1921,7 @@ export class DatabaseStorage implements IStorage {
     activity: InsertActivity,
     userId: string,
   ): Promise<Activity> {
-    const costValue =
-      activity.cost === undefined || activity.cost === null
-        ? null
-        : typeof activity.cost === "string"
-          ? activity.cost.trim() === ""
-            ? null
-            : activity.cost
-          : activity.cost;
+    const costValue = activity.cost ?? null;
 
     const maxCapacityInput = activity.maxCapacity;
     const parsedMaxCapacity =
@@ -1979,6 +2014,8 @@ export class DatabaseStorage implements IStorage {
         u.password_hash AS poster_password_hash,
         u.profile_image_url AS poster_profile_image_url,
         u.cashapp_username AS poster_cashapp_username,
+        u.cash_app_username AS poster_cash_app_username,
+        u.cashapp_phone AS poster_cashapp_phone,
         u.cash_app_phone AS poster_cash_app_phone,
         u.venmo_username AS poster_venmo_username,
         u.venmo_phone AS poster_venmo_phone,
@@ -2023,6 +2060,8 @@ export class DatabaseStorage implements IStorage {
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -2062,6 +2101,8 @@ export class DatabaseStorage implements IStorage {
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -2190,6 +2231,8 @@ export class DatabaseStorage implements IStorage {
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -2288,6 +2331,8 @@ export class DatabaseStorage implements IStorage {
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -2550,6 +2595,8 @@ export class DatabaseStorage implements IStorage {
         u.password_hash AS paid_by_password_hash,
         u.profile_image_url AS paid_by_profile_image_url,
         u.cashapp_username AS paid_by_cashapp_username,
+        u.cash_app_username AS paid_by_cash_app_username,
+        u.cashapp_phone AS paid_by_cashapp_phone,
         u.cash_app_phone AS paid_by_cash_app_phone,
         u.venmo_username AS paid_by_venmo_username,
         u.venmo_phone AS paid_by_venmo_phone,
@@ -2597,6 +2644,8 @@ export class DatabaseStorage implements IStorage {
         su.password_hash AS share_user_password_hash,
         su.profile_image_url AS share_user_profile_image_url,
         su.cashapp_username AS share_user_cashapp_username,
+        su.cash_app_username AS share_user_cash_app_username,
+        su.cashapp_phone AS share_user_cashapp_phone,
         su.cash_app_phone AS share_user_cash_app_phone,
         su.venmo_username AS share_user_venmo_username,
         su.venmo_phone AS share_user_venmo_phone,
@@ -3035,6 +3084,8 @@ export class DatabaseStorage implements IStorage {
         su.password_hash AS share_user_password_hash,
         su.profile_image_url AS share_user_profile_image_url,
         su.cashapp_username AS share_user_cashapp_username,
+        su.cash_app_username AS share_user_cash_app_username,
+        su.cashapp_phone AS share_user_cashapp_phone,
         su.cash_app_phone AS share_user_cash_app_phone,
         su.venmo_username AS share_user_venmo_username,
         su.venmo_phone AS share_user_venmo_phone,
@@ -3331,18 +3382,9 @@ export class DatabaseStorage implements IStorage {
     userId: string,
   ): Promise<GroceryItem> {
     const estimatedCostValue =
-      item.estimatedCost === undefined || item.estimatedCost === null
-        ? null
-        : typeof item.estimatedCost === "number"
-          ? item.estimatedCost.toString()
-          : item.estimatedCost;
+      item.estimatedCost === undefined ? null : item.estimatedCost;
 
-    const actualCostValue =
-      item.actualCost === undefined || item.actualCost === null
-        ? null
-        : typeof item.actualCost === "number"
-          ? item.actualCost.toString()
-          : item.actualCost;
+    const actualCostValue = item.actualCost === undefined ? null : item.actualCost;
 
     const notesValue = serializeGroceryNotes(item.notes ?? null);
 
@@ -3572,13 +3614,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       addClause("quantity", updates.quantity ?? null);
     }
     if (updates.estimatedCost !== undefined) {
-      const value =
-        updates.estimatedCost === null
-          ? null
-          : typeof updates.estimatedCost === "number"
-            ? updates.estimatedCost.toString()
-            : updates.estimatedCost;
-      addClause("estimated_cost", value);
+      addClause("estimated_cost", updates.estimatedCost ?? null);
     }
     if (updates.notes !== undefined) {
       addClause("notes", serializeGroceryNotes(updates.notes ?? null));
@@ -3587,13 +3623,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       addClause("is_purchased", updates.isPurchased);
     }
     if (updates.actualCost !== undefined) {
-      const value =
-        updates.actualCost === null
-          ? null
-          : typeof updates.actualCost === "number"
-            ? updates.actualCost.toString()
-            : updates.actualCost;
-      addClause("actual_cost", value);
+      addClause("actual_cost", updates.actualCost ?? null);
     }
     if (updates.receiptLineItem !== undefined) {
       addClause("receipt_line_item", updates.receiptLineItem ?? null);
@@ -3718,11 +3748,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     }
 
     const actualCostValue =
-      actualCost === null
-        ? null
-        : typeof actualCost === "number"
-          ? actualCost.toString()
-          : actualCost;
+      actualCost === undefined ? null : toNumberOrNull(actualCost as string | number | null);
 
     const { rows } = await query<{ id: number }>(
       `
@@ -3745,10 +3771,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     receipt: InsertGroceryReceipt,
     userId: string,
   ): Promise<GroceryReceipt> {
-    const totalAmountValue =
-      receipt.totalAmount === undefined || receipt.totalAmount === null
-        ? "0"
-        : receipt.totalAmount.toString();
+    const totalAmountValue = receipt.totalAmount ?? 0;
 
     const purchaseDateValue =
       typeof receipt.purchaseDate === "string"
@@ -4010,7 +4033,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     const items = await this.getTripGroceryItems(tripId);
 
     const totalCost = items.reduce((sum, item) => {
-      const value = parseFloat(item.actualCost ?? item.estimatedCost ?? "0");
+      const value = item.actualCost ?? item.estimatedCost ?? 0;
       return sum + (Number.isFinite(value) ? value : 0);
     }, 0);
 
@@ -4035,12 +4058,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     };
   }
   async createFlight(flight: InsertFlight, userId: string): Promise<Flight> {
-    const priceValue =
-      flight.price === undefined || flight.price === null
-        ? null
-        : typeof flight.price === "number"
-          ? flight.price.toString()
-          : flight.price;
+    const priceValue = flight.price ?? null;
 
     const { rows } = await query<FlightRow>(
       `
@@ -4196,6 +4214,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -4342,13 +4362,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       setField("seat_class", updates.seatClass ?? null);
     }
     if (updates.price !== undefined) {
-      const priceValue =
-        updates.price === null
-          ? null
-          : typeof updates.price === "number"
-            ? updates.price.toString()
-            : updates.price;
-      setField("price", priceValue);
+      setField("price", updates.price ?? null);
     }
     if (updates.currency !== undefined) {
       setField("currency", updates.currency);
@@ -4505,6 +4519,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -4539,36 +4555,15 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async createHotel(hotel: InsertHotel, userId: string): Promise<Hotel> {
-    const hotelRatingValue =
-      hotel.hotelRating === undefined || hotel.hotelRating === null
-        ? null
-        : typeof hotel.hotelRating === "number"
-          ? hotel.hotelRating
-          : Number(hotel.hotelRating);
-    const totalPriceValue =
-      hotel.totalPrice === undefined || hotel.totalPrice === null
-        ? null
-        : typeof hotel.totalPrice === "number"
-          ? hotel.totalPrice.toString()
-          : hotel.totalPrice;
-    const pricePerNightValue =
-      hotel.pricePerNight === undefined || hotel.pricePerNight === null
-        ? null
-        : typeof hotel.pricePerNight === "number"
-          ? hotel.pricePerNight.toString()
-          : hotel.pricePerNight;
-    const latitudeValue =
-      hotel.latitude === undefined || hotel.latitude === null
-        ? null
-        : typeof hotel.latitude === "string"
-          ? hotel.latitude
-          : hotel.latitude.toString();
-    const longitudeValue =
-      hotel.longitude === undefined || hotel.longitude === null
-        ? null
-        : typeof hotel.longitude === "string"
-          ? hotel.longitude
-          : hotel.longitude.toString();
+    const hotelRatingValue = toNumberOrNull(hotel.hotelRating as string | number | null | undefined);
+    const totalPriceValue = toNumberOrNull(hotel.totalPrice as string | number | null | undefined);
+    const pricePerNightValue = toNumberOrNull(
+      hotel.pricePerNight as string | number | null | undefined,
+    );
+    const latitudeValue = toNumberOrNull(hotel.latitude as string | number | null | undefined);
+    const longitudeValue = toNumberOrNull(
+      hotel.longitude as string | number | null | undefined,
+    );
 
     const { rows } = await query<HotelRow>(
       `
@@ -4737,6 +4732,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -4844,13 +4841,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
       setField("hotel_chain", updates.hotelChain ?? null);
     }
     if (updates.hotelRating !== undefined) {
-      const ratingValue =
-        updates.hotelRating === null
-          ? null
-          : typeof updates.hotelRating === "number"
-            ? updates.hotelRating
-            : Number(updates.hotelRating);
-      setField("hotel_rating", ratingValue);
+      setField(
+        "hotel_rating",
+        toNumberOrNull(updates.hotelRating as string | number | null | undefined),
+      );
     }
     if (updates.address !== undefined) {
       setField("address", updates.address);
@@ -4865,22 +4859,16 @@ ${selectUserColumns("participant_user", "participant_user_")}
       setField("zip_code", updates.zipCode ?? null);
     }
     if (updates.latitude !== undefined) {
-      const latitudeValue =
-        updates.latitude === null
-          ? null
-          : typeof updates.latitude === "string"
-            ? updates.latitude
-            : updates.latitude.toString();
-      setField("latitude", latitudeValue);
+      setField(
+        "latitude",
+        toNumberOrNull(updates.latitude as string | number | null | undefined),
+      );
     }
     if (updates.longitude !== undefined) {
-      const longitudeValue =
-        updates.longitude === null
-          ? null
-          : typeof updates.longitude === "string"
-            ? updates.longitude
-            : updates.longitude.toString();
-      setField("longitude", longitudeValue);
+      setField(
+        "longitude",
+        toNumberOrNull(updates.longitude as string | number | null | undefined),
+      );
     }
     if (updates.checkInDate !== undefined) {
       setField("check_in_date", updates.checkInDate);
@@ -4901,22 +4889,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
       setField("booking_reference", updates.bookingReference ?? null);
     }
     if (updates.totalPrice !== undefined) {
-      const totalPriceValue =
-        updates.totalPrice === null
-          ? null
-          : typeof updates.totalPrice === "number"
-            ? updates.totalPrice.toString()
-            : updates.totalPrice;
-      setField("total_price", totalPriceValue);
+      setField("total_price", updates.totalPrice ?? null);
     }
     if (updates.pricePerNight !== undefined) {
-      const pricePerNightValue =
-        updates.pricePerNight === null
-          ? null
-          : typeof updates.pricePerNight === "number"
-            ? updates.pricePerNight.toString()
-            : updates.pricePerNight;
-      setField("price_per_night", pricePerNightValue);
+      setField("price_per_night", updates.pricePerNight ?? null);
     }
     if (updates.currency !== undefined) {
       setField("currency", updates.currency);
@@ -5088,6 +5064,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -5125,24 +5103,15 @@ ${selectUserColumns("participant_user", "participant_user_")}
     restaurant: InsertRestaurant,
     userId: string,
   ): Promise<Restaurant> {
-    const latitudeValue =
-      restaurant.latitude === undefined || restaurant.latitude === null
-        ? null
-        : typeof restaurant.latitude === "string"
-          ? restaurant.latitude
-          : restaurant.latitude.toString();
-    const longitudeValue =
-      restaurant.longitude === undefined || restaurant.longitude === null
-        ? null
-        : typeof restaurant.longitude === "string"
-          ? restaurant.longitude
-          : restaurant.longitude.toString();
-    const ratingValue =
-      restaurant.rating === undefined || restaurant.rating === null
-        ? null
-        : typeof restaurant.rating === "string"
-          ? restaurant.rating
-          : restaurant.rating.toString();
+    const latitudeValue = toNumberOrNull(
+      restaurant.latitude as string | number | null | undefined,
+    );
+    const longitudeValue = toNumberOrNull(
+      restaurant.longitude as string | number | null | undefined,
+    );
+    const ratingValue = toNumberOrNull(
+      restaurant.rating as string | number | null | undefined,
+    );
 
     const { rows } = await query<RestaurantRow>(
       `
@@ -5276,6 +5245,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -5386,22 +5357,16 @@ ${selectUserColumns("participant_user", "participant_user_")}
       setField("zip_code", updates.zipCode ?? null);
     }
     if (updates.latitude !== undefined) {
-      const latitudeValue =
-        updates.latitude === null
-          ? null
-          : typeof updates.latitude === "string"
-            ? updates.latitude
-            : updates.latitude.toString();
-      setField("latitude", latitudeValue);
+      setField(
+        "latitude",
+        toNumberOrNull(updates.latitude as string | number | null | undefined),
+      );
     }
     if (updates.longitude !== undefined) {
-      const longitudeValue =
-        updates.longitude === null
-          ? null
-          : typeof updates.longitude === "string"
-            ? updates.longitude
-            : updates.longitude.toString();
-      setField("longitude", longitudeValue);
+      setField(
+        "longitude",
+        toNumberOrNull(updates.longitude as string | number | null | undefined),
+      );
     }
     if (updates.phoneNumber !== undefined) {
       setField("phone_number", updates.phoneNumber ?? null);
@@ -5416,13 +5381,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
       setField("price_range", updates.priceRange);
     }
     if (updates.rating !== undefined) {
-      const ratingValue =
-        updates.rating === null
-          ? null
-          : typeof updates.rating === "string"
-            ? updates.rating
-            : updates.rating.toString();
-      setField("rating", ratingValue);
+      setField(
+        "rating",
+        toNumberOrNull(updates.rating as string | number | null | undefined),
+      );
     }
     if (updates.reservationDate !== undefined) {
       setField("reservation_date", updates.reservationDate);
@@ -5566,6 +5528,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         u.password_hash AS user_password_hash,
         u.profile_image_url AS user_profile_image_url,
         u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
         u.cash_app_phone AS user_cash_app_phone,
         u.venmo_username AS user_venmo_username,
         u.venmo_phone AS user_venmo_phone,
@@ -5660,6 +5624,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         creator.password_hash AS creator_password_hash,
         creator.profile_image_url AS creator_profile_image_url,
         creator.cashapp_username AS creator_cashapp_username,
+        creator.cash_app_username AS creator_cash_app_username,
+        creator.cashapp_phone AS creator_cashapp_phone,
         creator.cash_app_phone AS creator_cash_app_phone,
         creator.venmo_username AS creator_venmo_username,
         creator.venmo_phone AS creator_venmo_phone,

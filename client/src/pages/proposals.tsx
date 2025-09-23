@@ -276,7 +276,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     if (status === "rejected") {
       return <Badge className="bg-red-100 text-red-800"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
     }
-    if (averageRanking && averageRanking <= 1.5) {
+    if (typeof averageRanking === 'number' && averageRanking <= 1.5) {
       return <Badge className="bg-yellow-100 text-yellow-800"><Crown className="w-3 h-3 mr-1" />Top Choice</Badge>;
     }
     return <Badge className="bg-blue-100 text-blue-800"><Vote className="w-3 h-3 mr-1" />Active Voting</Badge>;
@@ -304,7 +304,10 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 </span>
               </CardDescription>
             </div>
-            {getStatusBadge(proposal.status || 'active', proposal.averageRanking != null ? parseFloat(proposal.averageRanking.toString()) : undefined)}
+            {getStatusBadge(
+              proposal.status || 'active',
+              proposal.averageRanking ?? undefined,
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -351,11 +354,11 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 {proposal.createdAt ? formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true }) : 'Unknown'}
               </span>
             </div>
-            {proposal.averageRanking && (
+            {proposal.averageRanking != null && (
               <div className="flex items-center gap-1 text-sm">
                 <TrendingUp className="w-4 h-4 text-blue-600" />
                 <span data-testid={`text-restaurant-avg-ranking-${proposal.id}`}>
-                  Avg: {parseFloat(proposal.averageRanking.toString()).toFixed(1)}
+                  Avg: {proposal.averageRanking.toFixed(1)}
                 </span>
               </div>
             )}
@@ -454,7 +457,10 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 <span data-testid={`text-hotel-location-${proposal.id}`}>{proposal.location}</span>
               </CardDescription>
             </div>
-            {getStatusBadge(proposal.status || 'active', proposal.averageRanking != null ? parseFloat(proposal.averageRanking.toString()) : undefined)}
+            {getStatusBadge(
+              proposal.status || 'active',
+              proposal.averageRanking ?? undefined,
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -538,11 +544,11 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 {proposal.createdAt ? formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true }) : 'Unknown'}
               </span>
             </div>
-            {proposal.averageRanking && (
+            {proposal.averageRanking != null && (
               <div className="flex items-center gap-1 text-sm">
                 <TrendingUp className="w-4 h-4 text-blue-600" />
                 <span data-testid={`text-hotel-avg-ranking-${proposal.id}`}>
-                  Avg: {parseFloat(proposal.averageRanking.toString()).toFixed(1)}
+                  Avg: {proposal.averageRanking.toFixed(1)}
                 </span>
               </div>
             )}
@@ -611,7 +617,10 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 </span>
               </CardDescription>
             </div>
-            {getStatusBadge(proposal.status || 'active', proposal.averageRanking != null ? parseFloat(proposal.averageRanking.toString()) : undefined)}
+            {getStatusBadge(
+              proposal.status || 'active',
+              proposal.averageRanking ?? undefined,
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -655,11 +664,11 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 {proposal.createdAt ? formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true }) : 'Unknown'}
               </span>
             </div>
-            {proposal.averageRanking && (
+            {proposal.averageRanking != null && (
               <div className="flex items-center gap-1 text-sm">
                 <TrendingUp className="w-4 h-4 text-blue-600" />
                 <span data-testid={`text-flight-avg-ranking-${proposal.id}`}>
-                  Avg: {parseFloat(proposal.averageRanking.toString()).toFixed(1)}
+                  Avg: {proposal.averageRanking.toFixed(1)}
                 </span>
               </div>
             )}

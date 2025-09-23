@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Calendar, MapPin, Users, DollarSign, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import type { ActivityWithDetails, User } from "@shared/schema";
+import { formatCurrency } from "@/lib/utils";
 
 interface ActivityCardProps {
   activity: ActivityWithDetails;
@@ -115,10 +116,10 @@ export function ActivityCard({
                 <span className="truncate">{activity.location}</span>
               </div>
             )}
-            {activity.cost && (
+            {typeof activity.cost === "number" && (
               <div className="flex items-center">
                 <DollarSign className="w-4 h-4 mr-2 flex-shrink-0" />
-                <span>{activity.cost}/person</span>
+                <span>{formatCurrency(activity.cost)} / person</span>
               </div>
             )}
             <div className="flex items-center">
