@@ -455,6 +455,44 @@ type RestaurantWithDetailsRow = RestaurantRow &
     trip_created_at: Date | null;
   };
 
+type TravelTipRow = {
+  id: number;
+  content: string;
+  category: string;
+  destination: string | null;
+  applicable_regions: unknown;
+  activity_categories: unknown;
+  seasonality: unknown;
+  priority: number;
+  tags: unknown;
+  is_active: boolean;
+  created_by: string | null;
+  source: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type TravelTipWithDetailsRow = TravelTipRow &
+  Partial<PrefixedUserRow<"creator_">>;
+
+type UserTipPreferencesRow = {
+  id: number;
+  user_id: string;
+  preferred_categories: unknown;
+  dismissed_tips: unknown;
+  preferred_language: string | null;
+  show_seasonal_tips: boolean;
+  show_location_tips: boolean;
+  show_activity_tips: boolean;
+  tip_frequency: string;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type InsertTravelTipInput = Omit<InsertTravelTip, "isActive"> & {
+  isActive?: boolean;
+};
+
 const mapUserFromPrefix = (
   row: Record<string, unknown>,
   prefix: string,
@@ -807,6 +845,63 @@ const mapRestaurantWithDetails = (
     trip: mapTrip(tripRow),
   };
 };
+
+const mapTravelTip = (row: TravelTipRow): TravelTip => ({
+  id: row.id,
+  content: row.content,
+  category: row.category,
+  destination: row.destination,
+  applicableRegions:
+    (row.applicable_regions as TravelTip["applicableRegions"]) ?? null,
+  activityCategories:
+    (row.activity_categories as TravelTip["activityCategories"]) ?? null,
+  seasonality: (row.seasonality as TravelTip["seasonality"]) ?? null,
+  priority: row.priority,
+  tags: (row.tags as TravelTip["tags"]) ?? null,
+  isActive: row.is_active,
+  createdBy: row.created_by,
+  source: row.source,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapTravelTipWithDetails = (
+  row: TravelTipWithDetailsRow,
+): TravelTipWithDetails => {
+  const baseTip = mapTravelTip(row);
+  const creatorId = row.creator_id as string | null | undefined;
+
+  if (!creatorId) {
+    return baseTip;
+  }
+
+  return {
+    ...baseTip,
+    creator: mapUserFromPrefix(row as Record<string, unknown>, "creator_"),
+  };
+};
+
+const mapUserTipPreferences = (
+  row: UserTipPreferencesRow,
+): UserTipPreferences => ({
+  id: row.id,
+  userId: row.user_id,
+  preferredCategories:
+    (row.preferred_categories as UserTipPreferences["preferredCategories"]) ??
+    [],
+  dismissedTips:
+    (row.dismissed_tips as UserTipPreferences["dismissedTips"]) ?? [],
+  preferredLanguage: row.preferred_language,
+  showSeasonalTips: row.show_seasonal_tips,
+  showLocationTips: row.show_location_tips,
+  showActivityTips: row.show_activity_tips,
+  tipFrequency: row.tip_frequency,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const toDbJson = (value: unknown): string | null =>
+  value === undefined || value === null ? null : JSON.stringify(value);
 
 const SHARE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -4574,12 +4669,405 @@ export class DatabaseStorage implements IStorage {
   async rankFlightProposal(): Promise<void> { throw new Error("Not implemented"); }
   async updateFlightProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
   async updateFlightProposalStatus(): Promise<FlightProposal> { throw new Error("Not implemented"); }
-  async getTravelTips(): Promise<TravelTipWithDetails[]> { throw new Error("Not implemented"); }
-  async createTravelTip(): Promise<TravelTip> { throw new Error("Not implemented"); }
-  async seedTravelTips(): Promise<void> { throw new Error("Not implemented"); }
-  async getUserTipPreferences(): Promise<UserTipPreferences | undefined> { throw new Error("Not implemented"); }
-  async createOrUpdateUserTipPreferences(): Promise<UserTipPreferences> { throw new Error("Not implemented"); }
-  async dismissTipForUser(): Promise<void> { throw new Error("Not implemented"); }
+  async getTravelTips(
+    filters: {
+      category?: string;
+      destination?: string;
+      limit?: number;
+    } = {},
+  ): Promise<TravelTipWithDetails[]> {
+    const conditions: string[] = ["tt.is_active = TRUE"];
+    const values: unknown[] = [];
+    let index = 1;
+
+    if (filters.category) {
+      conditions.push(`tt.category = $${index}`);
+      values.push(filters.category);
+      index += 1;
+    }
+
+    if (filters.destination) {
+      conditions.push(
+        `(tt.destination = $${index} OR tt.destination = '*' OR tt.destination IS NULL)`,
+      );
+      values.push(filters.destination);
+      index += 1;
+    }
+
+    let sql = `
+      SELECT
+        tt.id,
+        tt.content,
+        tt.category,
+        tt.destination,
+        tt.applicable_regions,
+        tt.activity_categories,
+        tt.seasonality,
+        tt.priority,
+        tt.tags,
+        tt.is_active,
+        tt.created_by,
+        tt.source,
+        tt.created_at,
+        tt.updated_at,
+        creator.id AS creator_id,
+        creator.email AS creator_email,
+        creator.username AS creator_username,
+        creator.first_name AS creator_first_name,
+        creator.last_name AS creator_last_name,
+        creator.phone_number AS creator_phone_number,
+        creator.password_hash AS creator_password_hash,
+        creator.profile_image_url AS creator_profile_image_url,
+        creator.cash_app_username AS creator_cash_app_username,
+        creator.cash_app_phone AS creator_cash_app_phone,
+        creator.venmo_username AS creator_venmo_username,
+        creator.venmo_phone AS creator_venmo_phone,
+        creator.timezone AS creator_timezone,
+        creator.default_location AS creator_default_location,
+        creator.default_location_code AS creator_default_location_code,
+        creator.default_city AS creator_default_city,
+        creator.default_country AS creator_default_country,
+        creator.auth_provider AS creator_auth_provider,
+        creator.notification_preferences AS creator_notification_preferences,
+        creator.has_seen_home_onboarding AS creator_has_seen_home_onboarding,
+        creator.has_seen_trip_onboarding AS creator_has_seen_trip_onboarding,
+        creator.created_at AS creator_created_at,
+        creator.updated_at AS creator_updated_at
+      FROM travel_tips tt
+      LEFT JOIN users creator ON creator.id = tt.created_by
+    `;
+
+    if (conditions.length > 0) {
+      sql += ` WHERE ${conditions.join(" AND ")}`;
+    }
+
+    sql += " ORDER BY tt.priority DESC, tt.id ASC";
+
+    if (filters.limit && filters.limit > 0) {
+      sql += ` LIMIT $${index}`;
+      values.push(filters.limit);
+    }
+
+    const { rows } = await query<TravelTipWithDetailsRow>(sql, values);
+
+    return rows.map(mapTravelTipWithDetails);
+  }
+
+  async createTravelTip(tip: InsertTravelTipInput): Promise<TravelTip> {
+    const {
+      content,
+      category,
+      destination = null,
+      applicableRegions = null,
+      activityCategories = null,
+      seasonality = null,
+      priority = 3,
+      tags = null,
+      isActive = true,
+      createdBy = null,
+      source = null,
+    } = tip;
+
+    const { rows } = await query<TravelTipRow>(
+      `
+      INSERT INTO travel_tips (
+        content,
+        category,
+        destination,
+        applicable_regions,
+        activity_categories,
+        seasonality,
+        priority,
+        tags,
+        is_active,
+        created_by,
+        source
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11
+      )
+      RETURNING
+        id,
+        content,
+        category,
+        destination,
+        applicable_regions,
+        activity_categories,
+        seasonality,
+        priority,
+        tags,
+        is_active,
+        created_by,
+        source,
+        created_at,
+        updated_at
+      `,
+      [
+        content,
+        category,
+        destination,
+        toDbJson(applicableRegions),
+        toDbJson(activityCategories),
+        toDbJson(seasonality),
+        priority,
+        toDbJson(tags),
+        isActive,
+        createdBy,
+        source,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create travel tip");
+    }
+
+    return mapTravelTip(row);
+  }
+
+  async seedTravelTips(): Promise<void> {
+    const { rows: countRows } = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM travel_tips`,
+    );
+
+    const count = Number(countRows[0]?.count ?? "0");
+    if (count > 0) {
+      return;
+    }
+
+    const defaultTips: InsertTravelTipInput[] = [
+      {
+        category: "packing",
+        destination: "*",
+        content: JSON.stringify({
+          title: "Pack a universal power adapter",
+          description:
+            "Different countries use different plug types. Bring a universal adapter to keep your devices charged.",
+        }),
+        priority: 5,
+        tags: ["electronics", "essentials"],
+        activityCategories: ["sightseeing", "business", "family"],
+        seasonality: ["all"],
+        source: "system",
+        isActive: true,
+      },
+      {
+        category: "safety",
+        destination: "*",
+        content: JSON.stringify({
+          title: "Keep digital copies of important documents",
+          description:
+            "Store scans of your passport, IDs, and travel insurance in a secure cloud service in case originals are lost.",
+        }),
+        priority: 4,
+        tags: ["documents", "preparedness"],
+        activityCategories: ["all"],
+        seasonality: ["all"],
+        source: "system",
+        isActive: true,
+      },
+      {
+        category: "transportation",
+        destination: "Europe",
+        content: JSON.stringify({
+          title: "Validate train tickets before boarding",
+          description:
+            "Many European rail systems require you to validate paper tickets at the platform kiosk before boarding to avoid fines.",
+        }),
+        priority: 3,
+        tags: ["train", "validation"],
+        activityCategories: ["sightseeing", "adventure"],
+        seasonality: ["all"],
+        source: "system",
+        isActive: true,
+      },
+      {
+        category: "weather",
+        destination: "tropical",
+        content: JSON.stringify({
+          title: "Plan for sudden rain showers",
+          description:
+            "In tropical climates, afternoon storms are common. Pack a lightweight rain jacket or poncho for daily excursions.",
+        }),
+        priority: 3,
+        tags: ["rain", "climate"],
+        activityCategories: ["outdoor", "beach"],
+        seasonality: ["summer", "all"],
+        source: "system",
+        isActive: true,
+      },
+      {
+        category: "dining",
+        destination: "Asia",
+        content: JSON.stringify({
+          title: "Carry cash for local food markets",
+          description:
+            "Smaller vendors may not accept cards. Keep small bills ready when exploring street food markets.",
+        }),
+        priority: 4,
+        tags: ["food", "cash"],
+        activityCategories: ["culinary", "street_food"],
+        seasonality: ["all"],
+        source: "system",
+        isActive: true,
+      },
+    ];
+
+    for (const tip of defaultTips) {
+      await this.createTravelTip(tip);
+    }
+  }
+
+  async getUserTipPreferences(
+    userId: string,
+  ): Promise<UserTipPreferences | undefined> {
+    const { rows } = await query<UserTipPreferencesRow>(
+      `
+      SELECT
+        id,
+        user_id,
+        preferred_categories,
+        dismissed_tips,
+        preferred_language,
+        show_seasonal_tips,
+        show_location_tips,
+        show_activity_tips,
+        tip_frequency,
+        created_at,
+        updated_at
+      FROM user_tip_preferences
+      WHERE user_id = $1
+      LIMIT 1
+      `,
+      [userId],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return undefined;
+    }
+
+    return mapUserTipPreferences(row);
+  }
+
+  async createOrUpdateUserTipPreferences(
+    userId: string,
+    preferences: Partial<InsertUserTipPreferences>,
+  ): Promise<UserTipPreferences> {
+    const existing = await this.getUserTipPreferences(userId);
+
+    const preferredCategories =
+      preferences.preferredCategories ?? existing?.preferredCategories ?? [];
+    const dismissedTips =
+      preferences.dismissedTips ?? existing?.dismissedTips ?? [];
+    const preferredLanguage =
+      preferences.preferredLanguage ?? existing?.preferredLanguage ?? null;
+    const showSeasonalTips =
+      preferences.showSeasonalTips ?? existing?.showSeasonalTips ?? true;
+    const showLocationTips =
+      preferences.showLocationTips ?? existing?.showLocationTips ?? true;
+    const showActivityTips =
+      preferences.showActivityTips ?? existing?.showActivityTips ?? true;
+    const tipFrequency =
+      preferences.tipFrequency ?? existing?.tipFrequency ?? "normal";
+
+    const { rows } = await query<UserTipPreferencesRow>(
+      `
+      INSERT INTO user_tip_preferences (
+        user_id,
+        preferred_categories,
+        dismissed_tips,
+        preferred_language,
+        show_seasonal_tips,
+        show_location_tips,
+        show_activity_tips,
+        tip_frequency
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8
+      )
+      ON CONFLICT (user_id) DO UPDATE SET
+        preferred_categories = EXCLUDED.preferred_categories,
+        dismissed_tips = EXCLUDED.dismissed_tips,
+        preferred_language = EXCLUDED.preferred_language,
+        show_seasonal_tips = EXCLUDED.show_seasonal_tips,
+        show_location_tips = EXCLUDED.show_location_tips,
+        show_activity_tips = EXCLUDED.show_activity_tips,
+        tip_frequency = EXCLUDED.tip_frequency,
+        updated_at = NOW()
+      RETURNING
+        id,
+        user_id,
+        preferred_categories,
+        dismissed_tips,
+        preferred_language,
+        show_seasonal_tips,
+        show_location_tips,
+        show_activity_tips,
+        tip_frequency,
+        created_at,
+        updated_at
+      `,
+      [
+        userId,
+        toDbJson(preferredCategories),
+        toDbJson(dismissedTips),
+        preferredLanguage,
+        showSeasonalTips,
+        showLocationTips,
+        showActivityTips,
+        tipFrequency,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to upsert user tip preferences");
+    }
+
+    return mapUserTipPreferences(row);
+  }
+
+  async dismissTipForUser(userId: string, tipId: number): Promise<void> {
+    if (!Number.isFinite(tipId)) {
+      throw new Error("Invalid tip identifier");
+    }
+
+    const existing = await this.getUserTipPreferences(userId);
+
+    const dismissedSet = new Set<number>();
+    if (existing?.dismissedTips && Array.isArray(existing.dismissedTips)) {
+      for (const value of existing.dismissedTips) {
+        const numericValue = Number(value);
+        if (Number.isFinite(numericValue)) {
+          dismissedSet.add(numericValue);
+        }
+      }
+    }
+
+    dismissedSet.add(tipId);
+
+    await this.createOrUpdateUserTipPreferences(userId, {
+      dismissedTips: Array.from(dismissedSet),
+    });
+  }
   async createRestaurantProposal(): Promise<RestaurantProposal> { throw new Error("Not implemented"); }
   async getTripRestaurantProposals(): Promise<RestaurantProposalWithDetails[]> { throw new Error("Not implemented"); }
   async rankRestaurantProposal(): Promise<void> { throw new Error("Not implemented"); }
