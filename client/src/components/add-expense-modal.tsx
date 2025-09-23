@@ -183,19 +183,19 @@ export function AddExpenseModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex w-full max-w-[820px] min-h-0 flex-col gap-0 overflow-hidden p-0 sm:w-[92vw] md:w-[820px] max-h-[calc(100vh-2rem)] sm:max-h-[92vh]">
+      <DialogContent className="!flex w-full max-w-[820px] min-h-0 flex-col !gap-0 overflow-hidden !p-0 sm:w-[92vw] md:w-[820px] max-h-[calc(100vh-2rem)] sm:max-h-[92vh]">
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]"
+            className="flex h-full min-h-0 flex-1 flex-col"
           >
-            <header className="flex items-center border-b border-border px-6 py-5 pr-12">
+            <header className="flex shrink-0 items-center border-b border-border px-6 py-5 pr-12">
               <DialogTitle className="text-lg font-semibold">
                 Add New Expense
               </DialogTitle>
             </header>
 
-            <div className="min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-28 overscroll-contain sm:pb-10">
+            <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-28 overscroll-contain sm:pb-10">
               <FormField
                 control={form.control}
                 name="description"
@@ -349,7 +349,7 @@ export function AddExpenseModal({
                           return (
                             <div
                               key={member.user.id}
-                              className="flex flex-wrap items-start gap-3 rounded-lg border p-3 transition hover:bg-muted/60 sm:items-center"
+                              className="flex flex-col gap-3 rounded-lg border p-3 transition hover:bg-muted/60 sm:flex-row sm:items-center sm:justify-between"
                             >
                               <div className="flex flex-1 items-start gap-3 sm:items-center">
                                 <Checkbox
@@ -493,7 +493,7 @@ export function AddExpenseModal({
                       return (
                         <div
                           key={memberId}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"
+                          className="flex flex-col gap-3 rounded-lg bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
                         >
                           <div className="flex items-center gap-2">
                             <Avatar className="h-6 w-6">
