@@ -1273,13 +1273,50 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Failed to create trip");
     }
 
+    const { rows: memberColumnRows } = await query<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'trip_members'
+      `,
+    );
+
+    const memberColumnNames = new Set(
+      memberColumnRows.map(({ column_name }) => column_name),
+    );
+
+    const memberColumns = ["trip_calendar_id", "user_id"];
+    const valuePlaceholders = ["$1", "$2"];
+    const memberValues: unknown[] = [row.id, userId];
+    let placeholderIndex = 3;
+
+    if (memberColumnNames.has("role")) {
+      memberColumns.push("role");
+      valuePlaceholders.push(`$${placeholderIndex}`);
+      memberValues.push("owner");
+      placeholderIndex += 1;
+    }
+
+    if (memberColumnNames.has("is_admin")) {
+      memberColumns.push("is_admin");
+      valuePlaceholders.push(`$${placeholderIndex}`);
+      memberValues.push(true);
+      placeholderIndex += 1;
+    }
+
+    if (memberColumnNames.has("joined_at")) {
+      memberColumns.push("joined_at");
+      valuePlaceholders.push("NOW()");
+    }
+
     await query(
       `
-      INSERT INTO trip_members (trip_calendar_id, user_id, role, joined_at)
-      VALUES ($1, $2, 'organizer', NOW())
+      INSERT INTO trip_members (${memberColumns.join(", ")})
+      VALUES (${valuePlaceholders.join(", ")})
       ON CONFLICT (trip_calendar_id, user_id) DO NOTHING
       `,
-      [row.id, userId],
+      memberValues,
     );
 
     return mapTrip(row);
@@ -1379,7 +1416,7 @@ export class DatabaseStorage implements IStorage {
       [
         row.id,
         userId,
-        row.created_by === userId ? "organizer" : "member",
+        row.created_by === userId ? "owner" : "member",
         options?.departureLocation ?? null,
         options?.departureAirport ?? null,
       ],

@@ -61,7 +61,8 @@ export function MemberList({ trip }: MemberListProps) {
                           {member.user.id === trip.createdBy && (
                             <Crown className="w-4 h-4 text-yellow-500" />
                           )}
-                          {member.role === 'organizer' && member.user.id !== trip.createdBy && (
+                          {(member.role === 'organizer' || member.role === 'owner') &&
+                            member.user.id !== trip.createdBy && (
                             <Badge variant="secondary" className="text-xs">
                               Organizer
                             </Badge>
