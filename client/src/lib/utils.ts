@@ -1,6 +1,54 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
+}
+
+export interface FormatCurrencyOptions {
+  currency?: string;
+  locale?: string;
+  fallback?: string;
+  minimumFractionDigits?: number;
+  maximumFractionDigits?: number;
+}
+
+export function formatCurrency(
+  amount: number | null | undefined,
+  {
+    currency = "USD",
+    locale,
+    fallback = "",
+    minimumFractionDigits,
+    maximumFractionDigits,
+  }: FormatCurrencyOptions = {},
+): string {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) {
+    return fallback;
+  }
+
+  const formatOptions: Intl.NumberFormatOptions = {
+    style: "currency",
+    currency,
+  };
+
+  if (typeof minimumFractionDigits === "number") {
+    formatOptions.minimumFractionDigits = minimumFractionDigits;
+  }
+
+  if (typeof maximumFractionDigits === "number") {
+    formatOptions.maximumFractionDigits = maximumFractionDigits;
+  }
+
+  try {
+    return new Intl.NumberFormat(locale, formatOptions).format(amount);
+  } catch {
+    const fractionDigits =
+      typeof maximumFractionDigits === "number"
+        ? maximumFractionDigits
+        : typeof minimumFractionDigits === "number"
+          ? minimumFractionDigits
+          : 2;
+    return `${currency} ${amount.toFixed(fractionDigits)}`;
+  }
 }

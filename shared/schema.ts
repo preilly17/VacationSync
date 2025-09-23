@@ -1,4 +1,50 @@
-import { z } from "zod";
+import { z, type RefinementCtx } from "zod";
+
+const parseNumberInput = (
+  value: unknown,
+  ctx: RefinementCtx,
+  message: string,
+) => {
+  if (typeof value === "number") {
+    if (Number.isNaN(value)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      return z.NEVER;
+    }
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      return z.NEVER;
+    }
+
+    const parsed = Number(trimmed);
+    if (Number.isNaN(parsed)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      return z.NEVER;
+    }
+
+    return parsed;
+  }
+
+  ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  return z.NEVER;
+};
+
+const numberInput = (message = "Value must be a number") =>
+  z
+    .union([
+      z.number(),
+      z
+        .string()
+        .transform((value, ctx) => parseNumberInput(value, ctx, message)),
+    ])
+    .transform((value) => value as number);
+
+const nullableNumberInput = (message = "Value must be a number") =>
+  z.union([numberInput(message), z.null()]).optional();
 
 type JsonValue =
   | null
@@ -20,7 +66,9 @@ export interface User {
   passwordHash: string | null;
   profileImageUrl: string | null;
   cashAppUsername: string | null;
+  cashAppUsernameLegacy: string | null;
   cashAppPhone: string | null;
+  cashAppPhoneLegacy: string | null;
   venmoUsername: string | null;
   venmoPhone: string | null;
   timezone: string | null;
@@ -46,7 +94,9 @@ export interface UpsertUser {
   passwordHash?: string | null;
   profileImageUrl?: string | null;
   cashAppUsername?: string | null;
+  cashAppUsernameLegacy?: string | null;
   cashAppPhone?: string | null;
+  cashAppPhoneLegacy?: string | null;
   venmoUsername?: string | null;
   venmoPhone?: string | null;
   timezone?: string | null;
@@ -99,7 +149,7 @@ export interface Activity {
   startTime: IsoDate;
   endTime: IsoDate | null;
   location: string | null;
-  cost: string | null;
+  cost: number | null;
   maxCapacity: number | null;
   category: string;
   createdAt: IsoDate | null;
@@ -113,7 +163,7 @@ export const insertActivitySchema = z.object({
   startTime: z.union([z.date(), z.string()]),
   endTime: z.union([z.date(), z.string()]).nullable().optional(),
   location: z.string().nullable().optional(),
-  cost: z.union([z.number(), z.string()]).nullable().optional(),
+  cost: nullableNumberInput("Cost must be a number"),
   maxCapacity: z.union([z.number(), z.string()]).nullable().optional(),
   category: z.string().default("other"),
 });
@@ -177,9 +227,9 @@ export interface Expense {
   id: number;
   tripId: number;
   paidBy: string;
-  amount: string;
+  amount: number;
   currency: string;
-  exchangeRate: string | null;
+  exchangeRate: number | null;
   originalCurrency: string | null;
   convertedAmounts: Record<string, JsonValue> | null;
   description: string;
@@ -195,16 +245,17 @@ export interface Expense {
 export const insertExpenseSchema = z.object({
   tripId: z.number(),
   description: z.string().min(1, "Description is required"),
-  amount: z
-    .number({ invalid_type_error: "Amount must be a number" })
-    .positive("Amount must be greater than zero"),
+  amount: numberInput("Amount must be a number").refine(
+    (value) => value > 0,
+    "Amount must be greater than zero",
+  ),
   currency: z.string().min(1, "Currency is required"),
   category: z.string().min(1, "Category is required"),
   activityId: z.number().nullable().optional(),
   splitType: z.enum(["equal", "percentage", "exact"]).default("equal"),
   splitData: z.record(z.any()).nullable().optional(),
   receiptUrl: z.string().url().nullable().optional(),
-  exchangeRate: z.number().nullable().optional(),
+  exchangeRate: nullableNumberInput("Exchange rate must be a number"),
   originalCurrency: z.string().nullable().optional(),
   convertedAmounts: z.record(z.any()).nullable().optional(),
   paidBy: z.string().optional(),
@@ -216,7 +267,7 @@ export interface ExpenseShare {
   id: number;
   expenseId: number;
   userId: string;
-  amount: string;
+  amount: number;
   isPaid: boolean;
   paidAt: IsoDate | null;
   createdAt: IsoDate | null;
@@ -225,9 +276,10 @@ export interface ExpenseShare {
 export const insertExpenseShareSchema = z.object({
   expenseId: z.number(),
   userId: z.string(),
-  amount: z
-    .number({ invalid_type_error: "Amount must be a number" })
-    .nonnegative("Amount must be non-negative"),
+  amount: numberInput("Amount must be a number").refine(
+    (value) => value >= 0,
+    "Amount must be non-negative",
+  ),
   isPaid: z.boolean().optional(),
   paidAt: z.union([z.date(), z.string()]).nullable().optional(),
 });
@@ -277,10 +329,10 @@ export interface GroceryItem {
   item: string;
   category: string;
   quantity: string | null;
-  estimatedCost: string | null;
+  estimatedCost: number | null;
   notes: GroceryNotes | null;
   isPurchased: boolean;
-  actualCost: string | null;
+  actualCost: number | null;
   receiptLineItem: string | null;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
@@ -291,10 +343,10 @@ export const insertGroceryItemSchema = z.object({
   item: z.string().min(1, "Item is required"),
   category: z.string().min(1, "Category is required"),
   quantity: z.string().nullable().optional(),
-  estimatedCost: z.union([z.string(), z.number()]).nullable().optional(),
+  estimatedCost: nullableNumberInput("Estimated cost must be a number"),
   notes: groceryNotesSchema.nullable().optional(),
   isPurchased: z.boolean().optional(),
-  actualCost: z.union([z.string(), z.number()]).nullable().optional(),
+  actualCost: nullableNumberInput("Actual cost must be a number"),
   receiptLineItem: z.string().nullable().optional(),
 });
 
@@ -324,7 +376,7 @@ export interface GroceryReceipt {
   uploadedBy: string;
   receiptImageUrl: string | null;
   storeName: string | null;
-  totalAmount: string;
+  totalAmount: number;
   purchaseDate: IsoDate;
   parsedItems: Record<string, JsonValue> | null;
   isProcessed: boolean;
@@ -333,9 +385,7 @@ export interface GroceryReceipt {
 
 export const insertGroceryReceiptSchema = z.object({
   tripId: z.number(),
-  totalAmount: z.union([z.string(), z.number()]).transform((value) =>
-    typeof value === "number" ? value.toString() : value
-  ),
+  totalAmount: numberInput("Total amount must be a number"),
   purchaseDate: z.union([z.date(), z.string()]),
   receiptImageUrl: z.string().nullable().optional(),
   storeName: z.string().nullable().optional(),
@@ -365,16 +415,16 @@ export interface Flight {
   bookingReference: string | null;
   seatNumber: string | null;
   seatClass: string | null;
-  price: string | null;
+  price: number | null;
   currency: string;
   flightType: string;
   status: string;
-  layovers: JsonValue;
+  layovers: JsonValue | null;
   bookingSource: string | null;
   purchaseUrl: string | null;
   aircraft: string | null;
   flightDuration: number | null;
-  baggage: JsonValue;
+  baggage: JsonValue | null;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
 }
@@ -400,7 +450,7 @@ export const insertFlightSchema = z.object({
   arrivalGate: z.string().nullable().optional(),
   seatNumber: z.string().nullable().optional(),
   seatClass: z.string().nullable().optional(),
-  price: z.union([z.number(), z.string()]).nullable().optional(),
+  price: nullableNumberInput("Price must be a number"),
   layovers: z.any().nullable().optional(),
   bookingSource: z.string().nullable().optional(),
   purchaseUrl: z.string().nullable().optional(),
@@ -422,24 +472,24 @@ export interface Hotel {
   city: string;
   country: string;
   zipCode: string | null;
-  latitude: string | null;
-  longitude: string | null;
+  latitude: number | null;
+  longitude: number | null;
   checkInDate: IsoDate;
   checkOutDate: IsoDate;
   roomType: string | null;
   roomCount: number | null;
   guestCount: number | null;
   bookingReference: string | null;
-  totalPrice: string | null;
-  pricePerNight: string | null;
+  totalPrice: number | null;
+  pricePerNight: number | null;
   currency: string;
   status: string;
   bookingSource: string | null;
   purchaseUrl: string | null;
-  amenities: JsonValue;
-  images: JsonValue;
-  policies: JsonValue;
-  contactInfo: JsonValue;
+  amenities: JsonValue | null;
+  images: JsonValue | null;
+  policies: JsonValue | null;
+  contactInfo: JsonValue | null;
   bookingPlatform: string | null;
   bookingUrl: string | null;
   cancellationPolicy: string | null;
@@ -460,10 +510,10 @@ export const insertHotelSchema = z.object({
   roomCount: z.number().nullable().optional(),
   roomType: z.string().nullable().optional(),
   hotelChain: z.string().nullable().optional(),
-  hotelRating: z.union([z.number(), z.string()]).nullable().optional(),
+  hotelRating: nullableNumberInput("Rating must be a number"),
   bookingReference: z.string().nullable().optional(),
-  totalPrice: z.union([z.number(), z.string()]).nullable().optional(),
-  pricePerNight: z.union([z.number(), z.string()]).nullable().optional(),
+  totalPrice: nullableNumberInput("Total price must be a number"),
+  pricePerNight: nullableNumberInput("Price per night must be a number"),
   currency: z.string().default("USD"),
   status: z.string().default("confirmed"),
   bookingSource: z.string().nullable().optional(),
@@ -476,8 +526,8 @@ export const insertHotelSchema = z.object({
   bookingUrl: z.string().nullable().optional(),
   cancellationPolicy: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
-  latitude: z.union([z.number(), z.string()]).nullable().optional(),
-  longitude: z.union([z.number(), z.string()]).nullable().optional(),
+  latitude: nullableNumberInput("Latitude must be a number"),
+  longitude: nullableNumberInput("Longitude must be a number"),
   zipCode: z.string().nullable().optional(),
 });
 
@@ -534,7 +584,7 @@ export interface HotelProposal {
   platform: string;
   bookingUrl: string;
   status: string;
-  averageRanking: string | null;
+  averageRanking: number | null;
   createdAt: IsoDate | null;
 }
 
@@ -597,7 +647,7 @@ export interface FlightProposal {
   bookingUrl: string;
   platform: string;
   status: string;
-  averageRanking: string | null;
+  averageRanking: number | null;
   createdAt: IsoDate | null;
 }
 
@@ -661,7 +711,7 @@ export interface ActivityProposal {
   price: string | null;
   currency: string;
   priceType: string | null;
-  availableDates: JsonValue;
+  availableDates: JsonValue | null;
   preferredTime: string | null;
   difficulty: string | null;
   minGroupSize: number | null;
@@ -669,10 +719,10 @@ export interface ActivityProposal {
   ageRestrictions: string | null;
   requirements: string | null;
   bookingUrl: string | null;
-  contactInfo: JsonValue;
+  contactInfo: JsonValue | null;
   platform: string;
   status: string;
-  averageRanking: string | null;
+  averageRanking: number | null;
   createdAt: IsoDate | null;
 }
 
@@ -740,12 +790,12 @@ export interface RestaurantProposal {
   platform: string;
   atmosphere: string | null;
   specialties: string | null;
-  dietaryOptions: JsonValue;
+  dietaryOptions: JsonValue | null;
   preferredMealTime: string | null;
-  preferredDates: JsonValue;
-  features: JsonValue;
+  preferredDates: JsonValue | null;
+  features: JsonValue | null;
   status: string;
-  averageRanking: string | null;
+  averageRanking: number | null;
   createdAt: IsoDate | null;
 }
 
@@ -846,13 +896,13 @@ export interface Restaurant {
   city: string;
   country: string;
   zipCode: string | null;
-  latitude: string | null;
-  longitude: string | null;
+  latitude: number | null;
+  longitude: number | null;
   phoneNumber: string | null;
   website: string | null;
   openTableUrl: string | null;
   priceRange: string;
-  rating: string | null;
+  rating: number | null;
   reservationDate: IsoDate;
   reservationTime: string;
   partySize: number;
@@ -875,13 +925,13 @@ export const insertRestaurantSchema = z.object({
   partySize: z.number().min(1),
   cuisineType: z.string().nullable().optional(),
   zipCode: z.string().nullable().optional(),
-  latitude: z.union([z.number(), z.string()]).nullable().optional(),
-  longitude: z.union([z.number(), z.string()]).nullable().optional(),
+  latitude: nullableNumberInput("Latitude must be a number"),
+  longitude: nullableNumberInput("Longitude must be a number"),
   phoneNumber: z.string().nullable().optional(),
   website: z.string().nullable().optional(),
   openTableUrl: z.string().nullable().optional(),
   priceRange: z.string().default("$$"),
-  rating: z.union([z.number(), z.string()]).nullable().optional(),
+  rating: nullableNumberInput("Rating must be a number"),
   confirmationNumber: z.string().nullable().optional(),
   reservationStatus: z.string().default("pending"),
   specialRequests: z.string().nullable().optional(),
@@ -900,11 +950,11 @@ export interface TravelTip {
   content: string;
   category: string;
   destination: string | null;
-  applicableRegions: JsonValue;
-  activityCategories: JsonValue;
-  seasonality: JsonValue;
+  applicableRegions: JsonValue | null;
+  activityCategories: JsonValue | null;
+  seasonality: JsonValue | null;
   priority: number;
-  tags: JsonValue;
+  tags: JsonValue | null;
   isActive: boolean;
   createdBy: string | null;
   source: string | null;
@@ -935,8 +985,8 @@ export type TravelTipWithDetails = TravelTip & {
 export interface UserTipPreferences {
   id: number;
   userId: string;
-  preferredCategories: JsonValue;
-  dismissedTips: JsonValue;
+  preferredCategories: JsonValue | null;
+  dismissedTips: JsonValue | null;
   preferredLanguage: string | null;
   showSeasonalTips: boolean;
   showLocationTips: boolean;
@@ -947,7 +997,7 @@ export interface UserTipPreferences {
 }
 
 export const insertUserTipPreferencesSchema = z.object({
-  userId: z.string().optional(),
+  userId: z.string(),
   preferredCategories: z.any().nullable().optional(),
   dismissedTips: z.any().nullable().optional(),
   preferredLanguage: z.string().nullable().optional(),

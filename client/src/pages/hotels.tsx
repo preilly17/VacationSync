@@ -24,7 +24,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
 import { CalendarIcon, MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Plus, Bed, Search, Filter, ArrowLeft, Building, ChevronRight, DollarSign, Calculator, ArrowUpDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { insertHotelSchema, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
@@ -642,8 +642,8 @@ export default function HotelsPage() {
       country: "",
       checkInDate: new Date(),
       checkOutDate: new Date(),
-      totalPrice: "",
-      pricePerNight: "",
+      totalPrice: null,
+      pricePerNight: null,
 
       roomType: "",
       guestCount: 1,
@@ -769,8 +769,8 @@ export default function HotelsPage() {
       country: hotel.country,
       checkInDate: new Date(hotel.checkInDate),
       checkOutDate: new Date(hotel.checkOutDate),
-      totalPrice: hotel.totalPrice || "",
-      pricePerNight: hotel.pricePerNight || "",
+      totalPrice: hotel.totalPrice ?? null,
+      pricePerNight: hotel.pricePerNight ?? null,
 
       roomType: hotel.roomType || "",
       guestCount: hotel.guestCount || 1,
@@ -1122,7 +1122,20 @@ export default function HotelsPage() {
                       <FormItem>
                         <FormLabel>Total Price</FormLabel>
                         <FormControl>
-                          <Input placeholder="$299" {...field} />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="$299"
+                            value={field.value ?? ""}
+                            onChange={(event) =>
+                              field.onChange(
+                                event.target.value === ""
+                                  ? null
+                                  : parseFloat(event.target.value),
+                              )
+                            }
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1135,7 +1148,20 @@ export default function HotelsPage() {
                       <FormItem>
                         <FormLabel>Price per Night</FormLabel>
                         <FormControl>
-                          <Input placeholder="$99" {...field} />
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="$99"
+                            value={field.value ?? ""}
+                            onChange={(event) =>
+                              field.onChange(
+                                event.target.value === ""
+                                  ? null
+                                  : parseFloat(event.target.value),
+                              )
+                            }
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -1590,7 +1616,7 @@ export default function HotelsPage() {
                         <span className="text-sm text-muted-foreground">Price:</span>
                         <span className="text-lg font-bold text-blue-600">{proposal.price}</span>
                       </div>
-                      {proposal.averageRanking && (
+                      {proposal.averageRanking != null && (
                         <div className="flex items-center justify-between mt-1">
                           <span className="text-xs text-muted-foreground">Group Average:</span>
                           <span className="text-sm font-medium text-blue-600">#{proposal.averageRanking}</span>
@@ -1713,7 +1739,7 @@ export default function HotelsPage() {
                             <span className="text-sm text-muted-foreground">Price:</span>
                             <span className="text-lg font-bold text-blue-600">{proposal.price}</span>
                           </div>
-                          {proposal.averageRanking && (
+                          {proposal.averageRanking != null && (
                             <div className="flex items-center justify-between mt-1">
                               <span className="text-xs text-muted-foreground">Group Average:</span>
                               <span className="text-sm font-medium text-blue-600">#{proposal.averageRanking}</span>
@@ -2017,11 +2043,15 @@ export default function HotelsPage() {
                   </span>
                 </div>
 
-                {hotel.totalPrice && (
+                {hotel.totalPrice != null && (
                   <div className="space-y-1">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Estimated Total:</span>
-                      <span className="font-semibold text-green-600">{hotel.totalPrice}</span>
+                      <span className="font-semibold text-green-600">
+                        {formatCurrency(hotel.totalPrice, {
+                          currency: hotel.currency ?? "USD",
+                        })}
+                      </span>
                     </div>
                     <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-200">
                       ⚠️ Estimates only - may differ from booking sites
@@ -2029,10 +2059,14 @@ export default function HotelsPage() {
                   </div>
                 )}
 
-                {hotel.pricePerNight && (
+                {hotel.pricePerNight != null && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Est. Per Night:</span>
-                    <span className="font-medium">{hotel.pricePerNight}</span>
+                    <span className="font-medium">
+                      {formatCurrency(hotel.pricePerNight, {
+                        currency: hotel.currency ?? "USD",
+                      })}
+                    </span>
                   </div>
                 )}
 

@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { formatCurrency } from "@/lib/utils";
 import { Plus, ShoppingCart, Receipt, DollarSign, Trash2, Users } from "lucide-react";
 import type { GroceryItemWithDetails, TripMember, User } from "@shared/schema";
 
@@ -49,6 +50,19 @@ const normalizeTagList = (value: unknown): string[] => {
   }
 
   return [];
+};
+
+const normalizeAmount = (value: unknown): number | null => {
+  if (typeof value === "number") {
+    return Number.isNaN(value) ? null : value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
 };
 
 const toStructuredNotes = (
@@ -524,11 +538,11 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
                         <div className="flex items-center space-x-2">
                           <div className="text-right">
                             <div className="text-sm font-medium">
-                              ${parseFloat(item.actualCost || item.estimatedCost || "0").toFixed(2)}
+                              {formatCurrency(item.actualCost ?? item.estimatedCost ?? 0)}
                             </div>
                             {item.participantCount > 0 && (
                               <div className="text-xs text-gray-500">
-                                ${item.costPerPerson.toFixed(2)} per person
+                                {formatCurrency(item.costPerPerson ?? 0)} per person
                               </div>
                             )}
                           </div>
@@ -570,11 +584,15 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-medium">Total Cost:</span>
-                    <span className="text-lg font-bold">${(groceryBill as any).totalCost?.toFixed(2) || '0.00'}</span>
+                    <span className="text-lg font-bold">
+                      {formatCurrency(normalizeAmount((groceryBill as any).totalCost) ?? 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-medium">Cost Per Person:</span>
-                    <span className="text-lg font-bold">${(groceryBill as any).costPerPerson?.toFixed(2) || '0.00'}</span>
+                    <span className="text-lg font-bold">
+                      {formatCurrency(normalizeAmount((groceryBill as any).costPerPerson) ?? 0)}
+                    </span>
                   </div>
                   <div className="border-t pt-4">
                     <h4 className="font-medium mb-2">Items by Category:</h4>
@@ -584,13 +602,14 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
                         if (items.length === 0) return null;
                         
                         const categoryTotal = items.reduce((sum: number, item: GroceryItemWithDetails) => {
-                          return sum + parseFloat(item.actualCost || item.estimatedCost || "0");
+                          const itemCost = item.actualCost ?? item.estimatedCost ?? 0;
+                          return sum + itemCost;
                         }, 0);
                         
                         return (
                           <div key={category} className="flex justify-between">
                             <span className="capitalize">{category} ({items.length} items)</span>
-                            <span>${categoryTotal.toFixed(2)}</span>
+                            <span>{formatCurrency(categoryTotal)}</span>
                           </div>
                         );
                       })}

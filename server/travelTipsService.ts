@@ -15,6 +15,44 @@ import {
   type TravelTipWithDetails,
 } from "@shared/schema";
 
+const toNumberOrNull = (value: string | number | null | undefined): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const asStringArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const strings = value.filter((item): item is string => typeof item === "string");
+  return strings.length > 0 ? strings : [];
+};
+
+const asNumberArray = (value: unknown): number[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const numbers = value
+    .map((item) => {
+      if (typeof item === "number") {
+        return item;
+      }
+      if (typeof item === "string" && item.trim() !== "") {
+        const parsed = Number(item);
+        return Number.isNaN(parsed) ? undefined : parsed;
+      }
+      return undefined;
+    })
+    .filter((item): item is number => item !== undefined);
+
+  return numbers.length > 0 ? numbers : [];
+};
+
 type TripCalendarRow = {
   id: number;
   name: string;
@@ -62,7 +100,7 @@ const mapActivity = (row: ActivityRow): Activity => ({
   startTime: row.start_time,
   endTime: row.end_time,
   location: row.location,
-  cost: row.cost,
+  cost: toNumberOrNull(row.cost),
   maxCapacity: row.max_capacity,
   category: row.category,
   createdAt: row.created_at,
@@ -94,20 +132,28 @@ export interface LegacyTravelTip {
 // Bridge function to convert database tips to legacy format for backward compatibility
 function convertToLegacyTip(dbTip: DBTravelTip): LegacyTravelTip {
   const tipData = JSON.parse(dbTip.content);
+  const tagList = asStringArray(dbTip.tags) ?? [];
+  const activityTypes = asStringArray(dbTip.activityCategories) ?? [];
+  const seasonality = asStringArray(dbTip.seasonality);
   return {
     id: dbTip.id.toString(),
     title: tipData.title || '',
     description: tipData.description || dbTip.content,
     category: dbTip.category as TipCategory,
-    tags: (dbTip.tags as string[]) || [],
+    tags: tagList,
     destinations: tipData.destinations || (dbTip.destination ? [dbTip.destination] : []),
-    activityTypes: (dbTip.activityCategories as string[]) || [],
+    activityTypes,
     priority: dbTip.priority,
-    seasonality: (dbTip.seasonality as string[]) || undefined,
+    seasonality: seasonality && seasonality.length > 0 ? seasonality : undefined,
     userPreferenceTypes: tipData.userPreferenceTypes || [],
     isGeneral: !dbTip.destination || dbTip.destination === '*',
     source: dbTip.source || 'system',
-    lastUpdated: dbTip.updatedAt || dbTip.createdAt || new Date()
+    lastUpdated:
+      dbTip.updatedAt != null
+        ? new Date(dbTip.updatedAt)
+        : dbTip.createdAt != null
+          ? new Date(dbTip.createdAt)
+          : new Date()
   };
 }
 
@@ -953,13 +999,13 @@ function calculateUserPreferenceScore(tip: LegacyTravelTip, preferences: DBUserT
   let score = 0.5; // Base score
   
   // Check preferred categories
-  const preferredCategories = (preferences.preferredCategories as string[]) || [];
+  const preferredCategories = asStringArray(preferences.preferredCategories) ?? [];
   if (preferredCategories.includes(tip.category)) {
     score += 0.3;
   }
   
   // Check if tip is dismissed
-  const dismissedTips = (preferences.dismissedTips as number[]) || [];
+  const dismissedTips = asNumberArray(preferences.dismissedTips) ?? [];
   const tipIdNum = parseInt(tip.id.replace(/\D/g, ''), 10);
   if (dismissedTips.includes(tipIdNum)) {
     return 0; // Dismissed tips get zero score
@@ -1048,7 +1094,7 @@ export async function generateTipsForTrip(
       if (tip.priority >= 4) matchingReasons.push('High priority');
 
       // Filter applicable activities
-      const applicableActivities = activities.filter(activity =>
+      const applicableActivities = activities.filter((activity: Activity) =>
         tip.activityTypes.includes('*') || tip.activityTypes.includes(activity.category)
       );
 

@@ -20,6 +20,7 @@ import { TravelLoading } from "@/components/LoadingSpinners";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { FlightWithDetails, InsertFlight, FlightProposalWithDetails, InsertFlightRanking } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { formatCurrency } from "@/lib/utils";
 
 // Helper function to format duration in minutes to "Xh Ym" format
 function formatDuration(minutes: number | string): string {
@@ -41,6 +42,36 @@ function formatLayovers(layoversStr: string | any[]): string {
     return layoversStr;
   }
 }
+
+const parseNumericAmount = (value: unknown): number | null => {
+  if (typeof value === "number") {
+    return Number.isNaN(value) ? null : value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+};
+
+const formatPriceDisplay = (
+  value: unknown,
+  currency?: string | null,
+  fallback = "N/A",
+): string => {
+  const amount = parseNumericAmount(value);
+  if (amount !== null) {
+    return formatCurrency(amount, { currency: currency ?? "USD" });
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+
+  return fallback;
+};
 
 // Helper function to get flight status color
 function getFlightStatusColor(status: string): string {
@@ -1253,138 +1284,144 @@ export default function FlightsPage() {
               <div className="space-y-4">
                 {/* Display results for active filter */}
                 {(filterResults[activeFilter].length > 0 ? filterResults[activeFilter] : searchResults)
-                  .map((flight: any, index: number) => (
-                  <div key={index} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <Plane className="h-4 w-4 text-blue-600" />
-                          <span className="font-semibold">{getFlightAirlineName(flight)}</span>
-                          <span className="text-gray-500">{flight.flightNumber || `Flight ${index + 1}`}</span>
-                        </div>
-                        <Badge className="bg-green-100 text-green-800">
-                          Available
-                        </Badge>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-2xl font-bold text-green-600">
-                          ${flight.price ? Math.round(flight.price) : flight.totalPrice || 'N/A'}
-                        </div>
-                        <div className="text-sm text-gray-500">per person</div>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
-                      <div className="flex items-center gap-2">
-                        <PlaneTakeoff className="h-4 w-4 text-green-600" />
-                        <div>
-                          <div className="font-medium">{flight.departure?.airport || flight.departureAirport || searchFormData.departure}</div>
-                          <div className="text-gray-500">
-                            {flight.departure?.time ? new Date(flight.departure.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Departure time varies'}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-center">
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                        <div className="mx-2 text-xs text-gray-500">
-                          {flight.duration ? flight.duration.replace('PT', '').replace('H', 'h ').replace('M', 'm') : 'Duration varies'}
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <PlaneLanding className="h-4 w-4 text-red-600" />
-                        <div>
-                          <div className="font-medium">{flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival}</div>
-                          <div className="text-gray-500">
-                            {flight.arrival?.time ? new Date(flight.arrival.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Arrival time varies'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                  .map((flight: any, index: number) => {
+                    const normalizedPriceSource = flight.price ?? flight.totalPrice;
+                    const priceLabel = formatPriceDisplay(normalizedPriceSource, flight.currency);
+                    const hasNumericPrice = parseNumericAmount(normalizedPriceSource) !== null;
 
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4 text-sm text-gray-600">
-                        {flight.stops !== undefined && (
-                          <span>{flight.stops === 0 ? 'Non-stop' : `${flight.stops} stop${flight.stops > 1 ? 's' : ''}`}</span>
-                        )}
-                        {flight.class && (
-                          <span className="capitalize">{flight.class}</span>
-                        )}
+                    return (
+                      <div key={index} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <Plane className="h-4 w-4 text-blue-600" />
+                              <span className="font-semibold">{getFlightAirlineName(flight)}</span>
+                              <span className="text-gray-500">{flight.flightNumber || `Flight ${index + 1}`}</span>
+                            </div>
+                            <Badge className="bg-green-100 text-green-800">
+                              Available
+                            </Badge>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold text-green-600">{priceLabel}</div>
+                            {hasNumericPrice && (
+                              <div className="text-sm text-gray-500">per person</div>
+                            )}
+                          </div>
+                        </div>
+                    
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                          <div className="flex items-center gap-2">
+                            <PlaneTakeoff className="h-4 w-4 text-green-600" />
+                            <div>
+                              <div className="font-medium">{flight.departure?.airport || flight.departureAirport || searchFormData.departure}</div>
+                              <div className="text-gray-500">
+                                {flight.departure?.time ? new Date(flight.departure.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Departure time varies'}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-center">
+                            <ArrowRight className="h-4 w-4 text-gray-400" />
+                            <div className="mx-2 text-xs text-gray-500">
+                              {flight.duration ? flight.duration.replace('PT', '').replace('H', 'h ').replace('M', 'm') : 'Duration varies'}
+                            </div>
+                            <ArrowRight className="h-4 w-4 text-gray-400" />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <PlaneLanding className="h-4 w-4 text-red-600" />
+                            <div>
+                              <div className="font-medium">{flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival}</div>
+                              <div className="text-gray-500">
+                                {flight.arrival?.time ? new Date(flight.arrival.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Arrival time varies'}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 text-sm text-gray-600">
+                            {flight.stops !== undefined && (
+                              <span>{flight.stops === 0 ? 'Non-stop' : `${flight.stops} stop${flight.stops > 1 ? 's' : ''}`}</span>
+                            )}
+                            {flight.class && (
+                              <span className="capitalize">{flight.class}</span>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            {/* Always show booking options for legitimate flight booking platforms */}
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                              asChild
+                              data-testid={`button-book-kayak-${index}`}
+                            >
+                              <a
+                                href={`https://www.kayak.com/flights/${cachedSearchParams?.originCode || 'ATL'}-${cachedSearchParams?.destinationCode || 'MIA'}/${searchFormData.departureDate}${searchFormData.returnDate ? `/${searchFormData.returnDate}` : ''}?sort=bestflight_a`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="h-3 w-3 mr-1" />
+                                Book on Kayak
+                              </a>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              asChild
+                              data-testid={`button-book-expedia-${index}`}
+                            >
+                              <a
+                                href={`https://www.expedia.com/Flights-Search?trip=${searchFormData.returnDate ? 'roundtrip' : 'oneway'}&leg1=from:${cachedSearchParams?.originCode || 'ATL'},to:${cachedSearchParams?.destinationCode || 'MIA'},departure:${searchFormData.departureDate}TANYT${searchFormData.returnDate ? `&leg2=from:${cachedSearchParams?.destinationCode || 'MIA'},to:${cachedSearchParams?.originCode || 'ATL'},departure:${searchFormData.returnDate}TANYT` : ''}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Book on Expedia
+                              </a>
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => shareFlightWithGroup(flight)}
+                              data-testid={`button-propose-flight-${index}`}
+                            >
+                              <Users className="h-4 w-4 mr-2" />
+                              Propose to Group
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setFlightFormData({
+                                  flightNumber: flight.flightNumber || '',
+                                  airline: getFlightAirlineName(flight),
+                                  airlineCode: flight.airlineCode || '',
+                                  departureAirport: flight.departure?.airport || flight.departureAirport || searchFormData.departure,
+                                  departureCode: flight.departure?.iataCode || flight.departureCode || '',
+                                  departureTime: flight.departure?.time || flight.departureTime || '',
+                                  arrivalAirport: flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival,
+                                  arrivalCode: flight.arrival?.iataCode || flight.arrivalCode || '',
+                                  arrivalTime: flight.arrival?.time || flight.arrivalTime || '',
+                                  price: flight.price?.toString() || flight.totalPrice?.toString() || '',
+                                  seatClass: flight.class || 'economy',
+                                  flightType: 'outbound',
+                                  bookingReference: '',
+                                  aircraft: flight.aircraft || '',
+                                  status: 'confirmed'
+                                });
+                                setEditingFlight(null);
+                                setIsAddFlightOpen(true);
+                              }}
+                              data-testid={`button-add-to-trip-${index}`}
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Add to Trip
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex gap-2">
-                        {/* Always show booking options for legitimate flight booking platforms */}
-                        <Button 
-                          size="sm" 
-                          variant="default"
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                          asChild
-                          data-testid={`button-book-kayak-${index}`}
-                        >
-                          <a 
-                            href={`https://www.kayak.com/flights/${cachedSearchParams?.originCode || 'ATL'}-${cachedSearchParams?.destinationCode || 'MIA'}/${searchFormData.departureDate}${searchFormData.returnDate ? `/${searchFormData.returnDate}` : ''}?sort=bestflight_a`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                          >
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                            Book on Kayak
-                          </a>
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          asChild
-                          data-testid={`button-book-expedia-${index}`}
-                        >
-                          <a 
-                            href={`https://www.expedia.com/Flights-Search?trip=${searchFormData.returnDate ? 'roundtrip' : 'oneway'}&leg1=from:${cachedSearchParams?.originCode || 'ATL'},to:${cachedSearchParams?.destinationCode || 'MIA'},departure:${searchFormData.departureDate}TANYT${searchFormData.returnDate ? `&leg2=from:${cachedSearchParams?.destinationCode || 'MIA'},to:${cachedSearchParams?.originCode || 'ATL'},departure:${searchFormData.returnDate}TANYT` : ''}`} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                          >
-                            Book on Expedia
-                          </a>
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => shareFlightWithGroup(flight)}
-                          data-testid={`button-propose-flight-${index}`}
-                        >
-                          <Users className="h-4 w-4 mr-2" />
-                          Propose to Group
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => {
-                            setFlightFormData({
-                              flightNumber: flight.flightNumber || '',
-                              airline: getFlightAirlineName(flight),
-                              airlineCode: flight.airlineCode || '',
-                              departureAirport: flight.departure?.airport || flight.departureAirport || searchFormData.departure,
-                              departureCode: flight.departure?.iataCode || flight.departureCode || '',
-                              departureTime: flight.departure?.time || flight.departureTime || '',
-                              arrivalAirport: flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival,
-                              arrivalCode: flight.arrival?.iataCode || flight.arrivalCode || '',
-                              arrivalTime: flight.arrival?.time || flight.arrivalTime || '',
-                              price: flight.price?.toString() || flight.totalPrice?.toString() || '',
-                              seatClass: flight.class || 'economy',
-                              flightType: 'outbound',
-                              bookingReference: '',
-                              aircraft: flight.aircraft || '',
-                              status: 'confirmed'
-                            });
-                            setEditingFlight(null);
-                            setIsAddFlightOpen(true);
-                          }}
-                          data-testid={`button-add-to-trip-${index}`}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Add to Trip
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                    );
+                  })}
               </div>
             </CardContent>
           </Card>
@@ -1474,9 +1511,9 @@ export default function FlightsPage() {
                         </div>
                       </div>
                     </div>
-                    {flight.price && (
+                    {flight.price != null && (
                       <div className="mt-2 text-sm text-gray-600">
-                        Price: ${flight.price} {flight.currency || 'USD'}
+                        Price: {formatPriceDisplay(flight.price, flight.currency)}
                         {flight.seatClass && ` • ${flight.seatClass}`}
                       </div>
                     )}
@@ -1534,7 +1571,7 @@ export default function FlightsPage() {
                           </div>
                           <div className="text-right">
                             <div className="text-lg font-bold text-blue-600">${proposal.price}</div>
-                            {proposal.averageRanking && (
+                            {proposal.averageRanking != null && (
                               <div className="text-sm text-muted-foreground">
                                 Avg: #{proposal.averageRanking}
                               </div>
@@ -1701,9 +1738,9 @@ export default function FlightsPage() {
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
-                      {flight.price && (
+                      {flight.price != null && (
                         <div className="text-lg font-semibold text-green-600">
-                          ${flight.price}
+                          {formatPriceDisplay(flight.price, flight.currency)}
                         </div>
                       )}
                     </div>
