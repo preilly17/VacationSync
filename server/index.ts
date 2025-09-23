@@ -8,13 +8,25 @@ import { createSessionMiddleware } from "./sessionAuth";
 const app = express();
 app.set("trust proxy", 1);
 
-const corsOrigins = (process.env.CORS_ORIGINS ?? process.env.CORS_ORIGIN ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const defaultClientUrl = process.env.CLIENT_URL ?? "http://localhost:3000";
+const allowedOrigins = Array.from(
+  new Set(
+    [
+      process.env.CORS_ORIGINS,
+      process.env.CORS_ORIGIN,
+      defaultClientUrl,
+      "https://vacation-sync-urgg.vercel.app",
+      "http://localhost:3000",
+    ]
+      .filter(Boolean)
+      .flatMap((originString) => originString!.split(","))
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  )
+);
 
 const corsOptions: CorsOptions = {
-  origin: corsOrigins.length ? corsOrigins : true,
+  origin: allowedOrigins,
   credentials: true,
 };
 
