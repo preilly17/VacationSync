@@ -137,27 +137,26 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="w-full max-w-[820px] overflow-hidden !p-0 !gap-0 !flex !flex-col max-h-[calc(100vh-2rem)] sm:w-[92vw] md:w-[820px] sm:max-h-[92vh]"
-      >
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-1 min-h-0 flex-col"
-          >
-            <header className="flex shrink-0 items-center border-b border-border px-6 py-5 pr-12">
-              <DialogTitle className="text-lg font-semibold">
-                Add New Expense
-              </DialogTitle>
-            </header>
+      <DialogContent className="w-full max-w-[820px] sm:w-[92vw] md:w-[820px] max-h-[calc(100vh-2rem)] sm:max-h-[92vh] overflow-hidden p-0 gap-0">
+        <div className="flex h-full min-h-0 flex-col">
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(onSubmit)}
+              className="flex flex-1 min-h-0 flex-col"
+            >
+              <header className="flex shrink-0 items-center border-b border-border px-6 py-5 pr-12">
+                <DialogTitle className="text-lg font-semibold">
+                  Add New Expense
+                </DialogTitle>
+              </header>
 
-            <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-32 overscroll-contain sm:pb-8">
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
+              <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-32 overscroll-contain sm:pb-8">
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description</FormLabel>
                     <FormControl>
                       <Input placeholder="What did you spend on?" {...field} />
                     </FormControl>
@@ -275,59 +274,62 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
                           Select members to split this expense with
                         </CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-2">
+                      <CardContent className="space-y-3">
                         {trip?.members?.map((member) => {
                           const isSelected = field.value.includes(member.user.id);
                           return (
                             <div
                               key={member.user.id}
-                              className="flex flex-wrap items-center gap-3 rounded-lg border p-2 hover:bg-gray-50"
+                              className="flex flex-col gap-3 rounded-lg border p-3 transition hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
                             >
-                              <Checkbox
-                                id={member.user.id}
-                                checked={isSelected}
-                                onCheckedChange={(checked) => {
-                                  const newSelection = checked
-                                    ? [...field.value, member.user.id]
-                                    : field.value.filter((id) => id !== member.user.id);
-                                  field.onChange(newSelection);
-                                }}
-                              />
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage src={member.user.profileImageUrl || undefined} />
-                                <AvatarFallback>
-                                  {member.user.firstName?.[0] || member.user.email?.[0] || 'U'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium">
-                                  {member.user.firstName} {member.user.lastName}
-                                </p>
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                                  {(member.user.cashAppUsername || member.user.phoneNumber) && (
-                                    <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                                      <Smartphone className="mr-1 h-3 w-3" />
-                                      CashApp
-                                    </Badge>
-                                  )}
-                                  {(member.user.venmoUsername || member.user.phoneNumber) && (
-                                    <Badge variant="secondary" className="text-xs whitespace-nowrap">
-                                      <Smartphone className="mr-1 h-3 w-3" />
-                                      Venmo
-                                    </Badge>
-                                  )}
-                                  {member.user.phoneNumber && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="whitespace-nowrap text-xs text-green-700 bg-green-100"
-                                    >
-                                      Phone
-                                    </Badge>
-                                  )}
+                              <div className="flex items-start gap-3 sm:items-center">
+                                <Checkbox
+                                  id={member.user.id}
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => {
+                                    const newSelection = checked
+                                      ? [...field.value, member.user.id]
+                                      : field.value.filter((id) => id !== member.user.id);
+                                    field.onChange(newSelection);
+                                  }}
+                                  className="mt-1 sm:mt-0"
+                                />
+                                <Avatar className="h-8 w-8">
+                                  <AvatarImage src={member.user.profileImageUrl || undefined} />
+                                  <AvatarFallback>
+                                    {member.user.firstName?.[0] || member.user.email?.[0] || 'U'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-medium">
+                                    {member.user.firstName} {member.user.lastName}
+                                  </p>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                                    {(member.user.cashAppUsername || member.user.phoneNumber) && (
+                                      <Badge variant="secondary" className="whitespace-nowrap text-xs">
+                                        <Smartphone className="mr-1 h-3 w-3" />
+                                        CashApp
+                                      </Badge>
+                                    )}
+                                    {(member.user.venmoUsername || member.user.phoneNumber) && (
+                                      <Badge variant="secondary" className="whitespace-nowrap text-xs">
+                                        <Smartphone className="mr-1 h-3 w-3" />
+                                        Venmo
+                                      </Badge>
+                                    )}
+                                    {member.user.phoneNumber && (
+                                      <Badge
+                                        variant="secondary"
+                                        className="whitespace-nowrap bg-green-100 text-xs text-green-700"
+                                      >
+                                        Phone
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                               {isSelected && field.value.length > 0 && (
-                                <div className="ml-0 mt-2 w-full text-left sm:ml-auto sm:mt-0 sm:w-auto sm:text-right">
+                                <div className="sm:text-right">
                                   <p className="text-sm font-medium">
                                     {(() => {
                                       const expenseCurrency = form.watch('currency') || 'USD';
@@ -348,7 +350,7 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
                         })}
                       </CardContent>
                     </Card>
-                    <FormMessage />
+                    <FormMessage className="min-h-[18px]" />
                   </FormItem>
                 )}
               />
@@ -361,7 +363,7 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
                       Payment App Quick Links
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-2">
+                  <CardContent className="space-y-3">
                     {form.watch('selectedMembers')?.map((memberId) => {
                       const member = trip?.members?.find((m) => m.user.id === memberId)?.user;
                       if (!member) return null;
@@ -379,7 +381,7 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
                       return (
                         <div
                           key={memberId}
-                          className="flex flex-col gap-3 rounded-lg bg-gray-50 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+                          className="flex flex-col gap-3 rounded-lg bg-gray-50 p-3 sm:flex-row sm:items-center sm:justify-between"
                         >
                           <div className="flex items-center gap-2">
                             <Avatar className="h-6 w-6">
@@ -393,7 +395,7 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
                             </span>
                           </div>
                           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                            <span className="text-sm font-medium whitespace-nowrap">
+                            <span className="whitespace-nowrap text-sm font-medium">
                               {displayCurrency} {splitAmount}
                             </span>
                             <div className="flex flex-wrap gap-2">
@@ -422,7 +424,7 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
                                               : 'Redirecting to CashApp with username',
                                           });
                                         }}
-                                        className="px-2 py-1 text-xs whitespace-nowrap"
+                                        className="whitespace-nowrap px-2 py-1 text-xs"
                                       >
                                         CashApp
                                       </Button>
@@ -441,7 +443,7 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
                                               : 'Redirecting to Venmo with username',
                                           });
                                         }}
-                                        className="px-2 py-1 text-xs whitespace-nowrap"
+                                        className="whitespace-nowrap px-2 py-1 text-xs"
                                       >
                                         Venmo
                                       </Button>
@@ -500,25 +502,26 @@ export function AddExpenseModal({ open, onOpenChange, tripId }: AddExpenseModalP
               />
             </div>
 
-            <footer className="sticky bottom-0 flex shrink-0 flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="w-full sm:w-auto"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="w-full sm:w-auto"
-                disabled={createExpenseMutation.isPending}
-              >
-                {createExpenseMutation.isPending ? 'Adding...' : 'Create expense'}
-              </Button>
-            </footer>
-          </form>
-        </Form>
+              <footer className="sticky bottom-0 flex shrink-0 flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                  className="w-full sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="w-full sm:w-auto"
+                  disabled={createExpenseMutation.isPending}
+                >
+                  {createExpenseMutation.isPending ? 'Adding...' : 'Create expense'}
+                </Button>
+              </footer>
+            </form>
+          </Form>
+        </div>
       </DialogContent>
     </Dialog>
   );
