@@ -17,6 +17,7 @@ const allowedOrigins = Array.from(
       defaultClientUrl,
       "https://vacation-sync-urgg.vercel.app",
       "http://localhost:3000",
+      "https://www.tripsyncbeta.com",
     ]
       .filter(Boolean)
       .flatMap((originString) => originString!.split(","))
