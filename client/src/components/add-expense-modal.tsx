@@ -592,7 +592,9 @@ export function AddExpenseModal({
                         <SelectItem value="exact">Exact Amounts</SelectItem>
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <div className="min-h-[18px]">
+                      <FormMessage className="text-xs" />
+                    </div>
                   </FormItem>
                 )}
               />
