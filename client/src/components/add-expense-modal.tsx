@@ -169,11 +169,11 @@ export function AddExpenseModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex w-full max-w-[820px] flex-col overflow-hidden p-0 max-h-[calc(100vh-2rem)] sm:w-[92vw] sm:max-h-[92vh] md:w-[820px]">
+      <DialogContent className="flex w-full max-w-[820px] flex-col overflow-hidden p-0 gap-0 max-h-[calc(100vh-2rem)] sm:w-[92vw] sm:max-h-[92vh] md:w-[820px]">
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="grid h-full min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto]"
+            className="flex h-full min-h-0 flex-1 flex-col"
           >
             <header className="flex items-center border-b border-border px-6 py-5 pr-12">
               <DialogTitle className="text-lg font-semibold">
@@ -181,7 +181,7 @@ export function AddExpenseModal({
               </DialogTitle>
             </header>
 
-            <div className="min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-24 overscroll-contain sm:pb-8">
+            <div className="flex-1 min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-24 overscroll-contain sm:pb-8">
               <FormField
                 control={form.control}
                 name="description"
@@ -607,7 +607,7 @@ export function AddExpenseModal({
               />
             </div>
 
-            <footer className="sticky bottom-0 flex shrink-0 flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
+            <footer className="sticky bottom-0 z-10 flex shrink-0 flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button
                 type="button"
                 variant="outline"
