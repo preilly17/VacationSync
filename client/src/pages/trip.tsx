@@ -499,63 +499,53 @@ export default function Trip() {
                       </div>
                     </div>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-neutral-500">Activities planned</p>
-                          <p className="mt-1 text-2xl font-semibold text-neutral-900">{activities.length}</p>
+                  {activeTab === "calendar" && (
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-neutral-500">Activities planned</p>
+                            <p className="mt-1 text-2xl font-semibold text-neutral-900">{activities.length}</p>
+                          </div>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <CheckCircle className="h-5 w-5" />
+                          </div>
                         </div>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <CheckCircle className="h-5 w-5" />
-                        </div>
+                        <p className="mt-3 text-xs text-neutral-500">Track everything happening across the trip.</p>
                       </div>
-                      <p className="mt-3 text-xs text-neutral-500">Track everything happening across the trip.</p>
-                    </div>
-                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-neutral-500">Members joined</p>
-                          <p className="mt-1 text-2xl font-semibold text-neutral-900">{totalMembers}</p>
+                      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-neutral-500">Your RSVPs</p>
+                            <p className="mt-1 text-2xl font-semibold text-neutral-900">{myScheduleActivities.length}</p>
+                          </div>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <User className="h-5 w-5" />
+                          </div>
                         </div>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <Users className="h-5 w-5" />
-                        </div>
+                        <p className="mt-3 text-xs text-neutral-500">Keep tabs on the plans you’ve accepted.</p>
                       </div>
-                      <p className="mt-3 text-xs text-neutral-500">See who’s along for the adventure.</p>
-                    </div>
-                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-neutral-500">Your RSVPs</p>
-                          <p className="mt-1 text-2xl font-semibold text-neutral-900">{myScheduleActivities.length}</p>
-                        </div>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <User className="h-5 w-5" />
-                        </div>
-                      </div>
-                      <p className="mt-3 text-xs text-neutral-500">Keep tabs on the plans you’ve accepted.</p>
-                    </div>
-                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-neutral-500">Next on the calendar</p>
-                          <p className="mt-1 text-base font-semibold text-neutral-900 line-clamp-2">
-                            {nextActivity ? nextActivity.name : 'No upcoming activity'}
-                          </p>
-                          <p className="mt-1 text-xs text-neutral-500">
-                            {nextActivity ? (nextActivityCountdown || 'Happening soon') : 'Add an activity to kick things off.'}
-                          </p>
-                          {nextActivityDateLabel && (
-                            <p className="text-xs text-neutral-500">{nextActivityDateLabel}</p>
-                          )}
-                        </div>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <Clock className="h-5 w-5" />
+                      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-neutral-500">Next on the calendar</p>
+                            <p className="mt-1 text-base font-semibold text-neutral-900 line-clamp-2">
+                              {nextActivity ? nextActivity.name : 'No upcoming activity'}
+                            </p>
+                            <p className="mt-1 text-xs text-neutral-500">
+                              {nextActivity ? (nextActivityCountdown || 'Happening soon') : 'Add an activity to kick things off.'}
+                            </p>
+                            {nextActivityDateLabel && (
+                              <p className="text-xs text-neutral-500">{nextActivityDateLabel}</p>
+                            )}
+                          </div>
+                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <Clock className="h-5 w-5" />
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Tab Content */}
