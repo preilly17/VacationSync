@@ -3179,8 +3179,37 @@ export class DatabaseStorage implements IStorage {
     return mapPackingItem(row);
   }
 
+  async getPackingItemById(itemId: number): Promise<PackingItem | null> {
+    const { rows } = await query<PackingItemRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        user_id,
+        item,
+        category,
+        item_type,
+        is_checked,
+        assigned_user_id,
+        created_at
+      FROM packing_items
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [itemId],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return mapPackingItem(row);
+  }
+
   async getTripPackingItems(
     tripId: number,
+    userId: string,
   ): Promise<(PackingItem & { user: User })[]> {
     const { rows } = await query<PackingItemWithUserRow>(
       `
@@ -3222,9 +3251,13 @@ export class DatabaseStorage implements IStorage {
       FROM packing_items pi
       JOIN users u ON u.id = pi.user_id
       WHERE pi.trip_id = $1
+        AND (
+          pi.item_type = 'group'
+          OR pi.user_id = $2
+        )
       ORDER BY pi.created_at ASC, pi.id ASC
       `,
-      [tripId],
+      [tripId, userId],
     );
 
     return rows.map((row) => ({

@@ -1829,7 +1829,7 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
       
-      const packingItems = await storage.getTripPackingItems(tripId);
+      const packingItems = await storage.getTripPackingItems(tripId, userId);
       res.json(packingItems);
     } catch (error: unknown) {
       console.error("Error fetching packing items:", error);
@@ -1882,6 +1882,15 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
       
+      const packingItem = await storage.getPackingItemById(itemId);
+      if (!packingItem) {
+        return res.status(404).json({ message: "Packing item not found" });
+      }
+
+      if (packingItem.itemType === "personal" && packingItem.userId !== userId) {
+        return res.status(403).json({ message: "You are not allowed to update this item" });
+      }
+
       await storage.togglePackingItem(itemId, userId);
       res.json({ success: true });
     } catch (error: unknown) {
@@ -1904,6 +1913,15 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
       
+      const packingItem = await storage.getPackingItemById(itemId);
+      if (!packingItem) {
+        return res.status(404).json({ message: "Packing item not found" });
+      }
+
+      if (packingItem.userId !== userId) {
+        return res.status(403).json({ message: "You are not allowed to delete this item" });
+      }
+
       await storage.deletePackingItem(itemId, userId);
       res.json({ success: true });
     } catch (error: unknown) {
