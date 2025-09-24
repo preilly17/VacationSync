@@ -6968,7 +6968,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return updated;
   }
   async addFlight(): Promise<Flight> { throw new Error("Not implemented"); }
-  async addHotel(): Promise<Hotel> { throw new Error("Not implemented"); }
+  async addHotel(hotel: InsertHotel, userId: string): Promise<Hotel> {
+    return this.createHotel(hotel, userId);
+  }
 
   async createFlightProposal(
     proposal: InsertFlightProposal,
