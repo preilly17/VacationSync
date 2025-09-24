@@ -1,28 +1,79 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Calendar, 
-  Users, 
-  MapPin, 
+import {
+  Calendar,
+  Users,
+  MapPin,
   ChevronLeft,
   ChevronRight,
   User,
-  ArrowLeft
+  ArrowLeft,
+  Clock,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { ActivityCard } from "@/components/activity-card";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { Sidebar } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 import type { TripWithDetails, ActivityWithDetails, User as UserType } from "@shared/schema";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth } from "date-fns";
+import { Badge } from "@/components/ui/badge";
+
+const getParticipantDisplayName = (user: UserType) => {
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+
+  if (first && last) {
+    return `${first} ${last}`;
+  }
+
+  if (first) {
+    return first;
+  }
+
+  if (user.username) {
+    return user.username;
+  }
+
+  return user.email || "Trip member";
+};
+
+const formatActivityTimeRange = (
+  startTime: ActivityWithDetails["startTime"],
+  endTime?: ActivityWithDetails["endTime"],
+) => {
+  const startDate = new Date(startTime);
+
+  if (Number.isNaN(startDate.getTime())) {
+    return "Time TBD";
+  }
+
+  const startLabel = format(startDate, "h:mm a");
+
+  if (!endTime) {
+    return startLabel;
+  }
+
+  const endDate = new Date(endTime);
+
+  if (Number.isNaN(endDate.getTime())) {
+    return startLabel;
+  }
+
+  const sameDay = startDate.toDateString() === endDate.toDateString();
+
+  if (sameDay) {
+    return `${startLabel} - ${format(endDate, "h:mm a")}`;
+  }
+
+  return `${startLabel} - ${format(endDate, "MMM d, h:mm a")}`;
+};
 
 export default function MemberSchedule() {
   const { tripId } = useParams();
@@ -107,13 +158,6 @@ export default function MemberSchedule() {
     return trip.members.find(member => member.userId === selectedMemberId);
   };
 
-  const getMemberSchedule = () => {
-    if (!activities || !selectedMemberId) return [];
-    return activities.filter(activity => 
-      activity.acceptances.some(acceptance => acceptance.userId === selectedMemberId)
-    );
-  };
-
   const parseIsoDate = (value: TripWithDetails["startDate"]) =>
     value instanceof Date ? value : new Date(value);
 
@@ -158,7 +202,22 @@ export default function MemberSchedule() {
   }
 
   const selectedMember = getSelectedMember();
-  const memberSchedule = getMemberSchedule();
+  const memberSchedule = useMemo(() => {
+    if (!activities || !selectedMemberId) {
+      return [] as ActivityWithDetails[];
+    }
+
+    return activities
+      .filter((activity) =>
+        activity.invites.some(
+          (invite) => invite.userId === selectedMemberId && invite.status === "accepted",
+        ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+      );
+  }, [activities, selectedMemberId]);
 
   return (
     <div className="min-h-screen bg-neutral-100">
@@ -308,18 +367,114 @@ export default function MemberSchedule() {
                     selectedDate={selectedDate}
                     onDayClick={(date) => setSelectedDate(date)}
                   />
-                  {memberSchedule.length === 0 && (
+                  {memberSchedule.length === 0 ? (
                     <div className="p-8 text-center">
                       <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-lg font-medium text-neutral-900 mb-2">
                         No activities in schedule
                       </h3>
                       <p className="text-neutral-600">
-                        {selectedMember.userId === currentUser?.id 
+                        {selectedMember.userId === currentUser?.id
                           ? "You haven't accepted any activities yet."
                           : `${selectedMember.user.firstName || 'This member'} hasn't accepted any activities yet.`
                         }
                       </p>
+                    </div>
+                  ) : (
+                    <div className="mt-8 space-y-4">
+                      <div>
+                        <h3 className="text-base font-semibold text-neutral-900">
+                          Accepted activities
+                        </h3>
+                        <p className="text-sm text-neutral-600">
+                          These events appear on {selectedMember.user.firstName || selectedMember.user.email || "their"}'s personal schedule.
+                        </p>
+                      </div>
+                      <div className="space-y-4">
+                        {memberSchedule.map((activity) => {
+                          const acceptedParticipants = activity.invites
+                            .filter((invite) => invite.status === "accepted")
+                            .map((invite) => getParticipantDisplayName(invite.user));
+                          const pendingParticipants = activity.invites
+                            .filter((invite) => invite.status === "pending")
+                            .map((invite) => getParticipantDisplayName(invite.user));
+                          const declinedParticipants = activity.invites
+                            .filter((invite) => invite.status === "declined")
+                            .map((invite) => getParticipantDisplayName(invite.user));
+
+                          return (
+                            <div
+                              key={activity.id}
+                              className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm"
+                            >
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                  <h4 className="text-lg font-semibold text-neutral-900">
+                                    {activity.name}
+                                  </h4>
+                                  <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-neutral-600">
+                                    <span className="flex items-center gap-2">
+                                      <Clock className="h-4 w-4" />
+                                      {formatActivityTimeRange(activity.startTime, activity.endTime ?? undefined)}
+                                    </span>
+                                    {activity.location && (
+                                      <span className="flex items-center gap-2">
+                                        <MapPin className="h-4 w-4" />
+                                        {activity.location}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Badge className="bg-primary/10 text-primary" variant="secondary">
+                                  {activity.acceptedCount} going
+                                  {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
+                                </Badge>
+                              </div>
+
+                              {activity.description && (
+                                <p className="mt-3 text-sm text-neutral-600 whitespace-pre-wrap">
+                                  {activity.description}
+                                </p>
+                              )}
+
+                              <div className="mt-4 space-y-2">
+                                <div>
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    Going
+                                  </p>
+                                  {acceptedParticipants.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                      {acceptedParticipants.map((name, index) => (
+                                        <Badge
+                                          key={`${activity.id}-accepted-${index}`}
+                                          variant="secondary"
+                                          className="bg-neutral-100 text-neutral-700"
+                                        >
+                                          {name}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="mt-2 text-sm text-neutral-500 italic">
+                                      No accepted participants yet.
+                                    </p>
+                                  )}
+                                </div>
+                                {pendingParticipants.length > 0 && (
+                                  <p className="text-xs text-neutral-600">
+                                    Awaiting response: {pendingParticipants.join(", ")}
+                                  </p>
+                                )}
+                                {declinedParticipants.length > 0 && (
+                                  <p className="text-xs text-neutral-500">
+                                    Not going: {declinedParticipants.join(", ")}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>

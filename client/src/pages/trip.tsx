@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,6 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { CalendarGrid } from "@/components/calendar-grid";
-import { ActivityCard } from "@/components/activity-card";
 import { AddActivityModal } from "@/components/add-activity-modal";
 import { EditTripModal } from "@/components/edit-trip-modal";
 import { InviteLinkModal } from "@/components/invite-link-modal";
@@ -57,7 +56,14 @@ import { TravelLoading } from "@/components/LoadingSpinners";
 import ActivitySearch from "@/components/activity-search";
 import { WishListBoard } from "@/components/wish-list-board";
 import Proposals from "@/pages/proposals";
-import type { TripWithDetails, ActivityWithDetails, User, InsertHotel } from "@shared/schema";
+import { ActivityDetailsDialog } from "@/components/activity-details-dialog";
+import type {
+  TripWithDetails,
+  ActivityWithDetails,
+  User,
+  InsertHotel,
+  ActivityInviteStatus,
+} from "@shared/schema";
 import {
   format,
   startOfMonth,
@@ -116,6 +122,7 @@ interface DayViewProps {
   canGoPrevious: boolean;
   canGoNext: boolean;
   emptyStateMessage?: string;
+  onActivityClick?: (activity: ActivityWithDetails) => void;
 }
 
 const getParticipantDisplayName = (user: User) => {
@@ -171,6 +178,7 @@ function DayView({
   canGoPrevious,
   canGoNext,
   emptyStateMessage = "No activities scheduled for this day yet.",
+  onActivityClick,
 }: DayViewProps) {
   const dayActivities = activities
     .filter((activity) => isSameDay(new Date(activity.startTime), date))
@@ -218,14 +226,21 @@ function DayView({
       ) : (
         <div className="space-y-4">
           {dayActivities.map((activity) => {
-            const participants = activity.acceptances.map((acceptance) =>
-              getParticipantDisplayName(acceptance.user),
-            );
+            const acceptedParticipants = activity.invites
+              .filter((invite) => invite.status === "accepted")
+              .map((invite) => getParticipantDisplayName(invite.user));
+            const pendingParticipants = activity.invites
+              .filter((invite) => invite.status === "pending")
+              .map((invite) => getParticipantDisplayName(invite.user));
+            const declinedParticipants = activity.invites
+              .filter((invite) => invite.status === "declined")
+              .map((invite) => getParticipantDisplayName(invite.user));
 
             return (
               <div
                 key={activity.id}
-                className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm"
+                onClick={() => onActivityClick?.(activity)}
+                className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-primary/40 hover:shadow-md cursor-pointer"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <h3 className="text-lg font-semibold text-neutral-900">
@@ -234,6 +249,10 @@ function DayView({
                   <div className="flex items-center text-sm font-medium text-neutral-700">
                     <Clock className="mr-2 h-4 w-4" />
                     {formatActivityTimeRange(activity.startTime, activity.endTime)}
+                    <Badge className="ml-3 bg-primary/10 text-primary" variant="secondary">
+                      {activity.acceptedCount} going
+                      {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
+                    </Badge>
                   </div>
                 </div>
 
@@ -255,9 +274,9 @@ function DayView({
                     <Users className="h-4 w-4" />
                     Participants
                   </div>
-                  {participants.length > 0 ? (
+                  {acceptedParticipants.length > 0 ? (
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {participants.map((name, index) => (
+                      {acceptedParticipants.map((name, index) => (
                         <Badge
                           key={`${activity.id}-participant-${index}`}
                           variant="secondary"
@@ -270,6 +289,16 @@ function DayView({
                   ) : (
                     <p className="mt-2 text-sm text-neutral-500 italic">
                       No participants yet.
+                    </p>
+                  )}
+                  {pendingParticipants.length > 0 && (
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Awaiting response: {pendingParticipants.join(", ")}
+                    </p>
+                  )}
+                  {declinedParticipants.length > 0 && (
+                    <p className="mt-1 text-xs text-neutral-400">
+                      Not going: {declinedParticipants.join(", ")}
                     </p>
                   )}
                 </div>
@@ -303,6 +332,8 @@ export default function Trip() {
   const [scheduleCalendarView, setScheduleCalendarView] = useState<"month" | "day">("month");
   const [groupViewDate, setGroupViewDate] = useState<Date | null>(null);
   const [scheduleViewDate, setScheduleViewDate] = useState<Date | null>(null);
+  const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
+  const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -347,6 +378,82 @@ export default function Trip() {
     queryKey: [`/api/trips/${id}/activities`],
     enabled: !!id && isAuthenticated,
   });
+
+  const selectedActivity = useMemo(() => {
+    if (!selectedActivityId) {
+      return null;
+    }
+    return activities.find((activity) => activity.id === selectedActivityId) ?? null;
+  }, [activities, selectedActivityId]);
+
+  const respondToInviteMutation = useMutation({
+    mutationFn: async ({
+      activityId,
+      status,
+    }: {
+      activityId: number;
+      status: ActivityInviteStatus;
+    }) => {
+      const response = await apiRequest(`/api/activities/${activityId}/respond`, {
+        method: "POST",
+        body: { status },
+      });
+      return (await response.json()) as {
+        invite: unknown;
+        activity: ActivityWithDetails | null;
+      };
+    },
+    onSuccess: (_data, variables) => {
+      if (id) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/activities`] });
+      }
+
+      const status = variables.status;
+      let title = "RSVP updated";
+      let description = "We saved your response.";
+
+      if (status === "accepted") {
+        title = "You're going!";
+        description = "This activity is on your personal schedule now.";
+      } else if (status === "declined") {
+        title = "You declined this activity";
+        description = "We won't show it on your personal schedule.";
+      } else {
+        title = "Marked as undecided";
+        description = "You can update your RSVP anytime.";
+      }
+
+      toast({ title, description });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      toast({
+        title: "Unable to update RSVP",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleActivityClick = useCallback((activity: ActivityWithDetails) => {
+    setSelectedActivityId(activity.id);
+    setIsActivityDialogOpen(true);
+  }, []);
+
+  const handleRespond = useCallback(
+    (status: ActivityInviteStatus) => {
+      if (!selectedActivity) {
+        return;
+      }
+
+      respondToInviteMutation.mutate({ activityId: selectedActivity.id, status });
+    },
+    [respondToInviteMutation, selectedActivity],
+  );
 
   // Packing data
   const { data: packingItems = [] } = useQuery({
@@ -426,8 +533,9 @@ export default function Trip() {
     // Filter by people
     if (peopleFilter !== "all") {
       filtered = filtered.filter((activity) => {
-        // Show activities accepted by the selected person
-        return activity.acceptances?.some((acceptance) => acceptance.userId === peopleFilter);
+        return activity.invites?.some(
+          (invite) => invite.userId === peopleFilter && invite.status === "accepted",
+        );
       });
     }
     
@@ -438,7 +546,9 @@ export default function Trip() {
   const getMySchedule = () => {
     if (!user) return [];
     return activities.filter((activity) => {
-      return activity.acceptances?.some((acceptance) => acceptance.userId === user.id);
+      return activity.invites?.some(
+        (invite) => invite.userId === user.id && invite.status === "accepted",
+      );
     });
   };
 
@@ -1038,6 +1148,7 @@ export default function Trip() {
                               onDayClick={(date) => {
                                 openAddActivityModal(clampDateToTrip(date));
                               }}
+                              onActivityClick={handleActivityClick}
                             />
                             {filteredActivities.length === 0 && (
                               <div className="p-8 text-center">
@@ -1067,6 +1178,7 @@ export default function Trip() {
                             canGoPrevious={canGoToPreviousGroupDay}
                             canGoNext={canGoToNextGroupDay}
                             emptyStateMessage="No activities scheduled for this day yet. Use the Add Activity button to plan something fun."
+                            onActivityClick={handleActivityClick}
                           />
                         ) : (
                           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
@@ -1144,6 +1256,7 @@ export default function Trip() {
                             onDayClick={(date) => {
                               openAddActivityModal(clampDateToTrip(date));
                             }}
+                            onActivityClick={handleActivityClick}
                           />
                         ) : currentScheduleDay ? (
                           <DayView
@@ -1154,6 +1267,7 @@ export default function Trip() {
                             canGoPrevious={canGoToPreviousScheduleDay}
                             canGoNext={canGoToNextScheduleDay}
                             emptyStateMessage="No activities accepted for this day yet."
+                            onActivityClick={handleActivityClick}
                           />
                         ) : (
                           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
@@ -1360,6 +1474,20 @@ export default function Trip() {
             trip={trip}
           />
         )}
+
+        <ActivityDetailsDialog
+          activity={selectedActivity}
+          open={isActivityDialogOpen && Boolean(selectedActivity)}
+          onOpenChange={(open) => {
+            setIsActivityDialogOpen(open);
+            if (!open) {
+              setSelectedActivityId(null);
+            }
+          }}
+          onRespond={handleRespond}
+          isResponding={respondToInviteMutation.isPending}
+          currentUserId={user?.id ?? undefined}
+        />
       </div>
 
     </>

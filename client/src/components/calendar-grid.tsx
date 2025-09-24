@@ -9,6 +9,7 @@ interface CalendarGridProps {
   trip: TripWithDetails;
   selectedDate?: Date | null;
   onDayClick?: (date: Date) => void;
+  onActivityClick?: (activity: ActivityWithDetails) => void;
 }
 
 const categoryColors = {
@@ -55,7 +56,7 @@ const categoryIcons = {
   other: "📍",
 };
 
-export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onDayClick }: CalendarGridProps) {
+export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onDayClick, onActivityClick }: CalendarGridProps) {
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -169,12 +170,20 @@ export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onD
                   {dayActivities.slice(0, 3).map(activity => (
                     <div
                       key={activity.id}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onActivityClick?.(activity);
+                      }}
                       className={`text-xs px-2 py-1 rounded-md font-medium shadow-sm border ${
                         categoryColors[activity.category as keyof typeof categoryColors] || categoryColors.other
-                      } truncate`}
+                      } truncate cursor-pointer transition-colors hover:brightness-95`}
                     >
                       {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}{" "}
                       {activity.name.length > 15 ? `${activity.name.substring(0, 12)}...` : activity.name}
+                      <div className="mt-1 flex items-center gap-1 text-[10px] font-medium">
+                        <span>{activity.acceptedCount} going</span>
+                        {activity.pendingCount > 0 && <span>• {activity.pendingCount} pending</span>}
+                      </div>
                     </div>
                   ))}
                   {dayActivities.length > 3 && (

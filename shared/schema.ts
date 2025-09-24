@@ -185,6 +185,24 @@ export interface ActivityAcceptance {
   acceptedAt: IsoDate | null;
 }
 
+export const activityInviteStatusSchema = z.enum([
+  "pending",
+  "accepted",
+  "declined",
+]);
+
+export type ActivityInviteStatus = z.infer<typeof activityInviteStatusSchema>;
+
+export interface ActivityInvite {
+  id: number;
+  activityId: number;
+  userId: string;
+  status: ActivityInviteStatus;
+  respondedAt: IsoDate | null;
+  createdAt: IsoDate | null;
+  updatedAt: IsoDate | null;
+}
+
 export interface ActivityResponse {
   id: number;
   activityId: number;
@@ -857,9 +875,13 @@ export type RestaurantProposalWithDetails = RestaurantProposal & {
 
 export type ActivityWithDetails = Activity & {
   poster: User;
+  invites: (ActivityInvite & { user: User })[];
   acceptances: (ActivityAcceptance & { user: User })[];
   comments: (ActivityComment & { user: User })[];
   acceptedCount: number;
+  pendingCount: number;
+  declinedCount: number;
+  currentUserInvite?: ActivityInvite & { user: User };
   isAccepted?: boolean;
   hasResponded?: boolean;
 };
