@@ -92,17 +92,17 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen animated-gradient flex items-center justify-center px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12 travel-gradient rounded-full flex items-center justify-center">
-              <Plane className="text-white w-6 h-6" />
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <Card className="w-full max-w-2xl border-white/15 bg-white/10 shadow-[0_32px_90px_-32px_rgba(2,6,23,0.9)]">
+        <CardHeader className="text-center space-y-4">
+          <div className="flex items-center justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-white/10 shadow-[0_20px_60px_-30px_rgba(56,189,248,0.6)]">
+              <Plane className="h-6 w-6 text-white" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
-          <CardDescription>
-            Join TripSync to start planning amazing group adventures
+          <CardTitle className="text-3xl font-semibold text-white">Create your account</CardTitle>
+          <CardDescription className="text-white/70">
+            Join TripSync to start planning unforgettable group adventures together
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -116,7 +116,11 @@ export default function Register() {
                     <FormItem>
                       <FormLabel>First Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="John" {...field} />
+                        <Input
+                          placeholder="John"
+                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -129,7 +133,11 @@ export default function Register() {
                     <FormItem>
                       <FormLabel>Last Name</FormLabel>
                       <FormControl>
-                        <Input placeholder="Doe" {...field} />
+                        <Input
+                          placeholder="Doe"
+                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          {...field}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -145,8 +153,12 @@ export default function Register() {
                     <FormLabel>Email</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input placeholder="john@example.com" className="pl-10" {...field} />
+                        <Mail className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Input
+                          placeholder="john@example.com"
+                          className="pl-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          {...field}
+                        />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -162,16 +174,16 @@ export default function Register() {
                     <FormLabel>Phone Number</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Phone className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input 
+                        <Phone className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Input
                           type="tel"
-                          placeholder="+1 (555) 123-4567" 
-                          className="pl-10" 
-                          {...field} 
+                          placeholder="+1 (555) 123-4567"
+                          className="pl-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          {...field}
                         />
                       </div>
                     </FormControl>
-                    <p className="text-xs text-gray-600 mt-1">
+                    <p className="mt-1 text-xs text-white/60">
                       Used for CashApp and Venmo payment integration
                     </p>
                     <FormMessage />
@@ -187,8 +199,12 @@ export default function Register() {
                     <FormLabel>Username</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input placeholder="johndoe" className="pl-10" {...field} />
+                        <User className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Input
+                          placeholder="johndoe"
+                          className="pl-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          {...field}
+                        />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -204,24 +220,24 @@ export default function Register() {
                     <FormLabel>Password</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input 
+                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Input
                           type={showPassword ? "text" : "password"}
-                          placeholder="••••••••" 
-                          className="pl-10 pr-10" 
-                          {...field} 
+                          placeholder="••••••••"
+                          className="pl-11 pr-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          {...field}
                         />
                         <Button
                           type="button"
                           variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                          size="icon"
+                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/5 text-white/60 hover:bg-white/10"
                           onClick={() => setShowPassword(!showPassword)}
                         >
                           {showPassword ? (
-                            <EyeOff className="h-4 w-4 text-gray-400" />
+                            <EyeOff className="h-4 w-4" />
                           ) : (
-                            <Eye className="h-4 w-4 text-gray-400" />
+                            <Eye className="h-4 w-4" />
                           )}
                         </Button>
                       </div>
@@ -239,24 +255,24 @@ export default function Register() {
                     <FormLabel>Confirm Password</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input 
+                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Input
                           type={showConfirmPassword ? "text" : "password"}
-                          placeholder="••••••••" 
-                          className="pl-10 pr-10" 
-                          {...field} 
+                          placeholder="••••••••"
+                          className="pl-11 pr-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          {...field}
                         />
                         <Button
                           type="button"
                           variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                          size="icon"
+                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/5 text-white/60 hover:bg-white/10"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         >
                           {showConfirmPassword ? (
-                            <EyeOff className="h-4 w-4 text-gray-400" />
+                            <EyeOff className="h-4 w-4" />
                           ) : (
-                            <Eye className="h-4 w-4 text-gray-400" />
+                            <Eye className="h-4 w-4" />
                           )}
                         </Button>
                       </div>
@@ -266,20 +282,19 @@ export default function Register() {
                 )}
               />
 
-              <Button 
-                type="submit" 
-                className="w-full bg-primary hover:bg-red-600 text-white"
-                disabled={registerMutation.isPending}
-              >
+              <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
                 {registerMutation.isPending ? "Creating Account..." : "Create Account"}
               </Button>
             </form>
           </Form>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-white/70">
               Already have an account?{" "}
-              <Link href="/login" className="text-primary hover:underline font-medium">
+              <Link
+                href="/login"
+                className="font-medium text-emerald-300 hover:text-emerald-200"
+              >
                 Sign in here
               </Link>
             </p>

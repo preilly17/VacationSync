@@ -3,61 +3,73 @@
 @tailwind utilities;
 
 :root {
-  /* Modern Travel Theme - Light Mode */
-  --background: hsl(220, 20%, 97%);
-  --foreground: hsl(220, 15%, 15%);
-  --muted: hsl(220, 15%, 95%);
-  --muted-foreground: hsl(220, 10%, 45%);
-  --popover: hsl(0, 0%, 100%);
-  --popover-foreground: hsl(220, 15%, 15%);
-  --card: hsl(0, 0%, 100%);
-  --card-foreground: hsl(220, 15%, 15%);
-  --border: hsl(220, 15%, 88%);
-  --input: hsl(220, 15%, 92%);
-  
-  /* Vibrant Travel Colors */
-  --primary: hsl(203, 89%, 53%); /* Ocean Blue */
-  --primary-foreground: hsl(0, 0%, 100%);
-  --secondary: hsl(25, 95%, 95%); /* Light Sunset */
-  --secondary-foreground: hsl(25, 85%, 35%);
-  --accent: hsl(174, 72%, 56%); /* Tropical Teal */
-  --accent-foreground: hsl(0, 0%, 100%);
-  
-  --destructive: hsl(0, 84%, 60%);
-  --destructive-foreground: hsl(0, 0%, 100%);
-  --ring: hsl(203, 89%, 53%);
+  /* TripSync brand palette */
+  --background: hsl(222 47% 6%);
+  --foreground: hsl(210 40% 96%);
+  --muted: hsl(222 36% 12%);
+  --muted-foreground: hsl(214 20% 70%);
+  --popover: hsl(222 47% 10%);
+  --popover-foreground: hsl(210 40% 96%);
+  --card: hsla(223 47% 12% / 0.85);
+  --card-foreground: hsl(210 40% 96%);
+  --border: hsla(215 32% 22% / 0.65);
+  --input: hsla(215 32% 18% / 0.9);
+
+  --primary: hsl(199 89% 58%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(25 95% 62%);
+  --secondary-foreground: hsl(222 47% 10%);
+  --accent: hsl(162 84% 60%);
+  --accent-foreground: hsl(222 47% 10%);
+
+  --destructive: hsl(0 76% 58%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --ring: hsl(199 89% 58%);
   --radius: 0.875rem;
-  
-  /* Neutral colors matching the design */
-  --neutral-900: hsl(0, 0%, 13%);
-  --neutral-600: hsl(0, 0%, 45%);
-  --neutral-100: hsl(0, 0%, 97%);
+
+  --sidebar-background: hsla(223 47% 8% / 0.9);
+  --sidebar-foreground: hsl(210 40% 96%);
+  --sidebar-primary: hsl(199 89% 58%);
+  --sidebar-primary-foreground: hsl(210 40% 98%);
+  --sidebar-accent: hsla(199 89% 58% / 0.2);
+  --sidebar-accent-foreground: hsl(210 40% 96%);
+  --sidebar-border: hsla(215 32% 22% / 0.65);
+  --sidebar-ring: hsl(199 89% 58%);
+
+  --chart-1: hsl(199 89% 58%);
+  --chart-2: hsl(162 84% 60%);
+  --chart-3: hsl(25 95% 62%);
+  --chart-4: hsl(340 75% 60%);
+  --chart-5: hsl(226 83% 67%);
+
+  /* Neutral tokens tuned for dark UI */
+  --neutral-900: hsl(220 13% 12%);
+  --neutral-600: hsl(215 20% 65%);
+  --neutral-100: hsl(215 30% 18%);
 }
 
 .dark {
-  /* Modern Travel Theme - Dark Mode */
-  --background: hsl(220, 20%, 8%);
-  --foreground: hsl(220, 15%, 92%);
-  --muted: hsl(220, 15%, 15%);
-  --muted-foreground: hsl(220, 10%, 60%);
-  --popover: hsl(220, 15%, 12%);
-  --popover-foreground: hsl(220, 15%, 92%);
-  --card: hsl(220, 15%, 12%);
-  --card-foreground: hsl(220, 15%, 92%);
-  --border: hsl(220, 15%, 20%);
-  --input: hsl(220, 15%, 18%);
-  
-  /* Dark mode travel colors */
-  --primary: hsl(203, 85%, 60%);
-  --primary-foreground: hsl(220, 20%, 8%);
-  --secondary: hsl(220, 15%, 18%);
-  --secondary-foreground: hsl(25, 85%, 70%);
-  --accent: hsl(174, 65%, 50%);
-  --accent-foreground: hsl(220, 20%, 8%);
-  
-  --destructive: hsl(0, 75%, 55%);
-  --destructive-foreground: hsl(220, 15%, 92%);
-  --ring: hsl(203, 85%, 60%);
+  --background: hsl(222 47% 4%);
+  --foreground: hsl(210 40% 96%);
+  --muted: hsl(222 38% 10%);
+  --muted-foreground: hsl(214 18% 70%);
+  --popover: hsla(223 47% 8% / 0.95);
+  --popover-foreground: hsl(210 40% 96%);
+  --card: hsla(223 47% 10% / 0.92);
+  --card-foreground: hsl(210 40% 96%);
+  --border: hsla(215 32% 20% / 0.75);
+  --input: hsla(215 32% 18% / 0.9);
+
+  --primary: hsl(199 89% 62%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(25 95% 65%);
+  --secondary-foreground: hsl(222 47% 10%);
+  --accent: hsl(162 84% 62%);
+  --accent-foreground: hsl(222 47% 10%);
+
+  --destructive: hsl(0 76% 64%);
+  --destructive-foreground: hsl(210 40% 96%);
+  --ring: hsl(199 89% 62%);
   --radius: 0.875rem;
 }
 
@@ -68,8 +80,161 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: "Inter", system-ui, sans-serif;
+    min-height: 100vh;
+    background-color: #020617;
+    background-image:
+      radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.16), transparent 55%),
+      radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.14), transparent 55%),
+      radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.14), transparent 60%);
+    background-attachment: fixed;
+    color-scheme: dark;
   }
+
+  .page-shell {
+    position: relative;
+    min-height: 100vh;
+    width: 100%;
+    isolation: isolate;
+    overflow: hidden;
+    color: var(--foreground);
+    background-color: #020617;
+  }
+
+  .page-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.18), transparent 55%),
+      radial-gradient(circle at 85% 15%, rgba(244, 114, 182, 0.18), transparent 55%),
+      radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.16), transparent 60%),
+      linear-gradient(145deg, rgba(2, 6, 23, 0.95), rgba(15, 23, 42, 0.92));
+    opacity: 0.96;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page-shell::after {
+    content: "";
+    position: absolute;
+    inset: -15% -30% auto -30%;
+    height: 45%;
+    background: radial-gradient(circle, rgba(250, 204, 21, 0.12), transparent 65%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page-shell > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.page-shell .bg-white,
+.page-shell .bg-slate-50,
+.page-shell .bg-neutral-50,
+.page-shell .bg-neutral-100,
+.page-shell .bg-slate-100 {
+  background-color: rgba(15, 23, 42, 0.65);
+  color: var(--foreground);
+  backdrop-filter: blur(18px);
+}
+
+.page-shell [class*="bg-white/"],
+.page-shell [class*="bg-slate-50/"],
+.page-shell [class*="bg-neutral-100/"],
+.page-shell [class*="bg-neutral-50/"] {
+  background-color: rgba(15, 23, 42, 0.5);
+  color: var(--foreground);
+}
+
+.page-shell .bg-slate-200,
+.page-shell .bg-neutral-200,
+.page-shell .bg-gray-200 {
+  background-color: rgba(148, 163, 184, 0.2);
+  color: var(--foreground);
+}
+
+.page-shell .border-slate-200,
+.page-shell .border-neutral-200,
+.page-shell .border-neutral-300,
+.page-shell .border-slate-300,
+.page-shell .border-white {
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.page-shell .divide-slate-200,
+.page-shell .divide-neutral-200 {
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+.page-shell .text-slate-900,
+.page-shell .text-neutral-900,
+.page-shell .text-slate-800,
+.page-shell .text-neutral-800 {
+  color: rgba(226, 232, 240, 0.95);
+}
+
+.page-shell .text-slate-700,
+.page-shell .text-neutral-700 {
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.page-shell .text-slate-600,
+.page-shell .text-neutral-600,
+.page-shell .text-gray-600 {
+  color: rgba(203, 213, 225, 0.82);
+}
+
+.page-shell .text-slate-500,
+.page-shell .text-neutral-500,
+.page-shell .text-gray-500 {
+  color: rgba(148, 163, 184, 0.78);
+}
+
+.page-shell .text-slate-400,
+.page-shell .text-neutral-400,
+.page-shell .text-gray-400 {
+  color: rgba(148, 163, 184, 0.65);
+}
+
+.page-shell .shadow-sm,
+.page-shell .shadow-md,
+.page-shell .shadow-lg,
+.page-shell .shadow-xl,
+.page-shell .shadow-2xl {
+  --tw-shadow: 0 35px 80px -35px rgba(15, 23, 42, 0.85);
+  --tw-shadow-colored: 0 35px 80px -35px rgba(15, 23, 42, 0.85);
+}
+
+.page-shell .ring-1,
+.page-shell .ring-2,
+.page-shell .ring {
+  --tw-ring-color: rgba(148, 163, 184, 0.25);
+}
+
+.page-shell .hover\:bg-slate-50:hover,
+.page-shell .hover\:bg-neutral-50:hover {
+  background-color: rgba(148, 163, 184, 0.12);
+}
+
+.page-shell .hover\:text-slate-900:hover,
+.page-shell .hover\:text-slate-800:hover {
+  color: rgba(226, 232, 240, 0.96);
+}
+
+.page-shell .from-sky-50 {
+  --tw-gradient-from: rgba(56, 189, 248, 0.22);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(56, 189, 248, 0));
+}
+
+.page-shell .via-white {
+  --tw-gradient-stops: var(--tw-gradient-from), rgba(15, 23, 42, 0.75), var(--tw-gradient-to, rgba(15, 23, 42, 0));
+}
+
+.page-shell .to-rose-100 {
+  --tw-gradient-to: rgba(244, 114, 182, 0.25);
 }
 
 /* Travel-themed animations and patterns */
