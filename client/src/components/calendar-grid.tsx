@@ -61,9 +61,12 @@ export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onD
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
   const getActivitiesForDay = (day: Date) => {
-    return activities.filter(activity => 
-      isSameDay(new Date(activity.startTime), day)
-    );
+    return activities
+      .filter(activity => isSameDay(new Date(activity.startTime), day))
+      .sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      );
   };
 
   const isTripDay = (day: Date) => {
