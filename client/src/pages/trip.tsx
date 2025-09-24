@@ -57,7 +57,7 @@ import ActivitySearch from "@/components/activity-search";
 import { TravelTips } from "@/components/TravelTips";
 import Proposals from "@/pages/proposals";
 import type { TripWithDetails, ActivityWithDetails } from "@shared/schema";
-import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth, formatDistanceToNow } from "date-fns";
+import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth, formatDistanceToNow, differenceInCalendarDays } from "date-fns";
 
 export default function Trip() {
   const { id } = useParams();
@@ -161,6 +161,32 @@ export default function Trip() {
       return activity.acceptances?.some((acceptance) => acceptance.userId === user.id);
     });
   };
+
+  const myScheduleActivities = getMySchedule();
+  const filteredActivities = getFilteredActivities();
+  const totalMembers = trip?.members?.length ?? 0;
+  const tripDurationDays = trip?.startDate && trip?.endDate
+    ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
+    : null;
+
+  const now = new Date();
+  const upcomingActivities = activities
+    .map((activity) => ({
+      activity,
+      start: new Date(activity.startTime),
+    }))
+    .filter(({ start }) => !Number.isNaN(start.getTime()) && start.getTime() >= now.getTime())
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+  const nextActivityEntry = upcomingActivities[0];
+  const nextActivity = nextActivityEntry?.activity;
+  const nextActivityStart = nextActivityEntry?.start;
+  const nextActivityCountdown = nextActivityStart
+    ? formatDistanceToNow(nextActivityStart, { addSuffix: true })
+    : null;
+  const nextActivityDateLabel = nextActivityStart
+    ? format(nextActivityStart, "MMM d • h:mm a")
+    : null;
 
   // Auto-navigate calendar to trip dates when trip loads
   useEffect(() => {
@@ -379,155 +405,241 @@ export default function Trip() {
                 </Link>
                 
                 {/* Trip Header */}
-                <div className="mb-8">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <h1 className="text-3xl font-bold text-neutral-900 mb-2">{trip.name}</h1>
-                      <div className="flex items-center space-x-4 text-neutral-600">
-                        <div className="flex items-center">
-                          <MapPin className="w-4 h-4 mr-1" />
-                          <span>{trip.destination}</span>
+                <div className="mb-10 space-y-6">
+                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-rose-500 to-orange-400 text-white shadow-xl">
+                    <div
+                      className="pointer-events-none absolute inset-0 opacity-30 [background:radial-gradient(circle_at_top_left,rgba(255,255,255,0.6),transparent_55%)]"
+                      aria-hidden="true"
+                    />
+                    <div className="relative p-6 sm:p-10">
+                      <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="max-w-2xl space-y-5">
+                          <div className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.3em] text-white/80">
+                            <Calendar className="h-4 w-4" />
+                            <span>Trip dashboard</span>
+                          </div>
+                          <div className="space-y-3">
+                            <h1 className="text-3xl font-bold tracking-tight drop-shadow-sm sm:text-4xl">{trip.name}</h1>
+                            <p className="text-sm text-white/80 sm:text-base">
+                              Keep everyone aligned with the plans, RSVPs, and updates in one place.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-sm sm:text-base">
+                            <div className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur">
+                              <MapPin className="h-4 w-4" />
+                              <span className="font-medium">{trip.destination}</span>
+                            </div>
+                            <div className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur">
+                              <Calendar className="h-4 w-4" />
+                              <span>
+                                {format(new Date(trip.startDate), 'MMM dd')} - {format(new Date(trip.endDate), 'MMM dd, yyyy')}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setShowMembersModal(true)}
+                              className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur transition-colors hover:bg-white/25"
+                            >
+                              <Users className="h-4 w-4" />
+                              <span className="font-medium">
+                                {totalMembers} {totalMembers === 1 ? 'member' : 'members'}
+                              </span>
+                            </button>
+                            {tripDurationDays && (
+                              <div className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur">
+                                <Clock className="h-4 w-4" />
+                                <span>{tripDurationDays} day{tripDurationDays === 1 ? '' : 's'}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center">
-                          <Calendar className="w-4 h-4 mr-1" />
-                          <span>
-                            {format(new Date(trip.startDate), 'MMM dd')} - {format(new Date(trip.endDate), 'MMM dd, yyyy')}
-                          </span>
+                        <div className="w-full max-w-sm lg:max-w-md">
+                          <div className="space-y-4 rounded-2xl bg-white/90 p-5 text-neutral-900 shadow-lg backdrop-blur">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <NotificationIcon />
+                              <Button
+                                onClick={() => setShowWeatherModal(true)}
+                                variant="outline"
+                                size="sm"
+                                data-testid="button-weather"
+                              >
+                                <Cloud className="mr-2 h-4 w-4" />
+                                Weather
+                              </Button>
+                              {user?.id === trip.createdBy && (
+                                <Button
+                                  onClick={() => setShowEditTrip(true)}
+                                  variant="outline"
+                                  size="sm"
+                                  data-testid="button-edit-trip"
+                                >
+                                  <Settings className="mr-2 h-4 w-4" />
+                                  Edit Trip
+                                </Button>
+                              )}
+                              <Button
+                                onClick={() => setShowInviteModal(true)}
+                                variant="outline"
+                                size="sm"
+                                data-tutorial="invite-button"
+                              >
+                                <Users className="mr-2 h-4 w-4" />
+                                Invite
+                              </Button>
+                            </div>
+                            <Button
+                              onClick={() => setShowAddActivity(true)}
+                              size="lg"
+                              className="w-full justify-center bg-primary text-white shadow-md hover:bg-red-600"
+                            >
+                              <Plus className="mr-2 h-4 w-4" />
+                              Add Activity
+                            </Button>
+                          </div>
                         </div>
-                        <button 
-                          onClick={() => setShowMembersModal(true)}
-                          className="flex items-center hover:bg-gray-100 px-2 py-1 rounded-md transition-colors group"
-                        >
-                          <Users className="w-4 h-4 mr-1" />
-                          <span className="group-hover:underline">{trip.members?.length || 0} members</span>
-                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <NotificationIcon />
-                      <Button
-                        onClick={() => setShowWeatherModal(true)}
-                        variant="outline"
-                        data-testid="button-weather"
-                      >
-                        <Cloud className="w-4 h-4 mr-2" />
-                        Weather
-                      </Button>
-                      {/* Only show Edit Trip button to trip creator */}
-                      {user?.id === trip.createdBy && (
-                        <Button
-                          onClick={() => setShowEditTrip(true)}
-                          variant="outline"
-                          className="hidden sm:flex"
-                          data-testid="button-edit-trip"
-                        >
-                          <Settings className="w-4 h-4 mr-2" />
-                          Edit Trip
-                        </Button>
-                      )}
-                      <Button
-                        onClick={() => setShowInviteModal(true)}
-                        variant="outline"
-                        className="hidden sm:flex"
-                        data-tutorial="invite-button"
-                      >
-                        <Users className="w-4 h-4 mr-2" />
-                        Invite
-                      </Button>
-                      <Button
-                        onClick={() => setShowAddActivity(true)}
-                        className="bg-primary hover:bg-red-600 text-white"
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Activity
-                      </Button>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-neutral-500">Activities planned</p>
+                          <p className="mt-1 text-2xl font-semibold text-neutral-900">{activities.length}</p>
+                        </div>
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <CheckCircle className="h-5 w-5" />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs text-neutral-500">Track everything happening across the trip.</p>
+                    </div>
+                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-neutral-500">Members joined</p>
+                          <p className="mt-1 text-2xl font-semibold text-neutral-900">{totalMembers}</p>
+                        </div>
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Users className="h-5 w-5" />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs text-neutral-500">See who’s along for the adventure.</p>
+                    </div>
+                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-neutral-500">Your RSVPs</p>
+                          <p className="mt-1 text-2xl font-semibold text-neutral-900">{myScheduleActivities.length}</p>
+                        </div>
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <User className="h-5 w-5" />
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs text-neutral-500">Keep tabs on the plans you’ve accepted.</p>
+                    </div>
+                    <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-neutral-500">Next on the calendar</p>
+                          <p className="mt-1 text-base font-semibold text-neutral-900 line-clamp-2">
+                            {nextActivity ? nextActivity.name : 'No upcoming activity'}
+                          </p>
+                          <p className="mt-1 text-xs text-neutral-500">
+                            {nextActivity ? (nextActivityCountdown || 'Happening soon') : 'Add an activity to kick things off.'}
+                          </p>
+                          {nextActivityDateLabel && (
+                            <p className="text-xs text-neutral-500">{nextActivityDateLabel}</p>
+                          )}
+                        </div>
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Clock className="h-5 w-5" />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Tab Content */}
                 {activeTab === "calendar" && (
-                  <div>
-                    {/* Category Filter */}
-                    <div className="mb-4">
-                      <div className="flex items-center space-x-2 mb-4">
-                        <Filter className="w-4 h-4 text-neutral-600" />
-                        <span className="text-sm font-medium text-neutral-700">Filter by category:</span>
-                      </div>
-                      <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                        <SelectTrigger className="w-48">
-                          <SelectValue placeholder="Select category..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {categories.map((category) => (
-                            <SelectItem key={category} value={category}>
-                              {category === "all" ? "All Activities" : category}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* People Filter */}
-                    <div className="mb-6">
-                      <div className="flex items-center space-x-2 mb-4">
-                        <Users className="w-4 h-4 text-neutral-600" />
-                        <span className="text-sm font-medium text-neutral-700">Filter by person:</span>
-                      </div>
-                      <Select value={peopleFilter} onValueChange={setPeopleFilter}>
-                        <SelectTrigger className="w-48">
-                          <SelectValue placeholder="Select person..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {people.map((personId) => {
-                            const member = trip?.members?.find((m: any) => m.userId === personId);
-                            const displayName = personId === "all" ? "Everyone" : 
-                              member?.user ? `${member.user.firstName} ${member.user.lastName}`.trim() : 
-                              member?.userId === user?.id ? "You" : "Unknown";
-                            
-                            return (
-                              <SelectItem key={personId} value={personId}>
-                                {displayName}
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Activities Grid */}
-                    <Card>
-                      <div className="px-6 py-4 border-b border-gray-200">
-                        <div className="flex items-center justify-between">
+                  <div className="space-y-6">
+                    <Card className="overflow-hidden border-none shadow-xl">
+                      <CardHeader className="space-y-6 border-b border-neutral-200 bg-neutral-50/80">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
                           <div>
-                            <h2 className="text-lg font-semibold text-neutral-900">Group Activities</h2>
-                            <p className="text-sm text-neutral-600">Activities planned for your trip</p>
+                            <CardTitle className="text-lg font-semibold text-neutral-900">Group activity calendar</CardTitle>
+                            <p className="text-sm text-neutral-600">Use filters to focus on the plans that matter right now.</p>
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex items-center gap-2 rounded-full bg-white px-2 py-1 shadow-sm">
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                              aria-label="Previous month"
                             >
-                              <ChevronLeft className="w-4 h-4" />
+                              <ChevronLeft className="h-4 w-4" />
                             </Button>
-                            <span className="text-sm font-medium text-neutral-900 min-w-[120px] text-center">
+                            <span className="min-w-[140px] text-center text-sm font-semibold text-neutral-900">
                               {format(currentMonth, 'MMMM yyyy')}
                             </span>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                              aria-label="Next month"
                             >
-                              <ChevronRight className="w-4 h-4" />
+                              <ChevronRight className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
-                      </div>
-                      <div className="p-6" data-tutorial="group-calendar">
+                        <div className="flex flex-wrap items-end gap-6">
+                          <div className="flex flex-col gap-1">
+                            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                              <Filter className="h-3.5 w-3.5" />
+                              Category
+                            </span>
+                            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                              <SelectTrigger className="min-w-[180px] bg-white">
+                                <SelectValue placeholder="All activities" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {categories.map((category) => (
+                                  <SelectItem key={category} value={category}>
+                                    {category === "all" ? "All activities" : category}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                              <Users className="h-3.5 w-3.5" />
+                              Person
+                            </span>
+                            <Select value={peopleFilter} onValueChange={setPeopleFilter}>
+                              <SelectTrigger className="min-w-[200px] bg-white">
+                                <SelectValue placeholder="Everyone" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {people.map((personId) => {
+                                  const member = trip?.members?.find((m: any) => m.userId === personId);
+                                  const displayName = personId === "all" ? "Everyone" :
+                                    member?.user ? `${member.user.firstName} ${member.user.lastName}`.trim() :
+                                    member?.userId === user?.id ? "You" : "Unknown";
+
+                                  return (
+                                    <SelectItem key={personId} value={personId}>
+                                      {displayName}
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="p-6" data-tutorial="group-calendar">
                         <CalendarGrid
                           currentMonth={currentMonth}
-                          activities={getFilteredActivities()}
+                          activities={filteredActivities}
                           trip={trip}
                           selectedDate={selectedDate}
                           onDayClick={(date) => {
@@ -535,25 +647,25 @@ export default function Trip() {
                             setShowAddActivity(true);
                           }}
                         />
-                        {getFilteredActivities().length === 0 && (
+                        {filteredActivities.length === 0 && (
                           <div className="p-8 text-center">
-                            <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-neutral-900 mb-2">No activities planned yet</h3>
-                            <p className="text-neutral-600 mb-4">
-                              Discover activities in {trip.destination} or add your own custom activities
+                            <Calendar className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                            <h3 className="mb-2 text-lg font-medium text-neutral-900">No activities planned yet</h3>
+                            <p className="mb-4 text-neutral-600">
+                              Discover activities in {trip.destination} or add your own custom activities.
                             </p>
-                            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                              <Button 
+                            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+                              <Button
                                 onClick={() => setShowAddActivity(true)}
-                                className="bg-primary hover:bg-red-600 text-white"
+                                className="bg-primary text-white hover:bg-red-600"
                               >
-                                <MapPin className="w-4 h-4 mr-2" />
+                                <MapPin className="mr-2 h-4 w-4" />
                                 Add Activity
                               </Button>
                             </div>
                           </div>
                         )}
-                      </div>
+                      </CardContent>
                     </Card>
                   </div>
                 )}
