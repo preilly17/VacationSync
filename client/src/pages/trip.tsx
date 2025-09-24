@@ -5,12 +5,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { 
-  Calendar, 
-  Plus, 
-  Users, 
-  MapPin, 
-  Bell, 
+import {
+  Calendar,
+  Plus,
+  Users,
+  MapPin,
+  Bell,
   Filter,
   ChevronLeft,
   ChevronRight,
@@ -27,7 +27,7 @@ import {
   Trash2,
   ExternalLink,
   Cloud,
-  Lightbulb,
+  Sparkles,
   CheckCircle,
   Settings
 } from "lucide-react";
@@ -54,7 +54,7 @@ import { NotificationIcon } from "@/components/notification-icon";
 import { LeaveTripButton } from "@/components/leave-trip-button";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import ActivitySearch from "@/components/activity-search";
-import { TravelTips } from "@/components/TravelTips";
+import { WishListBoard } from "@/components/wish-list-board";
 import Proposals from "@/pages/proposals";
 import type { TripWithDetails, ActivityWithDetails, User } from "@shared/schema";
 import {
@@ -705,18 +705,18 @@ export default function Trip() {
                     <DollarSign className="w-5 h-5 mr-3" />
                     Expenses
                   </button>
-                  {/* 11. Travel Tips */}
+                  {/* 11. Wish List */}
                   <button
-                    onClick={() => setActiveTab("tips")}
+                    onClick={() => setActiveTab("wish-list")}
                     className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "tips" 
-                        ? "bg-primary text-white" 
+                      activeTab === "wish-list"
+                        ? "bg-primary text-white"
                         : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
                     }`}
-                    data-testid="button-travel-tips"
+                    data-testid="button-wish-list"
                   >
-                    <Lightbulb className="w-5 h-5 mr-3" />
-                    Travel Tips
+                    <Sparkles className="w-5 h-5 mr-3" />
+                    Wish List
                   </button>
                 </nav>
               </div>
@@ -1156,12 +1156,9 @@ export default function Trip() {
                   </div>
                 )}
 
-                {activeTab === "tips" && (
-                  <div className="space-y-6" data-testid="travel-tips-section">
-                    <TravelTips 
-                      tripId={parseInt(id || "0")} 
-                      destination={trip?.destination}
-                    />
+                {activeTab === "wish-list" && (
+                  <div className="space-y-6" data-testid="wish-list-section">
+                    <WishListBoard tripId={parseInt(id || "0")} />
                   </div>
                 )}
 
@@ -1252,13 +1249,13 @@ export default function Trip() {
                 <CheckCircle className="w-5 h-5" />
                 <span className="text-xs mt-1">Proposals</span>
               </button>
-              <button 
-                onClick={() => setActiveTab("tips")}
-                className={`flex flex-col items-center py-2 ${activeTab === "tips" ? "text-primary" : "text-neutral-600"}`}
-                data-testid="mobile-button-travel-tips"
+              <button
+                onClick={() => setActiveTab("wish-list")}
+                className={`flex flex-col items-center py-2 ${activeTab === "wish-list" ? "text-primary" : "text-neutral-600"}`}
+                data-testid="mobile-button-wish-list"
               >
-                <Lightbulb className="w-5 h-5" />
-                <span className="text-xs mt-1">Tips</span>
+                <Sparkles className="w-5 h-5" />
+                <span className="text-xs mt-1">Wish List</span>
               </button>
               <button 
                 onClick={() => setShowAddActivity(true)}
