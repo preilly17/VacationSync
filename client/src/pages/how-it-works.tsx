@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowLeft,
   Calendar,
   CheckCircle,
   Compass,
@@ -125,91 +126,102 @@ const tripSteps: Step[] = [
 export default function HowItWorks() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-      <div className="bg-gradient-to-br from-primary/80 to-red-500 text-white">
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+          <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+            TripSync tutorial
+          </span>
+          <Link href="/">
+            <Button
+              variant="outline"
+              className="gap-2 border-primary/30 text-primary shadow-none transition hover:-translate-y-0.5 hover:bg-primary/10"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to dashboard
+            </Button>
+          </Link>
+        </div>
+      </header>
+
+      <section className="bg-gradient-to-br from-white via-primary/10 to-emerald-50/80">
         <div className="mx-auto max-w-5xl px-6 py-16">
-          <div className="flex flex-col gap-4">
+          <div className="max-w-3xl space-y-4">
             <Badge
               variant="secondary"
-              className="mb-2 w-fit rounded-full border-white/40 bg-white/20 px-3 py-1 text-sm font-medium uppercase tracking-wide text-white"
+              className="w-fit rounded-full border-primary/30 bg-primary/10 px-3 py-1 text-sm font-medium uppercase tracking-wide text-primary"
             >
               Product guide
             </Badge>
-            <h1 className="text-3xl font-bold md:text-4xl">How TripSync works</h1>
-            <p className="max-w-3xl text-lg leading-relaxed text-white/90 md:text-xl">
+            <h1 className="text-3xl font-bold text-slate-900 md:text-4xl">How TripSync works</h1>
+            <p className="text-lg leading-relaxed text-slate-600 md:text-xl">
               Collaborate with your travel group to plan unforgettable adventures. This guide summarizes the interactive tour and highlights where to find the tools you need.
             </p>
           </div>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/">
-              <Button
-                variant="secondary"
-                className="bg-white text-primary shadow-md transition hover:-translate-y-0.5 hover:bg-white/90"
-              >
-                Back to dashboard
-              </Button>
-            </Link>
-          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="mx-auto max-w-5xl space-y-12 px-6 py-12">
-        <Card className="border-none bg-white/95 shadow-xl ring-1 ring-primary/10">
+      <main className="mx-auto max-w-5xl space-y-12 px-6 py-12">
+        <Card className="border-none bg-white shadow-xl ring-1 ring-primary/10">
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl text-slate-900">Home dashboard essentials</CardTitle>
             <CardDescription className="text-base text-slate-600">
               These steps mirror the original onboarding tour and show how to get oriented when you sign in.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5 pt-4">
-            {dashboardSteps.map((step, index) => (
-              <article
-                key={step.title}
-                className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm transition hover:border-primary/30 hover:shadow-md md:flex-row md:items-start"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <step.icon className="h-6 w-6" />
-                </div>
-                <div className="flex-1 space-y-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+          <CardContent className="pt-4">
+            <ol className="space-y-4">
+              {dashboardSteps.map((step, index) => (
+                <li
+                  key={step.title}
+                  className="group rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <step.icon className="h-6 w-6" aria-hidden="true" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+                    </div>
                     <Badge
                       variant="secondary"
-                      className="border border-sky-100 bg-sky-50 text-sky-700"
+                      className="border border-primary/20 bg-primary/10 text-primary"
                     >
                       Step {index + 1}
                     </Badge>
                   </div>
-                  <p className="text-sm leading-relaxed text-slate-600">{step.description}</p>
+                  <p className="mt-3 text-sm leading-relaxed text-slate-600">{step.description}</p>
                   {step.tip && (
-                    <div className="rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                    <div className="mt-3 rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
                       💡 {step.tip}
                     </div>
                   )}
-                </div>
-              </article>
-            ))}
+                </li>
+              ))}
+            </ol>
           </CardContent>
         </Card>
 
-        <Card className="border-none bg-white/95 shadow-xl ring-1 ring-emerald-100/60">
+        <Card className="border-none bg-white shadow-xl ring-1 ring-emerald-100/60">
           <CardHeader className="pb-4">
             <CardTitle className="text-2xl text-slate-900">Deep-dive into trip planning</CardTitle>
             <CardDescription className="text-base text-slate-600">
               When you open a specific trip, use these focus areas to collaborate and keep everyone informed.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5 pt-4">
-            {tripSteps.map((step, index) => (
-              <article
-                key={step.title}
-                className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm transition hover:border-emerald-200 hover:shadow-md md:flex-row md:items-start"
-              >
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
-                  <step.icon className="h-6 w-6" />
-                </div>
-                <div className="flex-1 space-y-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+          <CardContent className="pt-4">
+            <ol className="space-y-4">
+              {tripSteps.map((step, index) => (
+                <li
+                  key={step.title}
+                  className="group rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                        <step.icon className="h-6 w-6" aria-hidden="true" />
+                      </div>
+                      <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+                    </div>
                     <Badge
                       variant="outline"
                       className="border border-emerald-200 bg-emerald-50 text-xs font-medium uppercase tracking-wide text-emerald-700"
@@ -217,13 +229,13 @@ export default function HowItWorks() {
                       {index + 1} of {tripSteps.length}
                     </Badge>
                   </div>
-                  <p className="text-sm leading-relaxed text-slate-600">{step.description}</p>
-                </div>
-              </article>
-            ))}
+                  <p className="mt-3 text-sm leading-relaxed text-slate-600">{step.description}</p>
+                </li>
+              ))}
+            </ol>
           </CardContent>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }
