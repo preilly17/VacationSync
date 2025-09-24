@@ -947,14 +947,19 @@ export default function FlightsPage() {
             </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <div>
-                <Label htmlFor="departure">From</Label>
-                <SmartLocationSearch
-                  placeholder="Departure city or airport"
-                  value={searchFormData.departure}
-                  onLocationSelect={(location) => setSearchFormData(prev => ({ ...prev, departure: location.displayName }))}
-                />
-              </div>
+                <div>
+                  <Label htmlFor="departure">From</Label>
+                  <SmartLocationSearch
+                    placeholder="Departure city or airport"
+                    value={searchFormData.departure}
+                    onLocationSelect={(location) => setSearchFormData(prev => ({ ...prev, departure: location.displayName }))}
+                  />
+                  {!user?.defaultLocation && !user?.defaultLocationCode && !searchFormData.departure && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Save a default departure location in your profile to fill this automatically next time.
+                    </p>
+                  )}
+                </div>
               <div>
                 <Label htmlFor="arrival">To</Label>
                 <SmartLocationSearch

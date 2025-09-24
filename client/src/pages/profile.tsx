@@ -15,10 +15,77 @@ import { useToast } from "@/hooks/use-toast";
 import type { User } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationsSection } from "@/components/notifications-section";
-import { Smartphone, Settings, User as UserIcon, MapPin, Plane, PlayCircle, ArrowLeft, Search } from "lucide-react";
+import { Smartphone, Settings, User as UserIcon, MapPin, Plane, PlayCircle, ArrowLeft, Search, Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { apiFetch } from "@/lib/api";
+import LocationUtils from "@/lib/locationUtils";
+
+type RawLocationResult = Awaited<ReturnType<typeof LocationUtils.searchLocations>> extends Array<infer U> ? U : never;
+
+type ProfileLocationOption = RawLocationResult & {
+  formatted: string;
+  countryName: string;
+  locationCode: string;
+};
+
+const regionDisplayNames =
+  typeof Intl !== "undefined" && typeof Intl.DisplayNames !== "undefined"
+    ? new Intl.DisplayNames(["en"], { type: "region" })
+    : null;
+
+const getCountryName = (location: RawLocationResult): string => {
+  if (location.countryCode) {
+    const upper = location.countryCode.toUpperCase();
+    const resolved = regionDisplayNames?.of(upper);
+    return resolved ?? upper;
+  }
+
+  const match = location.displayName?.match(/\(([^)]+)\)/);
+  return match ? match[1] : "";
+};
+
+const getLocationCode = (location: RawLocationResult): string => {
+  if (location.type === "AIRPORT") {
+    return location.iataCode ?? location.cityCode ?? "";
+  }
+
+  if (location.type === "CITY") {
+    return location.cityCode ?? location.iataCode ?? "";
+  }
+
+  return location.iataCode ?? "";
+};
+
+const formatLocationResult = (location: RawLocationResult): ProfileLocationOption => ({
+  ...location,
+  formatted: LocationUtils.formatLocation(location),
+  countryName: getCountryName(location),
+  locationCode: getLocationCode(location),
+});
+
+const getTypeBadgeStyle = (type: ProfileLocationOption["type"]): string => {
+  switch (type) {
+    case "AIRPORT":
+      return "bg-blue-100 text-blue-800";
+    case "CITY":
+      return "bg-green-100 text-green-800";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+};
+
+const getTypeLabel = (type: ProfileLocationOption["type"]): string => {
+  switch (type) {
+    case "AIRPORT":
+      return "Airport";
+    case "CITY":
+      return "City";
+    case "COUNTRY":
+      return "Country";
+    default:
+      return type;
+  }
+};
 
 const profileFormSchema = z.object({
   cashAppUsername: z.string().optional(),
@@ -38,52 +105,78 @@ export default function Profile() {
 
   // Location search state
   const [locationQuery, setLocationQuery] = useState('');
-  const [locationResults, setLocationResults] = useState<any[]>([]);
+  const [locationResults, setLocationResults] = useState<ProfileLocationOption[]>([]);
   const [showLocationResults, setShowLocationResults] = useState(false);
-  const [selectedLocation, setSelectedLocation] = useState<any>(null);
+  const [selectedLocation, setSelectedLocation] = useState<ProfileLocationOption | null>(null);
+  const [isSearchingLocations, setIsSearchingLocations] = useState(false);
 
-  // Location search functionality
-  const searchLocations = async (query: string) => {
-    if (query.length < 2) {
-      setLocationResults([]);
-      setShowLocationResults(false);
-      return;
-    }
+  const handleLocationSelect = (location: ProfileLocationOption) => {
+    const formattedName = location.displayName || location.formatted;
+    const country = location.countryName || '';
+    const cityName = location.type === 'COUNTRY' ? '' : location.name ?? '';
+    const locationCode = location.locationCode || '';
 
-    try {
-      const response = await apiFetch(`/api/locations/search?q=${encodeURIComponent(query)}`);
-      if (response.ok) {
-        const results = await response.json();
-        setLocationResults(results);
-        setShowLocationResults(true);
-      }
-    } catch (error) {
-      console.error('Location search error:', error);
-    }
-  };
-
-  const handleLocationSelect = (location: any) => {
     setSelectedLocation(location);
-    setLocationQuery(location.fullName);
+    setLocationQuery(location.formatted);
     setShowLocationResults(false);
-    
-    // Auto-populate form fields with location data
-    form.setValue('defaultLocation', location.fullName);
-    form.setValue('defaultCity', location.city || location.name);
-    form.setValue('defaultCountry', location.country);
-    form.setValue('defaultLocationCode', location.airportCode || '');
+    setLocationResults([]);
+    setIsSearchingLocations(false);
+
+    form.setValue('defaultLocation', formattedName);
+    form.setValue('defaultCity', cityName);
+    form.setValue('defaultCountry', country);
+    form.setValue('defaultLocationCode', locationCode);
   };
 
   // Debounced location search
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (locationQuery) {
-        searchLocations(locationQuery);
+    const trimmedQuery = locationQuery.trim();
+
+    if (trimmedQuery.length < 2) {
+      setLocationResults([]);
+      setShowLocationResults(false);
+      setIsSearchingLocations(false);
+      return;
+    }
+
+    if (selectedLocation && trimmedQuery === selectedLocation.formatted.trim()) {
+      return;
+    }
+
+    let isCancelled = false;
+    setIsSearchingLocations(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const results = await LocationUtils.searchLocations({ query: trimmedQuery, limit: 8 });
+        if (isCancelled) return;
+
+        const filtered = results
+          .filter((result): result is RawLocationResult =>
+            Boolean(result) && (result.type === 'AIRPORT' || result.type === 'CITY')
+          )
+          .map(formatLocationResult);
+
+        setLocationResults(filtered);
+        setShowLocationResults(filtered.length > 0);
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Location search error:', error);
+          setLocationResults([]);
+          setShowLocationResults(false);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsSearchingLocations(false);
+        }
       }
     }, 300);
 
-    return () => clearTimeout(timer);
-  }, [locationQuery]);
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [locationQuery, selectedLocation]);
 
   // Initialize location query from user data
   useEffect(() => {
@@ -334,9 +427,23 @@ export default function Profile() {
                         <Input
                           value={locationQuery}
                           onChange={(e) => {
-                            setLocationQuery(e.target.value);
-                            if (e.target.value.length < 2) {
+                            const value = e.target.value;
+                            setLocationQuery(value);
+
+                            if (value.length < 2) {
                               setShowLocationResults(false);
+                            }
+
+                            if (selectedLocation && value !== selectedLocation.formatted) {
+                              setSelectedLocation(null);
+                            }
+
+                            if (value.trim().length === 0) {
+                              form.setValue('defaultLocation', '');
+                              form.setValue('defaultCity', '');
+                              form.setValue('defaultCountry', '');
+                              form.setValue('defaultLocationCode', '');
+                              setLocationResults([]);
                             }
                           }}
                           onBlur={() => {
@@ -352,32 +459,57 @@ export default function Profile() {
                         />
                       </div>
                       
-                      {showLocationResults && locationResults.length > 0 && (
+                      {showLocationResults && (locationResults.length > 0 || isSearchingLocations) && (
                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+                          {isSearchingLocations && (
+                            <div className="flex items-center justify-center gap-2 px-4 py-3 text-xs text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                              Searching for locations...
+                            </div>
+                          )}
                           {locationResults.map((location, index) => (
                             <div
-                              key={index}
+                              key={`${location.id}-${location.locationCode || index}`}
                               onClick={() => handleLocationSelect(location)}
                               className="px-4 py-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                             >
-                              <div className="flex items-center gap-2">
-                                <MapPin className="w-4 h-4 text-gray-400" />
+                              <div className="flex items-start gap-2">
+                                <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                                 <div className="flex-1">
-                                  <div className="font-medium text-sm">{location.name}</div>
-                                  <div className="text-xs text-gray-500">{location.fullName}</div>
-                                  <div className="text-xs text-gray-400">{location.country}</div>
-                                </div>
-                                {location.airportCode && (
-                                  <div className="flex items-center gap-1">
-                                    <Plane className="w-3 h-3 text-blue-500" />
-                                    <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1 py-0.5 rounded">
-                                      {location.airportCode}
-                                    </span>
+                                  <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                                    <span>{location.name}</span>
+                                    <Badge variant="outline" className={getTypeBadgeStyle(location.type)}>
+                                      {getTypeLabel(location.type)}
+                                    </Badge>
+                                    {location.locationCode && (
+                                      <span className="text-xs font-mono text-blue-700 bg-blue-50 px-1 py-0.5 rounded">
+                                        {location.locationCode}
+                                      </span>
+                                    )}
                                   </div>
-                                )}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {location.countryName || location.displayName}
+                                    {location.countryName && location.region && ` • ${location.region}`}
+                                  </div>
+                                  {location.type === 'CITY' && location.locationCode && (
+                                    <div className="text-xs text-blue-600 mt-1">
+                                      Major airport code: {location.locationCode}
+                                    </div>
+                                  )}
+                                  {location.type === 'AIRPORT' && location.cityCode && location.cityCode !== location.locationCode && (
+                                    <div className="text-xs text-gray-400 mt-1">
+                                      Serves city code {location.cityCode}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           ))}
+                          {!isSearchingLocations && locationResults.length === 0 && (
+                            <div className="px-4 py-3 text-xs text-muted-foreground">
+                              No locations found. Try a different city or airport.
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
