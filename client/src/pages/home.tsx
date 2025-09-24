@@ -24,8 +24,6 @@ import {
   ArrowRight,
   ArrowUpRight,
   Calendar,
-  Camera,
-  CheckCircle2,
   Clock,
   Compass,
   Heart,
@@ -42,7 +40,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { CreateTripModal } from "@/components/create-trip-modal";
 import { NotificationIcon } from "@/components/notification-icon";
 import { TravelLoading } from "@/components/LoadingSpinners";
@@ -52,6 +50,20 @@ import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { TripWithDetails } from "@shared/schema";
+import { Progress } from "@/components/ui/progress";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 const DEFAULT_DESTINATION_IMAGE =
   "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80";
@@ -99,6 +111,65 @@ const DESTINATION_BACKGROUNDS = [
   },
 ] as const;
 
+const DESTINATION_FUN_FACTS: { keywords: string[]; facts: string[] }[] = [
+  {
+    keywords: ["tokyo", "japan"],
+    facts: [
+      "Tokyo is home to more Michelin-starred restaurants than any other city on the planet.",
+      "Subways in Tokyo are so punctual that a delay of five minutes earns passengers a formal apology note.",
+    ],
+  },
+  {
+    keywords: ["paris", "france"],
+    facts: [
+      "The Eiffel Tower grows about 6 inches taller during summer as the metal expands in the heat.",
+      "Paris has more than 60 open-air markets, perfect for picnic supplies with your travel crew.",
+    ],
+  },
+  {
+    keywords: ["new york", "nyc", "manhattan"],
+    facts: [
+      "New York City's subway system spans more than 665 miles of track—perfect for spontaneous exploring.",
+      "Over 800 languages are spoken in New York, making it one of the most linguistically diverse cities in the world.",
+    ],
+  },
+  {
+    keywords: ["london", "england", "uk"],
+    facts: [
+      "In London, you’re never more than two miles from a spot associated with Sherlock Holmes.",
+      "The London Underground was the first metro system in the world, opening in 1863.",
+    ],
+  },
+  {
+    keywords: ["rome", "italy"],
+    facts: [
+      "Romans built a 53,000-mile road network—no wonder every path seems to lead to the next discovery.",
+      "Gelato was invented in Florence, but Romans eat more of it per capita than anywhere else in Italy.",
+    ],
+  },
+  {
+    keywords: ["beach", "island", "bali", "maldives", "hawaii"],
+    facts: [
+      "Packing sunscreen in reusable containers can save space and reduce plastic waste on beach trips.",
+      "Morning beach walks are proven to boost serotonin—schedule one for day one of your getaway.",
+    ],
+  },
+  {
+    keywords: ["mountain", "alps", "colorado", "hike", "rocky"],
+    facts: [
+      "At high altitudes you burn up to 30% more calories—perfect excuse for that extra campfire treat.",
+      "Layering is key: temperatures can swing 20°F or more between trailhead and summit in the mountains.",
+    ],
+  },
+];
+
+const DEFAULT_FUN_FACTS = [
+  "Packing cubes can free up 30% more luggage space for souvenirs.",
+  "Share live locations with your crew to make meetups stress-free.",
+  "A group playlist sets the vibe—queue songs before wheels up.",
+  "Snap photos of receipts as you go to make expense splitting painless.",
+];
+
 const getDestinationImage = (destination?: string | null) => {
   if (!destination) return DEFAULT_DESTINATION_IMAGE;
   const lowerDestination = destination.toLowerCase();
@@ -106,6 +177,129 @@ const getDestinationImage = (destination?: string | null) => {
     keywords.some((keyword) => lowerDestination.includes(keyword))
   );
   return match?.image ?? DEFAULT_DESTINATION_IMAGE;
+};
+
+const getFunFactsForDestination = (destination?: string | null) => {
+  if (!destination) {
+    return DEFAULT_FUN_FACTS;
+  }
+  const lowerDestination = destination.toLowerCase();
+  const match = DESTINATION_FUN_FACTS.find(({ keywords }) =>
+    keywords.some((keyword) => lowerDestination.includes(keyword))
+  );
+  return match?.facts ?? DEFAULT_FUN_FACTS;
+};
+
+const getTeamLabel = (trip?: TripWithDetails | null) => {
+  if (!trip) {
+    return null;
+  }
+  const primaryDestination = trip.destination
+    ?.split(",")[0]
+    ?.trim();
+  if (primaryDestination && primaryDestination.length > 0) {
+    return `Team ${primaryDestination}`;
+  }
+  const trimmedName = trip.name?.trim();
+  if (trimmedName && trimmedName.length > 0) {
+    return `${trimmedName} crew`;
+  }
+  return null;
+};
+
+const MS_IN_DAY = 1000 * 60 * 60 * 24;
+
+const getDaysUntilTrip = (startDate: string | Date) => {
+  const start = typeof startDate === "string" ? new Date(startDate) : startDate;
+  const now = new Date();
+  start.setHours(0, 0, 0, 0);
+  now.setHours(0, 0, 0, 0);
+  return Math.round((start.getTime() - now.getTime()) / MS_IN_DAY);
+};
+
+const calculatePlanningProgress = (trip: TripWithDetails) => {
+  const daysUntil = getDaysUntilTrip(trip.startDate);
+  const companionBoost = Math.min(30, Math.max(0, trip.memberCount - 1) * 12);
+  const photoBoost = Math.min(
+    15,
+    trip.members.filter((member) => !!member.user.profileImageUrl).length * 5,
+  );
+  const urgencyBoost =
+    daysUntil <= 3
+      ? 25
+      : daysUntil <= 7
+        ? 20
+        : daysUntil <= 14
+          ? 15
+          : daysUntil <= 30
+            ? 10
+            : 0;
+  const progress = 35 + companionBoost + photoBoost + urgencyBoost;
+  return Math.max(25, Math.min(progress, 96));
+};
+
+type TripTagDefinition = {
+  keywords: string[];
+  label: string;
+};
+
+const TRIP_TAG_LIBRARY: TripTagDefinition[] = [
+  { keywords: ["beach", "island", "coast", "maldives", "bali"], label: "Beach" },
+  { keywords: ["mountain", "alps", "hike", "rocky", "trail"], label: "Adventure" },
+  { keywords: ["tokyo", "new york", "paris", "london", "city"], label: "City Escape" },
+  { keywords: ["wedding", "bachelor", "bachelorette", "celebration"], label: "Celebration" },
+  { keywords: ["conference", "business", "work"], label: "Business Trip" },
+  { keywords: ["family", "kids", "parents"], label: "Family Time" },
+];
+
+const getTripTags = (trip: TripWithDetails) => {
+  const lowerName = trip.name?.toLowerCase() ?? "";
+  const lowerDestination = trip.destination?.toLowerCase() ?? "";
+  const detected = new Set<string>();
+
+  TRIP_TAG_LIBRARY.forEach(({ keywords, label }) => {
+    if (
+      keywords.some(
+        (keyword) =>
+          lowerName.includes(keyword) || lowerDestination.includes(keyword),
+      )
+    ) {
+      detected.add(label);
+    }
+  });
+
+  if (detected.size === 0) {
+    if (trip.memberCount >= 4) {
+      detected.add("Crew Adventure");
+    }
+    if (lowerDestination.includes("park") || lowerDestination.includes("trail")) {
+      detected.add("Outdoors");
+    }
+  }
+
+  if (detected.size === 0) {
+    detected.add("Explorer");
+  }
+
+  return Array.from(detected).slice(0, 3);
+};
+
+const getTripNextStep = (trip: TripWithDetails) => {
+  const daysUntil = getDaysUntilTrip(trip.startDate);
+
+  if (daysUntil <= 0) {
+    return "Share live updates while you're on the ground.";
+  }
+  if (daysUntil <= 2) {
+    return "Double-check check-in times and airport transfers.";
+  }
+  if (daysUntil <= 7) {
+    return "Confirm reservations and lock down the final schedule.";
+  }
+  if (daysUntil <= 14) {
+    return "Add one more standout activity to keep the crew excited.";
+  }
+  return "Start a conversation about everyone's must-do experiences.";
 };
 
 const getCountdownLabel = (startDate: string | Date) => {
@@ -178,6 +372,7 @@ export default function Home() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedStat, setSelectedStat] = useState<StatType | null>(null);
   const [isStatsDialogOpen, setIsStatsDialogOpen] = useState(false);
+  const [factIndex, setFactIndex] = useState(0);
   const { toast } = useToast();
 
   const { data: trips, isLoading, error } = useQuery<TripWithDetails[]>({
@@ -274,6 +469,16 @@ export default function Home() {
   const highlightDestinationName = highlightTrip?.destination
     ? highlightTrip.destination.split(",")[0]?.trim() || highlightTrip.destination
     : undefined;
+  const teamLabel = getTeamLabel(highlightTrip);
+  const heroGreeting = `Welcome back, ${user?.firstName || "Traveler"} 👋`;
+  const heroHeadline = highlightTrip
+    ? `${
+        teamLabel ??
+        (highlightDestinationName
+          ? `Team ${highlightDestinationName}`
+          : highlightTrip.name)
+      } is almost ready!`
+    : "Your next adventure is waiting.";
   const heroSubtitle = highlightTrip
     ? highlightCountdown === "Happening today"
       ? `It's go day for ${highlightDestinationName}! Check off your final details below.`
@@ -281,8 +486,28 @@ export default function Home() {
         ? `You're already exploring ${highlightDestinationName}. Keep everyone aligned with live updates.`
         : `${highlightCountdown} until ${highlightDestinationName}. Let's make sure everything is locked in.`
     : "Plan something unforgettable—start by creating your next itinerary.";
-  const travelFocusName = highlightDestinationName ?? "your next destination";
-  const recentMembers = highlightTrip?.members?.slice(0, 3) ?? [];
+  const funFacts = useMemo(
+    () => getFunFactsForDestination(highlightTrip?.destination),
+    [highlightTrip?.destination],
+  );
+  useEffect(() => {
+    setFactIndex(0);
+  }, [highlightTrip?.id, funFacts.length]);
+  useEffect(() => {
+    if (funFacts.length <= 1) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setFactIndex((prev) => (prev + 1) % funFacts.length);
+    }, 8000);
+
+    return () => window.clearInterval(timer);
+  }, [funFacts]);
+  const currentFunFact =
+    funFacts.length > 0 ? funFacts[factIndex % funFacts.length] : undefined;
   const stats: StatDefinition[] = [
     {
       type: "upcomingTrips",
@@ -306,6 +531,55 @@ export default function Home() {
       accent: "bg-violet-100 text-violet-600",
     },
   ];
+
+  const quickActions = [
+    {
+      title: "Currency toolkit",
+      description: "Live rates and quick conversions for the crew.",
+      href: "/currency-converter",
+      icon: DollarSign,
+      accent: "bg-emerald-100 text-emerald-600",
+    },
+    {
+      title: "Explore features",
+      description: "Discover collaborative tools you haven't tried yet.",
+      href: "/how-it-works",
+      icon: Compass,
+      accent: "bg-sky-100 text-sky-600",
+    },
+    {
+      title: "Profile & preferences",
+      description: "Tune notifications and travel details in seconds.",
+      href: "/profile",
+      icon: Settings,
+      accent: "bg-violet-100 text-violet-600",
+    },
+  ] as const;
+
+  const quickAddItems: { label: string; href: string; icon: LucideIcon }[] = highlightTrip
+    ? [
+        {
+          label: "Add activity",
+          href: `/trip/${highlightTrip.id}?view=activities`,
+          icon: Sparkles,
+        },
+        {
+          label: "Log an expense",
+          href: `/trip/${highlightTrip.id}?view=expenses`,
+          icon: DollarSign,
+        },
+        {
+          label: "Open packing list",
+          href: `/trip/${highlightTrip.id}?view=packing`,
+          icon: ListChecks,
+        },
+        {
+          label: "Add to wish list",
+          href: `/trip/${highlightTrip.id}?view=wish-list`,
+          icon: Heart,
+        },
+      ]
+    : [];
 
   const companionMap = new Map<string, CompanionDetail>();
   (trips ?? []).forEach((trip) => {
@@ -368,6 +642,107 @@ export default function Home() {
   const destinationDetails = Array.from(destinationMap.values()).sort((a, b) =>
     a.name.localeCompare(b.name),
   );
+
+  const topCompanions = companionDetails.slice(0, 3);
+  const extraCompanionCount = Math.max(
+    companionDetails.length - topCompanions.length,
+    0,
+  );
+  const topDestinations = destinationDetails.slice(0, 3);
+  const extraDestinationCount = Math.max(
+    destinationDetails.length - topDestinations.length,
+    0,
+  );
+  const highlightNextStep = highlightTrip ? getTripNextStep(highlightTrip) : null;
+
+  type InsightCard = {
+    title: string;
+    description: string;
+    icon: LucideIcon;
+    accent: string;
+    actionLabel: string;
+    href?: string;
+    onClick?: () => void;
+  };
+
+  const insightCards: InsightCard[] = highlightTrip
+    ? [
+        {
+          title: "Add one more standout",
+          description:
+            teamLabel && highlightDestinationName
+              ? `${teamLabel} still has room for a can't-miss ${highlightDestinationName} moment.`
+              : "Drop an activity into the itinerary so everyone can react.",
+          icon: ListChecks,
+          accent: "bg-emerald-100 text-emerald-600",
+          actionLabel: "Add activity",
+          href: `/trip/${highlightTrip.id}?view=activities`,
+        },
+        {
+          title: "Split an expense early",
+          description: "Capture shared costs now to keep budgets aligned for the trip.",
+          icon: DollarSign,
+          accent: "bg-amber-100 text-amber-600",
+          actionLabel: "Log expense",
+          href: `/trip/${highlightTrip.id}?view=expenses`,
+        },
+        {
+          title: "Prep the packing list",
+          description: `Keep ${highlightTrip.memberCount} traveler${
+            highlightTrip.memberCount === 1 ? "" : "s"
+          } synced on essentials before departure.`,
+          icon: Plane,
+          accent: "bg-sky-100 text-sky-600",
+          actionLabel: "Open packing",
+          href: `/trip/${highlightTrip.id}?view=packing`,
+        },
+        {
+          title: "Get inspired",
+          description:
+            "Browse experiences near your destination and drop favorites into proposals.",
+          icon: Sparkles,
+          accent: "bg-rose-100 text-rose-500",
+          actionLabel: "Discover ideas",
+          href: "/activities",
+        },
+      ]
+    : [
+        {
+          title: "Create your first trip space",
+          description:
+            "Spin up an itinerary, invite friends, and start capturing plans together.",
+          icon: Sparkles,
+          accent: "bg-emerald-100 text-emerald-600",
+          actionLabel: "Start planning",
+          onClick: () => setShowCreateModal(true),
+        },
+        {
+          title: "Explore VacationSync tools",
+          description:
+            "See how shared calendars, polls, and budgets keep everyone aligned.",
+          icon: Compass,
+          accent: "bg-sky-100 text-sky-600",
+          actionLabel: "Tour features",
+          href: "/how-it-works",
+        },
+        {
+          title: "Save must-do ideas",
+          description:
+            "Browse activities and restaurants, then clip your favorites for later.",
+          icon: MapPin,
+          accent: "bg-violet-100 text-violet-600",
+          actionLabel: "Find inspiration",
+          href: "/activities",
+        },
+        {
+          title: "Personalize your profile",
+          description: "Add a photo and travel preferences so invites feel personal.",
+          icon: Users,
+          accent: "bg-amber-100 text-amber-600",
+          actionLabel: "Update profile",
+          href: "/profile",
+        },
+      ];
 
   const statDescriptions: Record<StatType, string> = {
     upcomingTrips:
@@ -574,18 +949,40 @@ export default function Home() {
             </div>
             <div className="relative z-10 flex h-full flex-col justify-between gap-8 text-slate-900">
               <div className="space-y-6">
-                <Badge className="w-fit rounded-full bg-white/80 px-4 py-1 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur">
-                  <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
-                  Next adventure awaits
-                </Badge>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge className="w-fit rounded-full bg-white/80 px-4 py-1 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur">
+                    <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
+                    Next adventure awaits
+                  </Badge>
+                  {highlightCountdown && (
+                    <div className="flex items-center gap-2 rounded-full bg-white/80 px-4 py-1 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur">
+                      <Clock className="h-4 w-4 text-slate-500" />
+                      {highlightCountdown}
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+                    {heroGreeting}
+                  </p>
                   <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                    Welcome back, {user?.firstName || "Traveler"} 👋
+                    {heroHeadline}
                   </h1>
                   <p className="max-w-2xl text-lg text-slate-700">{heroSubtitle}</p>
                 </div>
+                {currentFunFact && (
+                  <div className="flex items-start gap-3 rounded-3xl bg-white/80 p-4 text-sm text-slate-700 shadow-sm backdrop-blur">
+                    <Lightbulb className="mt-0.5 h-4 w-4 text-amber-500" />
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Trip tidbit
+                      </p>
+                      <p>{currentFunFact}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <Button
                   size="lg"
                   className="bg-primary px-6 text-white shadow-md transition hover:shadow-lg"
@@ -598,6 +995,31 @@ export default function Home() {
                   <Plus className="h-5 w-5" />
                   Plan New Trip
                 </Button>
+                {highlightTrip && (
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    className="rounded-full px-6 text-slate-900 shadow-sm transition hover:shadow-md"
+                    asChild
+                  >
+                    <Link href={`/trip/${highlightTrip.id}?view=packing`}>
+                      Check packing list
+                    </Link>
+                  </Button>
+                )}
+                {highlightTrip && (
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="justify-start px-6 text-slate-700 hover:text-slate-900"
+                    asChild
+                  >
+                    <Link href={`/trip/${highlightTrip.id}?view=activities`}>
+                      Finalize activities
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="lg"
@@ -628,46 +1050,71 @@ export default function Home() {
                 Jump back into the tools you need most.
               </p>
             </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              <Button
-                variant="outline"
-                className="justify-between rounded-2xl border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
-                asChild
-              >
-                <Link href="/currency-converter">
-                  <span className="flex items-center gap-2">
-                    <DollarSign className="h-4 w-4 text-emerald-600" />
-                    Currency toolkit
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 text-slate-500" />
-                </Link>
-              </Button>
-              <Button
-                variant="outline"
-                className="justify-between rounded-2xl border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
-                asChild
-              >
-                <Link href="/how-it-works">
-                  <span className="flex items-center gap-2">
-                    <Compass className="h-4 w-4 text-sky-600" />
-                    Explore features
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 text-slate-500" />
-                </Link>
-              </Button>
-              <Button
-                variant="outline"
-                className="justify-between rounded-2xl border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
-                asChild
-              >
-                <Link href="/profile">
-                  <span className="flex items-center gap-2">
-                    <Settings className="h-4 w-4 text-purple-600" />
-                    Profile & preferences
-                  </span>
-                  <ArrowUpRight className="h-4 w-4 text-slate-500" />
-                </Link>
-              </Button>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                {quickActions.map((action) => {
+                  const ActionIcon = action.icon;
+                  return (
+                    <Link
+                      key={action.title}
+                      href={action.href}
+                      className="group flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`flex h-11 w-11 items-center justify-center rounded-2xl ${action.accent}`}
+                        >
+                          <ActionIcon className="h-5 w-5" />
+                        </span>
+                        <div>
+                          <p className="font-semibold text-slate-900">{action.title}</p>
+                          <p className="text-xs text-slate-500">{action.description}</p>
+                        </div>
+                      </div>
+                      <ArrowUpRight className="h-4 w-4 text-slate-400 transition group-hover:text-slate-600" />
+                    </Link>
+                  );
+                })}
+              </div>
+              {highlightTrip ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="w-full justify-center rounded-2xl bg-slate-900 py-5 text-base font-semibold text-white shadow-md transition hover:bg-slate-800">
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add something
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-60 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg">
+                    {quickAddItems.map((item) => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={item.label}
+                          className="cursor-pointer rounded-xl px-3 py-2 text-sm text-slate-700 focus:bg-slate-100"
+                          asChild
+                        >
+                          <Link
+                            href={item.href}
+                            className="flex items-center gap-2"
+                          >
+                            <ItemIcon className="h-4 w-4 text-slate-500" />
+                            {item.label}
+                            <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-slate-400" />
+                          </Link>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  className="w-full justify-center rounded-2xl bg-slate-900 py-5 text-base font-semibold text-white shadow-md transition hover:bg-slate-800"
+                  onClick={() => setShowCreateModal(true)}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add something
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 className="justify-start px-3 text-slate-500 hover:text-slate-900"
@@ -681,17 +1128,91 @@ export default function Home() {
 
         <Card className="rounded-3xl border-slate-200 shadow-sm">
           <CardContent className="p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-4 md:flex-row md:items-stretch md:justify-between">
               {stats.map((stat, index) => {
                 const Icon = stat.icon;
                 const showDivider = index < stats.length - 1;
+                let preview: ReactNode = null;
+
+                if (stat.type === "upcomingTrips") {
+                  preview = highlightTrip ? (
+                    <div className="mt-2 space-y-1 text-xs text-slate-500">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="font-medium text-slate-700">
+                          {highlightTrip.name}
+                        </span>
+                        {highlightCountdown && (
+                          <span className="text-slate-400">• {highlightCountdown}</span>
+                        )}
+                      </div>
+                      {highlightNextStep && (
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                          <Clock className="h-3 w-3" />
+                          <span>{highlightNextStep}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Start a plan to unlock smart trip previews.
+                    </p>
+                  );
+                } else if (stat.type === "travelCompanions") {
+                  preview = topCompanions.length > 0 ? (
+                    <div className="mt-2 flex items-center gap-3">
+                      <div className="flex -space-x-2">
+                        {topCompanions.map((companion) => (
+                          <div
+                            key={companion.id}
+                            className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-slate-100 text-[11px] font-semibold text-slate-600 shadow-sm"
+                          >
+                            {companion.initial}
+                          </div>
+                        ))}
+                        {extraCompanionCount > 0 && (
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-slate-100 text-[11px] font-semibold text-slate-600 shadow-sm">
+                            +{extraCompanionCount}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        {topCompanions
+                          .map((companion) => companion.name.split(" ")[0])
+                          .join(", ")}
+                        {extraCompanionCount > 0
+                          ? ` +${extraCompanionCount} more`
+                          : ""}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Invite friends to start planning together.
+                    </p>
+                  );
+                } else if (stat.type === "destinations") {
+                  preview = topDestinations.length > 0 ? (
+                    <p className="mt-2 text-xs text-slate-500">
+                      {topDestinations
+                        .map((destination) => destination.name.split(",")[0])
+                        .join(" • ")}
+                      {extraDestinationCount > 0
+                        ? ` +${extraDestinationCount}`
+                        : ""}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">
+                      Add destinations to track your travel map.
+                    </p>
+                  );
+                }
 
                 return (
                   <button
                     key={stat.label}
                     type="button"
                     onClick={() => handleStatClick(stat.type)}
-                    className={`group flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
+                    className={`group flex w-full items-stretch gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                       showDivider ? "md:border-r md:border-slate-200 md:pr-6" : ""
                     } md:w-auto`}
                     aria-label={`View details for ${stat.label}`}
@@ -701,14 +1222,16 @@ export default function Home() {
                     >
                       <Icon className="h-5 w-5" />
                     </div>
-                    <div>
+                    <div className="flex flex-1 flex-col">
                       <p className="text-2xl font-semibold text-slate-900">
                         {stat.value}
                       </p>
                       <p className="text-sm capitalize text-slate-600 group-hover:text-slate-800">
                         {stat.label}
                       </p>
+                      {preview}
                     </div>
+                    <ArrowRight className="mt-1 hidden h-4 w-4 text-slate-300 transition group-hover:text-slate-500 md:block" />
                   </button>
                 );
               })}
@@ -778,14 +1301,19 @@ export default function Home() {
             </Card>
           ) : (
             <div className="grid gap-6 md:grid-cols-2">
-              {sortedUpcomingTrips.map((trip) => (
-                <Link
-                  key={trip.id}
-                  href={`/trip/${trip.id}`}
-                  aria-label={`Open trip ${trip.name}`}
-                  className="group block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                >
-                  <Card className="h-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-lg">
+              {sortedUpcomingTrips.map((trip) => {
+                const progress = calculatePlanningProgress(trip);
+                const tags = getTripTags(trip);
+                const nextStep = getTripNextStep(trip);
+
+                return (
+                  <Link
+                    key={trip.id}
+                    href={`/trip/${trip.id}`}
+                    aria-label={`Open trip ${trip.name}`}
+                    className="group block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  >
+                    <Card className="h-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-lg">
                     <div className="relative h-40 w-full overflow-hidden">
                       <img
                         src={getDestinationImage(trip.destination)}
@@ -809,7 +1337,7 @@ export default function Home() {
                         </Badge>
                       </div>
                     </div>
-                    <CardContent className="space-y-4 p-6">
+                    <CardContent className="space-y-5 p-6">
                       <div className="space-y-3 text-sm text-slate-600">
                         <div className="flex items-center gap-3">
                           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-600">
@@ -832,6 +1360,34 @@ export default function Home() {
                           <span className="font-medium text-slate-900">
                             {getCountdownLabel(trip.startDate)}
                           </span>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          {tags.map((tag) => (
+                            <Badge
+                              key={`${trip.id}-${tag}`}
+                              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                        <div>
+                          <div className="flex items-center justify-between text-xs text-slate-500">
+                            <span>Planning progress</span>
+                            <span className="font-semibold text-slate-700">
+                              {progress}%
+                            </span>
+                          </div>
+                          <Progress
+                            value={progress}
+                            className="mt-1 h-2 rounded-full bg-slate-100"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                          <ListChecks className="h-4 w-4 text-emerald-500" />
+                          <span>Next up: {nextStep}</span>
                         </div>
                       </div>
                       <div className="flex items-center gap-4 pt-2">
@@ -869,182 +1425,85 @@ export default function Home() {
                       </div>
                     </CardContent>
                   </Card>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-xl font-semibold text-slate-900">Helpful insights</h2>
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
-              <CardContent className="space-y-4 p-6">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
-                    <ListChecks className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h3 className="text-base font-semibold text-slate-900">
-                      Continue planning
-                    </h3>
-                    <p className="text-sm text-slate-600">
-                      {highlightTrip
-                        ? heroSubtitle
-                        : "Organize the essentials, then invite your crew to collaborate."}
-                    </p>
-                  </div>
-                </div>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                    Confirm travel dates and share them with everyone involved.
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                    Align on budget expectations and capture key expenses early.
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
-                    Add can't-miss experiences so each traveler can weigh in.
-                  </li>
-                </ul>
-                {highlightTrip && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">Helpful insights</h2>
+              <p className="text-sm text-slate-600">
+                Quick suggestions to keep momentum high for {teamLabel ?? "your travel plans"}.
+              </p>
+            </div>
+            {highlightTrip && teamLabel && (
+              <Badge className="w-fit rounded-full bg-white px-4 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                {teamLabel}
+              </Badge>
+            )}
+          </div>
+          <div className="relative">
+            <Carousel opts={{ align: "start" }} className="px-1">
+              <CarouselContent className="-ml-4">
+                {insightCards.map((insight) => {
+                  const InsightIcon = insight.icon;
+                  return (
+                    <CarouselItem
+                      key={insight.title}
+                      className="pl-4 sm:basis-1/2 lg:basis-1/3"
+                    >
+                      <Card className="h-full rounded-3xl border-slate-200 bg-white shadow-sm">
+                        <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
+                          <div className="flex items-start gap-3">
+                            <span
+                              className={`flex h-10 w-10 items-center justify-center rounded-2xl ${insight.accent}`}
+                            >
+                              <InsightIcon className="h-5 w-5" />
+                            </span>
+                            <div>
+                              <h3 className="text-base font-semibold text-slate-900">
+                                {insight.title}
+                              </h3>
+                              <p className="text-sm text-slate-600">
+                                {insight.description}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 pt-2">
+                {insight.href ? (
                   <Button
                     variant="secondary"
                     size="sm"
                     className="rounded-full px-4"
                     asChild
                   >
-                    <Link href={`/trip/${highlightTrip.id}`}>
-                      Go to planning hub
-                    </Link>
+                    <Link href={insight.href}>{insight.actionLabel}</Link>
                   </Button>
-                )}
-              </CardContent>
-            </Card>
-            <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
-              <CardContent className="space-y-4 p-6">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
-                    <Lightbulb className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h3 className="text-base font-semibold text-slate-900">
-                      Travel tips
-                    </h3>
-                    <p className="text-sm text-slate-600">
-                      Smart suggestions tailored to {travelFocusName}.
-                    </p>
-                  </div>
-                </div>
-                <ul className="space-y-2 text-sm text-slate-600">
-                  <li className="flex items-start gap-2">
-                    <Plane className="mt-0.5 h-4 w-4 text-sky-500" />
-                    Double-check flight deals midweek—prices dip most on Tuesdays and Wednesdays.
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Camera className="mt-0.5 h-4 w-4 text-rose-500" />
-                    Save a shared album so everyone can drop must-see spots and photo ideas.
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <Heart className="mt-0.5 h-4 w-4 text-purple-500" />
-                    Book one group experience early to give the crew something to look forward to.
-                  </li>
-                </ul>
-                {highlightTrip && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="justify-start px-0 text-slate-700 hover:text-slate-900"
-                    asChild
-                  >
-                    <Link href={`/trip/${highlightTrip.id}`}>
-                      View trip recommendations
-                    </Link>
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-            <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
-              <CardContent className="space-y-4 p-6">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
-                    <Clock className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h3 className="text-base font-semibold text-slate-900">
-                      Recent activity
-                    </h3>
-                    <p className="text-sm text-slate-600">
-                      {highlightTrip
-                        ? `Stay in sync with ${highlightTrip.memberCount} traveler${
-                            highlightTrip.memberCount === 1 ? "" : "s"
-                          }.`
-                        : "Activity from your travel crew will appear here."}
-                    </p>
-                  </div>
-                </div>
-                {recentMembers.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex -space-x-2">
-                      {recentMembers.map((member) => (
-                        <div
-                          key={member.id}
-                          className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
-                        >
-                          {member.user.profileImageUrl ? (
-                            <img
-                              src={member.user.profileImageUrl}
-                              alt={formatMemberName(
-                                member.user.firstName,
-                                member.user.email,
-                              )}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
-                              {getMemberInitial(
-                                member.user.firstName,
-                                member.user.email,
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-sm text-slate-600">
-                      {recentMembers
-                        .map((member) =>
-                          formatMemberName(
-                            member.user.firstName,
-                            member.user.email,
-                          ),
-                        )
-                        .join(", ")}{" "}
-                      {recentMembers.length === 1 ? "is" : "are"} gearing up for this getaway. Share an update to keep everyone in the loop.
-                    </p>
-                  </div>
                 ) : (
-                  <p className="text-sm text-slate-600">
-                    No updates yet. Start the conversation by posting your first idea or inviting new companions.
-                  </p>
-                )}
-                {highlightTrip && (
                   <Button
-                    variant="ghost"
-                    size="sm"
-                    className="justify-start px-0 text-slate-700 hover:text-slate-900"
-                    asChild
-                  >
-                    <Link href={`/trip/${highlightTrip.id}`}>
-                      Open trip space
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+                                variant="secondary"
+                                size="sm"
+                                className="rounded-full px-4"
+                                onClick={insight.onClick}
+                              >
+                                {insight.actionLabel}
+                              </Button>
+                            )}
+                            <ArrowRight className="h-4 w-4 text-slate-300" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </CarouselItem>
+                  );
+                })}
+              </CarouselContent>
+              <CarouselPrevious className="hidden sm:flex -left-6" />
+              <CarouselNext className="hidden sm:flex -right-6" />
+            </Carousel>
           </div>
         </section>
 

@@ -74,6 +74,25 @@ import {
   differenceInCalendarDays,
 } from "date-fns";
 
+const TRIP_TAB_KEYS = [
+  "calendar",
+  "schedule",
+  "proposals",
+  "packing",
+  "flights",
+  "hotels",
+  "activities",
+  "restaurants",
+  "groceries",
+  "expenses",
+  "wish-list",
+] as const;
+
+type TripTab = (typeof TRIP_TAB_KEYS)[number];
+
+const isTripTab = (value: string): value is TripTab =>
+  TRIP_TAB_KEYS.includes(value as TripTab);
+
 interface DayViewProps {
   date: Date;
   activities: ActivityWithDetails[];
@@ -260,7 +279,7 @@ export default function Trip() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showWeatherModal, setShowWeatherModal] = useState(false);
-  const [activeTab, setActiveTab] = useState("calendar");
+  const [activeTab, setActiveTab] = useState<TripTab>("calendar");
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [peopleFilter, setPeopleFilter] = useState("all");
@@ -269,6 +288,17 @@ export default function Trip() {
   const [scheduleCalendarView, setScheduleCalendarView] = useState<"month" | "day">("month");
   const [groupViewDate, setGroupViewDate] = useState<Date | null>(null);
   const [scheduleViewDate, setScheduleViewDate] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get("view");
+    if (viewParam && isTripTab(viewParam)) {
+      setActiveTab(viewParam);
+    }
+  }, []);
 
   // Redirect if not authenticated
   useEffect(() => {
