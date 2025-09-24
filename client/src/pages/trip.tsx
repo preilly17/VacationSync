@@ -759,6 +759,7 @@ export default function Trip() {
           }}
           tripId={parseInt(id || "0")}
           selectedDate={selectedDate}
+          members={trip?.members ?? []}
         />
 
         {trip && (

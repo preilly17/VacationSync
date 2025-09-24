@@ -204,6 +204,7 @@ export default function Activities() {
           cost: activity.price ? parseFloat(activity.price) : null,
           maxCapacity: 10,
           tripCalendarId: parseInt(tripId!),
+          attendeeIds: user ? [user.id] : [],
         }),
       });
 

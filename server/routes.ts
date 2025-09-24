@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
-import { insertTripCalendarSchema, insertActivitySchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema } from "@shared/schema";
+import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema } from "@shared/schema";
 import { z } from "zod";
 import * as travelTipsService from "./travelTipsService";
 
@@ -1447,6 +1447,107 @@ export function setupRoutes(app: Express) {
     } catch (error: unknown) {
       console.error("Error fetching activities:", error);
       res.status(500).json({ message: "Failed to fetch activities" });
+    }
+  });
+
+  app.post('/api/trips/:id/activities', async (req: any, res) => {
+    try {
+      const tripId = parseInt(req.params.id);
+      if (isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip ID" });
+      }
+
+      let userId = getRequestUserId(req);
+
+      if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
+        userId = 'demo-user';
+      }
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const trip = await storage.getTripById(tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const isMember = trip.members.some((member) => member.userId === userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "You are no longer a member of this trip" });
+      }
+
+      const rawData = {
+        ...req.body,
+        tripCalendarId: tripId,
+      };
+
+      const validatedData = createActivityWithAttendeesSchema.parse(rawData);
+      const { attendeeIds = [], ...activityData } = validatedData;
+
+      const activity = await storage.createActivity(activityData, userId);
+
+      const validMemberIds = new Set(trip.members.map((member) => member.userId));
+      const uniqueAttendeeIds = Array.from(
+        new Set(attendeeIds.filter((id) => typeof id === 'string' && validMemberIds.has(id))),
+      );
+
+      if (uniqueAttendeeIds.length > 0) {
+        await Promise.all(uniqueAttendeeIds.map((attendeeId) => storage.acceptActivity(activity.id, attendeeId)));
+      }
+
+      const organizerMember = trip.members.find((member) => member.userId === userId);
+      const organizerName =
+        organizerMember?.user.firstName?.trim() ||
+        organizerMember?.user.username ||
+        organizerMember?.user.email ||
+        'A trip member';
+
+      const attendeesToNotify = uniqueAttendeeIds.filter((attendeeId) => attendeeId !== userId);
+
+      if (attendeesToNotify.length > 0) {
+        const eventDate = new Date(activity.startTime);
+        const formattedDate = eventDate.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        });
+
+        await Promise.all(
+          attendeesToNotify.map((attendeeId) =>
+            storage
+              .createNotification({
+                userId: attendeeId,
+                type: 'activity_attendance',
+                title: `${organizerName} added you to ${activity.name}`,
+                message: `You're marked as attending ${activity.name} on ${formattedDate}.`,
+                tripId: tripId,
+                activityId: activity.id,
+              })
+              .catch((notificationError) => {
+                console.error('Failed to create activity notification:', notificationError);
+              }),
+          ),
+        );
+      }
+
+      broadcastToTrip(tripId, {
+        type: 'activity_created',
+        activityId: activity.id,
+      });
+
+      const activities = await storage.getTripActivities(tripId, userId);
+      const createdActivity = activities.find((item) => item.id === activity.id);
+
+      res.json(createdActivity ?? activity);
+    } catch (error: unknown) {
+      console.error('Error creating activity:', error);
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: 'Invalid activity data', errors: error.errors });
+      } else {
+        res.status(500).json({ message: 'Failed to create activity' });
+      }
     }
   });
 

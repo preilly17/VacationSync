@@ -170,6 +170,14 @@ export const insertActivitySchema = z.object({
 
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 
+export const createActivityWithAttendeesSchema = insertActivitySchema.extend({
+  attendeeIds: z.array(z.string()).optional(),
+});
+
+export type CreateActivityWithAttendees = z.infer<
+  typeof createActivityWithAttendeesSchema
+>;
+
 export interface ActivityAcceptance {
   id: number;
   activityId: number;
