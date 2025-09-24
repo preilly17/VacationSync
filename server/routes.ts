@@ -137,6 +137,9 @@ import { locationService } from "./locationService";
 import { searchLocations, getAirportFromLocation, getAirportCodes } from "./locationDatabase";
 import { getCurrentWeather, getWeatherForecast, getFullWeatherData, getWeatherAdvice, formatTemperature } from "./weatherService";
 
+const getErrorMessage = (error: unknown, fallback = "Unknown error"): string =>
+  error instanceof Error ? error.message : fallback;
+
 function getRequestUserId(req: any): string | undefined {
   if (req.session?.userId) {
     return req.session.userId;
@@ -160,7 +163,6 @@ interface AuthenticatedRequest extends Request {
 }
 
 export function setupRoutes(app: Express) {
-  console.log("Setting up routes...");
   
   // Setup auth routes FIRST before any middleware
   setupAuth(app);
@@ -181,9 +183,11 @@ export function setupRoutes(app: Express) {
       res.status(201).json(userResponse);
     } catch (error: unknown) {
       console.error("Registration error:", error);
-      const errorMessage = error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : "Unknown error";
-      if (errorMessage.includes("Username is already taken") || 
-          errorMessage.includes("Email is already registered")) {
+      const errorMessage = getErrorMessage(error);
+      if (
+        errorMessage.includes("Username is already taken") ||
+        errorMessage.includes("Email is already registered")
+      ) {
         // Generic error message to prevent user enumeration
         res.status(409).json({ message: "Account with this username or email already exists" });
       } else {
@@ -211,7 +215,7 @@ export function setupRoutes(app: Express) {
       res.json(userResponse);
     } catch (error: unknown) {
       console.error("Login error:", error);
-      const errorMessage = error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : "Unknown error";
+      const errorMessage = getErrorMessage(error);
       if (errorMessage.includes("User not found")) {
         res.status(401).json({ message: "Invalid credentials" });
       } else if (errorMessage.includes("Invalid password")) {
@@ -239,8 +243,6 @@ export function setupRoutes(app: Express) {
   // Auth user endpoint with development bypass and custom auth support
   app.get('/api/auth/user', async (req: any, res) => {
     try {
-      console.log("Auth user endpoint called");
-      
       // Check for custom auth session first
       if (req.session?.userId && req.session?.authProvider === 'custom') {
         try {
@@ -587,8 +589,6 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      console.log("Creating trip with data:", req.body);
-      
       // Parse and convert dates
       const tripData = {
         ...req.body,
@@ -596,8 +596,6 @@ export function setupRoutes(app: Express) {
         endDate: new Date(req.body.endDate),
       };
 
-      console.log("Converted trip data:", tripData);
-      
       const validatedData = insertTripCalendarSchema.parse(tripData);
       const trip = await storage.createTrip(validatedData, userId);
 
@@ -680,8 +678,6 @@ export function setupRoutes(app: Express) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
 
-      console.log("Updating trip with data:", req.body);
-      
       // Parse and convert dates if provided
       const updateData: any = { ...req.body };
       if (updateData.startDate) {
@@ -691,8 +687,6 @@ export function setupRoutes(app: Express) {
         updateData.endDate = new Date(updateData.endDate);
       }
 
-      console.log("Converted trip update data:", updateData);
-      
       // Validate only the fields that are being updated
       const updateSchema = insertTripCalendarSchema.partial();
       const validatedData = updateSchema.parse(updateData);
@@ -702,7 +696,7 @@ export function setupRoutes(app: Express) {
       res.json(updatedTrip);
     } catch (error: unknown) {
       console.error("Error updating trip:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = getErrorMessage(error);
       if (errorMessage.includes("Only the trip creator")) {
         res.status(403).json({ message: "Only the trip creator can edit the trip" });
       } else {
@@ -853,16 +847,16 @@ export function setupRoutes(app: Express) {
                   );
                   amadeusResults.push(...flights);
                 } catch (error) {
-                  console.log(`  ❌ Amadeus ${originCode}→${destCode}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  console.log(`  ❌ Amadeus ${originCode}→${destCode}: ${getErrorMessage(error)}`);
                 }
               }
             }
-            
+
             const mapped = amadeusResults.map(flight => mapToUnifiedFormat(flight, 'Amadeus'));
             allFlights.push(...mapped);
             console.log(`  ✅ Amadeus: ${mapped.length} flights`);
           } catch (error) {
-            const msg = `Amadeus error: ${error instanceof Error ? error.message : 'Unknown'}`;
+            const msg = `Amadeus error: ${getErrorMessage(error, 'Unknown')}`;
             console.error(`  ❌ ${msg}`);
             errors.push(msg);
           }
@@ -890,16 +884,16 @@ export function setupRoutes(app: Express) {
                   );
                   duffelResults.push(...flights);
                 } catch (error) {
-                  console.log(`  ❌ Duffel ${originCode}→${destCode}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+                  console.log(`  ❌ Duffel ${originCode}→${destCode}: ${getErrorMessage(error)}`);
                 }
               }
             }
-            
+
             const mapped = duffelResults.map(flight => mapToUnifiedFormat(flight, 'Duffel'));
             allFlights.push(...mapped);
             console.log(`  ✅ Duffel: ${mapped.length} flights`);
           } catch (error) {
-            const msg = `Duffel error: ${error instanceof Error ? error.message : 'Unknown'}`;
+            const msg = `Duffel error: ${getErrorMessage(error, 'Unknown')}`;
             console.error(`  ❌ ${msg}`);
             errors.push(msg);
           }
@@ -1039,7 +1033,7 @@ export function setupRoutes(app: Express) {
         });
       }
       
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorMessage = getErrorMessage(error);
       if (errorMessage.includes('DUFFEL_ACCESS_TOKEN')) {
         res.status(500).json({ error: 'Duffel API configuration error' });
       } else if (errorMessage.includes('Amadeus')) {
@@ -1633,14 +1627,15 @@ export function setupRoutes(app: Express) {
       // Broadcast trip deletion to all members
       broadcastToTrip(tripId, {
         type: 'trip_deleted',
-        tripId: tripId
+        tripId
       });
       
       res.json({ success: true, message: "Trip deleted successfully" });
     } catch (error: unknown) {
       console.error("Error deleting trip:", error);
-      if (error instanceof Error ? error.message : "Unknown error".includes("Only the trip creator")) {
-        res.status(403).json({ message: error instanceof Error ? error.message : "Unknown error" });
+      const errorMessage = getErrorMessage(error);
+      if (errorMessage.includes("Only the trip creator")) {
+        res.status(403).json({ message: errorMessage });
       } else {
         res.status(500).json({ message: "Failed to delete trip" });
       }
@@ -1679,9 +1674,9 @@ export function setupRoutes(app: Express) {
       
     } catch (error: unknown) {
       console.error("Error searching restaurants:", error);
-      res.status(500).json({ 
-        message: "Failed to search restaurants", 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      res.status(500).json({
+        message: "Failed to search restaurants",
+        error: getErrorMessage(error)
       });
     }
   });
@@ -2403,7 +2398,7 @@ export function setupRoutes(app: Express) {
       res.json(conversion);
     } catch (error: unknown) {
       console.error("Error converting currency:", error);
-      res.status(500).json({ message: "Failed to convert currency", error: error instanceof Error ? error.message : "Unknown error" });
+      res.status(500).json({ message: "Failed to convert currency", error: getErrorMessage(error) });
     }
   });
 
@@ -2465,9 +2460,9 @@ export function setupRoutes(app: Express) {
       });
     } catch (error: unknown) {
       console.error("Error fetching weather:", error);
-      res.status(500).json({ 
-        message: "Failed to fetch weather data", 
-        error: error instanceof Error ? error instanceof Error ? error.message : "Unknown error" : "Unknown error"
+      res.status(500).json({
+        message: "Failed to fetch weather data",
+        error: getErrorMessage(error)
       });
     }
   });
@@ -2501,9 +2496,9 @@ export function setupRoutes(app: Express) {
       });
     } catch (error: unknown) {
       console.error("Error fetching current weather:", error);
-      res.status(500).json({ 
-        message: "Failed to fetch current weather", 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      res.status(500).json({
+        message: "Failed to fetch current weather",
+        error: getErrorMessage(error)
       });
     }
   });
@@ -2547,9 +2542,9 @@ export function setupRoutes(app: Express) {
       });
     } catch (error: unknown) {
       console.error("Error fetching weather forecast:", error);
-      res.status(500).json({ 
-        message: "Failed to fetch weather forecast", 
-        error: error instanceof Error ? error.message : "Unknown error" 
+      res.status(500).json({
+        message: "Failed to fetch weather forecast",
+        error: getErrorMessage(error)
       });
     }
   });
