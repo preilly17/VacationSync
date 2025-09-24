@@ -1,12 +1,38 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Calendar, Plus, Users, MapPin, Settings, Plane, Camera, Heart, Compass, Trash2, Calculator, ArrowUpDown, DollarSign } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Calendar,
+  Camera,
+  CheckCircle2,
+  Clock,
+  Compass,
+  Heart,
+  Lightbulb,
+  ListChecks,
+  MapPin,
+  Plane,
+  Plus,
+  Settings,
+  Sparkles,
+  Trash2,
+  Users,
+  DollarSign,
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useState } from "react";
 import { CreateTripModal } from "@/components/create-trip-modal";
@@ -19,6 +45,102 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { TripWithDetails } from "@shared/schema";
 
+const DEFAULT_DESTINATION_IMAGE =
+  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80";
+
+const DESTINATION_BACKGROUNDS = [
+  {
+    keywords: ["paris", "france"],
+    image:
+      "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1600&q=80",
+  },
+  {
+    keywords: ["new york", "nyc"],
+    image:
+      "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1600&q=80",
+  },
+  {
+    keywords: ["tokyo", "japan"],
+    image:
+      "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1600&q=80",
+  },
+  {
+    keywords: ["london", "england", "uk"],
+    image:
+      "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=1600&q=80",
+  },
+  {
+    keywords: ["rome", "italy"],
+    image:
+      "https://images.unsplash.com/photo-1503264116251-35a269479413?auto=format&fit=crop&w=1600&q=80",
+  },
+  {
+    keywords: ["beach", "island", "bali", "maldives"],
+    image:
+      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80",
+  },
+  {
+    keywords: ["mountain", "alps", "swiss", "colorado"],
+    image:
+      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80",
+  },
+  {
+    keywords: ["desert", "morocco", "sahara"],
+    image:
+      "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1600&q=80",
+  },
+] as const;
+
+const getDestinationImage = (destination?: string | null) => {
+  if (!destination) return DEFAULT_DESTINATION_IMAGE;
+  const lowerDestination = destination.toLowerCase();
+  const match = DESTINATION_BACKGROUNDS.find(({ keywords }) =>
+    keywords.some((keyword) => lowerDestination.includes(keyword))
+  );
+  return match?.image ?? DEFAULT_DESTINATION_IMAGE;
+};
+
+const getCountdownLabel = (startDate: string | Date) => {
+  const start = new Date(startDate);
+  const today = new Date();
+  start.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round(
+    (start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (diffDays > 1) {
+    return `${diffDays} days to go`;
+  }
+  if (diffDays === 1) {
+    return "1 day to go";
+  }
+  if (diffDays === 0) {
+    return "Happening today";
+  }
+  return "In progress";
+};
+
+const getMemberInitial = (firstName?: string | null, email?: string | null) => {
+  if (firstName && firstName.trim().length > 0) {
+    return firstName[0]?.toUpperCase();
+  }
+  if (email && email.includes("@")) {
+    return email[0]?.toUpperCase();
+  }
+  return "T";
+};
+
+const formatMemberName = (firstName?: string | null, email?: string | null) => {
+  if (firstName && firstName.trim().length > 0) {
+    return firstName;
+  }
+  if (email && email.includes("@")) {
+    return email.split("@")[0];
+  }
+  return "Traveler";
+};
+
 export default function Home() {
   const { user } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -26,14 +148,14 @@ export default function Home() {
 
   const { data: trips, isLoading, error } = useQuery<TripWithDetails[]>({
     queryKey: ["/api/trips"],
-    enabled: !!user, // Only fetch when user is authenticated
+    enabled: !!user,
     retry: false,
   });
 
   const deleteTripMutation = useMutation({
     mutationFn: async (tripId: number) => {
       return apiRequest(`/api/trips/${tripId}`, {
-        method: 'DELETE'
+        method: "DELETE",
       });
     },
     onSuccess: () => {
@@ -49,42 +171,114 @@ export default function Home() {
         description: error.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
-    }
+    },
   });
 
-  const formatDateRange = (startDate: string | Date, endDate: string | Date) => {
-    const start = typeof startDate === 'string' ? new Date(startDate) : startDate;
-    const end = typeof endDate === 'string' ? new Date(endDate) : endDate;
+  const formatDateRange = (
+    startDate: string | Date,
+    endDate: string | Date,
+  ) => {
+    const start =
+      typeof startDate === "string" ? new Date(startDate) : startDate;
+    const end = typeof endDate === "string" ? new Date(endDate) : endDate;
     return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
   };
 
   const getUpcomingTrips = () => {
     if (!trips) return [];
     const now = new Date();
-    return trips.filter(trip => new Date(trip.startDate) >= now);
+    return trips.filter((trip) => new Date(trip.startDate) >= now);
   };
 
   const getPastTrips = () => {
     if (!trips) return [];
     const now = new Date();
-    return trips.filter(trip => new Date(trip.endDate) < now);
+    return trips.filter((trip) => new Date(trip.endDate) < now);
   };
 
+  const handleLogout = async () => {
+    console.log("Logout button clicked");
+    localStorage.clear();
+    sessionStorage.clear();
+    try {
+      await apiRequest("/api/auth/logout", { method: "POST" });
+    } catch (logoutError) {
+      console.error("Error logging out:", logoutError);
+    } finally {
+      queryClient.clear();
+      window.location.href = "/login";
+    }
+  };
+
+  const upcomingTrips = getUpcomingTrips();
+  const pastTrips = getPastTrips();
+  const totalCompanions =
+    trips?.reduce((total, trip) => total + trip.memberCount, 0) ?? 0;
+  const uniqueDestinations = trips
+    ? new Set(trips.map((trip) => trip.destination)).size
+    : 0;
+  const sortedUpcomingTrips = [...upcomingTrips].sort(
+    (a, b) =>
+      new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+  );
+  const highlightTrip = sortedUpcomingTrips[0];
+  const highlightCountdown = highlightTrip
+    ? getCountdownLabel(highlightTrip.startDate)
+    : undefined;
+  const highlightDestinationName = highlightTrip?.destination
+    ? highlightTrip.destination.split(",")[0]?.trim() || highlightTrip.destination
+    : undefined;
+  const heroSubtitle = highlightTrip
+    ? highlightCountdown === "Happening today"
+      ? `It's go day for ${highlightDestinationName}! Check off your final details below.`
+      : highlightCountdown === "In progress"
+        ? `You're already exploring ${highlightDestinationName}. Keep everyone aligned with live updates.`
+        : `${highlightCountdown} until ${highlightDestinationName}. Let's make sure everything is locked in.`
+    : "Plan something unforgettable—start by creating your next itinerary.";
+  const travelFocusName = highlightDestinationName ?? "your next destination";
+  const recentMembers = highlightTrip?.members?.slice(0, 3) ?? [];
+  const stats = [
+    {
+      label: "Upcoming trips",
+      value: upcomingTrips.length,
+      icon: Calendar,
+      accent: "bg-sky-100 text-sky-600",
+    },
+    {
+      label: "Travel companions",
+      value: totalCompanions,
+      icon: Users,
+      accent: "bg-emerald-100 text-emerald-600",
+    },
+    {
+      label: "Destinations",
+      value: uniqueDestinations,
+      icon: MapPin,
+      accent: "bg-violet-100 text-violet-600",
+    },
+  ];
 
   if (isLoading) {
     return (
-      <div className="min-h-screen ocean-gradient flex items-center justify-center">
-        <TravelLoading variant="travel" size="lg" text="Loading your travel dashboard..." />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <TravelLoading
+          variant="travel"
+          size="lg"
+          text="Loading your travel dashboard..."
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen ocean-gradient flex items-center justify-center">
-        <div className="text-center bg-white p-8 rounded-lg shadow-lg max-w-md mx-auto">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">Session Issue</h2>
-          <p className="text-gray-600 mb-6">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-xl">
+          <div className="mb-6 flex justify-center">
+            <TravelMascot type="plane" animated={false} className="text-primary" />
+          </div>
+          <h2 className="mb-3 text-xl font-bold text-slate-900">Session issue</h2>
+          <p className="mb-6 text-slate-600">
             Your session has expired. Click the refresh button to log in again and continue using the app.
           </p>
           <ManualRefreshButton />
@@ -94,235 +288,495 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen ocean-gradient">
-      {/* Header */}
-      <div className="bg-white/95 backdrop-blur-md border-b border-gray-200/50 px-4 lg:px-8 py-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-                Welcome back, {user?.firstName || 'Traveler'}
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Ready to plan your next adventure?
-              </p>
+    <div className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-7xl space-y-12 px-4 py-12 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-r from-sky-50 via-white to-rose-100 p-8 shadow-sm sm:p-12">
+            <div className="absolute inset-0">
+              <img
+                src={getDestinationImage(highlightTrip?.destination)}
+                alt={
+                  highlightDestinationName
+                    ? `Scenic view of ${highlightDestinationName}`
+                    : "Colorful travel collage"
+                }
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px]" />
             </div>
-            <div className="flex items-center space-x-3">
-              <NotificationIcon />
-              <Link href="/how-it-works">
-                <Button variant="outline" size="sm">
-                  <Compass className="w-4 h-4 mr-2" />
-                  How it works
+            <div className="relative z-10 flex h-full flex-col justify-between gap-8 text-slate-900">
+              <div className="space-y-6">
+                <Badge className="w-fit rounded-full bg-white/80 px-4 py-1 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur">
+                  <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
+                  Next adventure awaits
+                </Badge>
+                <div className="space-y-3">
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+                    Welcome back, {user?.firstName || "Traveler"} 👋
+                  </h1>
+                  <p className="max-w-2xl text-lg text-slate-700">{heroSubtitle}</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <Button
+                  size="lg"
+                  className="bg-primary px-6 text-white shadow-md transition hover:shadow-lg"
+                  onClick={() => {
+                    console.log("Create trip button clicked, setting modal to true");
+                    setShowCreateModal(true);
+                  }}
+                  data-onboarding="create-trip"
+                >
+                  <Plus className="h-5 w-5" />
+                  Plan New Trip
                 </Button>
-              </Link>
-              <Link href="/currency-converter">
-                <Button variant="outline" size="sm">
-                  <Calculator className="w-4 h-4 mr-2" />
-                  Currency
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  className="justify-start px-0 text-slate-700 hover:bg-transparent hover:text-slate-900"
+                  asChild
+                >
+                  <Link href="/how-it-works">
+                    Learn how VacationSync keeps everyone aligned
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
                 </Button>
-              </Link>
-              <Link href="/profile">
-                <Button variant="outline" size="sm">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Profile
-                </Button>
-              </Link>
+              </div>
+            </div>
+            <div className="pointer-events-none absolute -bottom-3 -right-3 hidden lg:block">
+              <TravelMascot type="plane" size="lg" />
+            </div>
+          </div>
+
+          <Card className="rounded-3xl border-slate-200 shadow-sm">
+            <CardHeader className="space-y-1 pb-3">
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-lg font-semibold text-slate-900">
+                  Quick actions
+                </CardTitle>
+                <NotificationIcon />
+              </div>
+              <p className="text-sm text-slate-600">
+                Jump back into the tools you need most.
+              </p>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
               <Button
-                onClick={() => {
-                  console.log("Create trip button clicked, setting modal to true");
-                  setShowCreateModal(true);
-                }}
-                className="bg-primary hover:bg-red-600 text-white"
-                data-onboarding="create-trip"
+                variant="outline"
+                className="justify-between rounded-2xl border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
+                asChild
               >
-                <Plus className="w-4 h-4 mr-2" />
-                New Trip
+                <Link href="/currency-converter">
+                  <span className="flex items-center gap-2">
+                    <DollarSign className="h-4 w-4 text-emerald-600" />
+                    Currency toolkit
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 text-slate-500" />
+                </Link>
               </Button>
               <Button
                 variant="outline"
-                onClick={async () => {
-                  console.log("Logout button clicked");
-                  localStorage.clear();
-                  sessionStorage.clear();
-                  try {
-                    await apiRequest('/api/auth/logout', { method: 'POST' });
-                  } catch (error) {
-                    console.error('Error logging out:', error);
-                  } finally {
-                    queryClient.clear();
-                    window.location.href = '/login';
-                  }
-                }}
+                className="justify-between rounded-2xl border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
+                asChild
               >
-                Logout
+                <Link href="/how-it-works">
+                  <span className="flex items-center gap-2">
+                    <Compass className="h-4 w-4 text-sky-600" />
+                    Explore features
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 text-slate-500" />
+                </Link>
               </Button>
+              <Button
+                variant="outline"
+                className="justify-between rounded-2xl border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50"
+                asChild
+              >
+                <Link href="/profile">
+                  <span className="flex items-center gap-2">
+                    <Settings className="h-4 w-4 text-purple-600" />
+                    Profile & preferences
+                  </span>
+                  <ArrowUpRight className="h-4 w-4 text-slate-500" />
+                </Link>
+              </Button>
+              <Button
+                variant="ghost"
+                className="justify-start px-3 text-slate-500 hover:text-slate-900"
+                onClick={handleLogout}
+              >
+                Log out
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="rounded-3xl border-slate-200 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              {stats.map((stat, index) => {
+                const Icon = stat.icon;
+                const showDivider = index < stats.length - 1;
+
+                return (
+                  <div
+                    key={stat.label}
+                    className={`flex items-center gap-3 ${
+                      showDivider ? "md:border-r md:border-slate-200 md:pr-6" : ""
+                    }`}
+                  >
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${stat.accent}`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-semibold text-slate-900">
+                        {stat.value}
+                      </p>
+                      <p className="text-sm capitalize text-slate-600">{stat.label}</p>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        </div>
-      </div>
+          </CardContent>
+        </Card>
 
-      <div className="max-w-7xl mx-auto px-4 lg:px-8 py-8">
-        {/* Quick Stats */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                  <Calendar className="text-primary w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-neutral-900">
-                    {getUpcomingTrips().length}
-                  </p>
-                  <p className="text-neutral-600 text-sm">Upcoming Trips</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-secondary/10 rounded-xl flex items-center justify-center">
-                  <Users className="text-secondary w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-neutral-900">
-                    {trips?.reduce((total, trip) => total + trip.memberCount, 0) || 0}
-                  </p>
-                  <p className="text-neutral-600 text-sm">Travel Companions</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                  <MapPin className="text-purple-600 w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-neutral-900">
-                    {new Set(trips?.map(trip => trip.destination)).size || 0}
-                  </p>
-                  <p className="text-neutral-600 text-sm">Destinations</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-
-        {/* Upcoming Trips */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-neutral-900">Upcoming Trips</h2>
+        <section className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold text-slate-900">Upcoming adventures</h2>
+              <p className="text-sm text-slate-600">Keep tabs on what’s coming up next.</p>
+            </div>
+            {highlightTrip && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full border-slate-200"
+                asChild
+              >
+                <Link href={`/trip/${highlightTrip.id}`}>
+                  Open {highlightTrip.name}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            )}
           </div>
 
-          {getUpcomingTrips().length === 0 ? (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <div className="w-16 h-16 bg-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4">
-                  <Calendar className="text-gray-400 w-8 h-8" />
-                </div>
-                <h3 className="text-lg font-medium text-neutral-900 mb-2">No upcoming trips</h3>
-                <p className="text-neutral-600 mb-4">Start planning your next adventure!</p>
+          {upcomingTrips.length === 0 ? (
+            <Card className="rounded-3xl border-dashed border-slate-200 bg-white shadow-sm">
+              <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
+                <TravelMascot type="map" size="lg" animated={false} />
+                <h3 className="text-lg font-semibold text-slate-900">
+                  No upcoming trips yet
+                </h3>
+                <p className="max-w-md text-slate-600">
+                  Start planning your next getaway and invite your travel crew to collaborate.
+                </p>
                 <Button
                   onClick={() => setShowCreateModal(true)}
-                  className="bg-primary hover:bg-red-600 text-white"
+                  className="bg-primary text-white hover:bg-primary/90"
                   data-onboarding="create-trip"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Trip
+                  <Plus className="h-4 w-4" />
+                  Plan your first trip
                 </Button>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {getUpcomingTrips().map((trip) => (
-                <Link key={trip.id} href={`/trip/${trip.id}`}>
-                  <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                    <CardContent className="p-6">
-                      <div className="flex items-start justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-neutral-900 line-clamp-1">
+            <div className="grid gap-6 md:grid-cols-2">
+              {sortedUpcomingTrips.map((trip) => (
+                <Card
+                  key={trip.id}
+                  className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <div className="relative h-40 w-full overflow-hidden">
+                    <img
+                      src={getDestinationImage(trip.destination)}
+                      alt={`Scenic view of ${trip.destination}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
+                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-white/80">
+                          Adventure
+                        </p>
+                        <h3 className="text-lg font-semibold leading-tight">
                           {trip.name}
                         </h3>
-                        <Badge variant="outline" className="text-xs">
-                          {trip.memberCount} members
-                        </Badge>
                       </div>
-                      
-                      <div className="space-y-2 mb-4">
-                        <div className="flex items-center text-neutral-600 text-sm">
-                          <MapPin className="w-4 h-4 mr-2" />
+                      <Badge className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+                        <Users className="h-3.5 w-3.5" />
+                        {trip.memberCount}
+                      </Badge>
+                    </div>
+                  </div>
+                  <CardContent className="space-y-4 p-6">
+                    <div className="space-y-3 text-sm text-slate-600">
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-600">
+                          <MapPin className="h-4 w-4" />
+                        </span>
+                        <span className="font-medium text-slate-900">
                           {trip.destination}
-                        </div>
-                        <div className="flex items-center text-neutral-600 text-sm">
-                          <Calendar className="w-4 h-4 mr-2" />
-                          {formatDateRange(trip.startDate, trip.endDate)}
-                        </div>
+                        </span>
                       </div>
-
-                      <div className="flex items-center justify-between">
-                        <div className="flex -space-x-2">
-                          {(trip.members || []).slice(0, 3).map((member) => (
-                            <div
-                              key={member.id}
-                              className="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-gray-200"
-                            >
-                              {member.user.profileImageUrl ? (
-                                <img
-                                  src={member.user.profileImageUrl}
-                                  alt={member.user.firstName || 'Member'}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-gray-300 flex items-center justify-center text-xs text-gray-600">
-                                  {(member.user.firstName?.[0] || member.user.email?.[0] || 'U').toUpperCase()}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                          {trip.memberCount > 3 && (
-                            <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center">
-                              <span className="text-xs font-medium text-gray-600">
-                                +{trip.memberCount - 3}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="text-xs text-neutral-500">
-                          {new Date(trip.startDate).getTime() - Date.now() > 0 
-                            ? `${Math.ceil((new Date(trip.startDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days to go`
-                            : 'In progress'
-                          }
-                        </div>
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                          <Calendar className="h-4 w-4" />
+                        </span>
+                        <span>{formatDateRange(trip.startDate, trip.endDate)}</span>
                       </div>
-                    </CardContent>
-                  </Card>
-                </Link>
+                      <div className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+                          <Clock className="h-4 w-4" />
+                        </span>
+                        <span className="font-medium text-slate-900">
+                          {getCountdownLabel(trip.startDate)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 pt-2">
+                      <div className="flex -space-x-2">
+                        {(trip.members || []).slice(0, 3).map((member) => (
+                          <div
+                            key={member.id}
+                            className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
+                          >
+                            {member.user.profileImageUrl ? (
+                              <img
+                                src={member.user.profileImageUrl}
+                                alt={formatMemberName(
+                                  member.user.firstName,
+                                  member.user.email,
+                                )}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
+                                {getMemberInitial(
+                                  member.user.firstName,
+                                  member.user.email,
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {trip.memberCount > 3 && (
+                          <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                            +{trip.memberCount - 3}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        className="rounded-full px-4"
+                        asChild
+                      >
+                        <Link href={`/trip/${trip.id}`}>View trip</Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Past Trips */}
-        {getPastTrips().length > 0 && (
-          <div>
-            <h2 className="text-xl font-semibold text-neutral-900 mb-4">Past Trips</h2>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {getPastTrips().map((trip) => (
-                <Card key={trip.id} className="hover:shadow-lg transition-shadow opacity-75 relative">
-                  <CardContent className="p-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <Link href={`/trip/${trip.id}`} className="flex-1 cursor-pointer">
-                        <h3 className="text-lg font-semibold text-neutral-900 line-clamp-1 hover:text-blue-600 transition-colors">
+        <section className="space-y-4">
+          <h2 className="text-xl font-semibold text-slate-900">Helpful insights</h2>
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
+                    <ListChecks className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Continue planning
+                    </h3>
+                    <p className="text-sm text-slate-600">
+                      {highlightTrip
+                        ? heroSubtitle
+                        : "Organize the essentials, then invite your crew to collaborate."}
+                    </p>
+                  </div>
+                </div>
+                <ul className="space-y-2 text-sm text-slate-600">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                    Confirm travel dates and share them with everyone involved.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                    Align on budget expectations and capture key expenses early.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-500" />
+                    Add can't-miss experiences so each traveler can weigh in.
+                  </li>
+                </ul>
+                {highlightTrip && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="rounded-full px-4"
+                    asChild
+                  >
+                    <Link href={`/trip/${highlightTrip.id}`}>
+                      Go to planning hub
+                    </Link>
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
+                    <Lightbulb className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Travel tips
+                    </h3>
+                    <p className="text-sm text-slate-600">
+                      Smart suggestions tailored to {travelFocusName}.
+                    </p>
+                  </div>
+                </div>
+                <ul className="space-y-2 text-sm text-slate-600">
+                  <li className="flex items-start gap-2">
+                    <Plane className="mt-0.5 h-4 w-4 text-sky-500" />
+                    Double-check flight deals midweek—prices dip most on Tuesdays and Wednesdays.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Camera className="mt-0.5 h-4 w-4 text-rose-500" />
+                    Save a shared album so everyone can drop must-see spots and photo ideas.
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Heart className="mt-0.5 h-4 w-4 text-purple-500" />
+                    Book one group experience early to give the crew something to look forward to.
+                  </li>
+                </ul>
+                {highlightTrip && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start px-0 text-slate-700 hover:text-slate-900"
+                    asChild
+                  >
+                    <Link href={`/trip/${highlightTrip.id}`}>
+                      View trip recommendations
+                    </Link>
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+            <Card className="rounded-3xl border-slate-200 bg-white shadow-sm">
+              <CardContent className="space-y-4 p-6">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-200 text-slate-700">
+                    <Clock className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <h3 className="text-base font-semibold text-slate-900">
+                      Recent activity
+                    </h3>
+                    <p className="text-sm text-slate-600">
+                      {highlightTrip
+                        ? `Stay in sync with ${highlightTrip.memberCount} traveler${
+                            highlightTrip.memberCount === 1 ? "" : "s"
+                          }.`
+                        : "Activity from your travel crew will appear here."}
+                    </p>
+                  </div>
+                </div>
+                {recentMembers.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="flex -space-x-2">
+                      {recentMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
+                        >
+                          {member.user.profileImageUrl ? (
+                            <img
+                              src={member.user.profileImageUrl}
+                              alt={formatMemberName(
+                                member.user.firstName,
+                                member.user.email,
+                              )}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
+                              {getMemberInitial(
+                                member.user.firstName,
+                                member.user.email,
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-sm text-slate-600">
+                      {recentMembers
+                        .map((member) =>
+                          formatMemberName(
+                            member.user.firstName,
+                            member.user.email,
+                          ),
+                        )
+                        .join(", ")}{" "}
+                      {recentMembers.length === 1 ? "is" : "are"} gearing up for this getaway. Share an update to keep everyone in the loop.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-600">
+                    No updates yet. Start the conversation by posting your first idea or inviting new companions.
+                  </p>
+                )}
+                {highlightTrip && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="justify-start px-0 text-slate-700 hover:text-slate-900"
+                    asChild
+                  >
+                    <Link href={`/trip/${highlightTrip.id}`}>
+                      Open trip space
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+
+        {pastTrips.length > 0 && (
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold text-slate-900">Past trips</h2>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {pastTrips.map((trip) => (
+                <Card
+                  key={trip.id}
+                  className="rounded-3xl border border-slate-200 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <CardContent className="space-y-4 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <Link href={`/trip/${trip.id}`} className="flex-1">
+                        <h3 className="text-lg font-semibold text-slate-900 transition-colors hover:text-primary">
                           {trip.name}
                         </h3>
                       </Link>
                       <div className="flex items-center gap-2">
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                           Completed
                         </Badge>
                         <AlertDialog>
@@ -330,10 +784,10 @@ export default function Home() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0 text-gray-500 hover:text-red-600 hover:bg-red-50"
+                              className="h-8 w-8 p-0 text-slate-400 hover:bg-red-50 hover:text-red-600"
                               data-testid={`delete-trip-${trip.id}`}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent>
@@ -351,59 +805,63 @@ export default function Home() {
                                 className="bg-red-600 hover:bg-red-700"
                                 data-testid={`confirm-delete-trip-${trip.id}`}
                               >
-                                {deleteTripMutation.isPending ? "Deleting..." : "Delete Trip"}
+                                {deleteTripMutation.isPending
+                                  ? "Deleting..."
+                                  : "Delete Trip"}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
                       </div>
                     </div>
-                    
-                    <Link href={`/trip/${trip.id}`} className="cursor-pointer">
-                      <div className="space-y-2 mb-4">
-                        <div className="flex items-center text-neutral-600 text-sm">
-                          <MapPin className="w-4 h-4 mr-2" />
-                          {trip.destination}
+                    <Link href={`/trip/${trip.id}`}>
+                      <div className="space-y-3 text-sm text-slate-600">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-slate-500" />
+                          <span>{trip.destination}</span>
                         </div>
-                        <div className="flex items-center text-neutral-600 text-sm">
-                          <Calendar className="w-4 h-4 mr-2" />
-                          {formatDateRange(trip.startDate, trip.endDate)}
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-slate-500" />
+                          <span>{formatDateRange(trip.startDate, trip.endDate)}</span>
                         </div>
-                      </div>
-
-                      <div className="flex -space-x-2">
-                        {(trip.members || []).slice(0, 3).map((member) => (
-                          <div
-                            key={member.id}
-                            className="w-8 h-8 rounded-full border-2 border-white overflow-hidden bg-gray-200"
-                          >
-                            {member.user.profileImageUrl ? (
-                              <img
-                                src={member.user.profileImageUrl}
-                                alt={member.user.firstName || 'Member'}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full bg-gray-300 flex items-center justify-center text-xs text-gray-600">
-                                {(member.user.firstName?.[0] || member.user.email?.[0] || 'U').toUpperCase()}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                        {trip.memberCount > 3 && (
-                          <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-100 flex items-center justify-center">
-                            <span className="text-xs font-medium text-gray-600">
-                              +{trip.memberCount - 3}
-                            </span>
-                          </div>
-                        )}
                       </div>
                     </Link>
+                    <div className="flex -space-x-2">
+                      {(trip.members || []).slice(0, 3).map((member) => (
+                        <div
+                          key={member.id}
+                          className="h-8 w-8 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
+                        >
+                          {member.user.profileImageUrl ? (
+                            <img
+                              src={member.user.profileImageUrl}
+                              alt={formatMemberName(
+                                member.user.firstName,
+                                member.user.email,
+                              )}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
+                              {getMemberInitial(
+                                member.user.firstName,
+                                member.user.email,
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {trip.memberCount > 3 && (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                          +{trip.memberCount - 3}
+                        </div>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               ))}
             </div>
-          </div>
+          </section>
         )}
       </div>
 
