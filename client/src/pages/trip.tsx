@@ -14,6 +14,7 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ArrowLeft,
   Clock,
   User as UserIcon,
@@ -84,6 +85,9 @@ import {
   type HotelFormValues,
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
 
 const TRIP_TAB_KEYS = [
   "calendar",
@@ -1455,6 +1459,10 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
     enabled: !!tripId,
   });
 
+
+  const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
+
+
   const formDefaults = useCallback(
     () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
     [tripId, trip?.startDate, trip?.endDate],
@@ -1483,6 +1491,9 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
         description: "Your hotel booking has been saved to the trip.",
       });
       form.reset(formDefaults());
+
+      setIsManualHotelFormOpen(false);
+
     },
     onError: (error) => {
       if (isUnauthorizedError(error as Error)) {
@@ -1554,6 +1565,41 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), 'MMM d, yyyy')} – ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
             </p>
           </div>
+          <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-neutral-900">Manual entry</p>
+                <p className="text-sm text-muted-foreground">
+                  Record a stay that isn't imported from the hotel search results.
+                </p>
+              </div>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" className="w-full sm:w-auto justify-between sm:justify-center">
+                  <span>{isManualHotelFormOpen ? "Hide manual form" : "Add hotel details"}</span>
+                  <ChevronDown
+                    className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent className="space-y-6 pt-4">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                  <HotelFormFields
+                    form={form}
+                    isSubmitting={createHotelMutation.isPending}
+                    submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+                    showCancelButton
+                    onCancel={() => {
+                      form.reset(formDefaults());
+                      setIsManualHotelFormOpen(false);
+                    }}
+                  />
+                </form>
+              </Form>
+            </CollapsibleContent>
+          </Collapsible>
+
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)}>
               <HotelFormFields
@@ -1563,6 +1609,7 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               />
             </form>
           </Form>
+
         </CardContent>
       </Card>
 
