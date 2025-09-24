@@ -2056,12 +2056,19 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Hotel proposals and ranking routes (accessible for development)
-  app.get('/api/trips/:id/hotel-proposals', async (req: any, res) => {
+  // Hotel proposals and ranking routes
+  app.get('/api/trips/:id/hotel-proposals', isAuthenticated, async (req: any, res) => {
     try {
-      const tripId = parseInt(req.params.id);
-      const userId = "demo-user"; // Use demo user ID for development
-      
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
       const proposals = await storage.getTripHotelProposals(tripId, userId);
       res.json(proposals);
     } catch (error: unknown) {
@@ -2070,26 +2077,31 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.post('/api/trips/:id/hotel-proposals', async (req: any, res) => {
+  app.post('/api/trips/:id/hotel-proposals', isAuthenticated, async (req: any, res) => {
     try {
-      const tripId = parseInt(req.params.id);
-      const userId = "demo-user"; // Use demo user ID for development
-      
-      // Create proposal data directly without schema validation to avoid proposedBy issue
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
       const proposalData = {
         tripId,
-        proposedBy: userId,
         hotelName: req.body.hotelName || 'Unknown Hotel',
         location: req.body.location || 'Unknown Location',
         price: req.body.price?.toString() || '0',
         pricePerNight: req.body.pricePerNight?.toString() || req.body.price?.toString() || '0',
-        rating: req.body.rating?.toString() || '4.0',
-        amenities: req.body.amenities || 'WiFi, Restaurant, Room Service',
+        rating: req.body.rating ?? null,
+        amenities: req.body.amenities ?? null,
         platform: req.body.platform || 'Amadeus',
         bookingUrl: req.body.bookingUrl || '',
-        status: 'active'
+        status: 'active',
       };
-      
+
       const proposal = await storage.createHotelProposal(proposalData, userId);
       res.json(proposal);
     } catch (error: unknown) {
@@ -2098,18 +2110,29 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.post('/api/hotel-proposals/:id/rank', async (req: any, res) => {
+  app.post('/api/hotel-proposals/:id/rank', isAuthenticated, async (req: any, res) => {
     try {
-      const proposalId = parseInt(req.params.id);
-      const userId = "demo-user"; // Use demo user ID for development
-      const { ranking } = req.body;
-      
+      const proposalId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const rankingValue = Number.parseInt(req.body.ranking, 10);
+      if (Number.isNaN(rankingValue)) {
+        return res.status(400).json({ message: "Ranking must be a number" });
+      }
+
       const validatedData = insertHotelRankingSchema.parse({
         proposalId,
-        userId,
-        ranking: parseInt(ranking)
+        ranking: rankingValue,
+        notes: req.body.notes ?? null,
       });
-      
+
       await storage.rankHotelProposal(validatedData, userId);
       res.json({ success: true });
     } catch (error: unknown) {
@@ -2122,12 +2145,48 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Flight proposal routes (accessible for development)
-  app.get('/api/trips/:id/flight-proposals', async (req: any, res) => {
+  app.post('/api/hotel-proposals/:id/cancel', isAuthenticated, async (req: any, res) => {
     try {
-      const tripId = parseInt(req.params.id);
-      const userId = "demo-user"; // Use demo user ID for development
-      
+      const proposalId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const proposal = await storage.cancelHotelProposal(proposalId, userId);
+      res.json(proposal);
+    } catch (error: unknown) {
+      console.error("Error canceling hotel proposal:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('only cancel proposals you created')) {
+          return res.status(403).json({ message: error.message });
+        }
+        if (error.message.includes('not found')) {
+          return res.status(404).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: "Failed to cancel hotel proposal" });
+    }
+  });
+
+  // Flight proposal routes
+  app.get('/api/trips/:id/flight-proposals', isAuthenticated, async (req: any, res) => {
+    try {
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
       const proposals = await storage.getTripFlightProposals(tripId, userId);
       res.json(proposals);
     } catch (error: unknown) {
@@ -2136,15 +2195,20 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.post('/api/trips/:id/flight-proposals', async (req: any, res) => {
+  app.post('/api/trips/:id/flight-proposals', isAuthenticated, async (req: any, res) => {
     try {
-      const tripId = parseInt(req.params.id);
-      const userId = "demo-user"; // Use demo user ID for development
-      
-      // Create proposal data matching hotel proposal pattern
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
       const proposalData = {
         tripId,
-        proposedBy: userId,
         airline: req.body.airline || 'Unknown Airline',
         flightNumber: req.body.flightNumber || 'Unknown',
         departureAirport: req.body.departureAirport || 'ATL',
@@ -2152,14 +2216,17 @@ export function setupRoutes(app: Express) {
         arrivalAirport: req.body.arrivalAirport || 'CLT',
         arrivalTime: req.body.arrivalTime || new Date().toISOString(),
         duration: req.body.duration || '2h 0m',
-        stops: req.body.stops || 0,
-        price: parseFloat(req.body.price) || 299,
+        stops: Number.isFinite(Number(req.body.stops)) ? Number(req.body.stops) : 0,
+        aircraft: req.body.aircraft || null,
+        price: typeof req.body.price === 'number' ? req.body.price.toFixed(2) : (req.body.price?.toString() || '0'),
         currency: req.body.currency || 'USD',
         bookingUrl: req.body.bookingUrl || 'https://example.com',
         platform: req.body.platform || 'Amadeus',
-        status: 'active'
+        status: 'active',
+        departureTerminal: req.body.departureTerminal || null,
+        arrivalTerminal: req.body.arrivalTerminal || null,
       };
-      
+
       const proposal = await storage.createFlightProposal(proposalData, userId);
       res.json(proposal);
     } catch (error: unknown) {
@@ -2168,20 +2235,30 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.post('/api/flight-proposals/:id/rank', async (req: any, res) => {
+  app.post('/api/flight-proposals/:id/rank', isAuthenticated, async (req: any, res) => {
     try {
-      const proposalId = parseInt(req.params.id);
-      const userId = "demo-user"; // Use demo user ID for development
-      const { ranking } = req.body;
-      
+      const proposalId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const rankingValue = Number.parseInt(req.body.ranking, 10);
+      if (Number.isNaN(rankingValue)) {
+        return res.status(400).json({ message: "Ranking must be a number" });
+      }
+
       const validatedData = insertFlightRankingSchema.parse({
         proposalId,
-        ranking: parseInt(ranking)
+        ranking: rankingValue,
+        notes: req.body.notes ?? null,
       });
-      
+
       await storage.rankFlightProposal(validatedData, userId);
-      await storage.updateFlightProposalAverageRanking(proposalId);
-      
       res.json({ success: true });
     } catch (error: unknown) {
       console.error("Error ranking flight proposal:", error);
@@ -2193,16 +2270,49 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Restaurant proposal routes
-  app.get('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
+  app.post('/api/flight-proposals/:id/cancel', isAuthenticated, async (req: any, res) => {
     try {
-      const tripId = parseInt(req.params.id);
+      const proposalId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid proposal id" });
+      }
+
       const userId = getRequestUserId(req);
-      
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
+      const proposal = await storage.cancelFlightProposal(proposalId, userId);
+      res.json(proposal);
+    } catch (error: unknown) {
+      console.error("Error canceling flight proposal:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('only cancel proposals you created')) {
+          return res.status(403).json({ message: error.message });
+        }
+        if (error.message.includes('not found')) {
+          return res.status(404).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: "Failed to cancel flight proposal" });
+    }
+  });
+
+  // Restaurant proposal routes
+  app.get('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
+    try {
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
       const proposals = await storage.getTripRestaurantProposals(tripId, userId);
       res.json(proposals);
     } catch (error: unknown) {
@@ -2213,9 +2323,13 @@ export function setupRoutes(app: Express) {
 
   app.post('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
     try {
-      const tripId = parseInt(req.params.id);
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
       const userId = getRequestUserId(req);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
@@ -2255,23 +2369,29 @@ export function setupRoutes(app: Express) {
 
   app.post('/api/restaurant-proposals/:id/rank', isAuthenticated, async (req: any, res) => {
     try {
-      const proposalId = parseInt(req.params.id);
+      const proposalId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid proposal id" });
+      }
+
       const userId = getRequestUserId(req);
-      const { ranking, notes } = req.body;
-      
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
+      const rankingValue = Number.parseInt(req.body.ranking, 10);
+      if (Number.isNaN(rankingValue)) {
+        return res.status(400).json({ message: "Ranking must be a number" });
+      }
+
       const validatedData = insertRestaurantRankingSchema.parse({
         proposalId,
-        ranking: parseInt(ranking),
-        notes
+        ranking: rankingValue,
+        notes: req.body.notes ?? null,
       });
-      
+
       await storage.rankRestaurantProposal(validatedData, userId);
-      await storage.updateRestaurantProposalAverageRanking(proposalId);
-      
+
       res.json({ success: true });
     } catch (error: unknown) {
       console.error("Error ranking restaurant proposal:", error);
@@ -2283,7 +2403,36 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Flight booking routes  
+  app.post('/api/restaurant-proposals/:id/cancel', isAuthenticated, async (req: any, res) => {
+    try {
+      const proposalId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const proposal = await storage.cancelRestaurantProposal(proposalId, userId);
+      res.json(proposal);
+    } catch (error: unknown) {
+      console.error("Error canceling restaurant proposal:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('only cancel proposals you created')) {
+          return res.status(403).json({ message: error.message });
+        }
+        if (error.message.includes('not found')) {
+          return res.status(404).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: "Failed to cancel restaurant proposal" });
+    }
+  });
+
+  // Flight booking routes
   app.get('/api/trips/:id/flights', async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);

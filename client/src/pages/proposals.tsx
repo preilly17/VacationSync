@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,18 +25,14 @@ import {
   DollarSign,
   ExternalLink,
   Vote,
-  Trophy,
   AlertCircle,
   TrendingUp,
-  ThumbsUp,
-  MessageSquare,
   Eye,
   Crown,
   Calendar,
   CheckCircle,
   XCircle,
-  User,
-  Heart
+  User
 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import type { 
@@ -57,6 +53,8 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("hotels");
+  const [proposalFilter, setProposalFilter] = useState<"all" | "mine">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "canceled">("all");
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -200,56 +198,157 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     },
   });
 
-  // Helper function to get user's ranking for a proposal
-  const getUserRanking = (rankings: any[], userId: string) => {
-    return rankings.find(r => r.userId === userId)?.ranking;
+  const cancelProposalMutation = useMutation({
+    mutationFn: async ({
+      type,
+      proposalId,
+    }: {
+      type: "hotel" | "flight" | "restaurant";
+      proposalId: number;
+    }) => {
+      const endpointMap = {
+        hotel: `/api/hotel-proposals/${proposalId}/cancel`,
+        flight: `/api/flight-proposals/${proposalId}/cancel`,
+        restaurant: `/api/restaurant-proposals/${proposalId}/cancel`,
+      } as const;
+
+      const res = await apiRequest(endpointMap[type], { method: "POST" });
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      if (!tripId) {
+        return;
+      }
+
+      switch (variables.type) {
+        case "hotel":
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+          break;
+        case "flight":
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] });
+          break;
+        case "restaurant":
+          queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
+          break;
+      }
+
+      toast({
+        title: "Proposal canceled",
+        description: "We’ve let everyone know this proposal is no longer happening.",
+      });
+    },
+    onError: (error) => {
+      const errorMessage = error instanceof Error ? error.message : "Failed to cancel proposal";
+      toast({
+        title: "Unable to cancel proposal",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    },
+  });
+
+  type BaseProposal = {
+    id: number;
+    tripId: number;
+    status?: string | null;
+    proposedBy?: string | null;
+    proposer?: { id?: string | null } | null;
   };
 
-  // Helper function to get ranking color
+  const isMyProposal = useCallback(
+    (proposal: BaseProposal): boolean => {
+      if (!user?.id) {
+        return false;
+      }
+
+      const proposerId = proposal.proposedBy ?? proposal.proposer?.id ?? null;
+      return proposerId === user.id;
+    },
+    [user?.id],
+  );
+
+  const normalizeStatus = (status?: string | null) =>
+    (status ?? "active").toLowerCase();
+
+  const applyProposalFilters = useCallback(
+    <T extends BaseProposal>(items: T[]): T[] => {
+      return items.filter((item) => {
+        if (proposalFilter === "mine" && !isMyProposal(item)) {
+          return false;
+        }
+
+        if (statusFilter === "all") {
+          return true;
+        }
+
+        const normalizedStatus = normalizeStatus(item.status);
+        if (statusFilter === "canceled") {
+          return normalizedStatus === "canceled" || normalizedStatus === "cancelled";
+        }
+
+        return normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+      });
+    },
+    [isMyProposal, proposalFilter, statusFilter],
+  );
+
+  const getUserRanking = (
+    rankings: Array<{ userId: string; ranking: number }>,
+    userId: string,
+  ) => {
+    if (!userId) {
+      return undefined;
+    }
+
+    return rankings.find((ranking) => ranking.userId === userId)?.ranking;
+  };
+
   const getRankingColor = (ranking: number) => {
     switch (ranking) {
-      case 1: return "text-green-600 bg-green-100";
-      case 2: return "text-blue-600 bg-blue-100";
-      case 3: return "text-orange-600 bg-orange-100";
-      default: return "text-gray-600 bg-gray-100";
+      case 1:
+        return "text-green-600 bg-green-100";
+      case 2:
+        return "text-blue-600 bg-blue-100";
+      case 3:
+        return "text-orange-600 bg-orange-100";
+      default:
+        return "text-gray-600 bg-gray-100";
     }
   };
 
-  // Helper function to calculate rooms needed (2 people per room by default)
   const calculateRoomsNeeded = (groupSize: number): number => {
     return Math.ceil(groupSize / 2);
   };
 
-  // Helper function to parse price from string (handle "$150", "$150/night", etc.)
   const parsePrice = (priceStr: string | number): number => {
-    if (typeof priceStr === 'number') return priceStr;
-    
-    // Handle various price formats: "$150", "150", "$150.00", "$1,250", "$150/night", etc.
-    const cleanPrice = priceStr.toString()
-      .replace(/[\$,\s]/g, '') // Remove dollar signs, commas, and spaces
-      .replace(/\/night|\/day|per night|per day/gi, '') // Remove time qualifiers
+    if (typeof priceStr === "number") {
+      return priceStr;
+    }
+
+    const cleanPrice = priceStr
+      .toString()
+      .replace(/[\$,\s]/g, "")
+      .replace(/\/night|\/day|per night|per day/gi, "")
       .trim();
-    
+
     const parsed = parseFloat(cleanPrice);
-    return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    return Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
   };
 
-  // Helper function to calculate group budget breakdown
   const calculateGroupBudget = (pricePerNight: string | number, groupSize: number) => {
     const parsedPrice = parsePrice(pricePerNight);
-    
-    // Handle edge cases
-    if (groupSize <= 0 || !groupSize) {
+
+    if (!groupSize || groupSize <= 0) {
       return {
         roomsNeeded: 0,
         totalCost: 0,
         perPersonCost: 0,
         pricePerRoom: parsedPrice,
         hasError: true,
-        errorMessage: "Group size not available"
-      };
+        errorMessage: "Group size not available",
+      } as const;
     }
-    
+
     if (parsedPrice <= 0) {
       return {
         roomsNeeded: calculateRoomsNeeded(groupSize),
@@ -257,34 +356,116 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
         perPersonCost: 0,
         pricePerRoom: 0,
         hasError: true,
-        errorMessage: "Price information not available"
-      };
+        errorMessage: "Price information not available",
+      } as const;
     }
-    
+
     const roomsNeeded = calculateRoomsNeeded(groupSize);
     const totalCost = parsedPrice * roomsNeeded;
     const perPersonCost = totalCost / groupSize;
-    
+
     return {
       roomsNeeded,
       totalCost,
       perPersonCost,
       pricePerRoom: parsedPrice,
-      hasError: false
-    };
+      hasError: false,
+    } as const;
+  };
+
+  const getUserInitials = (
+    participant?: {
+      firstName?: string | null;
+      lastName?: string | null;
+      email?: string | null;
+      username?: string | null;
+    } | null,
+  ) => {
+    if (!participant) {
+      return "?";
+    }
+
+    const first = participant.firstName?.trim()?.charAt(0);
+    const last = participant.lastName?.trim()?.charAt(0);
+    if (first || last) {
+      return `${first ?? ""}${last ?? ""}` || (first ?? last) || "?";
+    }
+
+    const usernameInitial = participant.username?.trim()?.charAt(0);
+    if (usernameInitial) {
+      return usernameInitial.toUpperCase();
+    }
+
+    const emailInitial = participant.email?.trim()?.charAt(0);
+    return emailInitial ? emailInitial.toUpperCase() : "?";
+  };
+
+  const renderRankingPreview = (
+    rankings: Array<{ id: number; user: { firstName?: string | null; lastName?: string | null; email?: string | null; username?: string | null; profileImageUrl?: string | null } }>,
+  ) => {
+    if (!rankings || rankings.length === 0) {
+      return (
+        <div className="flex items-center gap-2 text-xs text-neutral-500" data-testid="preview-no-votes">
+          <Users className="w-4 h-4" />
+          <span>No votes yet</span>
+        </div>
+      );
+    }
+
+    const visibleRankings = rankings.slice(0, 3);
+    const remaining = rankings.length - visibleRankings.length;
+
+    return (
+      <div className="flex items-center gap-3 text-xs text-neutral-600" data-testid="preview-votes">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4" />
+          <div className="flex -space-x-2">
+            {visibleRankings.map((ranking) => (
+              <Avatar key={ranking.id} className="h-7 w-7 border border-white shadow-sm">
+                {ranking.user.profileImageUrl ? (
+                  <AvatarImage src={ranking.user.profileImageUrl ?? undefined} alt={ranking.user.firstName ?? ranking.user.username ?? "Group member"} />
+                ) : null}
+                <AvatarFallback>{getUserInitials(ranking.user)}</AvatarFallback>
+              </Avatar>
+            ))}
+          </div>
+        </div>
+        <span className="font-medium">
+          {rankings.length} {rankings.length === 1 ? "vote" : "votes"}
+        </span>
+        {remaining > 0 && <span className="text-neutral-400">+{remaining} more</span>}
+      </div>
+    );
   };
 
   // Helper function to get proposal status badge
   const getStatusBadge = (status: string, averageRanking?: number) => {
-    if (status === "selected") {
+    const normalizedStatus = (status || "active").toLowerCase();
+
+    if (normalizedStatus === "selected") {
       return <Badge className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Selected</Badge>;
     }
-    if (status === "rejected") {
+
+    if (normalizedStatus === "scheduled") {
+      return <Badge className="bg-emerald-100 text-emerald-700"><Calendar className="w-3 h-3 mr-1" />Scheduled</Badge>;
+    }
+
+    if (normalizedStatus === "rejected") {
       return <Badge className="bg-red-100 text-red-800"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
     }
-    if (typeof averageRanking === 'number' && averageRanking <= 1.5) {
+
+    if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+      return <Badge className="bg-rose-100 text-rose-700"><XCircle className="w-3 h-3 mr-1" />Canceled</Badge>;
+    }
+
+    if (normalizedStatus === "proposed") {
+      return <Badge className="bg-blue-100 text-blue-800"><Vote className="w-3 h-3 mr-1" />Proposed</Badge>;
+    }
+
+    if (typeof averageRanking === "number" && averageRanking <= 1.5) {
       return <Badge className="bg-yellow-100 text-yellow-800"><Crown className="w-3 h-3 mr-1" />Top Choice</Badge>;
     }
+
     return <Badge className="bg-blue-100 text-blue-800"><Vote className="w-3 h-3 mr-1" />Active Voting</Badge>;
   };
 
@@ -292,10 +473,17 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const RestaurantProposalCard = ({ proposal }: { proposal: RestaurantProposalWithDetails }) => {
     const userRanking = getUserRanking(proposal.rankings || [], user?.id || '');
     
+    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
+    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCancelling =
+      cancelProposalMutation.isPending &&
+      cancelProposalMutation.variables?.proposalId === proposal.id &&
+      cancelProposalMutation.variables?.type === "restaurant";
+
     return (
       <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-restaurant-proposal-${proposal.id}`}>
         <CardHeader className="pb-3">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-4">
             <div>
               <CardTitle className="text-lg flex items-center gap-2" data-testid={`text-restaurant-name-${proposal.id}`}>
                 <Utensils className="w-5 h-5 text-green-600" />
@@ -310,13 +498,34 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 </span>
               </CardDescription>
             </div>
-            {getStatusBadge(
-              proposal.status || 'active',
-              proposal.averageRanking ?? undefined,
-            )}
+            <div className="flex flex-col items-end gap-2">
+              {getStatusBadge(
+                proposal.status || "active",
+                proposal.averageRanking ?? undefined,
+              )}
+              {canCancel && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  disabled={isCancelling}
+                  onClick={() => {
+                    if (window.confirm("Cancel this proposal for everyone?")) {
+                      cancelProposalMutation.mutate({ type: "restaurant", proposalId: proposal.id });
+                    }
+                  }}
+                  data-testid={`button-cancel-restaurant-proposal-${proposal.id}`}
+                >
+                  <XCircle className="w-4 h-4 mr-1" />
+                  {isCancelling ? "Canceling..." : "Cancel"}
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">{renderRankingPreview(proposal.rankings ?? [])}</div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-blue-600" />
@@ -450,10 +659,17 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     const groupSize = trip?.members?.length || 0;
     const budgetBreakdown = calculateGroupBudget(proposal.price, groupSize);
     
+    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
+    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCancelling =
+      cancelProposalMutation.isPending &&
+      cancelProposalMutation.variables?.proposalId === proposal.id &&
+      cancelProposalMutation.variables?.type === "hotel";
+
     return (
       <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-hotel-proposal-${proposal.id}`}>
         <CardHeader className="pb-3">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-4">
             <div>
               <CardTitle className="text-lg flex items-center gap-2" data-testid={`text-hotel-name-${proposal.id}`}>
                 <Hotel className="w-5 h-5 text-blue-600" />
@@ -464,13 +680,36 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 <span data-testid={`text-hotel-location-${proposal.id}`}>{proposal.location}</span>
               </CardDescription>
             </div>
-            {getStatusBadge(
-              proposal.status || 'active',
-              proposal.averageRanking ?? undefined,
-            )}
+            <div className="flex flex-col items-end gap-2">
+              {getStatusBadge(
+                proposal.status || "active",
+                proposal.averageRanking ?? undefined,
+              )}
+              {canCancel && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  disabled={isCancelling}
+                  onClick={() => {
+                    if (window.confirm("Cancel this proposal for everyone?")) {
+                      cancelProposalMutation.mutate({ type: "hotel", proposalId: proposal.id });
+                    }
+                  }}
+                  data-testid={`button-cancel-hotel-proposal-${proposal.id}`}
+                >
+                  <XCircle className="w-4 h-4 mr-1" />
+                  {isCancelling ? "Canceling..." : "Cancel"}
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            {renderRankingPreview(proposal.rankings ?? [])}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-yellow-500" />
@@ -607,12 +846,18 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   // Flight proposal card component
   const FlightProposalCard = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
-    const userRanking = getUserRanking(proposal.rankings || [], user?.id || '');
-    
+    const userRanking = getUserRanking(proposal.rankings || [], user?.id || "");
+    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
+    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCancelling =
+      cancelProposalMutation.isPending &&
+      cancelProposalMutation.variables?.proposalId === proposal.id &&
+      cancelProposalMutation.variables?.type === "flight";
+
     return (
       <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-flight-proposal-${proposal.id}`}>
         <CardHeader className="pb-3">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-4">
             <div>
               <CardTitle className="text-lg flex items-center gap-2" data-testid={`text-flight-number-${proposal.id}`}>
                 <Plane className="w-5 h-5 text-blue-600" />
@@ -624,13 +869,34 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 </span>
               </CardDescription>
             </div>
-            {getStatusBadge(
-              proposal.status || 'active',
-              proposal.averageRanking ?? undefined,
-            )}
+            <div className="flex flex-col items-end gap-2">
+              {getStatusBadge(
+                proposal.status || "active",
+                proposal.averageRanking ?? undefined,
+              )}
+              {canCancel && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  disabled={isCancelling}
+                  onClick={() => {
+                    if (window.confirm("Cancel this proposal for everyone?")) {
+                      cancelProposalMutation.mutate({ type: "flight", proposalId: proposal.id });
+                    }
+                  }}
+                  data-testid={`button-cancel-flight-proposal-${proposal.id}`}
+                >
+                  <XCircle className="w-4 h-4 mr-1" />
+                  {isCancelling ? "Canceling..." : "Cancel"}
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">{renderRankingPreview(proposal.rankings ?? [])}</div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-blue-600" />
@@ -743,6 +1009,41 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     </div>
   );
 
+  const MyProposalsEmptyState = ({ type }: { type: string }) => (
+    <div className="text-center py-12" data-testid={`empty-my-${type.toLowerCase()}-proposals`}>
+      <User className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
+      <h3 className="text-lg font-semibold text-neutral-600 mb-2">You haven’t proposed anything yet.</h3>
+      <p className="text-neutral-500">
+        When you share a {type.toLowerCase()} idea with the group, it will appear here for quick access.
+      </p>
+    </div>
+  );
+
+  const FilteredEmptyState = ({ type }: { type: string }) => (
+    <div className="text-center py-12" data-testid={`empty-filtered-${type.toLowerCase()}-proposals`}>
+      <Eye className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
+      <h3 className="text-lg font-semibold text-neutral-600 mb-2">No {type.toLowerCase()} match these filters.</h3>
+      <p className="text-neutral-500">Try adjusting the filters to see more options.</p>
+    </div>
+  );
+
+  const filteredHotelProposals = useMemo(
+    () => applyProposalFilters(hotelProposals),
+    [applyProposalFilters, hotelProposals],
+  );
+  const filteredFlightProposals = useMemo(
+    () => applyProposalFilters(flightProposals),
+    [applyProposalFilters, flightProposals],
+  );
+  const filteredActivityProposals = useMemo(
+    () => applyProposalFilters(activityProposals),
+    [applyProposalFilters, activityProposals],
+  );
+  const filteredRestaurantProposals = useMemo(
+    () => applyProposalFilters(restaurantProposals),
+    [applyProposalFilters, restaurantProposals],
+  );
+
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Header */}
@@ -778,6 +1079,48 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           </p>
         </div>
 
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6" data-testid="proposals-filters">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-neutral-600">Show</span>
+            <div className="inline-flex rounded-md border border-neutral-200 bg-white p-1 shadow-sm">
+              <Button
+                type="button"
+                size="sm"
+                variant={proposalFilter === "all" ? "default" : "ghost"}
+                className={`rounded-sm ${proposalFilter === "all" ? "bg-primary text-white hover:bg-primary/90" : "text-neutral-700"}`}
+                onClick={() => setProposalFilter("all")}
+                data-testid="filter-proposals-all"
+              >
+                All proposals
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={proposalFilter === "mine" ? "default" : "ghost"}
+                className={`rounded-sm ${proposalFilter === "mine" ? "bg-primary text-white hover:bg-primary/90" : "text-neutral-700"}`}
+                onClick={() => setProposalFilter("mine")}
+                data-testid="filter-proposals-mine"
+              >
+                My proposals
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-neutral-600">Status</span>
+            <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
+              <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="canceled">Canceled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
@@ -803,12 +1146,16 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading hotel proposals..." />
               </div>
-            ) : hotelProposals.length > 0 ? (
+            ) : filteredHotelProposals.length > 0 ? (
               <div data-testid="list-hotel-proposals">
-                {hotelProposals.map((proposal) => (
+                {filteredHotelProposals.map((proposal) => (
                   <HotelProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
+            ) : proposalFilter === "mine" ? (
+              <MyProposalsEmptyState type="Hotel" />
+            ) : hotelProposals.length > 0 ? (
+              <FilteredEmptyState type="Hotel" />
             ) : (
               <EmptyState type="Hotel" icon={Hotel} />
             )}
@@ -819,12 +1166,16 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading flight proposals..." />
               </div>
-            ) : flightProposals.length > 0 ? (
+            ) : filteredFlightProposals.length > 0 ? (
               <div data-testid="list-flight-proposals">
-                {flightProposals.map((proposal) => (
+                {filteredFlightProposals.map((proposal) => (
                   <FlightProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
+            ) : proposalFilter === "mine" ? (
+              <MyProposalsEmptyState type="Flight" />
+            ) : flightProposals.length > 0 ? (
+              <FilteredEmptyState type="Flight" />
             ) : (
               <EmptyState type="Flight" icon={Plane} />
             )}
@@ -835,11 +1186,15 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading activity proposals..." />
               </div>
-            ) : activityProposals.length > 0 ? (
+            ) : filteredActivityProposals.length > 0 ? (
               <div data-testid="list-activity-proposals">
                 {/* Activity proposals would go here once API is implemented */}
                 <p className="text-center text-neutral-500 py-8">Activity proposals coming soon!</p>
               </div>
+            ) : proposalFilter === "mine" ? (
+              <MyProposalsEmptyState type="Activity" />
+            ) : activityProposals.length > 0 ? (
+              <FilteredEmptyState type="Activity" />
             ) : (
               <EmptyState type="Activity" icon={MapPin} />
             )}
@@ -850,12 +1205,16 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading restaurant proposals..." />
               </div>
-            ) : restaurantProposals.length > 0 ? (
+            ) : filteredRestaurantProposals.length > 0 ? (
               <div data-testid="list-restaurant-proposals">
-                {restaurantProposals.map((proposal) => (
+                {filteredRestaurantProposals.map((proposal) => (
                   <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
+            ) : proposalFilter === "mine" ? (
+              <MyProposalsEmptyState type="Restaurant" />
+            ) : restaurantProposals.length > 0 ? (
+              <FilteredEmptyState type="Restaurant" />
             ) : (
               <EmptyState type="Restaurant" icon={Utensils} />
             )}
