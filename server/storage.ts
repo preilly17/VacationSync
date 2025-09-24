@@ -2142,28 +2142,81 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Trip not found");
     }
 
+    const { rows: memberColumnRows } = await query<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'trip_members'
+      `,
+    );
+
+    const memberColumnNames = new Set(
+      memberColumnRows.map(({ column_name }) => column_name),
+    );
+
+    const memberColumns = ["trip_calendar_id", "user_id"];
+    const valuePlaceholders = ["$1", "$2"];
+    const memberValues: unknown[] = [row.id, userId];
+    let placeholderIndex = 3;
+
+    if (memberColumnNames.has("role")) {
+      memberColumns.push("role");
+      valuePlaceholders.push(`$${placeholderIndex}`);
+      memberValues.push(row.created_by === userId ? "owner" : "member");
+      placeholderIndex += 1;
+    }
+
+    if (memberColumnNames.has("is_admin")) {
+      memberColumns.push("is_admin");
+      valuePlaceholders.push(`$${placeholderIndex}`);
+      memberValues.push(row.created_by === userId);
+      placeholderIndex += 1;
+    }
+
+    if (memberColumnNames.has("departure_location")) {
+      memberColumns.push("departure_location");
+      valuePlaceholders.push(`$${placeholderIndex}`);
+      memberValues.push(options?.departureLocation ?? null);
+      placeholderIndex += 1;
+    }
+
+    if (memberColumnNames.has("departure_airport")) {
+      memberColumns.push("departure_airport");
+      valuePlaceholders.push(`$${placeholderIndex}`);
+      memberValues.push(options?.departureAirport ?? null);
+      placeholderIndex += 1;
+    }
+
+    if (memberColumnNames.has("joined_at")) {
+      memberColumns.push("joined_at");
+      valuePlaceholders.push("NOW()");
+    }
+
+    const updateAssignments: string[] = [];
+    if (memberColumnNames.has("departure_location")) {
+      updateAssignments.push(
+        "departure_location = EXCLUDED.departure_location",
+      );
+    }
+    if (memberColumnNames.has("departure_airport")) {
+      updateAssignments.push("departure_airport = EXCLUDED.departure_airport");
+    }
+    if (memberColumnNames.has("is_admin")) {
+      updateAssignments.push("is_admin = EXCLUDED.is_admin");
+    }
+
+    const conflictClause = updateAssignments.length
+      ? `DO UPDATE SET ${updateAssignments.join(",\n            ")}`
+      : "DO NOTHING";
+
     await query(
       `
-      INSERT INTO trip_members (
-        trip_calendar_id,
-        user_id,
-        role,
-        departure_location,
-        departure_airport,
-        joined_at
-      )
-      VALUES ($1, $2, $3, $4, $5, NOW())
-      ON CONFLICT (trip_calendar_id, user_id) DO UPDATE
-        SET departure_location = EXCLUDED.departure_location,
-            departure_airport = EXCLUDED.departure_airport
+      INSERT INTO trip_members (${memberColumns.join(", ")})
+      VALUES (${valuePlaceholders.join(", ")})
+      ON CONFLICT (trip_calendar_id, user_id) ${conflictClause}
       `,
-      [
-        row.id,
-        userId,
-        row.created_by === userId ? "owner" : "member",
-        options?.departureLocation ?? null,
-        options?.departureAirport ?? null,
-      ],
+      memberValues,
     );
 
     const trip = await this.getTripById(row.id);

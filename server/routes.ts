@@ -659,6 +659,66 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.get("/api/trips/share/:shareCode", isAuthenticated, async (req: any, res) => {
+    try {
+      const { shareCode } = req.params;
+
+      if (!shareCode || typeof shareCode !== "string") {
+        return res.status(400).json({ message: "Share code is required" });
+      }
+
+      const trip = await storage.getTripByShareCode(shareCode);
+
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      res.json(trip);
+    } catch (error: unknown) {
+      console.error("Error fetching shared trip:", error);
+      res.status(500).json({ message: "Failed to fetch trip" });
+    }
+  });
+
+  app.post("/api/trips/join/:shareCode", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getRequestUserId(req);
+
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { shareCode } = req.params;
+
+      if (!shareCode || typeof shareCode !== "string") {
+        return res.status(400).json({ message: "Share code is required" });
+      }
+
+      const departureLocation =
+        typeof req.body?.departureLocation === "string"
+          ? req.body.departureLocation.trim() || null
+          : null;
+      const departureAirport =
+        typeof req.body?.departureAirport === "string"
+          ? req.body.departureAirport.trim().toUpperCase() || null
+          : null;
+
+      const trip = await storage.joinTrip(shareCode, userId, {
+        departureLocation: departureLocation ?? undefined,
+        departureAirport: departureAirport ?? undefined,
+      });
+
+      res.json(trip);
+    } catch (error: unknown) {
+      console.error("Error joining trip:", error);
+      const message = getErrorMessage(error, "Failed to join trip");
+      if (message === "Trip not found") {
+        return res.status(404).json({ message });
+      }
+      res.status(500).json({ message: "Failed to join trip" });
+    }
+  });
+
   app.put("/api/trips/:id", async (req: any, res) => {
     try {
       let userId = getRequestUserId(req);
