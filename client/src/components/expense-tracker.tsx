@@ -235,9 +235,26 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
   const summary = useMemo(() => {
     const total = expenses.reduce((sum, expense) => sum + expense.totalAmount, 0);
     const youPaid = expenses.reduce((sum, expense) => {
-      return expense.paidBy.id === user?.id
-        ? sum + expense.totalAmount
-        : sum;
+      let total = sum;
+
+      if (expense.paidBy.id === user?.id) {
+        total += expense.totalAmount;
+        return total;
+      }
+
+      if (!user?.id) {
+        return total;
+      }
+
+      const paidShareForUser = expense.shares.find(
+        (share) => share.userId === user.id && share.isPaid,
+      );
+
+      if (paidShareForUser) {
+        total += paidShareForUser.amount;
+      }
+
+      return total;
     }, 0);
     const owes = Number(balances?.owes ?? 0);
     const owed = Number(balances?.owed ?? 0);
