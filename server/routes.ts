@@ -590,8 +590,14 @@ export function setupRoutes(app: Express) {
       console.log("Creating trip with data:", req.body);
       
       // Parse and convert dates
+      const sanitizedCoverImageUrl =
+        typeof req.body.coverImageUrl === "string" && req.body.coverImageUrl.trim().length > 0
+          ? req.body.coverImageUrl
+          : null;
+
       const tripData = {
         ...req.body,
+        coverImageUrl: sanitizedCoverImageUrl,
         startDate: new Date(req.body.startDate),
         endDate: new Date(req.body.endDate),
       };
@@ -689,6 +695,12 @@ export function setupRoutes(app: Express) {
       }
       if (updateData.endDate) {
         updateData.endDate = new Date(updateData.endDate);
+      }
+
+      if (Object.prototype.hasOwnProperty.call(updateData, "coverImageUrl")) {
+        const value = updateData.coverImageUrl;
+        updateData.coverImageUrl =
+          typeof value === "string" && value.trim().length > 0 ? value : null;
       }
 
       console.log("Converted trip update data:", updateData);

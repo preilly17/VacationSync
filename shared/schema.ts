@@ -118,6 +118,7 @@ export interface TripCalendar {
   endDate: IsoDate;
   shareCode: string;
   createdBy: string;
+  coverImageUrl: string | null;
   createdAt: IsoDate | null;
 }
 
@@ -126,6 +127,47 @@ export const insertTripCalendarSchema = z.object({
   destination: z.string().min(1, "Destination is required"),
   startDate: z.union([z.date(), z.string()]),
   endDate: z.union([z.date(), z.string()]),
+  coverImageUrl: z
+    .string()
+    .trim()
+    .superRefine((value, ctx) => {
+      // Prevent excessively large payloads even if they slip past the browser check
+      if (value.length > 12_000_000) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.too_big,
+          type: "string",
+          maximum: 12_000_000,
+          inclusive: true,
+          message: "Cover image is too large",
+        });
+        return;
+      }
+
+      const match = value.match(/^data:([^;]+);base64,(.+)$/);
+      const base64Payload = match?.[2];
+      if (!base64Payload) {
+        return;
+      }
+
+      const padding = base64Payload.endsWith("==")
+        ? 2
+        : base64Payload.endsWith("=")
+          ? 1
+          : 0;
+      const sizeInBytes = (base64Payload.length * 3) / 4 - padding;
+
+      if (sizeInBytes > 5 * 1024 * 1024) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.too_big,
+          type: "string",
+          maximum: 5 * 1024 * 1024,
+          inclusive: true,
+          message: "Cover image must be 5MB or smaller",
+        });
+      }
+    })
+    .optional()
+    .nullable(),
 });
 
 export type InsertTripCalendar = z.infer<typeof insertTripCalendarSchema>;
@@ -559,6 +601,7 @@ export type TripWithDates = {
   endDate: IsoDate;
   shareCode: string;
   createdBy: string;
+  coverImageUrl: string | null;
   createdAt?: IsoDate;
 };
 

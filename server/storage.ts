@@ -211,6 +211,7 @@ type TripRow = {
   end_date: Date;
   share_code: string;
   created_by: string;
+  cover_image_url: string | null;
   created_at: Date | null;
 };
 
@@ -356,6 +357,7 @@ type NotificationWithDetailsRow = NotificationRow & {
   trip_share_code: string | null;
   trip_created_by: string | null;
   trip_created_at: Date | null;
+  trip_cover_image_url: string | null;
   joined_activity_id: number | null;
   activity_trip_calendar_id: number | null;
   activity_posted_by: string | null;
@@ -475,6 +477,7 @@ type FlightWithDetailsRow = FlightRow &
     trip_share_code: string;
     trip_created_by: string;
     trip_created_at: Date | null;
+    trip_cover_image_url: string | null;
   };
 
 type HotelRow = {
@@ -523,6 +526,7 @@ type HotelWithDetailsRow = HotelRow &
     trip_share_code: string;
     trip_created_by: string;
     trip_created_at: Date | null;
+    trip_cover_image_url: string | null;
   };
 
 type RestaurantRow = {
@@ -562,6 +566,7 @@ type RestaurantWithDetailsRow = RestaurantRow &
     trip_share_code: string;
     trip_created_by: string;
     trip_created_at: Date | null;
+    trip_cover_image_url: string | null;
   };
 
 type TravelTipRow = {
@@ -734,6 +739,7 @@ const mapTrip = (row: TripRow): TripCalendar => ({
   endDate: row.end_date,
   shareCode: row.share_code,
   createdBy: row.created_by,
+  coverImageUrl: row.cover_image_url ?? null,
   createdAt: row.created_at,
 });
 
@@ -1055,6 +1061,7 @@ const mapFlightWithDetails = (row: FlightWithDetailsRow): FlightWithDetails => {
     end_date: row.trip_end_date,
     share_code: row.trip_share_code,
     created_by: row.trip_created_by,
+    cover_image_url: row.trip_cover_image_url,
     created_at: row.trip_created_at,
   };
 
@@ -1121,6 +1128,7 @@ const mapHotelWithDetails = (row: HotelWithDetailsRow): HotelWithDetails => {
     end_date: row.trip_end_date,
     share_code: row.trip_share_code,
     created_by: row.trip_created_by,
+    cover_image_url: row.trip_cover_image_url,
     created_at: row.trip_created_at,
   };
 
@@ -1170,6 +1178,7 @@ const mapRestaurantWithDetails = (
     end_date: row.trip_end_date,
     share_code: row.trip_share_code,
     created_by: row.trip_created_by,
+    cover_image_url: row.trip_cover_image_url,
     created_at: row.trip_created_at,
   };
 
@@ -1319,6 +1328,34 @@ export class DatabaseStorage implements IStorage {
   private wishListInitPromise: Promise<void> | null = null;
 
   private wishListInitialized = false;
+
+  private tripCoverImageColumnChecked = false;
+
+  private tripCoverImageColumnPromise: Promise<void> | null = null;
+
+  private async ensureTripCoverImageColumn(): Promise<void> {
+    if (this.tripCoverImageColumnChecked) {
+      return;
+    }
+
+    if (this.tripCoverImageColumnPromise) {
+      await this.tripCoverImageColumnPromise;
+      return;
+    }
+
+    this.tripCoverImageColumnPromise = (async () => {
+      await query(
+        `ALTER TABLE trip_calendars ADD COLUMN IF NOT EXISTS cover_image_url TEXT`,
+      );
+      this.tripCoverImageColumnChecked = true;
+    })();
+
+    try {
+      await this.tripCoverImageColumnPromise;
+    } finally {
+      this.tripCoverImageColumnPromise = null;
+    }
+  }
 
   private async ensureWishListStructures(): Promise<void> {
     if (this.wishListInitialized) {
@@ -1614,6 +1651,8 @@ export class DatabaseStorage implements IStorage {
     trip: InsertTripCalendar,
     userId: string,
   ): Promise<TripCalendar> {
+    await this.ensureTripCoverImageColumn();
+
     let shareCode = "";
     let attempts = 0;
 
@@ -1627,9 +1666,26 @@ export class DatabaseStorage implements IStorage {
 
     const { rows } = await query<TripRow>(
       `
-      INSERT INTO trip_calendars (name, destination, start_date, end_date, share_code, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, name, destination, start_date, end_date, share_code, created_by, created_at
+      INSERT INTO trip_calendars (
+        name,
+        destination,
+        start_date,
+        end_date,
+        share_code,
+        created_by,
+        cover_image_url
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING
+        id,
+        name,
+        destination,
+        start_date,
+        end_date,
+        share_code,
+        created_by,
+        cover_image_url,
+        created_at
       `,
       [
         trip.name,
@@ -1638,6 +1694,7 @@ export class DatabaseStorage implements IStorage {
         trip.endDate,
         shareCode,
         userId,
+        trip.coverImageUrl ?? null,
       ],
     );
 
@@ -1979,6 +2036,16 @@ export class DatabaseStorage implements IStorage {
       index += 1;
     }
 
+    if (data.coverImageUrl !== undefined) {
+      const sanitized =
+        typeof data.coverImageUrl === "string" && data.coverImageUrl.trim().length > 0
+          ? data.coverImageUrl
+          : null;
+      setClauses.push(`cover_image_url = $${index}`);
+      values.push(sanitized);
+      index += 1;
+    }
+
     if (setClauses.length === 0) {
       return mapTrip(existing);
     }
@@ -1987,7 +2054,7 @@ export class DatabaseStorage implements IStorage {
       UPDATE trip_calendars
       SET ${setClauses.join(", ")}
       WHERE id = $${index}
-      RETURNING id, name, destination, start_date, end_date, share_code, created_by, created_at
+      RETURNING id, name, destination, start_date, end_date, share_code, created_by, cover_image_url, created_at
     `;
 
     values.push(tripId);
@@ -2063,6 +2130,8 @@ export class DatabaseStorage implements IStorage {
   private async fetchTripWithCreatorById(
     tripId: number,
   ): Promise<TripWithCreatorRow | undefined> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<TripWithCreatorRow>(
       `
       SELECT
@@ -2073,6 +2142,7 @@ export class DatabaseStorage implements IStorage {
         tc.end_date,
         tc.share_code,
         tc.created_by,
+        tc.cover_image_url,
         tc.created_at,
         creator.id AS creator_id,
         creator.email AS creator_email,
@@ -2113,6 +2183,8 @@ export class DatabaseStorage implements IStorage {
   private async fetchTripWithCreatorByShareCode(
     shareCode: string,
   ): Promise<TripWithCreatorRow | undefined> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<TripWithCreatorRow>(
       `
       SELECT
@@ -2123,6 +2195,7 @@ export class DatabaseStorage implements IStorage {
         tc.end_date,
         tc.share_code,
         tc.created_by,
+        tc.cover_image_url,
         tc.created_at,
         creator.id AS creator_id,
         creator.email AS creator_email,
@@ -3575,6 +3648,8 @@ export class DatabaseStorage implements IStorage {
   ): Promise<
     (Notification & { trip?: TripCalendar; activity?: Activity; expense?: Expense })[]
   > {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<NotificationWithDetailsRow>(
       `
       SELECT
@@ -3595,6 +3670,7 @@ export class DatabaseStorage implements IStorage {
         t.end_date AS trip_end_date,
         t.share_code AS trip_share_code,
         t.created_by AS trip_created_by,
+        t.cover_image_url AS trip_cover_image_url,
         t.created_at AS trip_created_at,
         a.id AS joined_activity_id,
         a.trip_calendar_id AS activity_trip_calendar_id,
@@ -3652,6 +3728,7 @@ export class DatabaseStorage implements IStorage {
           end_date: row.trip_end_date as Date,
           share_code: row.trip_share_code as string,
           created_by: row.trip_created_by as string,
+          cover_image_url: row.trip_cover_image_url ?? null,
           created_at: row.trip_created_at,
         };
         result.trip = mapTrip(tripRow);
@@ -4541,6 +4618,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async getTripFlights(tripId: number): Promise<FlightWithDetails[]> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<FlightWithDetailsRow>(
       `
       SELECT
@@ -4606,6 +4685,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.end_date AS trip_end_date,
         t.share_code AS trip_share_code,
         t.created_by AS trip_created_by,
+        t.cover_image_url AS trip_cover_image_url,
         t.created_at AS trip_created_at
       FROM flights f
       JOIN users u ON u.id = f.user_id
@@ -4846,6 +4926,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async getUserFlights(userId: string): Promise<FlightWithDetails[]> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<FlightWithDetailsRow>(
       `
       SELECT
@@ -4911,6 +4993,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.end_date AS trip_end_date,
         t.share_code AS trip_share_code,
         t.created_by AS trip_created_by,
+        t.cover_image_url AS trip_cover_image_url,
         t.created_at AS trip_created_at
       FROM flights f
       JOIN users u ON u.id = f.user_id
@@ -5056,6 +5139,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async getTripHotels(tripId: number): Promise<HotelWithDetails[]> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<HotelWithDetailsRow>(
       `
       SELECT
@@ -5124,6 +5209,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.end_date AS trip_end_date,
         t.share_code AS trip_share_code,
         t.created_by AS trip_created_by,
+        t.cover_image_url AS trip_cover_image_url,
         t.created_at AS trip_created_at
       FROM hotels h
       JOIN users u ON u.id = h.user_id
@@ -5388,6 +5474,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async getUserHotels(userId: string): Promise<HotelWithDetails[]> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<HotelWithDetailsRow>(
       `
       SELECT
@@ -5456,6 +5544,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.end_date AS trip_end_date,
         t.share_code AS trip_share_code,
         t.created_by AS trip_created_by,
+        t.cover_image_url AS trip_cover_image_url,
         t.created_at AS trip_created_at
       FROM hotels h
       JOIN users u ON u.id = h.user_id
@@ -5578,6 +5667,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async getTripRestaurants(
     tripId: number,
   ): Promise<RestaurantWithDetails[]> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<RestaurantWithDetailsRow>(
       `
       SELECT
@@ -5637,6 +5728,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.end_date AS trip_end_date,
         t.share_code AS trip_share_code,
         t.created_by AS trip_created_by,
+        t.cover_image_url AS trip_cover_image_url,
         t.created_at AS trip_created_at
       FROM restaurants r
       JOIN users u ON u.id = r.user_id
@@ -5861,6 +5953,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async getUserRestaurants(
     userId: string,
   ): Promise<RestaurantWithDetails[]> {
+    await this.ensureTripCoverImageColumn();
+
     const { rows } = await query<RestaurantWithDetailsRow>(
       `
       SELECT
@@ -5920,6 +6014,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.end_date AS trip_end_date,
         t.share_code AS trip_share_code,
         t.created_by AS trip_created_by,
+        t.cover_image_url AS trip_cover_image_url,
         t.created_at AS trip_created_at
       FROM restaurants r
       JOIN users u ON u.id = r.user_id

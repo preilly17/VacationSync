@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
+import { UploadCloud, X } from "lucide-react";
 
 interface EditTripModalProps {
   open: boolean;
@@ -42,6 +43,10 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(
+    trip.coverImageUrl ?? null,
+  );
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -50,8 +55,17 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverImageUrl: trip.coverImageUrl ?? null,
     },
   });
+
+  const setCoverImageValue = (value: string | null, markDirty = false) => {
+    setCoverImagePreview(value);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    form.setValue("coverImageUrl", value, { shouldDirty: markDirty });
+  };
 
   // Reset form when trip changes or modal opens
   useEffect(() => {
@@ -61,12 +75,14 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         destination: trip.destination,
         startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
         endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+        coverImageUrl: trip.coverImageUrl ?? null,
       });
       // Set destination for SmartLocationSearch
-      setSelectedDestination({ 
-        name: trip.destination, 
-        displayName: trip.destination 
+      setSelectedDestination({
+        name: trip.destination,
+        displayName: trip.destination
       });
+      setCoverImageValue(trip.coverImageUrl ?? null);
     }
   }, [open, trip, form]);
 
@@ -133,6 +149,49 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     // Don't update form state immediately - only on submit
   };
 
+  const handleCoverImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Unsupported file",
+        description: "Please choose an image file for the cover photo.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const maxFileSize = 5 * 1024 * 1024;
+    if (file.size > maxFileSize) {
+      toast({
+        title: "Image too large",
+        description: "Please choose an image that is 5MB or smaller.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : null;
+      if (result) {
+        setCoverImageValue(result, true);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveCoverImage = () => {
+    setCoverImageValue(null, true);
+  };
+
   const handleCancel = () => {
     // Reset form to original values
     form.reset({
@@ -140,12 +199,14 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverImageUrl: trip.coverImageUrl ?? null,
     });
     // Reset selected destination to original
-    setSelectedDestination({ 
-      name: trip.destination, 
-      displayName: trip.destination 
+    setSelectedDestination({
+      name: trip.destination,
+      displayName: trip.destination
     });
+    setCoverImageValue(trip.coverImageUrl ?? null);
     onOpenChange(false);
   };
 
@@ -183,6 +244,56 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
             {form.formState.errors.destination && (
               <p className="text-sm text-red-600 mt-1">{form.formState.errors.destination.message}</p>
             )}
+          </div>
+
+          <div>
+            <Label htmlFor="coverImage">Cover Photo</Label>
+            <div className="mt-2 space-y-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50/80 p-4">
+              {coverImagePreview ? (
+                <div className="overflow-hidden rounded-lg border border-neutral-200">
+                  <img
+                    src={coverImagePreview}
+                    alt="Trip cover preview"
+                    className="h-44 w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 py-6 text-center text-sm text-neutral-500">
+                  <UploadCloud className="h-8 w-8 text-primary" />
+                  <p>Upload a banner image to update the trip background.</p>
+                  <p className="text-xs text-neutral-400">JPG or PNG, up to 5MB.</p>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {coverImagePreview ? "Replace photo" : "Upload photo"}
+                </Button>
+                {coverImagePreview && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-1"
+                    onClick={handleRemoveCoverImage}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <input
+                id="coverImage"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleCoverImageChange}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

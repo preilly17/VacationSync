@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
+import { UploadCloud, X } from "lucide-react";
 
 interface CreateTripModalProps {
   open: boolean;
@@ -30,6 +31,16 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const resetCoverImage = (markDirty = false) => {
+    setCoverImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    form.setValue("coverImageUrl", null, { shouldDirty: markDirty });
+  };
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -38,6 +49,7 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
       destination: "",
       startDate: "",
       endDate: "",
+      coverImageUrl: null,
     },
   });
 
@@ -52,7 +64,7 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
     onSuccess: async (trip) => {
       // Invalidate and refetch trips query to show new trip on home page
       await queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
-      
+
       // Pre-populate the cache with the new trip data for immediate display
       queryClient.setQueryData(["/api/trips"], (oldData: any) => {
         if (!oldData) return [trip];
@@ -66,6 +78,7 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
       onOpenChange(false);
       form.reset();
       setSelectedDestination(null);
+      resetCoverImage();
       
       // Small delay to ensure cache is updated before navigation
       setTimeout(() => {
@@ -98,6 +111,57 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
   const handleDestinationSelect = (location: any) => {
     setSelectedDestination(location);
     form.setValue("destination", location.displayName || location.name);
+  };
+
+  const handleCoverImageChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Unsupported file",
+        description: "Please choose an image file for the cover photo.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const maxFileSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxFileSize) {
+      toast({
+        title: "Image too large",
+        description: "Please choose an image that is 5MB or smaller.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : null;
+      if (result) {
+        setCoverImagePreview(result);
+        form.setValue("coverImageUrl", result, { shouldDirty: true });
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveCoverImage = () => {
+    resetCoverImage(true);
+  };
+
+  const handleCancel = () => {
+    form.reset();
+    setSelectedDestination(null);
+    resetCoverImage();
+    onOpenChange(false);
   };
 
   return (
@@ -135,6 +199,56 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
             )}
           </div>
 
+          <div>
+            <Label htmlFor="coverImage">Cover Photo</Label>
+            <div className="mt-2 space-y-3 rounded-xl border border-dashed border-neutral-300 bg-neutral-50/80 p-4">
+              {coverImagePreview ? (
+                <div className="overflow-hidden rounded-lg border border-neutral-200">
+                  <img
+                    src={coverImagePreview}
+                    alt="Trip cover preview"
+                    className="h-44 w-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-2 py-6 text-center text-sm text-neutral-500">
+                  <UploadCloud className="h-8 w-8 text-primary" />
+                  <p>Upload a banner image to personalize your trip page.</p>
+                  <p className="text-xs text-neutral-400">JPG or PNG, up to 5MB.</p>
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {coverImagePreview ? "Replace photo" : "Upload photo"}
+                </Button>
+                {coverImagePreview && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="flex-1"
+                    onClick={handleRemoveCoverImage}
+                  >
+                    <X className="mr-2 h-4 w-4" />
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <input
+                id="coverImage"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleCoverImageChange}
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="startDate">Start Date</Label>
@@ -165,7 +279,7 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
               type="button"
               variant="outline"
               className="flex-1"
-              onClick={() => onOpenChange(false)}
+              onClick={handleCancel}
             >
               Cancel
             </Button>

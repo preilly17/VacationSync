@@ -35,6 +35,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { ActivityCard } from "@/components/activity-card";
 import { AddActivityModal } from "@/components/add-activity-modal";
@@ -562,6 +563,8 @@ export default function Trip() {
     );
   }
 
+  const hasCoverImage = Boolean(trip.coverImageUrl);
+
   return (
     <>
       <div className="min-h-screen bg-neutral-100">
@@ -740,11 +743,32 @@ export default function Trip() {
                 
                 {/* Trip Header */}
                 <div className="mb-10 space-y-6">
-                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-rose-500 to-orange-400 text-white shadow-xl">
-                    <div
-                      className="pointer-events-none absolute inset-0 opacity-30 [background:radial-gradient(circle_at_top_left,rgba(255,255,255,0.6),transparent_55%)]"
-                      aria-hidden="true"
-                    />
+                  <div
+                    className={cn(
+                      "relative overflow-hidden rounded-3xl text-white shadow-xl",
+                      hasCoverImage
+                        ? "bg-neutral-900"
+                        : "bg-gradient-to-br from-primary via-rose-500 to-orange-400",
+                    )}
+                  >
+                    {hasCoverImage ? (
+                      <>
+                        <img
+                          src={trip.coverImageUrl ?? undefined}
+                          alt={`Cover photo for ${trip.name}`}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                        <div
+                          className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/40 to-transparent"
+                          aria-hidden="true"
+                        />
+                      </>
+                    ) : (
+                      <div
+                        className="pointer-events-none absolute inset-0 opacity-40 [background:radial-gradient(circle_at_top_left,rgba(255,255,255,0.65),transparent_55%)]"
+                        aria-hidden="true"
+                      />
+                    )}
                     <div className="relative p-6 sm:p-10">
                       <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
                         <div className="max-w-2xl space-y-5">
