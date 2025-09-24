@@ -16,7 +16,7 @@ import {
   ChevronRight,
   ArrowLeft,
   Clock,
-  User,
+  User as UserIcon,
   Package,
   DollarSign,
   ShoppingCart,
@@ -56,8 +56,197 @@ import { TravelLoading } from "@/components/LoadingSpinners";
 import ActivitySearch from "@/components/activity-search";
 import { TravelTips } from "@/components/TravelTips";
 import Proposals from "@/pages/proposals";
-import type { TripWithDetails, ActivityWithDetails } from "@shared/schema";
-import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth, formatDistanceToNow, differenceInCalendarDays } from "date-fns";
+import type { TripWithDetails, ActivityWithDetails, User } from "@shared/schema";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  subMonths,
+  addDays,
+  subDays,
+  startOfDay,
+  isSameDay,
+  isSameMonth,
+  isBefore,
+  isAfter,
+  formatDistanceToNow,
+  differenceInCalendarDays,
+} from "date-fns";
+
+interface DayViewProps {
+  date: Date;
+  activities: ActivityWithDetails[];
+  onPreviousDay: () => void;
+  onNextDay: () => void;
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  emptyStateMessage?: string;
+}
+
+const getParticipantDisplayName = (user: User) => {
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+
+  if (first && last) {
+    return `${first} ${last}`;
+  }
+
+  if (first) {
+    return first;
+  }
+
+  if (user.username) {
+    return user.username;
+  }
+
+  return user.email || "Trip member";
+};
+
+const formatActivityTimeRange = (startTime: string | Date, endTime?: string | Date | null) => {
+  const startDate = new Date(startTime);
+
+  if (Number.isNaN(startDate.getTime())) {
+    return "Time TBD";
+  }
+
+  const startLabel = format(startDate, "h:mm a");
+
+  if (!endTime) {
+    return startLabel;
+  }
+
+  const endDate = new Date(endTime);
+
+  if (Number.isNaN(endDate.getTime())) {
+    return startLabel;
+  }
+
+  if (isSameDay(startDate, endDate)) {
+    return `${startLabel} - ${format(endDate, "h:mm a")}`;
+  }
+
+  return `${startLabel} - ${format(endDate, "MMM d, h:mm a")}`;
+};
+
+function DayView({
+  date,
+  activities,
+  onPreviousDay,
+  onNextDay,
+  canGoPrevious,
+  canGoNext,
+  emptyStateMessage = "No activities scheduled for this day yet.",
+}: DayViewProps) {
+  const dayActivities = activities
+    .filter((activity) => isSameDay(new Date(activity.startTime), date))
+    .sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+    );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onPreviousDay}
+            disabled={!canGoPrevious}
+            aria-label="Previous day"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <div className="text-left">
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+              Viewing day
+            </p>
+            <p className="text-lg font-semibold text-neutral-900">
+              {format(date, "EEEE, MMMM d, yyyy")}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onNextDay}
+            disabled={!canGoNext}
+            aria-label="Next day"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {dayActivities.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
+          {emptyStateMessage}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {dayActivities.map((activity) => {
+            const participants = activity.acceptances.map((acceptance) =>
+              getParticipantDisplayName(acceptance.user),
+            );
+
+            return (
+              <div
+                key={activity.id}
+                className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h3 className="text-lg font-semibold text-neutral-900">
+                    {activity.name}
+                  </h3>
+                  <div className="flex items-center text-sm font-medium text-neutral-700">
+                    <Clock className="mr-2 h-4 w-4" />
+                    {formatActivityTimeRange(activity.startTime, activity.endTime)}
+                  </div>
+                </div>
+
+                {activity.location && (
+                  <div className="mt-2 flex items-center text-sm text-neutral-600">
+                    <MapPin className="mr-2 h-4 w-4" />
+                    <span>{activity.location}</span>
+                  </div>
+                )}
+
+                {activity.description && (
+                  <p className="mt-3 text-sm text-neutral-600 whitespace-pre-wrap">
+                    {activity.description}
+                  </p>
+                )}
+
+                <div className="mt-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    <Users className="h-4 w-4" />
+                    Participants
+                  </div>
+                  {participants.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {participants.map((name, index) => (
+                        <Badge
+                          key={`${activity.id}-participant-${index}`}
+                          variant="secondary"
+                          className="bg-neutral-100 text-neutral-700"
+                        >
+                          {name}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-sm text-neutral-500 italic">
+                      No participants yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Trip() {
   const { id } = useParams();
@@ -76,6 +265,10 @@ export default function Trip() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [peopleFilter, setPeopleFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [groupCalendarView, setGroupCalendarView] = useState<"month" | "day">("month");
+  const [scheduleCalendarView, setScheduleCalendarView] = useState<"month" | "day">("month");
+  const [groupViewDate, setGroupViewDate] = useState<Date | null>(null);
+  const [scheduleViewDate, setScheduleViewDate] = useState<Date | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -134,6 +327,48 @@ export default function Trip() {
     ...(trip?.members || []).map((member: any) => member.userId)
   ];
 
+  const tripStartDate = trip?.startDate ? startOfDay(new Date(trip.startDate)) : null;
+  const tripEndDate = trip?.endDate ? startOfDay(new Date(trip.endDate)) : null;
+
+  const clampDateToTrip = (date: Date) => {
+    if (!tripStartDate && !tripEndDate) {
+      return startOfDay(date);
+    }
+
+    const normalized = startOfDay(date);
+
+    if (tripStartDate && isBefore(normalized, tripStartDate)) {
+      return tripStartDate;
+    }
+
+    if (tripEndDate && isAfter(normalized, tripEndDate)) {
+      return tripEndDate;
+    }
+
+    return normalized;
+  };
+
+  useEffect(() => {
+    if (trip?.startDate) {
+      const start = startOfDay(new Date(trip.startDate));
+      setGroupViewDate((prev) => (prev ? prev : start));
+      setScheduleViewDate((prev) => (prev ? prev : start));
+      setSelectedDate((prev) => (prev ? prev : start));
+    }
+  }, [trip?.startDate]);
+
+  useEffect(() => {
+    if (activeTab === "calendar" && groupCalendarView === "day" && groupViewDate) {
+      setSelectedDate(groupViewDate);
+    }
+  }, [activeTab, groupCalendarView, groupViewDate]);
+
+  useEffect(() => {
+    if (activeTab === "schedule" && scheduleCalendarView === "day" && scheduleViewDate) {
+      setSelectedDate(scheduleViewDate);
+    }
+  }, [activeTab, scheduleCalendarView, scheduleViewDate]);
+
   // Filter activities by category and people
   const getFilteredActivities = () => {
     let filtered = activities;
@@ -164,6 +399,105 @@ export default function Trip() {
 
   const myScheduleActivities = getMySchedule();
   const filteredActivities = getFilteredActivities();
+  const currentGroupDay = groupViewDate ?? tripStartDate ?? null;
+  const currentScheduleDay = scheduleViewDate ?? tripStartDate ?? null;
+
+  const canGoToPreviousGroupDay = Boolean(
+    currentGroupDay && tripStartDate && isAfter(currentGroupDay, tripStartDate),
+  );
+  const canGoToNextGroupDay = Boolean(
+    currentGroupDay && tripEndDate && isBefore(currentGroupDay, tripEndDate),
+  );
+  const canGoToPreviousScheduleDay = Boolean(
+    currentScheduleDay && tripStartDate && isAfter(currentScheduleDay, tripStartDate),
+  );
+  const canGoToNextScheduleDay = Boolean(
+    currentScheduleDay && tripEndDate && isBefore(currentScheduleDay, tripEndDate),
+  );
+
+  const handleGroupViewChange = (view: "month" | "day") => {
+    setGroupCalendarView(view);
+    if (view === "day") {
+      const baseDate = groupViewDate ?? selectedDate ?? tripStartDate;
+      if (baseDate) {
+        const normalized = clampDateToTrip(baseDate);
+        setGroupViewDate(normalized);
+        setSelectedDate(normalized);
+      }
+    }
+  };
+
+  const handleScheduleViewChange = (view: "month" | "day") => {
+    setScheduleCalendarView(view);
+    if (view === "day") {
+      const baseDate = scheduleViewDate ?? selectedDate ?? tripStartDate;
+      if (baseDate) {
+        const normalized = clampDateToTrip(baseDate);
+        setScheduleViewDate(normalized);
+        setSelectedDate(normalized);
+      }
+    }
+  };
+
+  const handleGroupPreviousDay = () => {
+    if (!currentGroupDay || !canGoToPreviousGroupDay) return;
+    const previous = clampDateToTrip(subDays(currentGroupDay, 1));
+    setGroupViewDate(previous);
+    setSelectedDate(previous);
+  };
+
+  const handleGroupNextDay = () => {
+    if (!currentGroupDay || !canGoToNextGroupDay) return;
+    const next = clampDateToTrip(addDays(currentGroupDay, 1));
+    setGroupViewDate(next);
+    setSelectedDate(next);
+  };
+
+  const handleSchedulePreviousDay = () => {
+    if (!currentScheduleDay || !canGoToPreviousScheduleDay) return;
+    const previous = clampDateToTrip(subDays(currentScheduleDay, 1));
+    setScheduleViewDate(previous);
+    setSelectedDate(previous);
+  };
+
+  const handleScheduleNextDay = () => {
+    if (!currentScheduleDay || !canGoToNextScheduleDay) return;
+    const next = clampDateToTrip(addDays(currentScheduleDay, 1));
+    setScheduleViewDate(next);
+    setSelectedDate(next);
+  };
+
+  const openAddActivityModal = (date?: Date | null) => {
+    const baseDate = date ?? selectedDate ?? tripStartDate;
+    const targetDate = baseDate ? clampDateToTrip(baseDate) : null;
+
+    if (targetDate) {
+      setSelectedDate(targetDate);
+      setGroupViewDate(targetDate);
+      setScheduleViewDate(targetDate);
+    }
+
+    setShowAddActivity(true);
+  };
+
+  const handleOpenAddActivityForGroup = () => {
+    const baseDate =
+      groupCalendarView === "day"
+        ? currentGroupDay ?? tripStartDate
+        : selectedDate ?? currentGroupDay ?? tripStartDate;
+
+    openAddActivityModal(baseDate);
+  };
+
+  const handleOpenAddActivityForSchedule = () => {
+    const baseDate =
+      scheduleCalendarView === "day"
+        ? currentScheduleDay ?? tripStartDate
+        : selectedDate ?? currentScheduleDay ?? tripStartDate;
+
+    openAddActivityModal(baseDate);
+  };
+
   const totalMembers = trip?.members?.length ?? 0;
   const tripDurationDays = trip?.startDate && trip?.endDate
     ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
@@ -261,13 +595,13 @@ export default function Trip() {
                   <button
                     onClick={() => setActiveTab("schedule")}
                     className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "schedule" 
-                        ? "bg-primary text-white" 
+                      activeTab === "schedule"
+                        ? "bg-primary text-white"
                         : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
                     }`}
                     data-onboarding="personal-schedule"
                   >
-                    <User className="w-5 h-5 mr-3" />
+                    <UserIcon className="w-5 h-5 mr-3" />
                     My Schedule
                   </button>
                   {/* 3. Proposals */}
@@ -432,7 +766,11 @@ export default function Trip() {
                             <div className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur">
                               <Calendar className="h-4 w-4" />
                               <span>
-                                {format(new Date(trip.startDate), 'MMM dd')} - {format(new Date(trip.endDate), 'MMM dd, yyyy')}
+                                {tripStartDate && tripEndDate
+                                  ? `${format(tripStartDate, 'MMM dd')} - ${format(tripEndDate, 'MMM dd, yyyy')}`
+                                  : tripStartDate
+                                    ? `${format(tripStartDate, 'MMM dd, yyyy')}`
+                                    : 'Dates TBD'}
                               </span>
                             </div>
                             <button
@@ -487,7 +825,7 @@ export default function Trip() {
                               </Button>
                             </div>
                             <Button
-                              onClick={() => setShowAddActivity(true)}
+                              onClick={() => openAddActivityModal()}
                               size="lg"
                               className="w-full justify-center bg-primary text-white shadow-md hover:bg-red-600"
                             >
@@ -520,7 +858,7 @@ export default function Trip() {
                             <p className="mt-1 text-2xl font-semibold text-neutral-900">{myScheduleActivities.length}</p>
                           </div>
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                            <User className="h-5 w-5" />
+                            <UserIcon className="h-5 w-5" />
                           </div>
                         </div>
                         <p className="mt-3 text-xs text-neutral-500">Keep tabs on the plans you’ve accepted.</p>
@@ -553,30 +891,56 @@ export default function Trip() {
                   <div className="space-y-6">
                     <Card className="overflow-hidden border-none shadow-xl">
                       <CardHeader className="space-y-6 border-b border-neutral-200 bg-neutral-50/80">
-                        <div className="flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <CardTitle className="text-lg font-semibold text-neutral-900">Group activity calendar</CardTitle>
                             <p className="text-sm text-neutral-600">Use filters to focus on the plans that matter right now.</p>
                           </div>
-                          <div className="flex items-center gap-2 rounded-full bg-white px-2 py-1 shadow-sm">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">View</span>
+                              <Select
+                                value={groupCalendarView}
+                                onValueChange={(value) => handleGroupViewChange(value as "month" | "day")}
+                              >
+                                <SelectTrigger className="min-w-[150px] bg-white">
+                                  <SelectValue placeholder="Select view" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="month">Month view</SelectItem>
+                                  <SelectItem value="day">Day view</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {groupCalendarView === "month" && (
+                              <div className="flex items-center gap-2 rounded-full bg-white px-2 py-1 shadow-sm">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                                  aria-label="Previous month"
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <span className="min-w-[140px] text-center text-sm font-semibold text-neutral-900">
+                                  {format(currentMonth, 'MMMM yyyy')}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                                  aria-label="Next month"
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
                             <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                              aria-label="Previous month"
+                              onClick={handleOpenAddActivityForGroup}
+                              className="bg-primary text-white hover:bg-red-600"
                             >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <span className="min-w-[140px] text-center text-sm font-semibold text-neutral-900">
-                              {format(currentMonth, 'MMMM yyyy')}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                              aria-label="Next month"
-                            >
-                              <ChevronRight className="h-4 w-4" />
+                              <Plus className="mr-2 h-4 w-4" />
+                              Add Activity
                             </Button>
                           </div>
                         </div>
@@ -627,32 +991,49 @@ export default function Trip() {
                         </div>
                       </CardHeader>
                       <CardContent className="p-6" data-tutorial="group-calendar">
-                        <CalendarGrid
-                          currentMonth={currentMonth}
-                          activities={filteredActivities}
-                          trip={trip}
-                          selectedDate={selectedDate}
-                          onDayClick={(date) => {
-                            setSelectedDate(date);
-                            setShowAddActivity(true);
-                          }}
-                        />
-                        {filteredActivities.length === 0 && (
-                          <div className="p-8 text-center">
-                            <Calendar className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-                            <h3 className="mb-2 text-lg font-medium text-neutral-900">No activities planned yet</h3>
-                            <p className="mb-4 text-neutral-600">
-                              Discover activities in {trip.destination} or add your own custom activities.
-                            </p>
-                            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-                              <Button
-                                onClick={() => setShowAddActivity(true)}
-                                className="bg-primary text-white hover:bg-red-600"
-                              >
-                                <MapPin className="mr-2 h-4 w-4" />
-                                Add Activity
-                              </Button>
-                            </div>
+                        {groupCalendarView === "month" ? (
+                          <>
+                            <CalendarGrid
+                              currentMonth={currentMonth}
+                              activities={filteredActivities}
+                              trip={trip}
+                              selectedDate={selectedDate}
+                              onDayClick={(date) => {
+                                openAddActivityModal(clampDateToTrip(date));
+                              }}
+                            />
+                            {filteredActivities.length === 0 && (
+                              <div className="p-8 text-center">
+                                <Calendar className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                                <h3 className="mb-2 text-lg font-medium text-neutral-900">No activities planned yet</h3>
+                                <p className="mb-4 text-neutral-600">
+                                  Discover activities in {trip.destination} or add your own custom activities.
+                                </p>
+                                <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+                                  <Button
+                                    onClick={handleOpenAddActivityForGroup}
+                                    className="bg-primary text-white hover:bg-red-600"
+                                  >
+                                    <MapPin className="mr-2 h-4 w-4" />
+                                    Add Activity
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : currentGroupDay ? (
+                          <DayView
+                            date={currentGroupDay}
+                            activities={filteredActivities}
+                            onPreviousDay={handleGroupPreviousDay}
+                            onNextDay={handleGroupNextDay}
+                            canGoPrevious={canGoToPreviousGroupDay}
+                            canGoNext={canGoToNextGroupDay}
+                            emptyStateMessage="No activities scheduled for this day yet. Use the Add Activity button to plan something fun."
+                          />
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
+                            Trip dates are needed to show the calendar view.
                           </div>
                         )}
                       </CardContent>
@@ -663,44 +1044,85 @@ export default function Trip() {
                 {activeTab === "schedule" && (
                   <div>
                     <Card className="mb-6">
-                      <div className="px-6 py-4 border-b border-gray-200">
-                        <div className="flex items-center justify-between">
+                      <div className="px-6 py-4 border-b border-gray-200 space-y-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <h2 className="text-lg font-semibold text-neutral-900">My Personal Calendar</h2>
                             <p className="text-sm text-neutral-600">Visual calendar of your accepted activities</p>
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">View</span>
+                              <Select
+                                value={scheduleCalendarView}
+                                onValueChange={(value) => handleScheduleViewChange(value as "month" | "day")}
+                              >
+                                <SelectTrigger className="min-w-[150px] bg-white">
+                                  <SelectValue placeholder="Select view" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="month">Month view</SelectItem>
+                                  <SelectItem value="day">Day view</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            {scheduleCalendarView === "month" && (
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                                >
+                                  <ChevronLeft className="w-4 h-4" />
+                                </Button>
+                                <span className="min-w-[120px] text-center text-sm font-semibold text-neutral-900">
+                                  {format(currentMonth, 'MMMM yyyy')}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            )}
                             <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                              onClick={handleOpenAddActivityForSchedule}
+                              className="bg-primary text-white hover:bg-red-600"
                             >
-                              <ChevronLeft className="w-4 h-4" />
-                            </Button>
-                            <span className="text-sm font-medium text-neutral-900 min-w-[120px] text-center">
-                              {format(currentMonth, 'MMMM yyyy')}
-                            </span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                            >
-                              <ChevronRight className="w-4 h-4" />
+                              <Plus className="mr-2 h-4 w-4" />
+                              Add Activity
                             </Button>
                           </div>
                         </div>
                       </div>
                       <div className="p-6">
-                        <CalendarGrid
-                          currentMonth={currentMonth}
-                          activities={getMySchedule()}
-                          trip={trip}
-                          selectedDate={selectedDate}
-                          onDayClick={(date) => {
-                            setSelectedDate(date);
-                            setShowAddActivity(true);
-                          }}
-                        />
+                        {scheduleCalendarView === "month" ? (
+                          <CalendarGrid
+                            currentMonth={currentMonth}
+                            activities={myScheduleActivities}
+                            trip={trip}
+                            selectedDate={selectedDate}
+                            onDayClick={(date) => {
+                              openAddActivityModal(clampDateToTrip(date));
+                            }}
+                          />
+                        ) : currentScheduleDay ? (
+                          <DayView
+                            date={currentScheduleDay}
+                            activities={myScheduleActivities}
+                            onPreviousDay={handleSchedulePreviousDay}
+                            onNextDay={handleScheduleNextDay}
+                            canGoPrevious={canGoToPreviousScheduleDay}
+                            canGoNext={canGoToNextScheduleDay}
+                            emptyStateMessage="No activities accepted for this day yet."
+                          />
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
+                            Trip dates are needed to show the calendar view.
+                          </div>
+                        )}
                       </div>
                     </Card>
                   </div>
