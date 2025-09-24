@@ -14,6 +14,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowRight,
   ArrowUpRight,
   Calendar,
@@ -32,6 +39,7 @@ import {
   Trash2,
   Users,
   DollarSign,
+  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useState } from "react";
@@ -141,9 +149,35 @@ const formatMemberName = (firstName?: string | null, email?: string | null) => {
   return "Traveler";
 };
 
+type StatType = "upcomingTrips" | "travelCompanions" | "destinations";
+
+interface StatDefinition {
+  type: StatType;
+  label: string;
+  value: number;
+  icon: LucideIcon;
+  accent: string;
+}
+
+interface CompanionDetail {
+  id: string;
+  name: string;
+  email: string | null;
+  trips: string[];
+  initial: string;
+}
+
+interface DestinationDetail {
+  name: string;
+  totalTrips: number;
+  upcomingTrips: number;
+}
+
 export default function Home() {
   const { user } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [selectedStat, setSelectedStat] = useState<StatType | null>(null);
+  const [isStatsDialogOpen, setIsStatsDialogOpen] = useState(false);
   const { toast } = useToast();
 
   const { data: trips, isLoading, error } = useQuery<TripWithDetails[]>({
@@ -196,6 +230,18 @@ export default function Home() {
     return trips.filter((trip) => new Date(trip.endDate) < now);
   };
 
+  const handleStatClick = (statType: StatType) => {
+    setSelectedStat(statType);
+    setIsStatsDialogOpen(true);
+  };
+
+  const handleStatsDialogOpenChange = (open: boolean) => {
+    setIsStatsDialogOpen(open);
+    if (!open) {
+      setSelectedStat(null);
+    }
+  };
+
   const handleLogout = async () => {
     console.log("Logout button clicked");
     localStorage.clear();
@@ -237,26 +283,247 @@ export default function Home() {
     : "Plan something unforgettable—start by creating your next itinerary.";
   const travelFocusName = highlightDestinationName ?? "your next destination";
   const recentMembers = highlightTrip?.members?.slice(0, 3) ?? [];
-  const stats = [
+  const stats: StatDefinition[] = [
     {
+      type: "upcomingTrips",
       label: "Upcoming trips",
       value: upcomingTrips.length,
       icon: Calendar,
       accent: "bg-sky-100 text-sky-600",
     },
     {
+      type: "travelCompanions",
       label: "Travel companions",
       value: totalCompanions,
       icon: Users,
       accent: "bg-emerald-100 text-emerald-600",
     },
     {
+      type: "destinations",
       label: "Destinations",
       value: uniqueDestinations,
       icon: MapPin,
       accent: "bg-violet-100 text-violet-600",
     },
   ];
+
+  const companionMap = new Map<string, CompanionDetail>();
+  (trips ?? []).forEach((trip) => {
+    const tripName = trip.name?.trim() || "Unnamed trip";
+    (trip.members ?? []).forEach((member) => {
+      const user = member.user;
+      if (!user?.id) {
+        return;
+      }
+      const existingCompanion = companionMap.get(user.id);
+      const companionName = formatMemberName(user.firstName, user.email);
+      const companionInitial = getMemberInitial(user.firstName, user.email);
+      const email = user.email ?? null;
+
+      if (existingCompanion) {
+        if (!existingCompanion.trips.includes(tripName)) {
+          existingCompanion.trips.push(tripName);
+        }
+      } else {
+        companionMap.set(user.id, {
+          id: user.id,
+          name: companionName,
+          email,
+          trips: [tripName],
+          initial: companionInitial,
+        });
+      }
+    });
+  });
+  const companionDetails = Array.from(companionMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  const destinationMap = new Map<string, DestinationDetail>();
+  const currentDate = new Date();
+  (trips ?? []).forEach((trip) => {
+    const rawDestination = trip.destination ?? "Destination TBA";
+    const displayDestination =
+      rawDestination && rawDestination.trim().length > 0
+        ? rawDestination.trim()
+        : "Destination TBA";
+    const mapKey = rawDestination || "Destination TBA";
+    const existingDestination = destinationMap.get(mapKey);
+    const tripStart = new Date(trip.startDate);
+    const isUpcoming = tripStart >= currentDate;
+
+    if (existingDestination) {
+      existingDestination.totalTrips += 1;
+      if (isUpcoming) {
+        existingDestination.upcomingTrips += 1;
+      }
+    } else {
+      destinationMap.set(mapKey, {
+        name: displayDestination,
+        totalTrips: 1,
+        upcomingTrips: isUpcoming ? 1 : 0,
+      });
+    }
+  });
+  const destinationDetails = Array.from(destinationMap.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  const statDescriptions: Record<StatType, string> = {
+    upcomingTrips:
+      "Preview names, dates, and destinations for each upcoming trip.",
+    travelCompanions:
+      "See who is joining you and which adventures you're sharing together.",
+    destinations:
+      "Review every destination you've saved across your journeys.",
+  };
+
+  const activeStat = selectedStat
+    ? stats.find((stat) => stat.type === selectedStat)
+    : undefined;
+
+  const renderSelectedStatContent = () => {
+    if (!selectedStat) {
+      return null;
+    }
+
+    if (selectedStat === "upcomingTrips") {
+      if (sortedUpcomingTrips.length === 0) {
+        return (
+          <p className="text-sm text-slate-600">
+            You're all caught up! Create a new trip to see it here.
+          </p>
+        );
+      }
+
+      return (
+        <div className="space-y-3">
+          {sortedUpcomingTrips.map((trip) => {
+            const countdown = getCountdownLabel(trip.startDate);
+
+            return (
+              <div
+                key={trip.id}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {trip.name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {trip.destination || "Destination TBA"}
+                    </p>
+                  </div>
+                  <Badge className="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700">
+                    {countdown}
+                  </Badge>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-600">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-4 w-4 text-slate-500" />
+                    {formatDateRange(trip.startDate, trip.endDate)}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Users className="h-4 w-4 text-slate-500" />
+                    {trip.memberCount} companion{trip.memberCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (selectedStat === "travelCompanions") {
+      if (companionDetails.length === 0) {
+        return (
+          <p className="text-sm text-slate-600">
+            Invite friends and family to your trips to see them listed here.
+          </p>
+        );
+      }
+
+      return (
+        <div className="space-y-3">
+          {companionDetails.map((companion) => {
+            const tripNames = companion.trips;
+            const displayedTrips = tripNames.slice(0, 3).join(", ");
+            const remainingCount = Math.max(tripNames.length - 3, 0);
+            const tripLabel =
+              tripNames.length === 0
+                ? "No trips recorded yet"
+                : tripNames.length === 1
+                  ? `Trip: ${tripNames[0]}`
+                  : `Trips: ${displayedTrips}${
+                      remainingCount > 0 ? ` +${remainingCount} more` : ""
+                    }`;
+
+            return (
+              <div
+                key={companion.id}
+                className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
+                  {companion.initial}
+                </div>
+                <div className="space-y-1 text-sm">
+                  <p className="font-semibold text-slate-900">{companion.name}</p>
+                  {companion.email && (
+                    <p className="text-xs text-slate-500">{companion.email}</p>
+                  )}
+                  <p className="text-xs text-slate-500">{tripLabel}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (selectedStat === "destinations") {
+      if (destinationDetails.length === 0) {
+        return (
+          <p className="text-sm text-slate-600">
+            Plan a trip to start building your destination list.
+          </p>
+        );
+      }
+
+      return (
+        <div className="space-y-3">
+          {destinationDetails.map((destination) => (
+            <div
+              key={destination.name}
+              className="space-y-2 rounded-2xl border border-slate-200 p-4"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-violet-600" />
+                  <p className="text-sm font-semibold text-slate-900">
+                    {destination.name}
+                  </p>
+                </div>
+                <Badge className="rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
+                  {destination.totalTrips} trip{destination.totalTrips === 1 ? "" : "s"}
+                </Badge>
+              </div>
+              <p className="text-xs text-slate-500">
+                {destination.upcomingTrips > 0
+                  ? `${destination.upcomingTrips} upcoming ${
+                      destination.upcomingTrips === 1 ? "adventure" : "adventures"
+                    } planned`
+                  : "No upcoming adventures planned"}
+              </p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   if (isLoading) {
     return (
@@ -420,27 +687,53 @@ export default function Home() {
                 const showDivider = index < stats.length - 1;
 
                 return (
-                  <div
+                  <button
                     key={stat.label}
-                    className={`flex items-center gap-3 ${
+                    type="button"
+                    onClick={() => handleStatClick(stat.type)}
+                    className={`group flex w-full items-center gap-3 rounded-2xl px-2 py-2 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
                       showDivider ? "md:border-r md:border-slate-200 md:pr-6" : ""
-                    }`}
+                    } md:w-auto`}
+                    aria-label={`View details for ${stat.label}`}
                   >
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${stat.accent}`}>
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${stat.accent} transition group-hover:scale-105`}
+                    >
                       <Icon className="h-5 w-5" />
                     </div>
                     <div>
                       <p className="text-2xl font-semibold text-slate-900">
                         {stat.value}
                       </p>
-                      <p className="text-sm capitalize text-slate-600">{stat.label}</p>
+                      <p className="text-sm capitalize text-slate-600 group-hover:text-slate-800">
+                        {stat.label}
+                      </p>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
           </CardContent>
         </Card>
+
+        <Dialog
+          open={isStatsDialogOpen}
+          onOpenChange={handleStatsDialogOpenChange}
+        >
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>{activeStat?.label ?? "Details"}</DialogTitle>
+              {selectedStat && (
+                <DialogDescription>
+                  {statDescriptions[selectedStat]}
+                </DialogDescription>
+              )}
+            </DialogHeader>
+            <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+              {renderSelectedStatContent()}
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <section className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
