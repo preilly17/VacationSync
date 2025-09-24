@@ -93,16 +93,16 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-md border-white/15 bg-white/10 shadow-[0_32px_90px_-32px_rgba(2,6,23,0.9)]">
-        <CardHeader className="text-center space-y-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-emerald-50 px-4 py-12">
+      <Card className="w-full max-w-md border border-slate-200/80 bg-white/95 text-slate-900 shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] backdrop-blur">
+        <CardHeader className="space-y-4 text-center">
           <div className="flex items-center justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-white/10 shadow-[0_20px_60px_-30px_rgba(56,189,248,0.6)]">
-              <Plane className="h-6 w-6 text-white" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 shadow-[0_10px_30px_-12px_rgba(16,185,129,0.45)]">
+              <Plane className="h-6 w-6 text-emerald-600" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-semibold text-white">Welcome back</CardTitle>
-          <CardDescription className="text-white/70">
+          <CardTitle className="text-3xl font-semibold">Welcome back</CardTitle>
+          <CardDescription className="text-slate-600">
             Sign in to your TripSync account to continue planning
           </CardDescription>
         </CardHeader>
@@ -114,13 +114,13 @@ export default function Login() {
                 name="usernameOrEmail"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username or Email</FormLabel>
+                    <FormLabel className="text-slate-700">Username or Email</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <User className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <User className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           placeholder="john@example.com or johndoe"
-                          className="pl-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="pl-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                       </div>
@@ -135,21 +135,21 @@ export default function Login() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel className="text-slate-700">Password</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           type={showPassword ? "text" : "password"}
                           placeholder="••••••••"
-                          className="pl-11 pr-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="pl-11 pr-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/5 text-white/60 hover:bg-white/10"
+                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full text-slate-500 hover:bg-slate-100"
                           onClick={() => setShowPassword(!showPassword)}
                         >
                           {showPassword ? (
@@ -172,11 +172,11 @@ export default function Login() {
           </Form>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-slate-600">
               Don't have an account?{" "}
               <Link
                 href="/register"
-                className="font-medium text-emerald-300 hover:text-emerald-200"
+                className="font-medium text-emerald-600 hover:text-emerald-500"
               >
                 Create one here
               </Link>
@@ -186,7 +186,7 @@ export default function Login() {
           <div className="mt-4 text-center">
             <Link
               href="/forgot-password"
-              className="text-sm text-white/60 hover:text-white"
+              className="text-sm text-slate-600 hover:text-slate-900"
             >
               Forgot your password?
             </Link>

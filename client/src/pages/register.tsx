@@ -92,16 +92,16 @@ export default function Register() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-12">
-      <Card className="w-full max-w-2xl border-white/15 bg-white/10 shadow-[0_32px_90px_-32px_rgba(2,6,23,0.9)]">
-        <CardHeader className="text-center space-y-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 via-white to-emerald-50 px-4 py-12">
+      <Card className="w-full max-w-2xl border border-slate-200/80 bg-white/95 text-slate-900 shadow-[0_24px_60px_-24px_rgba(15,23,42,0.35)] backdrop-blur">
+        <CardHeader className="space-y-4 text-center">
           <div className="flex items-center justify-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/15 bg-white/10 shadow-[0_20px_60px_-30px_rgba(56,189,248,0.6)]">
-              <Plane className="h-6 w-6 text-white" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 shadow-[0_10px_30px_-12px_rgba(16,185,129,0.45)]">
+              <Plane className="h-6 w-6 text-emerald-600" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-semibold text-white">Create your account</CardTitle>
-          <CardDescription className="text-white/70">
+          <CardTitle className="text-3xl font-semibold">Create your account</CardTitle>
+          <CardDescription className="text-slate-600">
             Join TripSync to start planning unforgettable group adventures together
           </CardDescription>
         </CardHeader>
@@ -114,11 +114,11 @@ export default function Register() {
                   name="firstName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>First Name</FormLabel>
+                      <FormLabel className="text-slate-700">First Name</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="John"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                       </FormControl>
@@ -131,11 +131,11 @@ export default function Register() {
                   name="lastName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Last Name</FormLabel>
+                      <FormLabel className="text-slate-700">Last Name</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Doe"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                       </FormControl>
@@ -150,13 +150,13 @@ export default function Register() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel className="text-slate-700">Email</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Mail className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Mail className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           placeholder="john@example.com"
-                          className="pl-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="pl-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                       </div>
@@ -171,19 +171,19 @@ export default function Register() {
                 name="phoneNumber"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
+                    <FormLabel className="text-slate-700">Phone Number</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Phone className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Phone className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           type="tel"
                           placeholder="+1 (555) 123-4567"
-                          className="pl-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="pl-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                       </div>
                     </FormControl>
-                    <p className="mt-1 text-xs text-white/60">
+                    <p className="mt-1 text-xs text-slate-600">
                       Used for CashApp and Venmo payment integration
                     </p>
                     <FormMessage />
@@ -196,13 +196,13 @@ export default function Register() {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel className="text-slate-700">Username</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <User className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <User className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           placeholder="johndoe"
-                          className="pl-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="pl-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                       </div>
@@ -217,21 +217,21 @@ export default function Register() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel className="text-slate-700">Password</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           type={showPassword ? "text" : "password"}
                           placeholder="••••••••"
-                          className="pl-11 pr-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="pl-11 pr-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/5 text-white/60 hover:bg-white/10"
+                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full text-slate-500 hover:bg-slate-100"
                           onClick={() => setShowPassword(!showPassword)}
                         >
                           {showPassword ? (
@@ -252,21 +252,21 @@ export default function Register() {
                 name="confirmPassword"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
+                    <FormLabel className="text-slate-700">Confirm Password</FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-white/40" />
+                        <Lock className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           type={showConfirmPassword ? "text" : "password"}
                           placeholder="••••••••"
-                          className="pl-11 pr-11 bg-white/5 border-white/20 text-white placeholder:text-white/40 focus-visible:ring-primary"
+                          className="pl-11 pr-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
                         />
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full bg-white/5 text-white/60 hover:bg-white/10"
+                          className="absolute right-1.5 top-1.5 h-7 w-7 rounded-full text-slate-500 hover:bg-slate-100"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         >
                           {showConfirmPassword ? (
@@ -289,11 +289,11 @@ export default function Register() {
           </Form>
 
           <div className="mt-6 text-center">
-            <p className="text-sm text-white/70">
+            <p className="text-sm text-slate-600">
               Already have an account?{" "}
               <Link
                 href="/login"
-                className="font-medium text-emerald-300 hover:text-emerald-200"
+                className="font-medium text-emerald-600 hover:text-emerald-500"
               >
                 Sign in here
               </Link>
