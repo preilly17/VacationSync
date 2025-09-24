@@ -2122,6 +2122,39 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.post(
+    '/api/hotel-proposals/:id/cancel',
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const proposalId = parseInt(req.params.id);
+        const userId = getRequestUserId(req);
+
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const proposal = await storage.cancelHotelProposal(proposalId, userId);
+        res.json(proposal);
+      } catch (error: unknown) {
+        console.error("Error canceling hotel proposal:", error);
+        if (error instanceof Error) {
+          if (error.message === "Hotel proposal not found") {
+            return res.status(404).json({ message: error.message });
+          }
+
+          if (error.message.includes("Only the creator")) {
+            return res.status(403).json({ message: error.message });
+          }
+        }
+
+        res
+          .status(500)
+          .json({ message: "Failed to cancel hotel proposal" });
+      }
+    },
+  );
+
   // Flight proposal routes (accessible for development)
   app.get('/api/trips/:id/flight-proposals', async (req: any, res) => {
     try {
@@ -2192,6 +2225,39 @@ export function setupRoutes(app: Express) {
       }
     }
   });
+
+  app.post(
+    '/api/flight-proposals/:id/cancel',
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const proposalId = parseInt(req.params.id);
+        const userId = getRequestUserId(req);
+
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const proposal = await storage.cancelFlightProposal(proposalId, userId);
+        res.json(proposal);
+      } catch (error: unknown) {
+        console.error("Error canceling flight proposal:", error);
+        if (error instanceof Error) {
+          if (error.message === "Flight proposal not found") {
+            return res.status(404).json({ message: error.message });
+          }
+
+          if (error.message.includes("Only the creator")) {
+            return res.status(403).json({ message: error.message });
+          }
+        }
+
+        res
+          .status(500)
+          .json({ message: "Failed to cancel flight proposal" });
+      }
+    },
+  );
 
   // Restaurant proposal routes
   app.get('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
@@ -2282,6 +2348,42 @@ export function setupRoutes(app: Express) {
       }
     }
   });
+
+  app.post(
+    '/api/restaurant-proposals/:id/cancel',
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const proposalId = parseInt(req.params.id);
+        const userId = getRequestUserId(req);
+
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const proposal = await storage.cancelRestaurantProposal(
+          proposalId,
+          userId,
+        );
+        res.json(proposal);
+      } catch (error: unknown) {
+        console.error("Error canceling restaurant proposal:", error);
+        if (error instanceof Error) {
+          if (error.message === "Restaurant proposal not found") {
+            return res.status(404).json({ message: error.message });
+          }
+
+          if (error.message.includes("Only the creator")) {
+            return res.status(403).json({ message: error.message });
+          }
+        }
+
+        res
+          .status(500)
+          .json({ message: "Failed to cancel restaurant proposal" });
+      }
+    },
+  );
 
   // Flight booking routes  
   app.get('/api/trips/:id/flights', async (req: any, res) => {
