@@ -172,7 +172,11 @@ export function CurrencyConverter({
             className="text-lg font-semibold"
           />
         </div>
-        <Select value={currency} onValueChange={onCurrencyChange}>
+        <Select
+          value={currency}
+          onValueChange={onCurrencyChange}
+          modal={false}
+        >
           <SelectTrigger className="w-24">
             <SelectValue />
           </SelectTrigger>
@@ -223,7 +227,11 @@ export function CurrencyConverter({
             {/* Target Currency Selector */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">Convert to:</span>
-              <Select value={targetCurrency} onValueChange={setTargetCurrency}>
+              <Select
+                value={targetCurrency}
+                onValueChange={setTargetCurrency}
+                modal={false}
+              >
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>

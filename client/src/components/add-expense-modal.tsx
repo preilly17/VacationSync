@@ -209,6 +209,7 @@ export function AddExpenseModal({
                       Request payment in:
                     </label>
                     <Select
+                      modal={false}
                       value={requestCurrency}
                       onValueChange={setRequestCurrency}
                     >
@@ -278,6 +279,7 @@ export function AddExpenseModal({
                   <FormItem>
                     <FormLabel>Category</FormLabel>
                     <Select
+                      modal={false}
                       onValueChange={field.onChange}
                       defaultValue={field.value}
                     >
@@ -549,6 +551,7 @@ export function AddExpenseModal({
                   <FormItem className="hidden">
                     <FormLabel>Split Type</FormLabel>
                     <Select
+                      modal={false}
                       onValueChange={field.onChange}
                       defaultValue={field.value}
                     >
