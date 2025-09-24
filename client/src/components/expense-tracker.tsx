@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
@@ -13,10 +13,26 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AddExpenseModal } from "./add-expense-modal";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { ExpenseWithDetails, User } from "@shared/schema";
+import type { ExpenseWithDetails, TripWithDetails, User } from "@shared/schema";
 import {
   CheckCircle2,
   Loader2,
@@ -25,6 +41,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type ExpenseBalances = {
   owes: number;
@@ -36,6 +53,12 @@ interface ExpenseTrackerProps {
   tripId: number;
   user?: User;
 }
+
+type SummaryView = "total" | "youPaid" | "youOwe" | "youAreOwed";
+
+type TimeFilter = "30" | "trip" | "all";
+
+type SortOption = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
 
 function formatCurrency(amount: number, currency: string) {
   const safeAmount = Number.isFinite(amount) ? amount : 0;
@@ -119,6 +142,10 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
   const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [settlingId, setSettlingId] = useState<number | null>(null);
+  const [detailView, setDetailView] = useState<SummaryView | null>(null);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("trip");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortOption, setSortOption] = useState<SortOption>("date-desc");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -127,6 +154,11 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     isLoading: isLoadingExpenses,
   } = useQuery<ExpenseWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/expenses`],
+  });
+
+  const { data: trip } = useQuery<TripWithDetails>({
+    queryKey: [`/api/trips/${tripId}`],
+    enabled: Number.isFinite(tripId) && tripId > 0,
   });
 
   const { data: balances } = useQuery<ExpenseBalances>({
@@ -230,6 +262,234 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
 
   const summaryLoading = isLoadingExpenses && expenses.length === 0;
 
+  useEffect(() => {
+    if (detailView) {
+      setTimeFilter("trip");
+      setSearchTerm("");
+      setSortOption("date-desc");
+    }
+  }, [detailView]);
+
+  const cardConfigs: {
+    type: SummaryView;
+    title: string;
+    description: string;
+    amount: number;
+    amountClassName?: string;
+    emptyState: string;
+  }[] = useMemo(
+    () => [
+      {
+        type: "total",
+        title: "Total recorded",
+        description: "All expenses logged for this trip.",
+        amount: summary.total,
+        emptyState:
+          "Nothing here yet. Log an expense to start tracking spending for this trip.",
+      },
+      {
+        type: "youPaid",
+        title: "You paid",
+        description: "Amount you covered for everyone else.",
+        amount: summary.youPaid,
+        amountClassName: "text-blue-600",
+        emptyState:
+          "Nothing here yet. When you cover an expense, it’ll show up here.",
+      },
+      {
+        type: "youOwe",
+        title: "You owe",
+        description: "Outstanding amount you still need to pay.",
+        amount: summary.owes,
+        amountClassName: "text-rose-600",
+        emptyState:
+          "Nothing here yet. When someone logs an expense you owe, it’ll show up here.",
+      },
+      {
+        type: "youAreOwed",
+        title: "You're owed",
+        description: "Friends still owe you this much.",
+        amount: summary.owed,
+        amountClassName: "text-emerald-600",
+        emptyState:
+          "Nothing here yet. When someone owes you for an expense, it’ll show up here.",
+      },
+    ],
+    [summary.owed, summary.owes, summary.total, summary.youPaid],
+  );
+
+  const selectedCard = detailView
+    ? cardConfigs.find((card) => card.type === detailView)
+    : null;
+
+  const filteredExpenses = useMemo(() => {
+    if (!detailView) {
+      return [] as ExpenseWithDetails[];
+    }
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(now.getDate() - 30);
+
+    const tripStart = trip?.startDate ? new Date(trip.startDate) : null;
+    const tripEnd = trip?.endDate ? new Date(trip.endDate) : null;
+    if (tripEnd) {
+      tripEnd.setHours(23, 59, 59, 999);
+    }
+
+    const matchesView = (expense: ExpenseWithDetails) => {
+      if (detailView === "total") {
+        return true;
+      }
+
+      if (!user?.id) {
+        return false;
+      }
+
+      const shareForCurrentUser = expense.shares.find(
+        (share) => share.userId === user.id,
+      );
+
+      if (detailView === "youPaid") {
+        return expense.paidBy.id === user.id;
+      }
+
+      if (detailView === "youOwe") {
+        return (
+          !!shareForCurrentUser &&
+          shareForCurrentUser.amount > 0 &&
+          !shareForCurrentUser.isPaid
+        );
+      }
+
+      if (detailView === "youAreOwed") {
+        if (expense.paidBy.id !== user.id) {
+          return false;
+        }
+        return expense.shares.some(
+          (share) => share.userId !== user.id && share.amount > 0 && !share.isPaid,
+        );
+      }
+
+      return false;
+    };
+
+    const matchesTimeFilter = (expense: ExpenseWithDetails) => {
+      if (timeFilter === "all") {
+        return true;
+      }
+
+      const createdAt = expense.createdAt ? new Date(expense.createdAt) : null;
+      if (!createdAt || Number.isNaN(createdAt.getTime())) {
+        return true;
+      }
+
+      if (timeFilter === "30") {
+        return createdAt >= thirtyDaysAgo;
+      }
+
+      if (!tripStart && !tripEnd) {
+        return true;
+      }
+
+      if (tripStart && createdAt < tripStart) {
+        return false;
+      }
+
+      if (tripEnd && createdAt > tripEnd) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const searchQuery = searchTerm.trim().toLowerCase();
+
+    const matchesSearch = (expense: ExpenseWithDetails) => {
+      if (!searchQuery) {
+        return true;
+      }
+
+      const title = expense.description?.toLowerCase() ?? "";
+      const category = expense.category?.toLowerCase() ?? "";
+      const activityName = expense.activity?.name?.toLowerCase() ?? "";
+      const notes: string[] = [];
+      if (category) notes.push(category.replace(/[_-]/g, " "));
+      if (activityName) notes.push(activityName);
+      const haystack = `${title} ${notes.join(" ")}`.trim();
+      return haystack.includes(searchQuery);
+    };
+
+    const filtered = expenses.filter(
+      (expense) => matchesView(expense) && matchesTimeFilter(expense) && matchesSearch(expense),
+    );
+
+    return filtered.sort((a, b) => {
+      if (sortOption === "date-desc" || sortOption === "date-asc") {
+        const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        const comparison = aDate - bDate;
+        return sortOption === "date-desc" ? -comparison : comparison;
+      }
+
+      const aAmount = a.totalAmount;
+      const bAmount = b.totalAmount;
+      const comparison = aAmount - bAmount;
+      return sortOption === "amount-desc" ? -comparison : comparison;
+    });
+  }, [
+    detailView,
+    expenses,
+    searchTerm,
+    sortOption,
+    timeFilter,
+    trip?.endDate,
+    trip?.startDate,
+    user?.id,
+  ]);
+
+  const timeFilterOptions: { value: TimeFilter; label: string }[] = [
+    { value: "30", label: "Last 30 days" },
+    { value: "trip", label: "This trip" },
+    { value: "all", label: "All" },
+  ];
+
+  const sortOptions: { value: SortOption; label: string }[] = [
+    { value: "date-desc", label: "Date (newest)" },
+    { value: "date-asc", label: "Date (oldest)" },
+    { value: "amount-desc", label: "Amount (high to low)" },
+    { value: "amount-asc", label: "Amount (low to high)" },
+  ];
+
+  const openDetailView = (type: SummaryView) => {
+    if (summaryLoading) {
+      return;
+    }
+    setDetailView(type);
+  };
+
+  const closeDetailView = () => {
+    setDetailView(null);
+  };
+
+  const handleViewExpense = (expenseId: number) => {
+    closeDetailView();
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.setTimeout(() => {
+      const element = document.getElementById(`expense-${expenseId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (element instanceof HTMLElement) {
+          element.focus({ preventScroll: true });
+        }
+      }
+      window.location.hash = `expense-${expenseId}`;
+    }, 150);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -246,74 +506,42 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total recorded</CardDescription>
-            {summaryLoading ? (
-              <Skeleton className="h-8 w-28" />
-            ) : (
-              <CardTitle className="text-2xl font-semibold">
-                {formatCurrency(summary.total, summary.currency)}
-              </CardTitle>
+        {cardConfigs.map((card) => (
+          <Card
+            key={card.type}
+            role="button"
+            tabIndex={0}
+            onClick={() => openDetailView(card.type)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                openDetailView(card.type);
+              }
+            }}
+            className={cn(
+              "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              "cursor-pointer hover:border-primary/50",
+              detailView === card.type ? "border-primary" : undefined,
             )}
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-xs text-muted-foreground">
-              All expenses logged for this trip.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>You paid</CardDescription>
-            {summaryLoading ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
-              <CardTitle className="text-2xl font-semibold text-blue-600">
-                {formatCurrency(summary.youPaid, summary.currency)}
-              </CardTitle>
-            )}
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-xs text-muted-foreground">
-              Amount you covered for everyone else.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>You owe</CardDescription>
-            {summaryLoading ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
-              <CardTitle className="text-2xl font-semibold text-rose-600">
-                {formatCurrency(summary.owes, summary.currency)}
-              </CardTitle>
-            )}
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-xs text-muted-foreground">
-              Outstanding amount you still need to pay.
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>You're owed</CardDescription>
-            {summaryLoading ? (
-              <Skeleton className="h-8 w-24" />
-            ) : (
-              <CardTitle className="text-2xl font-semibold text-emerald-600">
-                {formatCurrency(summary.owed, summary.currency)}
-              </CardTitle>
-            )}
-          </CardHeader>
-          <CardContent className="pt-0">
-            <p className="text-xs text-muted-foreground">
-              Friends still owe you this much.
-            </p>
-          </CardContent>
-        </Card>
+            aria-label={`${card.title} details`}
+          >
+            <CardHeader className="pb-2">
+              <CardDescription>{card.title}</CardDescription>
+              {summaryLoading ? (
+                <Skeleton className="h-8 w-28" />
+              ) : (
+                <CardTitle
+                  className={cn("text-2xl font-semibold", card.amountClassName)}
+                >
+                  {formatCurrency(card.amount, summary.currency)}
+                </CardTitle>
+              )}
+            </CardHeader>
+            <CardContent className="pt-0">
+              <p className="text-xs text-muted-foreground">{card.description}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <div className="rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
@@ -358,7 +586,12 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                 : expense.totalAmount;
 
             return (
-              <Card key={expense.id} className="shadow-sm">
+              <Card
+                key={expense.id}
+                id={`expense-${expense.id}`}
+                className="shadow-sm"
+                tabIndex={-1}
+              >
                 <CardHeader className="gap-4 pb-0">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex items-start gap-3">
@@ -524,6 +757,184 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
           })
         )}
       </section>
+
+      <Dialog
+        open={detailView !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDetailView();
+          }
+        }}
+      >
+        <DialogContent className="max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>{selectedCard?.title}</DialogTitle>
+            <DialogDescription>
+              Review the individual expenses that make up this total.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total</p>
+                <p className="text-2xl font-semibold">
+                  {selectedCard
+                    ? formatCurrency(selectedCard.amount, summary.currency)
+                    : formatCurrency(0, summary.currency)}
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div
+                  className="flex items-center gap-1 rounded-md border bg-muted/40 p-1"
+                  role="group"
+                  aria-label="Filter expenses by time"
+                >
+                  {timeFilterOptions.map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      size="sm"
+                      variant={timeFilter === option.value ? "secondary" : "ghost"}
+                      onClick={() => setTimeFilter(option.value)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </div>
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search by title or notes"
+                  className="w-full min-w-[200px] sm:w-60"
+                  aria-label="Search expenses"
+                />
+                <Select
+                  value={sortOption}
+                  onValueChange={(value: SortOption) => setSortOption(value)}
+                >
+                  <SelectTrigger
+                    className="w-full min-w-[200px] sm:w-52"
+                    aria-label="Sort expenses"
+                  >
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {filteredExpenses.length === 0 ? (
+              <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground">
+                {selectedCard?.emptyState ?? "Nothing to show here just yet."}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[200px]">Added by</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Total amount</TableHead>
+                    <TableHead className="text-right">My share</TableHead>
+                    <TableHead>Notes</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredExpenses.map((expense) => {
+                    const shareForCurrentUser = expense.shares.find(
+                      (share) => share.userId === user?.id,
+                    );
+
+                    const outstandingFromOthers = expense.shares
+                      .filter((share) => share.userId !== user?.id && !share.isPaid)
+                      .reduce((total, share) => total + share.amount, 0);
+
+                    const myShareAmount =
+                      detailView === "youOwe"
+                        ? shareForCurrentUser?.amount ?? 0
+                        : detailView === "youAreOwed"
+                          ? outstandingFromOthers
+                          : 0;
+
+                    const notes: string[] = [];
+                    if (expense.category) {
+                      notes.push(expense.category.replace(/[_-]/g, " "));
+                    }
+                    if (expense.activity?.name) {
+                      notes.push(`Linked to ${expense.activity.name}`);
+                    }
+
+                    const notesText = notes.join(" • ") || "—";
+
+                    return (
+                      <TableRow key={expense.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8">
+                              <AvatarImage
+                                src={expense.paidBy.profileImageUrl || undefined}
+                                alt={getUserDisplayName(expense.paidBy)}
+                              />
+                              <AvatarFallback>
+                                {getUserInitials(expense.paidBy)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="space-y-0.5">
+                              <p className="text-sm font-medium">
+                                {getUserDisplayName(expense.paidBy)}
+                                {expense.paidBy.id === user?.id ? " (you)" : ""}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatExpenseDate(expense.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {expense.description || "Untitled expense"}
+                        </TableCell>
+                        <TableCell>{formatExpenseDate(expense.createdAt)}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatCurrency(expense.totalAmount, expense.currency)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {detailView === "youOwe" || detailView === "youAreOwed"
+                            ? myShareAmount > 0
+                              ? formatCurrency(myShareAmount, expense.currency)
+                              : "—"
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="max-w-[220px] truncate" title={notesText}>
+                          {notesText}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="link"
+                            size="sm"
+                            className="px-0"
+                            onClick={() => handleViewExpense(expense.id)}
+                          >
+                            View expense
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AddExpenseModal
         open={isAddExpenseModalOpen}
