@@ -120,6 +120,42 @@ const toStringArray = (value: unknown): string[] => {
   return [];
 };
 
+const toOptionalString = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return typeof value === "string" ? value : String(value);
+};
+
+const safeNumberOrNull = (
+  value: string | number | null | undefined,
+): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const parseAverageRanking = (value: unknown): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Number(numeric.toFixed(2)) : null;
+};
+
+const toIsoString = (value: Date | string | null | undefined): string => {
+  if (!value) {
+    return "";
+  }
+
+  return value instanceof Date ? value.toISOString() : value;
+};
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -564,6 +600,126 @@ type RestaurantWithDetailsRow = RestaurantRow &
     trip_created_at: Date | null;
   };
 
+type HotelProposalRow = {
+  id: number;
+  trip_id: number;
+  proposed_by: string;
+  hotel_name: string;
+  location: string;
+  price: string;
+  price_per_night: string | number | null;
+  rating: string | number | null;
+  amenities: string | null;
+  platform: string;
+  booking_url: string;
+  status: string;
+  average_ranking: string | number | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type HotelProposalWithProposerRow = HotelProposalRow & PrefixedUserRow<"proposer_">;
+
+type HotelRankingRow = {
+  id: number;
+  proposal_id: number;
+  user_id: string;
+  ranking: number | string;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type HotelRankingWithUserRow = HotelRankingRow & PrefixedUserRow<"user_">;
+
+type FlightProposalRow = {
+  id: number;
+  trip_id: number;
+  proposed_by: string;
+  airline: string;
+  flight_number: string;
+  departure_airport: string;
+  departure_time: Date | string;
+  departure_terminal: string | null;
+  arrival_airport: string;
+  arrival_time: Date | string;
+  arrival_terminal: string | null;
+  duration: string;
+  stops: number | string;
+  aircraft: string | null;
+  price: string | number | null;
+  currency: string;
+  booking_url: string;
+  platform: string;
+  status: string;
+  average_ranking: string | number | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type FlightProposalWithProposerRow = FlightProposalRow & PrefixedUserRow<"proposer_">;
+
+type FlightRankingRow = {
+  id: number;
+  proposal_id: number;
+  user_id: string;
+  ranking: number | string;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type FlightRankingWithUserRow = FlightRankingRow & PrefixedUserRow<"user_">;
+
+type RestaurantProposalRow = {
+  id: number;
+  trip_id: number;
+  proposed_by: string;
+  restaurant_name: string;
+  address: string;
+  cuisine_type: string | null;
+  price_range: string | null;
+  rating: string | number | null;
+  phone_number: string | null;
+  website: string | null;
+  reservation_url: string | null;
+  platform: string;
+  atmosphere: string | null;
+  specialties: string | null;
+  dietary_options: unknown;
+  preferred_meal_time: string | null;
+  preferred_dates: unknown;
+  features: unknown;
+  status: string;
+  average_ranking: string | number | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type RestaurantProposalWithProposerRow = RestaurantProposalRow & PrefixedUserRow<"proposer_">;
+
+type RestaurantRankingRow = {
+  id: number;
+  proposal_id: number;
+  user_id: string;
+  ranking: number | string;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type RestaurantRankingWithUserRow = RestaurantRankingRow & PrefixedUserRow<"user_">;
+
+type ProposalScheduleLinkRow = {
+  id: number;
+  proposal_type: string;
+  proposal_id: number;
+  scheduled_table: string;
+  scheduled_id: number;
+  trip_id: number | null;
+  created_at: Date | null;
+};
+
 type TravelTipRow = {
   id: number;
   content: string;
@@ -763,6 +919,154 @@ const mapTripWithDetails = (
   creator,
   members,
   memberCount: members.length,
+});
+
+const mapHotelProposal = (row: HotelProposalRow): HotelProposal => ({
+  id: row.id,
+  tripId: row.trip_id,
+  proposedBy: row.proposed_by,
+  hotelName: row.hotel_name,
+  location: row.location,
+  price: row.price,
+  pricePerNight: toOptionalString(row.price_per_night),
+  rating: safeNumberOrNull(row.rating),
+  amenities: row.amenities,
+  platform: row.platform,
+  bookingUrl: row.booking_url,
+  status: row.status,
+  averageRanking: parseAverageRanking(row.average_ranking),
+  createdAt: row.created_at,
+});
+
+const mapHotelRankingWithUser = (
+  row: HotelRankingWithUserRow,
+): (HotelRanking & { user: User }) => ({
+  id: row.id,
+  proposalId: row.proposal_id,
+  userId: row.user_id,
+  ranking: Number(row.ranking),
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  user: mapUserFromPrefix(row, "user_"),
+});
+
+const mapHotelProposalWithDetails = (
+  row: HotelProposalWithProposerRow,
+  rankings: (HotelRanking & { user: User })[],
+  currentUserId?: string,
+): HotelProposalWithDetails => ({
+  ...mapHotelProposal(row),
+  proposer: mapUserFromPrefix(row, "proposer_"),
+  rankings,
+  currentUserRanking:
+    currentUserId != null
+      ? rankings.find((ranking) => ranking.userId === currentUserId)
+      : undefined,
+});
+
+const mapFlightProposal = (row: FlightProposalRow): FlightProposal => ({
+  id: row.id,
+  tripId: row.trip_id,
+  proposedBy: row.proposed_by,
+  airline: row.airline,
+  flightNumber: row.flight_number,
+  departureAirport: row.departure_airport,
+  departureTime: toIsoString(row.departure_time),
+  departureTerminal: row.departure_terminal,
+  arrivalAirport: row.arrival_airport,
+  arrivalTime: toIsoString(row.arrival_time),
+  arrivalTerminal: row.arrival_terminal,
+  duration: row.duration,
+  stops: typeof row.stops === "string" ? Number(row.stops) : Number(row.stops ?? 0),
+  aircraft: row.aircraft,
+  price: toOptionalString(row.price) ?? "",
+  currency: row.currency,
+  bookingUrl: row.booking_url,
+  platform: row.platform,
+  status: row.status,
+  averageRanking: parseAverageRanking(row.average_ranking),
+  createdAt: row.created_at,
+});
+
+const mapFlightRankingWithUser = (
+  row: FlightRankingWithUserRow,
+): (FlightRanking & { user: User }) => ({
+  id: row.id,
+  proposalId: row.proposal_id,
+  userId: row.user_id,
+  ranking: Number(row.ranking),
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  user: mapUserFromPrefix(row, "user_"),
+});
+
+const mapFlightProposalWithDetails = (
+  row: FlightProposalWithProposerRow,
+  rankings: (FlightRanking & { user: User })[],
+  currentUserId?: string,
+): FlightProposalWithDetails => ({
+  ...mapFlightProposal(row),
+  proposer: mapUserFromPrefix(row, "proposer_"),
+  rankings,
+  currentUserRanking:
+    currentUserId != null
+      ? rankings.find((ranking) => ranking.userId === currentUserId)
+      : undefined,
+});
+
+const mapRestaurantProposal = (
+  row: RestaurantProposalRow,
+): RestaurantProposal => ({
+  id: row.id,
+  tripId: row.trip_id,
+  proposedBy: row.proposed_by,
+  restaurantName: row.restaurant_name,
+  address: row.address,
+  cuisineType: row.cuisine_type,
+  priceRange: row.price_range,
+  rating: toOptionalString(row.rating),
+  phoneNumber: row.phone_number,
+  website: row.website,
+  reservationUrl: row.reservation_url,
+  platform: row.platform,
+  atmosphere: row.atmosphere,
+  specialties: row.specialties,
+  dietaryOptions: row.dietary_options as RestaurantProposal['dietaryOptions'],
+  preferredMealTime: row.preferred_meal_time,
+  preferredDates: row.preferred_dates as RestaurantProposal['preferredDates'],
+  features: row.features as RestaurantProposal['features'],
+  status: row.status,
+  averageRanking: parseAverageRanking(row.average_ranking),
+  createdAt: row.created_at,
+});
+
+const mapRestaurantRankingWithUser = (
+  row: RestaurantRankingWithUserRow,
+): (RestaurantRanking & { user: User }) => ({
+  id: row.id,
+  proposalId: row.proposal_id,
+  userId: row.user_id,
+  ranking: Number(row.ranking),
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  user: mapUserFromPrefix(row, "user_"),
+});
+
+const mapRestaurantProposalWithDetails = (
+  row: RestaurantProposalWithProposerRow,
+  rankings: (RestaurantRanking & { user: User })[],
+  currentUserId?: string,
+): RestaurantProposalWithDetails => ({
+  ...mapRestaurantProposal(row),
+  proposer: mapUserFromPrefix(row, "proposer_"),
+  rankings,
+  currentUserRanking:
+    currentUserId != null
+      ? rankings.find((ranking) => ranking.userId === currentUserId)
+      : undefined,
 });
 
 const mapActivity = (row: ActivityRow): Activity => ({
@@ -1320,6 +1624,10 @@ export class DatabaseStorage implements IStorage {
 
   private wishListInitialized = false;
 
+  private proposalLinksInitPromise: Promise<void> | null = null;
+
+  private proposalLinksInitialized = false;
+
   private async ensureWishListStructures(): Promise<void> {
     if (this.wishListInitialized) {
       return;
@@ -1427,6 +1735,44 @@ export class DatabaseStorage implements IStorage {
       await this.wishListInitPromise;
     } finally {
       this.wishListInitPromise = null;
+    }
+  }
+
+  private async ensureProposalLinkStructures(): Promise<void> {
+    if (this.proposalLinksInitialized) {
+      return;
+    }
+
+    if (this.proposalLinksInitPromise) {
+      await this.proposalLinksInitPromise;
+      return;
+    }
+
+    this.proposalLinksInitPromise = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS proposal_schedule_links (
+          id SERIAL PRIMARY KEY,
+          proposal_type TEXT NOT NULL,
+          proposal_id INTEGER NOT NULL,
+          scheduled_table TEXT NOT NULL,
+          scheduled_id INTEGER NOT NULL,
+          trip_id INTEGER,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (proposal_type, proposal_id, scheduled_table, scheduled_id)
+        )
+      `);
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_proposal_schedule_links_lookup ON proposal_schedule_links (proposal_type, proposal_id)`,
+      );
+
+      this.proposalLinksInitialized = true;
+    })();
+
+    try {
+      await this.proposalLinksInitPromise;
+    } finally {
+      this.proposalLinksInitPromise = null;
     }
   }
 
@@ -5932,18 +6278,898 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     return rows.map(mapRestaurantWithDetails);
   }
-  async createHotelProposal(): Promise<HotelProposal> { throw new Error("Not implemented"); }
-  async getTripHotelProposals(): Promise<HotelProposalWithDetails[]> { throw new Error("Not implemented"); }
-  async rankHotelProposal(): Promise<void> { throw new Error("Not implemented"); }
-  async updateProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
-  async updateHotelProposalStatus(): Promise<HotelProposal> { throw new Error("Not implemented"); }
+  private async fetchHotelProposals(
+    options: {
+      tripId?: number;
+      proposalIds?: number[];
+      currentUserId?: string;
+    },
+  ): Promise<HotelProposalWithDetails[]> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    if (options.tripId != null) {
+      conditions.push(`hp.trip_id = $${index}`);
+      values.push(options.tripId);
+      index += 1;
+    }
+
+    if (options.proposalIds && options.proposalIds.length > 0) {
+      conditions.push(`hp.id = ANY($${index}::int[])`);
+      values.push(options.proposalIds);
+      index += 1;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const { rows } = await query<HotelProposalWithProposerRow>(
+      `
+      SELECT
+        hp.id,
+        hp.trip_id,
+        hp.proposed_by,
+        hp.hotel_name,
+        hp.location,
+        hp.price,
+        hp.price_per_night,
+        hp.rating,
+        hp.amenities,
+        hp.platform,
+        hp.booking_url,
+        hp.status,
+        hp.average_ranking,
+        hp.created_at,
+        hp.updated_at,
+        ${selectUserColumns("u", "proposer_")}
+      FROM hotel_proposals hp
+      JOIN users u ON u.id = hp.proposed_by
+      ${whereClause}
+      ORDER BY hp.created_at DESC NULLS LAST, hp.id DESC
+      `,
+      values,
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const proposalIds = rows.map((row) => row.id);
+
+    const { rows: rankingRows } = await query<HotelRankingWithUserRow>(
+      `
+      SELECT
+        hr.id,
+        hr.proposal_id,
+        hr.user_id,
+        hr.ranking,
+        hr.notes,
+        hr.created_at,
+        hr.updated_at,
+        ${selectUserColumns("u", "user_")}
+      FROM hotel_rankings hr
+      JOIN users u ON u.id = hr.user_id
+      WHERE hr.proposal_id = ANY($1::int[])
+      ORDER BY hr.created_at ASC NULLS LAST, hr.id ASC
+      `,
+      [proposalIds],
+    );
+
+    const rankingsByProposal = new Map<number, (HotelRanking & { user: User })[]>();
+    for (const row of rankingRows) {
+      const ranking = mapHotelRankingWithUser(row);
+      const list = rankingsByProposal.get(ranking.proposalId);
+      if (list) {
+        list.push(ranking);
+      } else {
+        rankingsByProposal.set(ranking.proposalId, [ranking]);
+      }
+    }
+
+    return rows.map((row) =>
+      mapHotelProposalWithDetails(
+        row,
+        rankingsByProposal.get(row.id) ?? [],
+        options.currentUserId,
+      ),
+    );
+  }
+
+  private async fetchFlightProposals(
+    options: {
+      tripId?: number;
+      proposalIds?: number[];
+      currentUserId?: string;
+    },
+  ): Promise<FlightProposalWithDetails[]> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    if (options.tripId != null) {
+      conditions.push(`fp.trip_id = $${index}`);
+      values.push(options.tripId);
+      index += 1;
+    }
+
+    if (options.proposalIds && options.proposalIds.length > 0) {
+      conditions.push(`fp.id = ANY($${index}::int[])`);
+      values.push(options.proposalIds);
+      index += 1;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const { rows } = await query<FlightProposalWithProposerRow>(
+      `
+      SELECT
+        fp.id,
+        fp.trip_id,
+        fp.proposed_by,
+        fp.airline,
+        fp.flight_number,
+        fp.departure_airport,
+        fp.departure_time,
+        fp.departure_terminal,
+        fp.arrival_airport,
+        fp.arrival_time,
+        fp.arrival_terminal,
+        fp.duration,
+        fp.stops,
+        fp.aircraft,
+        fp.price,
+        fp.currency,
+        fp.booking_url,
+        fp.platform,
+        fp.status,
+        fp.average_ranking,
+        fp.created_at,
+        fp.updated_at,
+        ${selectUserColumns("u", "proposer_")}
+      FROM flight_proposals fp
+      JOIN users u ON u.id = fp.proposed_by
+      ${whereClause}
+      ORDER BY fp.created_at DESC NULLS LAST, fp.id DESC
+      `,
+      values,
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const proposalIds = rows.map((row) => row.id);
+
+    const { rows: rankingRows } = await query<FlightRankingWithUserRow>(
+      `
+      SELECT
+        fr.id,
+        fr.proposal_id,
+        fr.user_id,
+        fr.ranking,
+        fr.notes,
+        fr.created_at,
+        fr.updated_at,
+        ${selectUserColumns("u", "user_")}
+      FROM flight_rankings fr
+      JOIN users u ON u.id = fr.user_id
+      WHERE fr.proposal_id = ANY($1::int[])
+      ORDER BY fr.created_at ASC NULLS LAST, fr.id ASC
+      `,
+      [proposalIds],
+    );
+
+    const rankingsByProposal = new Map<number, (FlightRanking & { user: User })[]>();
+    for (const row of rankingRows) {
+      const ranking = mapFlightRankingWithUser(row);
+      const list = rankingsByProposal.get(ranking.proposalId);
+      if (list) {
+        list.push(ranking);
+      } else {
+        rankingsByProposal.set(ranking.proposalId, [ranking]);
+      }
+    }
+
+    return rows.map((row) =>
+      mapFlightProposalWithDetails(
+        row,
+        rankingsByProposal.get(row.id) ?? [],
+        options.currentUserId,
+      ),
+    );
+  }
+
+  private async fetchRestaurantProposals(
+    options: {
+      tripId?: number;
+      proposalIds?: number[];
+      currentUserId?: string;
+    },
+  ): Promise<RestaurantProposalWithDetails[]> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    if (options.tripId != null) {
+      conditions.push(`rp.trip_id = $${index}`);
+      values.push(options.tripId);
+      index += 1;
+    }
+
+    if (options.proposalIds && options.proposalIds.length > 0) {
+      conditions.push(`rp.id = ANY($${index}::int[])`);
+      values.push(options.proposalIds);
+      index += 1;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const { rows } = await query<RestaurantProposalWithProposerRow>(
+      `
+      SELECT
+        rp.id,
+        rp.trip_id,
+        rp.proposed_by,
+        rp.restaurant_name,
+        rp.address,
+        rp.cuisine_type,
+        rp.price_range,
+        rp.rating,
+        rp.phone_number,
+        rp.website,
+        rp.reservation_url,
+        rp.platform,
+        rp.atmosphere,
+        rp.specialties,
+        rp.dietary_options,
+        rp.preferred_meal_time,
+        rp.preferred_dates,
+        rp.features,
+        rp.status,
+        rp.average_ranking,
+        rp.created_at,
+        rp.updated_at,
+        ${selectUserColumns("u", "proposer_")}
+      FROM restaurant_proposals rp
+      JOIN users u ON u.id = rp.proposed_by
+      ${whereClause}
+      ORDER BY rp.created_at DESC NULLS LAST, rp.id DESC
+      `,
+      values,
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const proposalIds = rows.map((row) => row.id);
+
+    const { rows: rankingRows } = await query<RestaurantRankingWithUserRow>(
+      `
+      SELECT
+        rr.id,
+        rr.proposal_id,
+        rr.user_id,
+        rr.ranking,
+        rr.notes,
+        rr.created_at,
+        rr.updated_at,
+        ${selectUserColumns("u", "user_")}
+      FROM restaurant_rankings rr
+      JOIN users u ON u.id = rr.user_id
+      WHERE rr.proposal_id = ANY($1::int[])
+      ORDER BY rr.created_at ASC NULLS LAST, rr.id ASC
+      `,
+      [proposalIds],
+    );
+
+    const rankingsByProposal = new Map<number, (RestaurantRanking & { user: User })[]>();
+    for (const row of rankingRows) {
+      const ranking = mapRestaurantRankingWithUser(row);
+      const list = rankingsByProposal.get(ranking.proposalId);
+      if (list) {
+        list.push(ranking);
+      } else {
+        rankingsByProposal.set(ranking.proposalId, [ranking]);
+      }
+    }
+
+    return rows.map((row) =>
+      mapRestaurantProposalWithDetails(
+        row,
+        rankingsByProposal.get(row.id) ?? [],
+        options.currentUserId,
+      ),
+    );
+  }
+
+  private async removeScheduledItemsForProposal(
+    proposalType: "hotel" | "flight" | "restaurant",
+    proposalId: number,
+  ): Promise<void> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows } = await query<ProposalScheduleLinkRow>(
+      `
+      SELECT id, scheduled_table, scheduled_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = $1 AND proposal_id = $2
+      `,
+      [proposalType, proposalId],
+    );
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    for (const link of rows) {
+      switch (link.scheduled_table) {
+        case "activities":
+          await query(`DELETE FROM activity_acceptances WHERE activity_id = $1`, [link.scheduled_id]);
+          await query(`DELETE FROM activity_comments WHERE activity_id = $1`, [link.scheduled_id]);
+          await query(`DELETE FROM activities WHERE id = $1`, [link.scheduled_id]);
+          break;
+        case "hotels":
+          await query(`DELETE FROM hotels WHERE id = $1`, [link.scheduled_id]);
+          break;
+        case "flights":
+          await query(`DELETE FROM flights WHERE id = $1`, [link.scheduled_id]);
+          break;
+        case "restaurants":
+          await query(`DELETE FROM restaurants WHERE id = $1`, [link.scheduled_id]);
+          break;
+        default:
+          break;
+      }
+
+      await query(`DELETE FROM proposal_schedule_links WHERE id = $1`, [link.id]);
+    }
+  }
+
+  private async notifyProposalCancellation(options: {
+    tripId: number;
+    proposalType: "hotel" | "flight" | "restaurant";
+    proposalName: string;
+    canceledBy: string;
+  }): Promise<void> {
+    const { tripId, proposalType, proposalName, canceledBy } = options;
+
+    const { rows: memberRows } = await query<{ user_id: string }>(
+      `SELECT user_id FROM trip_members WHERE trip_calendar_id = $1`,
+      [tripId],
+    );
+
+    const memberIds = new Set<string>(memberRows.map((row) => row.user_id));
+
+    const { rows: tripRows } = await query<{ created_by: string | null }>(
+      `SELECT created_by FROM trip_calendars WHERE id = $1`,
+      [tripId],
+    );
+
+    const tripOwnerId = tripRows[0]?.created_by ?? null;
+    if (tripOwnerId) {
+      memberIds.add(tripOwnerId);
+    }
+
+    memberIds.delete(canceledBy);
+
+    if (memberIds.size === 0) {
+      return;
+    }
+
+    const cancelingUser = await this.getUser(canceledBy);
+    const displayName =
+      [cancelingUser?.firstName, cancelingUser?.lastName]
+        .filter((part): part is string => Boolean(part && part.trim()))
+        .join(" ") ||
+      cancelingUser?.username ||
+      cancelingUser?.email ||
+      "A trip member";
+
+    const typeLabel =
+      proposalType === "hotel"
+        ? "hotel"
+        : proposalType === "flight"
+        ? "flight"
+        : "restaurant";
+
+    const title = `${typeLabel.charAt(0).toUpperCase()}${typeLabel.slice(1)} proposal canceled`;
+    const message = `${displayName} canceled the ${typeLabel} proposal "${proposalName}".`;
+
+    await Promise.all(
+      Array.from(memberIds).map((userId) =>
+        this.createNotification({
+          userId,
+          type: "proposal-canceled",
+          title,
+          message,
+          tripId,
+        }),
+      ),
+    );
+  }
+
+  async createHotelProposal(
+    proposal: InsertHotelProposal,
+    userId: string,
+  ): Promise<HotelProposalWithDetails> {
+    const { rows } = await query<HotelProposalRow>(
+      `
+      INSERT INTO hotel_proposals (
+        trip_id,
+        proposed_by,
+        hotel_name,
+        location,
+        price,
+        price_per_night,
+        rating,
+        amenities,
+        platform,
+        booking_url,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'active'))
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        hotel_name,
+        location,
+        price,
+        price_per_night,
+        rating,
+        amenities,
+        platform,
+        booking_url,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [
+        proposal.tripId,
+        userId,
+        proposal.hotelName,
+        proposal.location,
+        proposal.price,
+        proposal.pricePerNight ?? null,
+        safeNumberOrNull(proposal.rating as string | number | null | undefined),
+        proposal.amenities ?? null,
+        proposal.platform,
+        proposal.bookingUrl,
+        proposal.status ?? "active",
+      ],
+    );
+
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Failed to create hotel proposal");
+    }
+
+    const proposals = await this.fetchHotelProposals({
+      proposalIds: [inserted.id],
+      currentUserId: userId,
+    });
+
+    const created = proposals[0];
+    if (!created) {
+      throw new Error("Failed to load created hotel proposal");
+    }
+
+    return created;
+  }
+
+  async getTripHotelProposals(
+    tripId: number,
+    currentUserId: string,
+  ): Promise<HotelProposalWithDetails[]> {
+    return this.fetchHotelProposals({ tripId, currentUserId });
+  }
+
+  async getHotelProposalById(
+    proposalId: number,
+    currentUserId?: string,
+  ): Promise<HotelProposalWithDetails | undefined> {
+    const proposals = await this.fetchHotelProposals({
+      proposalIds: [proposalId],
+      currentUserId,
+    });
+    return proposals[0];
+  }
+
+  async rankHotelProposal(
+    ranking: InsertHotelRanking,
+    userId: string,
+  ): Promise<void> {
+    await query(
+      `
+      INSERT INTO hotel_rankings (proposal_id, user_id, ranking, notes)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+        ranking = EXCLUDED.ranking,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      `,
+      [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
+    );
+
+    await this.updateHotelProposalAverageRanking(ranking.proposalId);
+  }
+
+  async updateProposalAverageRanking(): Promise<void> {
+    // Deprecated method retained for backward compatibility
+    return Promise.resolve();
+  }
+
+  async updateHotelProposalAverageRanking(proposalId: number): Promise<void> {
+    const { rows } = await query<{ average: number | null }>(
+      `
+      SELECT AVG(ranking)::numeric(10,2) AS average
+      FROM hotel_rankings
+      WHERE proposal_id = $1
+      `,
+      [proposalId],
+    );
+
+    const average = rows[0]?.average ?? null;
+
+    await query(
+      `
+      UPDATE hotel_proposals
+      SET average_ranking = $1, updated_at = NOW()
+      WHERE id = $2
+      `,
+      [average, proposalId],
+    );
+  }
+
+  async updateHotelProposalStatus(
+    proposalId: number,
+    status: string,
+    currentUserId: string,
+  ): Promise<HotelProposalWithDetails> {
+    const { rows } = await query<HotelProposalRow>(
+      `
+      UPDATE hotel_proposals
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        hotel_name,
+        location,
+        price,
+        price_per_night,
+        rating,
+        amenities,
+        platform,
+        booking_url,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [status, proposalId],
+    );
+
+    const updated = rows[0];
+    if (!updated) {
+      throw new Error("Hotel proposal not found");
+    }
+
+    const proposals = await this.fetchHotelProposals({
+      proposalIds: [proposalId],
+      currentUserId,
+    });
+
+    const detailed = proposals[0];
+    if (!detailed) {
+      throw new Error("Failed to load hotel proposal");
+    }
+
+    return detailed;
+  }
+
+  async cancelHotelProposal(
+    proposalId: number,
+    currentUserId: string,
+  ): Promise<HotelProposalWithDetails> {
+    const proposal = await this.getHotelProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Hotel proposal not found");
+    }
+
+    if (proposal.proposedBy !== currentUserId) {
+      throw new Error("You can only cancel proposals you created");
+    }
+
+    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
+    if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+      return proposal;
+    }
+
+    await this.removeScheduledItemsForProposal("hotel", proposalId);
+
+    await query(
+      `
+      UPDATE hotel_proposals
+      SET status = 'canceled', updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const updated = await this.getHotelProposalById(proposalId, currentUserId);
+    if (!updated) {
+      throw new Error("Failed to load hotel proposal");
+    }
+
+    await this.notifyProposalCancellation({
+      tripId: updated.tripId,
+      proposalType: "hotel",
+      proposalName: updated.hotelName,
+      canceledBy: currentUserId,
+    });
+
+    return updated;
+  }
   async addFlight(): Promise<Flight> { throw new Error("Not implemented"); }
   async addHotel(): Promise<Hotel> { throw new Error("Not implemented"); }
-  async createFlightProposal(): Promise<FlightProposal> { throw new Error("Not implemented"); }
-  async getTripFlightProposals(): Promise<FlightProposalWithDetails[]> { throw new Error("Not implemented"); }
-  async rankFlightProposal(): Promise<void> { throw new Error("Not implemented"); }
-  async updateFlightProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
-  async updateFlightProposalStatus(): Promise<FlightProposal> { throw new Error("Not implemented"); }
+
+  async createFlightProposal(
+    proposal: InsertFlightProposal,
+    userId: string,
+  ): Promise<FlightProposalWithDetails> {
+    const { rows } = await query<FlightProposalRow>(
+      `
+      INSERT INTO flight_proposals (
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        departure_terminal,
+        arrival_airport,
+        arrival_time,
+        arrival_terminal,
+        duration,
+        stops,
+        aircraft,
+        price,
+        currency,
+        booking_url,
+        platform,
+        status
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'active')
+      )
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        departure_terminal,
+        arrival_airport,
+        arrival_time,
+        arrival_terminal,
+        duration,
+        stops,
+        aircraft,
+        price,
+        currency,
+        booking_url,
+        platform,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [
+        proposal.tripId,
+        userId,
+        proposal.airline,
+        proposal.flightNumber,
+        proposal.departureAirport,
+        proposal.departureTime,
+        proposal.departureTerminal ?? null,
+        proposal.arrivalAirport,
+        proposal.arrivalTime,
+        proposal.arrivalTerminal ?? null,
+        proposal.duration,
+        proposal.stops,
+        proposal.aircraft ?? null,
+        proposal.price,
+        proposal.currency,
+        proposal.bookingUrl,
+        proposal.platform,
+        proposal.status ?? "active",
+      ],
+    );
+
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Failed to create flight proposal");
+    }
+
+    const proposals = await this.fetchFlightProposals({
+      proposalIds: [inserted.id],
+      currentUserId: userId,
+    });
+
+    const created = proposals[0];
+    if (!created) {
+      throw new Error("Failed to load created flight proposal");
+    }
+
+    return created;
+  }
+
+  async getTripFlightProposals(
+    tripId: number,
+    currentUserId: string,
+  ): Promise<FlightProposalWithDetails[]> {
+    return this.fetchFlightProposals({ tripId, currentUserId });
+  }
+
+  async getFlightProposalById(
+    proposalId: number,
+    currentUserId?: string,
+  ): Promise<FlightProposalWithDetails | undefined> {
+    const proposals = await this.fetchFlightProposals({
+      proposalIds: [proposalId],
+      currentUserId,
+    });
+    return proposals[0];
+  }
+
+  async rankFlightProposal(
+    ranking: InsertFlightRanking,
+    userId: string,
+  ): Promise<void> {
+    await query(
+      `
+      INSERT INTO flight_rankings (proposal_id, user_id, ranking, notes)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+        ranking = EXCLUDED.ranking,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      `,
+      [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
+    );
+
+    await this.updateFlightProposalAverageRanking(ranking.proposalId);
+  }
+
+  async updateFlightProposalAverageRanking(proposalId: number): Promise<void> {
+    const { rows } = await query<{ average: number | null }>(
+      `
+      SELECT AVG(ranking)::numeric(10,2) AS average
+      FROM flight_rankings
+      WHERE proposal_id = $1
+      `,
+      [proposalId],
+    );
+
+    const average = rows[0]?.average ?? null;
+
+    await query(
+      `
+      UPDATE flight_proposals
+      SET average_ranking = $1, updated_at = NOW()
+      WHERE id = $2
+      `,
+      [average, proposalId],
+    );
+  }
+
+  async updateFlightProposalStatus(
+    proposalId: number,
+    status: string,
+    currentUserId: string,
+  ): Promise<FlightProposalWithDetails> {
+    const { rows } = await query<FlightProposalRow>(
+      `
+      UPDATE flight_proposals
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        departure_terminal,
+        arrival_airport,
+        arrival_time,
+        arrival_terminal,
+        duration,
+        stops,
+        aircraft,
+        price,
+        currency,
+        booking_url,
+        platform,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [status, proposalId],
+    );
+
+    const updated = rows[0];
+    if (!updated) {
+      throw new Error("Flight proposal not found");
+    }
+
+    const proposals = await this.fetchFlightProposals({
+      proposalIds: [proposalId],
+      currentUserId,
+    });
+
+    const detailed = proposals[0];
+    if (!detailed) {
+      throw new Error("Failed to load flight proposal");
+    }
+
+    return detailed;
+  }
+
+  async cancelFlightProposal(
+    proposalId: number,
+    currentUserId: string,
+  ): Promise<FlightProposalWithDetails> {
+    const proposal = await this.getFlightProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Flight proposal not found");
+    }
+
+    if (proposal.proposedBy !== currentUserId) {
+      throw new Error("You can only cancel proposals you created");
+    }
+
+    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
+    if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+      return proposal;
+    }
+
+    await this.removeScheduledItemsForProposal("flight", proposalId);
+
+    await query(
+      `
+      UPDATE flight_proposals
+      SET status = 'canceled', updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const updated = await this.getFlightProposalById(proposalId, currentUserId);
+    if (!updated) {
+      throw new Error("Failed to load flight proposal");
+    }
+
+    const proposalLabel = `${updated.airline} ${updated.flightNumber}`.trim();
+
+    await this.notifyProposalCancellation({
+      tripId: updated.tripId,
+      proposalType: "flight",
+      proposalName: proposalLabel,
+      canceledBy: currentUserId,
+    });
+
+    return updated;
+  }
 
   // Wish List / Ideas board methods
   async createWishListIdea(
@@ -6874,11 +8100,257 @@ ${selectUserColumns("participant_user", "participant_user_")}
       dismissedTips: Array.from(dismissedSet),
     });
   }
-  async createRestaurantProposal(): Promise<RestaurantProposal> { throw new Error("Not implemented"); }
-  async getTripRestaurantProposals(): Promise<RestaurantProposalWithDetails[]> { throw new Error("Not implemented"); }
-  async rankRestaurantProposal(): Promise<void> { throw new Error("Not implemented"); }
-  async updateRestaurantProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
-  async updateRestaurantProposalStatus(): Promise<RestaurantProposal> { throw new Error("Not implemented"); }
+  async createRestaurantProposal(
+    proposal: InsertRestaurantProposal,
+    userId: string,
+  ): Promise<RestaurantProposalWithDetails> {
+    const { rows } = await query<RestaurantProposalRow>(
+      `
+      INSERT INTO restaurant_proposals (
+        trip_id,
+        proposed_by,
+        restaurant_name,
+        address,
+        cuisine_type,
+        price_range,
+        rating,
+        phone_number,
+        website,
+        reservation_url,
+        platform,
+        atmosphere,
+        specialties,
+        dietary_options,
+        preferred_meal_time,
+        preferred_dates,
+        features,
+        status
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'active')
+      )
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        restaurant_name,
+        address,
+        cuisine_type,
+        price_range,
+        rating,
+        phone_number,
+        website,
+        reservation_url,
+        platform,
+        atmosphere,
+        specialties,
+        dietary_options,
+        preferred_meal_time,
+        preferred_dates,
+        features,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [
+        proposal.tripId,
+        userId,
+        proposal.restaurantName,
+        proposal.address,
+        proposal.cuisineType ?? null,
+        proposal.priceRange ?? null,
+        proposal.rating ?? null,
+        proposal.phoneNumber ?? null,
+        proposal.website ?? null,
+        proposal.reservationUrl ?? null,
+        proposal.platform,
+        proposal.atmosphere ?? null,
+        proposal.specialties ?? null,
+        toDbJson(proposal.dietaryOptions ?? null),
+        proposal.preferredMealTime ?? null,
+        toDbJson(proposal.preferredDates ?? null),
+        toDbJson(proposal.features ?? null),
+        proposal.status ?? "active",
+      ],
+    );
+
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Failed to create restaurant proposal");
+    }
+
+    const proposals = await this.fetchRestaurantProposals({
+      proposalIds: [inserted.id],
+      currentUserId: userId,
+    });
+
+    const created = proposals[0];
+    if (!created) {
+      throw new Error("Failed to load created restaurant proposal");
+    }
+
+    return created;
+  }
+
+  async getTripRestaurantProposals(
+    tripId: number,
+    currentUserId: string,
+  ): Promise<RestaurantProposalWithDetails[]> {
+    return this.fetchRestaurantProposals({ tripId, currentUserId });
+  }
+
+  async getRestaurantProposalById(
+    proposalId: number,
+    currentUserId?: string,
+  ): Promise<RestaurantProposalWithDetails | undefined> {
+    const proposals = await this.fetchRestaurantProposals({
+      proposalIds: [proposalId],
+      currentUserId,
+    });
+    return proposals[0];
+  }
+
+  async rankRestaurantProposal(
+    ranking: InsertRestaurantRanking,
+    userId: string,
+  ): Promise<void> {
+    await query(
+      `
+      INSERT INTO restaurant_rankings (proposal_id, user_id, ranking, notes)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+        ranking = EXCLUDED.ranking,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      `,
+      [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
+    );
+
+    await this.updateRestaurantProposalAverageRanking(ranking.proposalId);
+  }
+
+  async updateRestaurantProposalAverageRanking(proposalId: number): Promise<void> {
+    const { rows } = await query<{ average: number | null }>(
+      `
+      SELECT AVG(ranking)::numeric(10,2) AS average
+      FROM restaurant_rankings
+      WHERE proposal_id = $1
+      `,
+      [proposalId],
+    );
+
+    const average = rows[0]?.average ?? null;
+
+    await query(
+      `
+      UPDATE restaurant_proposals
+      SET average_ranking = $1, updated_at = NOW()
+      WHERE id = $2
+      `,
+      [average, proposalId],
+    );
+  }
+
+  async updateRestaurantProposalStatus(
+    proposalId: number,
+    status: string,
+    currentUserId: string,
+  ): Promise<RestaurantProposalWithDetails> {
+    const { rows } = await query<RestaurantProposalRow>(
+      `
+      UPDATE restaurant_proposals
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        restaurant_name,
+        address,
+        cuisine_type,
+        price_range,
+        rating,
+        phone_number,
+        website,
+        reservation_url,
+        platform,
+        atmosphere,
+        specialties,
+        dietary_options,
+        preferred_meal_time,
+        preferred_dates,
+        features,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [status, proposalId],
+    );
+
+    const updated = rows[0];
+    if (!updated) {
+      throw new Error("Restaurant proposal not found");
+    }
+
+    const proposals = await this.fetchRestaurantProposals({
+      proposalIds: [proposalId],
+      currentUserId,
+    });
+
+    const detailed = proposals[0];
+    if (!detailed) {
+      throw new Error("Failed to load restaurant proposal");
+    }
+
+    return detailed;
+  }
+
+  async cancelRestaurantProposal(
+    proposalId: number,
+    currentUserId: string,
+  ): Promise<RestaurantProposalWithDetails> {
+    const proposal = await this.getRestaurantProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Restaurant proposal not found");
+    }
+
+    if (proposal.proposedBy !== currentUserId) {
+      throw new Error("You can only cancel proposals you created");
+    }
+
+    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
+    if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+      return proposal;
+    }
+
+    await this.removeScheduledItemsForProposal("restaurant", proposalId);
+
+    await query(
+      `
+      UPDATE restaurant_proposals
+      SET status = 'canceled', updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const updated = await this.getRestaurantProposalById(proposalId, currentUserId);
+    if (!updated) {
+      throw new Error("Failed to load restaurant proposal");
+    }
+
+    await this.notifyProposalCancellation({
+      tripId: updated.tripId,
+      proposalType: "restaurant",
+      proposalName: updated.restaurantName,
+      canceledBy: currentUserId,
+    });
+
+    return updated;
+  }
 }
 
 export const storage = new DatabaseStorage();
