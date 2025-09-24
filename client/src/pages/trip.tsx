@@ -53,7 +53,6 @@ import { CardHeader, CardTitle } from "@/components/ui/card";
 import { NotificationIcon } from "@/components/notification-icon";
 import { LeaveTripButton } from "@/components/leave-trip-button";
 import { TravelLoading } from "@/components/LoadingSpinners";
-import { TripOnboardingTutorial } from "@/components/trip-onboarding-tutorial";
 import ActivitySearch from "@/components/activity-search";
 import { TravelTips } from "@/components/TravelTips";
 import Proposals from "@/pages/proposals";
@@ -71,7 +70,6 @@ export default function Trip() {
   const [showEditTrip, setShowEditTrip] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
-  const [showTripOnboarding, setShowTripOnboarding] = useState(false);
   const [showWeatherModal, setShowWeatherModal] = useState(false);
   const [activeTab, setActiveTab] = useState("calendar");
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -163,13 +161,6 @@ export default function Trip() {
       return activity.acceptances?.some((acceptance) => acceptance.userId === user.id);
     });
   };
-
-  // Show trip onboarding for new trips
-  useEffect(() => {
-    if (trip && user && !user.hasSeenTripOnboarding) {
-      setTimeout(() => setShowTripOnboarding(true), 1500);
-    }
-  }, [trip, user]);
 
   // Auto-navigate calendar to trip dates when trip loads
   useEffect(() => {
@@ -812,13 +803,6 @@ export default function Trip() {
         )}
       </div>
 
-      {/* Trip Onboarding Tutorial */}
-      {trip && (
-        <TripOnboardingTutorial
-          tripId={id!}
-          onComplete={() => setShowTripOnboarding(false)}
-        />
-      )}
     </>
   );
 }

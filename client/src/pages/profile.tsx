@@ -15,8 +15,6 @@ import { useToast } from "@/hooks/use-toast";
 import type { User } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationsSection } from "@/components/notifications-section";
-import { OnboardingTutorial } from "@/components/onboarding-tutorial";
-import { useOnboarding } from "@/hooks/useOnboarding";
 import { Smartphone, Settings, User as UserIcon, MapPin, Plane, PlayCircle, ArrowLeft, Search } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
@@ -37,27 +35,12 @@ export default function Profile() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user, isLoading } = useAuth();
-  const { resetOnboarding } = useOnboarding();
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  
+
   // Location search state
   const [locationQuery, setLocationQuery] = useState('');
   const [locationResults, setLocationResults] = useState<any[]>([]);
   const [showLocationResults, setShowLocationResults] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
-
-  const handleStartTour = () => {
-    resetOnboarding();
-    setShowOnboarding(true);
-  };
-
-  const handleOnboardingComplete = () => {
-    setShowOnboarding(false);
-  };
-
-  const handleOnboardingSkip = () => {
-    setShowOnboarding(false);
-  };
 
   // Location search functionality
   const searchLocations = async (query: string) => {
@@ -206,15 +189,16 @@ export default function Profile() {
                 Configure your payment app usernames for easy expense splitting
               </CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleStartTour}
-              className="flex items-center gap-2"
-            >
-              <PlayCircle className="w-4 h-4" />
-              Start Tour
-            </Button>
+            <Link href="/how-it-works">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2"
+              >
+                <PlayCircle className="w-4 h-4" />
+                How it works
+              </Button>
+            </Link>
           </div>
         </CardHeader>
         <CardContent>
@@ -443,13 +427,6 @@ export default function Profile() {
 
       {/* Notifications Section */}
       <NotificationsSection />
-      
-      {showOnboarding && (
-        <OnboardingTutorial
-          onComplete={handleOnboardingComplete}
-          onSkip={handleOnboardingSkip}
-        />
-      )}
     </div>
   );
 }
