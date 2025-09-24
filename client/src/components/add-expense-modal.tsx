@@ -33,7 +33,7 @@ import {
 import { CurrencyConverter } from "@/components/currency-converter";
 import { useToast } from "@/hooks/use-toast";
 import { insertExpenseSchema, type TripWithDetails } from "@shared/schema";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { DollarSign, Smartphone } from "lucide-react";
 
 interface AddExpenseModalProps {
@@ -91,18 +91,6 @@ export function AddExpenseModal({
   const { data: trip } = useQuery<TripWithDetails>({
     queryKey: [`/api/trips/${tripId}`],
   });
-
-  // Get current user
-  useEffect(() => {
-    if (!open) return;
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),

@@ -1685,22 +1685,75 @@ export function setupRoutes(app: Express) {
     try {
       const tripId = parseInt(req.params.id);
       const userId = getRequestUserId(req);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
       const expenseData = {
         ...req.body,
         tripId,
         paidBy: userId
       };
-      
+
       const expense = await storage.createExpense(expenseData, userId);
       res.json(expense);
     } catch (error: unknown) {
       console.error("Error adding expense:", error);
       res.status(500).json({ message: "Failed to add expense" });
+    }
+  });
+
+  app.delete('/api/expenses/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const expenseId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(expenseId)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      await storage.deleteExpense(expenseId, userId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error deleting expense:", error);
+      if (error instanceof Error) {
+        if (error.message === "Expense not found") {
+          return res.status(404).json({ message: error.message });
+        }
+        if (error.message === "Only the payer can delete this expense") {
+          return res.status(403).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: "Failed to delete expense" });
+    }
+  });
+
+  app.patch('/api/expenses/:id/mark-paid', isAuthenticated, async (req: any, res) => {
+    try {
+      const expenseId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(expenseId)) {
+        return res.status(400).json({ message: "Invalid expense ID" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      await storage.markExpenseAsPaid(expenseId, userId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error marking expense as paid:", error);
+      if (error instanceof Error && error.message === "Expense share not found") {
+        return res.status(404).json({ message: error.message });
+      }
+
+      res.status(500).json({ message: "Failed to mark expense as paid" });
     }
   });
 
