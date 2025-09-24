@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -6,22 +6,27 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertActivitySchema } from "@shared/schema";
+import { createActivityWithAttendeesSchema, type TripMember, type User } from "@shared/schema";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
+
+type TripMemberWithUser = TripMember & { user: User };
 
 interface AddActivityModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tripId: number;
   selectedDate?: Date | null;
+  members: TripMemberWithUser[];
 }
 
-const formSchema = insertActivitySchema.extend({
+const formSchema = createActivityWithAttendeesSchema.extend({
   startDate: z.string().min(1, "Start date is required"),
   startTime: z.string().min(1, "Start time is required"),
   endTime: z.string().optional(),
@@ -42,36 +47,90 @@ const categories = [
   { value: "other", label: "Other" },
 ];
 
-export function AddActivityModal({ open, onOpenChange, tripId, selectedDate }: AddActivityModalProps) {
+const getMemberDisplayName = (member?: User | null) => {
+  if (!member) return "Trip member";
+  const first = member.firstName?.trim();
+  const last = member.lastName?.trim();
+  if (first && last) return `${first} ${last}`;
+  if (first) return first;
+  if (member.username) return member.username;
+  return member.email || "Trip member";
+};
+
+export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, members }: AddActivityModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const getDefaultValues = () => ({
-    name: "",
-    description: "",
-    startDate: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : "",
-    startTime: "",
-    endTime: "",
-    location: "",
-    cost: "",
-    maxCapacity: "",
-    category: "other",
-    tripCalendarId: tripId,
-  });
+  const memberOptions = useMemo(
+    () =>
+      members.map((member) => ({
+        id: member.userId,
+        name: getMemberDisplayName(member.user),
+      })),
+    [members],
+  );
+
+  const defaultAttendeeIds = useMemo(
+    () => memberOptions.map((member) => member.id),
+    [memberOptions],
+  );
+
+  const getDefaultValues = useCallback(
+    () => ({
+      name: "",
+      description: "",
+      startDate: selectedDate ? format(selectedDate, "yyyy-MM-dd") : "",
+      startTime: "",
+      endTime: "",
+      location: "",
+      cost: "",
+      maxCapacity: "",
+      category: "other",
+      tripCalendarId: tripId,
+      attendeeIds: defaultAttendeeIds,
+    }),
+    [defaultAttendeeIds, selectedDate, tripId],
+  );
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: getDefaultValues(),
   });
 
+  const selectedAttendeeIds = form.watch("attendeeIds") ?? [];
+
+  useEffect(() => {
+    if (open) {
+      form.setValue("attendeeIds", defaultAttendeeIds);
+    }
+  }, [open, defaultAttendeeIds, form]);
+
   // Update form when selectedDate changes
   useEffect(() => {
     if (selectedDate) {
-      form.setValue('startDate', format(selectedDate, 'yyyy-MM-dd'));
+      form.setValue("startDate", format(selectedDate, "yyyy-MM-dd"));
     } else {
       form.reset(getDefaultValues());
     }
-  }, [selectedDate, form]);
+  }, [selectedDate, form, getDefaultValues]);
+
+  const handleToggleAttendee = (userId: string, checked: boolean | "indeterminate") => {
+    const current = new Set(form.getValues("attendeeIds") ?? []);
+    if (checked === true) {
+      current.add(userId);
+    } else if (checked === false) {
+      current.delete(userId);
+    }
+    form.setValue("attendeeIds", Array.from(current), { shouldDirty: true });
+  };
+
+  const handleSelectAll = () => {
+    form.setValue("attendeeIds", defaultAttendeeIds, { shouldDirty: true });
+  };
+
+  const handleClearAttendees = () => {
+    form.setValue("attendeeIds", [], { shouldDirty: true });
+  };
 
   const createActivityMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -95,12 +154,23 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate }: A
         throw new Error("Invalid end time");
       }
 
+      const {
+        startDate: _startDate,
+        startTime,
+        endTime,
+        cost,
+        maxCapacity,
+        attendeeIds = [],
+        ...rest
+      } = data;
+
       const activityData = {
-        ...data,
+        ...rest,
         startTime: startDateTime.toISOString(),
         endTime: endDateTime?.toISOString() || null,
-        cost: data.cost ? parseFloat(data.cost) : null,
-        maxCapacity: data.maxCapacity ? parseInt(data.maxCapacity) : null,
+        cost: cost ? parseFloat(cost) : null,
+        maxCapacity: maxCapacity ? parseInt(maxCapacity) : null,
+        attendeeIds: Array.from(new Set(attendeeIds)),
       };
 
       await apiRequest(`/api/trips/${tripId}/activities`, {
@@ -109,6 +179,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate }: A
       });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
       toast({
         title: "Activity created!",
@@ -139,7 +210,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate }: A
         <DialogHeader>
           <DialogTitle>Add New Activity</DialogTitle>
           <DialogDescription>
-            Create a new activity for your trip that members can accept or decline.
+            Plan a new activity for your trip, choose who's attending, and we'll notify them for you.
           </DialogDescription>
         </DialogHeader>
 
@@ -238,9 +309,62 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate }: A
           </div>
 
           <div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="attendees">Who's Going?</Label>
+              <span className="text-xs text-neutral-500">{selectedAttendeeIds.length} selected</span>
+            </div>
+            <p className="text-xs text-neutral-500 mt-1">
+              Everyone can still see this on the group calendar, even if they're not attending.
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSelectAll}
+                disabled={memberOptions.length === 0 || selectedAttendeeIds.length === defaultAttendeeIds.length}
+              >
+                Select all
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleClearAttendees}
+                disabled={selectedAttendeeIds.length === 0}
+              >
+                Clear
+              </Button>
+            </div>
+            <ScrollArea className="mt-3 max-h-40 rounded-lg border border-neutral-200">
+              <div className="p-3 space-y-2">
+                {memberOptions.length === 0 ? (
+                  <p className="text-sm text-neutral-500">Invite friends to your trip to pick attendees.</p>
+                ) : (
+                  memberOptions.map((member) => {
+                    const isChecked = selectedAttendeeIds.includes(member.id);
+                    return (
+                      <div key={member.id} className="flex items-center space-x-3">
+                        <Checkbox
+                          id={`attendee-${member.id}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => handleToggleAttendee(member.id, checked)}
+                        />
+                        <Label htmlFor={`attendee-${member.id}`} className="text-sm text-neutral-700">
+                          {member.name}
+                        </Label>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+
+          <div>
             <Label htmlFor="category">Category</Label>
-            <Select 
-              value={form.watch("category")} 
+            <Select
+              value={form.watch("category")}
               onValueChange={(value) => form.setValue("category", value)}
             >
               <SelectTrigger>

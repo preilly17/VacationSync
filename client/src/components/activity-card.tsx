@@ -38,6 +38,21 @@ const categoryIcons = {
   other: "📍",
 };
 
+const getUserDisplayName = (user: User) => {
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+  if (first && last) {
+    return `${first} ${last}`;
+  }
+  if (first) {
+    return first;
+  }
+  if (user.username) {
+    return user.username;
+  }
+  return user.email || "Trip member";
+};
+
 export function ActivityCard({
   activity,
   currentUser,
@@ -162,7 +177,7 @@ export function ActivityCard({
                 </span>
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               {activity.isAccepted ? (
                 <>
@@ -206,6 +221,25 @@ export function ActivityCard({
               )}
             </div>
           </div>
+
+          {activity.acceptances.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500 mb-2">
+                Attending
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {activity.acceptances.map((acceptance) => (
+                  <Badge
+                    key={acceptance.id}
+                    variant="outline"
+                    className="border-neutral-200 bg-white text-neutral-700"
+                  >
+                    {getUserDisplayName(acceptance.user)}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

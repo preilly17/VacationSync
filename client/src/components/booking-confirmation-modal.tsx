@@ -15,6 +15,7 @@ import { CalendarIcon, Plane, Hotel, MapPin, CheckCircle, X, Utensils, Star, Pho
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/useAuth";
 
 interface BookingConfirmationModalProps {
   isOpen: boolean;
@@ -86,6 +87,7 @@ export function BookingConfirmationModal({
   const [confirmed, setConfirmed] = useState<boolean | null>(null);
   const [proposing, setProposing] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const form = useForm<BookingFormData>({
     resolver: zodResolver(bookingSchema),
@@ -178,7 +180,8 @@ export function BookingConfirmationModal({
             partySize: data.partySize || 2,
             specialRequests: data.additionalDetails || ''
           }
-        })
+        }),
+        attendeeIds: user ? [user.id] : [],
       };
 
       await apiRequest(`/api/trips/${tripId}/activities`, {
