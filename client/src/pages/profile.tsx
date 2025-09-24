@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,11 +12,10 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { User } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationsSection } from "@/components/notifications-section";
-import { Smartphone, Settings, User as UserIcon, MapPin, Plane, PlayCircle, ArrowLeft, Search, Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Smartphone, Settings, MapPin, Plane, PlayCircle, ArrowLeft, Search, Loader2 } from "lucide-react";
+import { useState, useEffect, useMemo, type KeyboardEvent } from "react";
 import { Link } from "wouter";
 import LocationUtils from "@/lib/locationUtils";
 
@@ -56,9 +55,49 @@ const getLocationCode = (location: RawLocationResult): string => {
   return location.iataCode ?? "";
 };
 
-const formatLocationResult = (location: RawLocationResult): ProfileLocationOption => ({
+const buildLocationDisplay = (location: RawLocationResult): string => {
+  const country = getCountryName(location);
+  const descriptorParts: string[] = [];
+
+  if (location.type === "AIRPORT") {
+    if (location.name) {
+      descriptorParts.push(location.name);
+    }
+
+    if (location.cityCode) {
+      descriptorParts.push(location.cityCode);
+    }
+
+    if (country) {
+      descriptorParts.push(country);
+    }
+  } else {
+    if (location.name) {
+      descriptorParts.push(location.name);
+    }
+
+    if (location.region && !descriptorParts.includes(location.region)) {
+      descriptorParts.push(location.region);
+    }
+
+    if (country && !descriptorParts.includes(country)) {
+      descriptorParts.push(country);
+    }
+  }
+
+  const mainLabel = descriptorParts.filter(Boolean).join(", ");
+  const fallbackLabel = mainLabel || location.displayName || location.name || country || "";
+  const code = getLocationCode(location);
+
+  return code ? `${fallbackLabel} — ${code}` : fallbackLabel;
+};
+
+const formatLocationResult = (
+  location: RawLocationResult,
+  formatter: (location: RawLocationResult) => string = LocationUtils.formatLocation
+): ProfileLocationOption => ({
   ...location,
-  formatted: LocationUtils.formatLocation(location),
+  formatted: formatter(location),
   countryName: getCountryName(location),
   locationCode: getLocationCode(location),
 });
@@ -104,28 +143,40 @@ export default function Profile() {
   const { user, isLoading } = useAuth();
 
   // Location search state
-  const [locationQuery, setLocationQuery] = useState('');
+  const [locationQuery, setLocationQuery] = useState("");
   const [locationResults, setLocationResults] = useState<ProfileLocationOption[]>([]);
   const [showLocationResults, setShowLocationResults] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<ProfileLocationOption | null>(null);
   const [isSearchingLocations, setIsSearchingLocations] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [highlightedResult, setHighlightedResult] = useState(-1);
+  const [hasClearedLocation, setHasClearedLocation] = useState(false);
+  const [pendingSubmitContext, setPendingSubmitContext] = useState<"profile" | "location" | null>(null);
+
+  const hasExistingDefault = useMemo(
+    () => Boolean(user?.defaultLocation || user?.defaultLocationCode),
+    [user?.defaultLocation, user?.defaultLocationCode]
+  );
 
   const handleLocationSelect = (location: ProfileLocationOption) => {
     const formattedName = location.displayName || location.formatted;
-    const country = location.countryName || '';
-    const cityName = location.type === 'COUNTRY' ? '' : location.name ?? '';
-    const locationCode = location.locationCode || '';
+    const country = location.countryName || "";
+    const cityName = location.type === "COUNTRY" ? "" : location.name ?? "";
+    const locationCode = location.locationCode || "";
 
     setSelectedLocation(location);
     setLocationQuery(location.formatted);
     setShowLocationResults(false);
     setLocationResults([]);
     setIsSearchingLocations(false);
+    setLocationError(null);
+    setHasClearedLocation(false);
+    setHighlightedResult(-1);
 
-    form.setValue('defaultLocation', formattedName);
-    form.setValue('defaultCity', cityName);
-    form.setValue('defaultCountry', country);
-    form.setValue('defaultLocationCode', locationCode);
+    form.setValue("defaultLocation", formattedName);
+    form.setValue("defaultCity", cityName);
+    form.setValue("defaultCountry", country);
+    form.setValue("defaultLocationCode", locationCode);
   };
 
   // Debounced location search
@@ -136,6 +187,8 @@ export default function Profile() {
       setLocationResults([]);
       setShowLocationResults(false);
       setIsSearchingLocations(false);
+      setLocationError(null);
+      setHighlightedResult(-1);
       return;
     }
 
@@ -145,6 +198,9 @@ export default function Profile() {
 
     let isCancelled = false;
     setIsSearchingLocations(true);
+    setLocationError(null);
+    setShowLocationResults(true);
+    setHighlightedResult(-1);
 
     const timer = setTimeout(async () => {
       try {
@@ -152,18 +208,18 @@ export default function Profile() {
         if (isCancelled) return;
 
         const filtered = results
-          .filter((result): result is RawLocationResult =>
-            Boolean(result) && (result.type === 'AIRPORT' || result.type === 'CITY')
-          )
-          .map(formatLocationResult);
+          .filter((result): result is RawLocationResult => Boolean(result))
+          .map((result) => formatLocationResult(result, buildLocationDisplay));
 
         setLocationResults(filtered);
-        setShowLocationResults(filtered.length > 0);
+        setShowLocationResults(true);
+        setHighlightedResult(filtered.length > 0 ? 0 : -1);
       } catch (error) {
         if (!isCancelled) {
           console.error('Location search error:', error);
           setLocationResults([]);
-          setShowLocationResults(false);
+          setShowLocationResults(true);
+          setLocationError("Can't fetch places right now. Try again.");
         }
       } finally {
         if (!isCancelled) {
@@ -182,20 +238,46 @@ export default function Profile() {
   useEffect(() => {
     if (user?.defaultLocation) {
       setLocationQuery(user.defaultLocation);
+      setHasClearedLocation(false);
+    } else if (user?.defaultLocationCode) {
+      setLocationQuery(user.defaultLocationCode);
+      setHasClearedLocation(false);
+    } else {
+      setLocationQuery("");
+      setHasClearedLocation(false);
     }
-  }, [user]);
+
+    setSelectedLocation(null);
+    setLocationResults([]);
+    setShowLocationResults(false);
+    setLocationError(null);
+    setHighlightedResult(-1);
+  }, [user?.defaultLocation, user?.defaultLocationCode]);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-      cashAppUsername: user?.cashAppUsername || '',
-      venmoUsername: user?.venmoUsername || '',
-      defaultLocation: user?.defaultLocation || '',
-      defaultLocationCode: user?.defaultLocationCode || '',
-      defaultCity: user?.defaultCity || '',
-      defaultCountry: user?.defaultCountry || '',
+      cashAppUsername: user?.cashAppUsername || "",
+      venmoUsername: user?.venmoUsername || "",
+      defaultLocation: user?.defaultLocation || "",
+      defaultLocationCode: user?.defaultLocationCode || "",
+      defaultCity: user?.defaultCity || "",
+      defaultCountry: user?.defaultCountry || "",
     },
   });
+
+  useEffect(() => {
+    if (user) {
+      form.reset({
+        cashAppUsername: user.cashAppUsername || "",
+        venmoUsername: user.venmoUsername || "",
+        defaultLocation: user.defaultLocation || "",
+        defaultLocationCode: user.defaultLocationCode || "",
+        defaultCity: user.defaultCity || "",
+        defaultCountry: user.defaultCountry || "",
+      });
+    }
+  }, [user, form]);
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: ProfileFormData) => {
@@ -206,12 +288,36 @@ export default function Profile() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-      toast({
-        title: "Profile updated",
-        description: "Your payment app settings and location preferences have been saved.",
-      });
+      const context = pendingSubmitContext;
+      setPendingSubmitContext(null);
+
+      if (context === "location") {
+        const { defaultLocation, defaultLocationCode, defaultCity } = form.getValues();
+
+        if (!defaultLocation && !defaultLocationCode) {
+          toast({
+            title: "Default location cleared",
+            description: "We won't prefill departures until you set a new default.",
+          });
+        } else {
+          const summary = defaultLocationCode
+            ? `${defaultLocation || defaultCity || ""} (${defaultLocationCode})`
+            : defaultLocation || defaultCity || "";
+
+          toast({
+            title: "Default location saved",
+            description: summary ? `Default location saved: ${summary}` : "Your default location is saved.",
+          });
+        }
+      } else {
+        toast({
+          title: "Profile updated",
+          description: "Your payment app settings and location preferences have been saved.",
+        });
+      }
     },
     onError: (error) => {
+      setPendingSubmitContext(null);
       toast({
         title: "Error",
         description: error.message || "Failed to update profile",
@@ -220,8 +326,80 @@ export default function Profile() {
     },
   });
 
-  const onSubmit = (data: ProfileFormData) => {
-    updateProfileMutation.mutate(data);
+  const handleSubmit = (context: "profile" | "location") =>
+    form.handleSubmit((data: ProfileFormData) => {
+      setPendingSubmitContext(context);
+      updateProfileMutation.mutate(data);
+    });
+
+  const handleClearLocation = () => {
+    setLocationQuery("");
+    setSelectedLocation(null);
+    setLocationResults([]);
+    setShowLocationResults(false);
+    setLocationError(null);
+    setHasClearedLocation(true);
+    setHighlightedResult(-1);
+
+    form.setValue("defaultLocation", "");
+    form.setValue("defaultCity", "");
+    form.setValue("defaultCountry", "");
+    form.setValue("defaultLocationCode", "");
+  };
+
+  const queryMatchesSelection =
+    selectedLocation && locationQuery.trim() === selectedLocation.formatted.trim();
+
+  const hasValidSelection = Boolean(selectedLocation && queryMatchesSelection);
+
+  const canUseExistingDefault =
+    !selectedLocation &&
+    !hasClearedLocation &&
+    locationQuery.trim().length === 0 &&
+    hasExistingDefault;
+
+  const isLocationSaveDisabled =
+    updateProfileMutation.isPending || !(hasValidSelection || hasClearedLocation || canUseExistingDefault);
+
+  const handleLocationKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+
+      if (!showLocationResults && locationResults.length > 0) {
+        setShowLocationResults(true);
+        setHighlightedResult(0);
+        return;
+      }
+
+      if (locationResults.length === 0) {
+        return;
+      }
+
+      setHighlightedResult((prev) => {
+        const next = prev + 1;
+        return next >= locationResults.length ? 0 : next;
+      });
+    } else if (event.key === "ArrowUp") {
+      if (locationResults.length === 0) {
+        return;
+      }
+
+      event.preventDefault();
+      setHighlightedResult((prev) => {
+        if (prev <= 0) {
+          return locationResults.length - 1;
+        }
+        return prev - 1;
+      });
+    } else if (event.key === "Enter") {
+      if (highlightedResult >= 0 && locationResults[highlightedResult]) {
+        event.preventDefault();
+        handleLocationSelect(locationResults[highlightedResult]);
+      }
+    } else if (event.key === "Escape") {
+      setShowLocationResults(false);
+      setHighlightedResult(-1);
+    }
   };
 
   if (isLoading) {
@@ -296,7 +474,7 @@ export default function Profile() {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={handleSubmit("profile")} className="space-y-6">
               <div className="space-y-4">
                 <h3 className="text-lg font-medium flex items-center gap-2">
                   <Smartphone className="w-5 h-5" />
@@ -379,8 +557,8 @@ export default function Profile() {
               <Separator />
 
               <div className="flex justify-end">
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   disabled={updateProfileMutation.isPending}
                   className="min-w-32"
                 >
@@ -405,7 +583,7 @@ export default function Profile() {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={handleSubmit("location")} className="space-y-6">
               <div className="space-y-4">
                 <div className="p-4 bg-blue-50 rounded-lg">
                   <h4 className="font-medium text-blue-800 mb-2 flex items-center gap-2">
@@ -438,29 +616,43 @@ export default function Profile() {
                               setSelectedLocation(null);
                             }
 
-                            if (value.trim().length === 0) {
-                              form.setValue('defaultLocation', '');
-                              form.setValue('defaultCity', '');
-                              form.setValue('defaultCountry', '');
-                              form.setValue('defaultLocationCode', '');
-                              setLocationResults([]);
+                            if (hasClearedLocation) {
+                              setHasClearedLocation(false);
                             }
+
+                            setLocationError(null);
                           }}
                           onBlur={() => {
                             setTimeout(() => setShowLocationResults(false), 200);
                           }}
                           onFocus={() => {
-                            if (locationResults.length > 0) {
+                            if (locationResults.length > 0 || locationError) {
                               setShowLocationResults(true);
                             }
                           }}
+                          onKeyDown={handleLocationKeyDown}
                           placeholder="Search for your city, airport, or location..."
                           className="pl-10"
                         />
                       </div>
-                      
-                      {showLocationResults && (locationResults.length > 0 || isSearchingLocations) && (
-                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto">
+
+                      {(locationQuery || hasExistingDefault) && (
+                        <div className="mt-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={handleClearLocation}
+                            className="text-xs text-blue-600 hover:text-blue-700"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+
+                      {showLocationResults && (
+                        <div
+                          className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-auto"
+                          role="listbox"
+                        >
                           {isSearchingLocations && (
                             <div className="flex items-center justify-center gap-2 px-4 py-3 text-xs text-muted-foreground">
                               <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
@@ -470,22 +662,24 @@ export default function Profile() {
                           {locationResults.map((location, index) => (
                             <div
                               key={`${location.id}-${location.locationCode || index}`}
-                              onClick={() => handleLocationSelect(location)}
-                              className="px-4 py-3 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                handleLocationSelect(location);
+                              }}
+                              className={`px-4 py-3 cursor-pointer border-b border-gray-100 last:border-b-0 ${
+                                highlightedResult === index ? "bg-blue-50" : "hover:bg-gray-50"
+                              }`}
+                              role="option"
+                              aria-selected={highlightedResult === index}
                             >
                               <div className="flex items-start gap-2">
                                 <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
                                 <div className="flex-1">
                                   <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                                    <span>{location.name}</span>
+                                    <span>{location.formatted}</span>
                                     <Badge variant="outline" className={getTypeBadgeStyle(location.type)}>
                                       {getTypeLabel(location.type)}
                                     </Badge>
-                                    {location.locationCode && (
-                                      <span className="text-xs font-mono text-blue-700 bg-blue-50 px-1 py-0.5 rounded">
-                                        {location.locationCode}
-                                      </span>
-                                    )}
                                   </div>
                                   <div className="text-xs text-gray-500 mt-1">
                                     {location.countryName || location.displayName}
@@ -505,9 +699,14 @@ export default function Profile() {
                               </div>
                             </div>
                           ))}
-                          {!isSearchingLocations && locationResults.length === 0 && (
+                          {!isSearchingLocations && !locationError && locationResults.length === 0 && (
                             <div className="px-4 py-3 text-xs text-muted-foreground">
-                              No locations found. Try a different city or airport.
+                              No results—try a city, country, or airport code.
+                            </div>
+                          )}
+                          {locationError && (
+                            <div className="px-4 py-3 text-xs text-red-600">
+                              {locationError}
                             </div>
                           )}
                         </div>
@@ -544,9 +743,9 @@ export default function Profile() {
               </div>
 
               <div className="flex justify-end">
-                <Button 
-                  type="submit" 
-                  disabled={updateProfileMutation.isPending}
+                <Button
+                  type="submit"
+                  disabled={isLocationSaveDisabled}
                   className="min-w-32"
                 >
                   {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
