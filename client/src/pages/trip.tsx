@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,14 +49,14 @@ import { GroceryList } from "@/components/grocery-list";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { CardHeader, CardTitle } from "@/components/ui/card";
+import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { NotificationIcon } from "@/components/notification-icon";
 import { LeaveTripButton } from "@/components/leave-trip-button";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import ActivitySearch from "@/components/activity-search";
 import { WishListBoard } from "@/components/wish-list-board";
 import Proposals from "@/pages/proposals";
-import type { TripWithDetails, ActivityWithDetails, User } from "@shared/schema";
+import type { TripWithDetails, ActivityWithDetails, User, InsertHotel } from "@shared/schema";
 import {
   format,
   startOfMonth,
@@ -73,6 +73,17 @@ import {
   formatDistanceToNow,
   differenceInCalendarDays,
 } from "date-fns";
+import { Form } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
+import {
+  createHotelFormDefaults,
+  hotelFormSchema,
+  transformHotelFormValues,
+  type HotelFormValues,
+} from "@/lib/hotel-form";
+import { apiRequest } from "@/lib/queryClient";
 
 const TRIP_TAB_KEYS = [
   "calendar",
@@ -1189,7 +1200,7 @@ export default function Trip() {
                 )}
                 
                 {activeTab === "hotels" && (
-                  <HotelBooking tripId={parseInt(id || "0")} user={user} />
+                  <HotelBooking tripId={parseInt(id || "0")} user={user} trip={trip} />
                 )}
                 
                 {activeTab === "restaurants" && (
@@ -1435,12 +1446,67 @@ function FlightCoordination({ tripId, user }: { tripId: number; user: any }) {
 }
 
 // Hotel Booking Component
-function HotelBooking({ tripId, user }: { tripId: number; user: any }) {
+function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?: TripWithDetails | null }) {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: hotels, isLoading } = useQuery({
     queryKey: [`/api/trips/${tripId}/hotels`],
     enabled: !!tripId,
   });
+
+  const formDefaults = useCallback(
+    () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
+    [tripId, trip?.startDate, trip?.endDate],
+  );
+
+  const form = useForm<HotelFormValues>({
+    resolver: zodResolver(hotelFormSchema),
+    defaultValues: formDefaults(),
+  });
+
+  useEffect(() => {
+    form.reset(formDefaults());
+  }, [form, formDefaults]);
+
+  const createHotelMutation = useMutation({
+    mutationFn: async (payload: InsertHotel) => {
+      return await apiRequest(`/api/trips/${tripId}/hotels`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      toast({
+        title: "Hotel added",
+        description: "Your hotel booking has been saved to the trip.",
+      });
+      form.reset(formDefaults());
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error as Error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You need to be logged in to add hotels.",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to add hotel. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmit = (values: HotelFormValues) => {
+    createHotelMutation.mutate(transformHotelFormValues(values));
+  };
 
   if (isLoading) {
     return (
@@ -1457,7 +1523,7 @@ function HotelBooking({ tripId, user }: { tripId: number; user: any }) {
           <h2 className="text-xl font-semibold">Hotel Booking</h2>
           <p className="text-gray-600">Find and book accommodations</p>
         </div>
-        <Button 
+        <Button
           onClick={() => {
             setLocation(`/trip/${tripId}/hotels`);
           }}
@@ -1467,6 +1533,38 @@ function HotelBooking({ tripId, user }: { tripId: number; user: any }) {
           Manage Hotels
         </Button>
       </div>
+
+      <Card className="border-dashed">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Plus className="h-5 w-5 text-primary" />
+            Add a Hotel Booking
+          </CardTitle>
+          <CardDescription>
+            Save a custom stay or confirmed reservation directly to this trip so everyone can view the details.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="rounded-lg bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+            <p className="font-medium text-neutral-800">Trip snapshot</p>
+            <p>
+              Destination: <span className="font-semibold text-neutral-900">{trip?.destination ?? "TBD"}</span>
+            </p>
+            <p>
+              Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), 'MMM d, yyyy')} – ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
+            </p>
+          </div>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <HotelFormFields
+                form={form}
+                isSubmitting={createHotelMutation.isPending}
+                submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+              />
+            </form>
+          </Form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent className="p-6">
