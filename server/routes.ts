@@ -44,6 +44,24 @@ const getUserDisplayName = (user: {
   return user.email?.trim() ?? "Trip member";
 };
 
+const normalizeCoverPhotoInput = (
+  value: unknown,
+): string | null | undefined => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  if (value === null) {
+    return null;
+  }
+
+  return undefined;
+};
+
 const hotelSearchSchema = z.object({
   cityCode: z.string().min(3).max(3, "City code must be 3 characters"),
   checkInDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Check-in date must be YYYY-MM-DD format"),
@@ -588,10 +606,12 @@ export function setupRoutes(app: Express) {
       }
 
       console.log("Creating trip with data:", req.body);
-      
+
       // Parse and convert dates
+      const coverPhotoUrl = normalizeCoverPhotoInput(req.body.coverPhotoUrl);
       const tripData = {
         ...req.body,
+        coverPhotoUrl: coverPhotoUrl ?? null,
         startDate: new Date(req.body.startDate),
         endDate: new Date(req.body.endDate),
       };
@@ -681,9 +701,15 @@ export function setupRoutes(app: Express) {
       }
 
       console.log("Updating trip with data:", req.body);
-      
+
       // Parse and convert dates if provided
       const updateData: any = { ...req.body };
+      const coverPhotoUrl = normalizeCoverPhotoInput(req.body.coverPhotoUrl);
+      if (coverPhotoUrl !== undefined) {
+        updateData.coverPhotoUrl = coverPhotoUrl;
+      } else {
+        delete updateData.coverPhotoUrl;
+      }
       if (updateData.startDate) {
         updateData.startDate = new Date(updateData.startDate);
       }

@@ -740,7 +740,20 @@ export default function Trip() {
                 
                 {/* Trip Header */}
                 <div className="mb-10 space-y-6">
-                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-rose-500 to-orange-400 text-white shadow-xl">
+                  <div className="relative overflow-hidden rounded-3xl text-white shadow-xl">
+                    {trip.coverPhotoUrl ? (
+                      <>
+                        <img
+                          src={trip.coverPhotoUrl}
+                          alt={`Cover photo for ${trip.name}`}
+                          className="absolute inset-0 h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/30 to-transparent" />
+                      </>
+                    ) : (
+                      <div className="absolute inset-0 bg-gradient-to-br from-primary via-rose-500 to-orange-400" />
+                    )}
                     <div
                       className="pointer-events-none absolute inset-0 opacity-30 [background:radial-gradient(circle_at_top_left,rgba(255,255,255,0.6),transparent_55%)]"
                       aria-hidden="true"

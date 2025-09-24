@@ -91,6 +91,13 @@ server.listen({ port, host, reusePort: true }, () => {
 // Run setup tasks *after* server starts
 (async () => {
   try {
+    await storage.ensureTripCoverPhotoColumn();
+    log("🖼️ Trip cover photo column ready");
+  } catch (error) {
+    log(`⚠️ Failed to ensure trip cover photo column: ${error}`);
+  }
+
+  try {
     await storage.initializeWishList();
     log("📝 Wish list tables ready");
   } catch (error) {

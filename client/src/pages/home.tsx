@@ -45,61 +45,6 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { TripWithDetails } from "@shared/schema";
 
-const DEFAULT_DESTINATION_IMAGE =
-  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80";
-
-const DESTINATION_BACKGROUNDS = [
-  {
-    keywords: ["paris", "france"],
-    image:
-      "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["new york", "nyc"],
-    image:
-      "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["tokyo", "japan"],
-    image:
-      "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["london", "england", "uk"],
-    image:
-      "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["rome", "italy"],
-    image:
-      "https://images.unsplash.com/photo-1503264116251-35a269479413?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["beach", "island", "bali", "maldives"],
-    image:
-      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["mountain", "alps", "swiss", "colorado"],
-    image:
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["desert", "morocco", "sahara"],
-    image:
-      "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1600&q=80",
-  },
-] as const;
-
-const getDestinationImage = (destination?: string | null) => {
-  if (!destination) return DEFAULT_DESTINATION_IMAGE;
-  const lowerDestination = destination.toLowerCase();
-  const match = DESTINATION_BACKGROUNDS.find(({ keywords }) =>
-    keywords.some((keyword) => lowerDestination.includes(keyword))
-  );
-  return match?.image ?? DEFAULT_DESTINATION_IMAGE;
-};
-
 const getCountdownLabel = (startDate: string | Date) => {
   const start = new Date(startDate);
   const today = new Date();
@@ -291,18 +236,18 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-7xl space-y-12 px-4 py-12 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-r from-sky-50 via-white to-rose-100 p-8 shadow-sm sm:p-12">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 p-8 shadow-sm sm:p-12">
             <div className="absolute inset-0">
-              <img
-                src={getDestinationImage(highlightTrip?.destination)}
-                alt={
-                  highlightDestinationName
-                    ? `Scenic view of ${highlightDestinationName}`
-                    : "Colorful travel collage"
-                }
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
+              {highlightTrip?.coverPhotoUrl ? (
+                <img
+                  src={highlightTrip.coverPhotoUrl}
+                  alt={`Cover photo for ${highlightTrip.name}`}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="h-full w-full bg-gradient-to-br from-primary via-rose-500 to-orange-400" />
+              )}
               <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px]" />
             </div>
             <div className="relative z-10 flex h-full flex-col justify-between gap-8 text-slate-900">
@@ -491,12 +436,16 @@ export default function Home() {
                   className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
                 >
                   <div className="relative h-40 w-full overflow-hidden">
-                    <img
-                      src={getDestinationImage(trip.destination)}
-                      alt={`Scenic view of ${trip.destination}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
+                    {trip.coverPhotoUrl ? (
+                      <img
+                        src={trip.coverPhotoUrl}
+                        alt={`Cover photo for ${trip.name}`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-br from-primary via-rose-500 to-orange-400" />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
                     <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
                       <div>

@@ -118,6 +118,7 @@ export interface TripCalendar {
   endDate: IsoDate;
   shareCode: string;
   createdBy: string;
+  coverPhotoUrl: string | null;
   createdAt: IsoDate | null;
 }
 
@@ -126,6 +127,13 @@ export const insertTripCalendarSchema = z.object({
   destination: z.string().min(1, "Destination is required"),
   startDate: z.union([z.date(), z.string()]),
   endDate: z.union([z.date(), z.string()]),
+  coverPhotoUrl: z
+    .string()
+    .trim()
+    .min(1, "Cover photo must be a valid image")
+    .max(10_000_000, "Cover photo is too large")
+    .nullable()
+    .optional(),
 });
 
 export type InsertTripCalendar = z.infer<typeof insertTripCalendarSchema>;

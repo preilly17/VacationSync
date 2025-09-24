@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type ChangeEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -38,10 +38,14 @@ const formSchema = insertTripCalendarSchema.extend({
 
 type FormData = z.infer<typeof formSchema>;
 
+const MAX_COVER_PHOTO_SIZE_MB = 5;
+const MAX_COVER_PHOTO_SIZE_BYTES = MAX_COVER_PHOTO_SIZE_MB * 1024 * 1024;
+
 export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -50,8 +54,11 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
     },
   });
+
+  const coverPhotoPreview = form.watch("coverPhotoUrl");
 
   // Reset form when trip changes or modal opens
   useEffect(() => {
@@ -61,12 +68,16 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         destination: trip.destination,
         startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
         endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+        coverPhotoUrl: trip.coverPhotoUrl ?? null,
       });
       // Set destination for SmartLocationSearch
-      setSelectedDestination({ 
-        name: trip.destination, 
-        displayName: trip.destination 
+      setSelectedDestination({
+        name: trip.destination,
+        displayName: trip.destination
       });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     }
   }, [open, trip, form]);
 
@@ -95,6 +106,9 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         title: "Trip updated!",
         description: "Your trip details have been updated successfully.",
       });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       onOpenChange(false);
     },
     onError: (error: any) => {
@@ -133,6 +147,66 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     // Don't update form state immediately - only on submit
   };
 
+  const handleCoverPhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Unsupported file",
+        description: "Please choose an image file for your cover photo.",
+        variant: "destructive",
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
+    if (file.size > MAX_COVER_PHOTO_SIZE_BYTES) {
+      toast({
+        title: "Image too large",
+        description:
+          "Please choose an image smaller than " +
+          MAX_COVER_PHOTO_SIZE_MB +
+          "MB.",
+        variant: "destructive",
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === "string") {
+        form.setValue("coverPhotoUrl", reader.result, { shouldDirty: true });
+      }
+    };
+    reader.onerror = () => {
+      toast({
+        title: "Upload failed",
+        description: "We couldn't read that file. Please try again with a different image.",
+        variant: "destructive",
+      });
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    };
+
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveCoverPhoto = () => {
+    form.setValue("coverPhotoUrl", null, { shouldDirty: true });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleCancel = () => {
     // Reset form to original values
     form.reset({
@@ -140,12 +214,16 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
     });
     // Reset selected destination to original
-    setSelectedDestination({ 
-      name: trip.destination, 
-      displayName: trip.destination 
+    setSelectedDestination({
+      name: trip.destination,
+      displayName: trip.destination
     });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     onOpenChange(false);
   };
 
@@ -210,6 +288,65 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
                 <p className="text-sm text-red-600 mt-1">{form.formState.errors.endDate.message}</p>
               )}
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="coverPhoto">Cover Photo</Label>
+              <p className="text-sm text-neutral-500">
+                Update or remove the banner image for this trip.
+              </p>
+            </div>
+            {coverPhotoPreview ? (
+              <div className="relative overflow-hidden rounded-xl border border-neutral-200 bg-neutral-100">
+                <img
+                  src={coverPhotoPreview}
+                  alt="Trip cover preview"
+                  className="h-40 w-full object-cover"
+                />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+              </div>
+            ) : (
+              <div className="flex h-40 items-center justify-center rounded-xl border border-dashed border-neutral-300 bg-neutral-50 text-sm text-neutral-500">
+                No photo selected
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                id="coverPhoto"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleCoverPhotoChange}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {coverPhotoPreview ? "Change photo" : "Upload cover photo"}
+              </Button>
+              {coverPhotoPreview && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full sm:w-auto text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={handleRemoveCoverPhoto}
+                >
+                  Remove photo
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-neutral-500">
+              JPG or PNG up to {MAX_COVER_PHOTO_SIZE_MB}MB.
+            </p>
+            {form.formState.errors.coverPhotoUrl && (
+              <p className="text-sm text-red-600">
+                {form.formState.errors.coverPhotoUrl.message}
+              </p>
+            )}
           </div>
 
           <div className="flex space-x-3 pt-4">
