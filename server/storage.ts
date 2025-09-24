@@ -564,6 +564,116 @@ type RestaurantWithDetailsRow = RestaurantRow &
     trip_created_at: Date | null;
   };
 
+type HotelProposalRow = {
+  id: number;
+  trip_id: number;
+  proposed_by: string;
+  hotel_name: string;
+  location: string;
+  price: string | number | null;
+  price_per_night: string | number | null;
+  rating: number | string | null;
+  amenities: string | null;
+  platform: string;
+  booking_url: string;
+  status: string;
+  average_ranking: number | string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type HotelProposalWithProposerRow = HotelProposalRow & PrefixedUserRow<"proposer_">;
+
+type HotelRankingRow = {
+  id: number;
+  proposal_id: number;
+  user_id: string;
+  ranking: number | string;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type HotelRankingWithUserRow = HotelRankingRow & PrefixedUserRow<"user_">;
+
+type FlightProposalRow = {
+  id: number;
+  trip_id: number;
+  proposed_by: string;
+  airline: string;
+  flight_number: string;
+  departure_airport: string;
+  departure_time: Date | string;
+  departure_terminal: string | null;
+  arrival_airport: string;
+  arrival_time: Date | string;
+  arrival_terminal: string | null;
+  duration: string;
+  stops: number | null;
+  aircraft: string | null;
+  price: string | number | null;
+  currency: string;
+  booking_url: string;
+  platform: string;
+  status: string;
+  average_ranking: number | string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type FlightProposalWithProposerRow = FlightProposalRow & PrefixedUserRow<"proposer_">;
+
+type FlightRankingRow = {
+  id: number;
+  proposal_id: number;
+  user_id: string;
+  ranking: number | string;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type FlightRankingWithUserRow = FlightRankingRow & PrefixedUserRow<"user_">;
+
+type RestaurantProposalRow = {
+  id: number;
+  trip_id: number;
+  proposed_by: string;
+  restaurant_name: string;
+  address: string;
+  cuisine_type: string | null;
+  price_range: string | null;
+  rating: string | number | null;
+  phone_number: string | null;
+  website: string | null;
+  reservation_url: string | null;
+  platform: string;
+  atmosphere: string | null;
+  specialties: string | null;
+  dietary_options: unknown;
+  preferred_meal_time: string | null;
+  preferred_dates: unknown;
+  features: unknown;
+  status: string;
+  average_ranking: number | string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type RestaurantProposalWithProposerRow = RestaurantProposalRow & PrefixedUserRow<"proposer_">;
+
+type RestaurantRankingRow = {
+  id: number;
+  proposal_id: number;
+  user_id: string;
+  ranking: number | string;
+  notes: string | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type RestaurantRankingWithUserRow = RestaurantRankingRow & PrefixedUserRow<"user_">;
+
 type TravelTipRow = {
   id: number;
   content: string;
@@ -1180,6 +1290,126 @@ const mapRestaurantWithDetails = (
   };
 };
 
+const mapHotelProposal = (row: HotelProposalRow): HotelProposal => ({
+  id: row.id,
+  tripId: row.trip_id,
+  proposedBy: row.proposed_by,
+  hotelName: row.hotel_name,
+  location: row.location,
+  price: toStringValue(row.price, "0"),
+  pricePerNight: toNullableString(row.price_per_night),
+  rating: toNullableNumber(row.rating),
+  amenities: row.amenities,
+  platform: row.platform,
+  bookingUrl: row.booking_url,
+  status: row.status,
+  averageRanking: toNullableNumber(row.average_ranking),
+  createdAt: row.created_at,
+});
+
+const mapHotelRanking = (row: HotelRankingRow): HotelRanking => ({
+  id: row.id,
+  proposalId: row.proposal_id,
+  userId: row.user_id,
+  ranking: Number(row.ranking),
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapHotelRankingWithUser = (
+  row: HotelRankingWithUserRow,
+): HotelRanking & { user: User } => ({
+  ...mapHotelRanking(row),
+  user: mapUserFromPrefix(row, "user_"),
+});
+
+const mapFlightProposal = (row: FlightProposalRow): FlightProposal => ({
+  id: row.id,
+  tripId: row.trip_id,
+  proposedBy: row.proposed_by,
+  airline: row.airline,
+  flightNumber: row.flight_number,
+  departureAirport: row.departure_airport,
+  departureTime: toIsoStringOrString(row.departure_time),
+  departureTerminal: row.departure_terminal,
+  arrivalAirport: row.arrival_airport,
+  arrivalTime: toIsoStringOrString(row.arrival_time),
+  arrivalTerminal: row.arrival_terminal,
+  duration: row.duration,
+  stops: row.stops ?? 0,
+  aircraft: row.aircraft,
+  price: toStringValue(row.price, "0"),
+  currency: row.currency,
+  bookingUrl: row.booking_url,
+  platform: row.platform,
+  status: row.status,
+  averageRanking: toNullableNumber(row.average_ranking),
+  createdAt: row.created_at,
+});
+
+const mapFlightRanking = (row: FlightRankingRow): FlightRanking => ({
+  id: row.id,
+  proposalId: row.proposal_id,
+  userId: row.user_id,
+  ranking: Number(row.ranking),
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapFlightRankingWithUser = (
+  row: FlightRankingWithUserRow,
+): FlightRanking & { user: User } => ({
+  ...mapFlightRanking(row),
+  user: mapUserFromPrefix(row, "user_"),
+});
+
+const mapRestaurantProposal = (
+  row: RestaurantProposalRow,
+): RestaurantProposal => ({
+  id: row.id,
+  tripId: row.trip_id,
+  proposedBy: row.proposed_by,
+  restaurantName: row.restaurant_name,
+  address: row.address,
+  cuisineType: row.cuisine_type,
+  priceRange: row.price_range,
+  rating: toNullableString(row.rating),
+  phoneNumber: row.phone_number,
+  website: row.website,
+  reservationUrl: row.reservation_url,
+  platform: row.platform,
+  atmosphere: row.atmosphere,
+  specialties: row.specialties,
+  dietaryOptions: row.dietary_options as RestaurantProposal["dietaryOptions"],
+  preferredMealTime: row.preferred_meal_time,
+  preferredDates: row.preferred_dates as RestaurantProposal["preferredDates"],
+  features: row.features as RestaurantProposal["features"],
+  status: row.status,
+  averageRanking: toNullableNumber(row.average_ranking),
+  createdAt: row.created_at,
+});
+
+const mapRestaurantRanking = (
+  row: RestaurantRankingRow,
+): RestaurantRanking => ({
+  id: row.id,
+  proposalId: row.proposal_id,
+  userId: row.user_id,
+  ranking: Number(row.ranking),
+  notes: row.notes,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapRestaurantRankingWithUser = (
+  row: RestaurantRankingWithUserRow,
+): RestaurantRanking & { user: User } => ({
+  ...mapRestaurantRanking(row),
+  user: mapUserFromPrefix(row, "user_"),
+});
+
 const mapTravelTip = (row: TravelTipRow): TravelTip => ({
   id: row.id,
   content: row.content,
@@ -1303,6 +1533,50 @@ const mapUserTipPreferences = (
 
 const toDbJson = (value: unknown): string | null =>
   value === undefined || value === null ? null : JSON.stringify(value);
+
+const toStringValue = (value: unknown, defaultValue = ""): string => {
+  if (value === null || value === undefined) {
+    return defaultValue;
+  }
+  return String(value);
+};
+
+const toNullableString = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return String(value);
+};
+
+const toNullableNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string" && value.trim() === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const toIsoStringOrString = (value: Date | string): string => {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString();
+  }
+
+  return String(value);
+};
 
 const SHARE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -2206,6 +2480,129 @@ export class DatabaseStorage implements IStorage {
     );
 
     return rows.map(mapTripMemberWithUser);
+  }
+
+  private async removeProposalActivities(
+    tripId: number,
+    userId: string,
+    possibleNames: (string | null | undefined)[],
+  ): Promise<void> {
+    const normalizedNames = Array.from(
+      new Set(
+        possibleNames
+          .map((name) => name?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
+
+    if (normalizedNames.length === 0) {
+      return;
+    }
+
+    const lowerCaseNames = normalizedNames.map((name) => name.toLowerCase());
+
+    const { rows: activityRows } = await query<{ id: number }>(
+      `
+      SELECT id
+      FROM activities
+      WHERE trip_calendar_id = $1
+        AND posted_by = $2
+        AND LOWER(name) = ANY($3::text[])
+      `,
+      [tripId, userId, lowerCaseNames],
+    );
+
+    if (activityRows.length === 0) {
+      return;
+    }
+
+    const activityIds = activityRows.map((row) => row.id);
+
+    await query(
+      `
+      DELETE FROM activity_comments
+      WHERE activity_id = ANY($1::int[])
+      `,
+      [activityIds],
+    );
+
+    await query(
+      `
+      DELETE FROM activity_acceptances
+      WHERE activity_id = ANY($1::int[])
+      `,
+      [activityIds],
+    );
+
+    await query(
+      `
+      DELETE FROM activities
+      WHERE id = ANY($1::int[])
+      `,
+      [activityIds],
+    );
+  }
+
+  private async notifyTripAboutProposalCancellation(options: {
+    tripId: number;
+    canceledByUserId: string;
+    proposalTitle: string;
+    type: "hotel" | "flight" | "restaurant";
+  }): Promise<void> {
+    const { tripId, canceledByUserId, proposalTitle, type } = options;
+
+    try {
+      const members = await this.fetchTripMembersWithUsers(tripId);
+      if (members.length === 0) {
+        return;
+      }
+
+      const cancelingUser = await this.getUser(canceledByUserId);
+      const displayName =
+        (cancelingUser?.firstName && cancelingUser.firstName.trim()) ||
+        (cancelingUser?.username && cancelingUser.username.trim()) ||
+        (cancelingUser?.email && cancelingUser.email.trim()) ||
+        "A trip member";
+
+      const titleMap: Record<"hotel" | "flight" | "restaurant", string> = {
+        hotel: "Hotel proposal canceled",
+        flight: "Flight proposal canceled",
+        restaurant: "Restaurant proposal canceled",
+      } as const;
+
+      const typeLabel =
+        type === "hotel"
+          ? "hotel"
+          : type === "flight"
+            ? "flight"
+            : "restaurant";
+
+      const message = `${displayName} canceled the ${typeLabel} proposal "${proposalTitle}".`;
+
+      await Promise.all(
+        members
+          .filter((member) => member.userId !== canceledByUserId)
+          .map((member) =>
+            this.createNotification({
+              userId: member.userId,
+              type: "proposal",
+              title: titleMap[type],
+              message,
+              tripId,
+            }).catch((error) => {
+              console.error(
+                "Failed to create proposal cancellation notification:",
+                error,
+              );
+            }),
+          ),
+      );
+    } catch (error) {
+      console.error(
+        "Failed to notify trip members about proposal cancellation:",
+        error,
+      );
+    }
   }
 
   private async shareCodeExists(shareCode: string): Promise<boolean> {
@@ -5932,18 +6329,1115 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     return rows.map(mapRestaurantWithDetails);
   }
-  async createHotelProposal(): Promise<HotelProposal> { throw new Error("Not implemented"); }
-  async getTripHotelProposals(): Promise<HotelProposalWithDetails[]> { throw new Error("Not implemented"); }
-  async rankHotelProposal(): Promise<void> { throw new Error("Not implemented"); }
-  async updateProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
-  async updateHotelProposalStatus(): Promise<HotelProposal> { throw new Error("Not implemented"); }
+  async createHotelProposal(
+    proposal: Partial<InsertHotelProposal> & {
+      tripId: number;
+      hotelName: string;
+      location: string;
+      price: string | number;
+      bookingUrl: string;
+      platform: string;
+      status?: string;
+      pricePerNight?: string | number | null;
+      rating?: string | number | null;
+      amenities?: string | null;
+    },
+    userId: string,
+  ): Promise<HotelProposal> {
+    const priceValue = toStringValue(proposal.price, "0");
+    const pricePerNightValue = toNullableString(proposal.pricePerNight ?? null);
+    const ratingValue = toNullableNumber(proposal.rating);
+
+    const { rows } = await query<HotelProposalRow>(
+      `
+      INSERT INTO hotel_proposals (
+        trip_id,
+        proposed_by,
+        hotel_name,
+        location,
+        price,
+        price_per_night,
+        rating,
+        amenities,
+        platform,
+        booking_url,
+        status,
+        average_ranking
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'active'), NULL)
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        hotel_name,
+        location,
+        price,
+        price_per_night,
+        rating,
+        amenities,
+        platform,
+        booking_url,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [
+        proposal.tripId,
+        userId,
+        proposal.hotelName,
+        proposal.location,
+        priceValue,
+        pricePerNightValue,
+        ratingValue,
+        proposal.amenities ?? null,
+        proposal.platform,
+        proposal.bookingUrl,
+        proposal.status ?? "active",
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create hotel proposal");
+    }
+
+    return mapHotelProposal(row);
+  }
+
+  async getTripHotelProposals(
+    tripId: number,
+    currentUserId: string,
+  ): Promise<HotelProposalWithDetails[]> {
+    const { rows } = await query<HotelProposalWithProposerRow>(
+      `
+      SELECT
+        hp.id,
+        hp.trip_id,
+        hp.proposed_by,
+        hp.hotel_name,
+        hp.location,
+        hp.price,
+        hp.price_per_night,
+        hp.rating,
+        hp.amenities,
+        hp.platform,
+        hp.booking_url,
+        hp.status,
+        hp.average_ranking,
+        hp.created_at,
+        hp.updated_at,
+        ${selectUserColumns("u", "proposer_")}
+      FROM hotel_proposals hp
+      JOIN users u ON u.id = hp.proposed_by
+      WHERE hp.trip_id = $1
+      ORDER BY hp.created_at DESC NULLS LAST, hp.id DESC
+      `,
+      [tripId],
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const proposalIds = rows.map((row) => row.id);
+    const rankingMap = new Map<number, (HotelRanking & { user: User })[]>();
+
+    if (proposalIds.length > 0) {
+      const { rows: rankingRows } = await query<HotelRankingWithUserRow>(
+        `
+        SELECT
+          hr.id,
+          hr.proposal_id,
+          hr.user_id,
+          hr.ranking,
+          hr.notes,
+          hr.created_at,
+          hr.updated_at,
+          ${selectUserColumns("u", "user_")}
+        FROM hotel_rankings hr
+        JOIN users u ON u.id = hr.user_id
+        WHERE hr.proposal_id = ANY($1::int[])
+        ORDER BY hr.created_at ASC NULLS LAST, hr.id ASC
+        `,
+        [proposalIds],
+      );
+
+      for (const row of rankingRows) {
+        const ranking = mapHotelRankingWithUser(row);
+        const list = rankingMap.get(ranking.proposalId) ?? [];
+        list.push(ranking);
+        rankingMap.set(ranking.proposalId, list);
+      }
+    }
+
+    return rows.map((row) => {
+      const proposal = mapHotelProposal(row);
+      const proposer = mapUserFromPrefix(row, "proposer_");
+      const rankings = rankingMap.get(row.id) ?? [];
+      const currentUserRanking = rankings.find(
+        (ranking) => ranking.userId === currentUserId,
+      );
+
+      return {
+        ...proposal,
+        proposer,
+        rankings,
+        currentUserRanking,
+      };
+    });
+  }
+
+  async rankHotelProposal(
+    data: InsertHotelRanking,
+    userId: string,
+  ): Promise<void> {
+    await query(
+      `
+      INSERT INTO hotel_rankings (
+        proposal_id,
+        user_id,
+        ranking,
+        notes
+      )
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+        ranking = EXCLUDED.ranking,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      `,
+      [data.proposalId, userId, data.ranking, data.notes ?? null],
+    );
+
+    await this.updateHotelProposalAverageRanking(data.proposalId);
+  }
+
+  async updateHotelProposalAverageRanking(proposalId: number): Promise<void> {
+    const { rows } = await query<{ average: number | string | null }>(
+      `
+      SELECT AVG(ranking)::numeric AS average
+      FROM hotel_rankings
+      WHERE proposal_id = $1
+      `,
+      [proposalId],
+    );
+
+    const average = rows[0]?.average ?? null;
+
+    await query(
+      `
+      UPDATE hotel_proposals
+      SET average_ranking = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId, average],
+    );
+  }
+
+  async updateHotelProposalStatus(
+    proposalId: number,
+    status: string,
+    userId: string,
+  ): Promise<HotelProposalWithDetails> {
+    const { rows: existingRows } = await query<{
+      proposed_by: string;
+      trip_id: number;
+    }>(
+      `
+      SELECT proposed_by, trip_id
+      FROM hotel_proposals
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new Error("Hotel proposal not found");
+    }
+
+    if (existing.proposed_by !== userId) {
+      throw new Error("Only the creator can update this hotel proposal");
+    }
+
+    await query(
+      `
+      UPDATE hotel_proposals
+      SET status = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId, status],
+    );
+
+    const proposals = await this.getTripHotelProposals(existing.trip_id, userId);
+    const proposal = proposals.find((item) => item.id === proposalId);
+    if (!proposal) {
+      throw new Error("Hotel proposal not found after update");
+    }
+
+    return proposal;
+  }
+
+  async cancelHotelProposal(
+    proposalId: number,
+    userId: string,
+  ): Promise<HotelProposalWithDetails> {
+    const { rows } = await query<HotelProposalRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        proposed_by,
+        hotel_name,
+        booking_url,
+        status
+      FROM hotel_proposals
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const proposalRow = rows[0];
+    if (!proposalRow) {
+      throw new Error("Hotel proposal not found");
+    }
+
+    if (proposalRow.proposed_by !== userId) {
+      throw new Error("Only the creator can cancel this hotel proposal");
+    }
+
+    if ((proposalRow.status ?? "").toLowerCase() !== "canceled") {
+      await query(
+        `
+        UPDATE hotel_proposals
+        SET status = 'canceled',
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [proposalId],
+      );
+    }
+
+    if (proposalRow.booking_url) {
+      await query(
+        `
+        UPDATE hotels
+        SET status = 'canceled',
+            updated_at = NOW()
+        WHERE trip_id = $1
+          AND booking_url = $2
+        `,
+        [proposalRow.trip_id, proposalRow.booking_url],
+      );
+    } else {
+      await query(
+        `
+        UPDATE hotels
+        SET status = 'canceled',
+            updated_at = NOW()
+        WHERE trip_id = $1
+          AND LOWER(hotel_name) = LOWER($2)
+          AND user_id = $3
+        `,
+        [proposalRow.trip_id, proposalRow.hotel_name, userId],
+      );
+    }
+
+    await this.removeProposalActivities(proposalRow.trip_id, userId, [
+      proposalRow.hotel_name,
+    ]);
+
+    const proposals = await this.getTripHotelProposals(
+      proposalRow.trip_id,
+      userId,
+    );
+    const proposal = proposals.find((item) => item.id === proposalId);
+    if (!proposal) {
+      throw new Error("Hotel proposal not found after cancellation");
+    }
+
+    await this.notifyTripAboutProposalCancellation({
+      tripId: proposalRow.trip_id,
+      canceledByUserId: userId,
+      proposalTitle: proposalRow.hotel_name,
+      type: "hotel",
+    });
+
+    return proposal;
+  }
+
+  async createFlightProposal(
+    proposal: Partial<InsertFlightProposal> & {
+      tripId: number;
+      airline: string;
+      flightNumber: string;
+      departureAirport: string;
+      departureTime: string;
+      arrivalAirport: string;
+      arrivalTime: string;
+      duration: string;
+      stops?: number | string | null;
+      price: string | number;
+      currency: string;
+      bookingUrl: string;
+      platform: string;
+      status?: string;
+      aircraft?: string | null;
+      departureTerminal?: string | null;
+      arrivalTerminal?: string | null;
+    },
+    userId: string,
+  ): Promise<FlightProposal> {
+    const priceValue = toStringValue(proposal.price, "0");
+    const stopsValue =
+      proposal.stops === undefined || proposal.stops === null
+        ? 0
+        : Number(proposal.stops);
+
+    const { rows } = await query<FlightProposalRow>(
+      `
+      INSERT INTO flight_proposals (
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        arrival_airport,
+        arrival_time,
+        duration,
+        stops,
+        aircraft,
+        price,
+        currency,
+        booking_url,
+        platform,
+        status,
+        average_ranking,
+        departure_terminal,
+        arrival_terminal
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+        $12, $13, $14, $15, COALESCE($16, 'active'), NULL, $17, $18
+      )
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        departure_terminal,
+        arrival_airport,
+        arrival_time,
+        arrival_terminal,
+        duration,
+        stops,
+        aircraft,
+        price,
+        currency,
+        booking_url,
+        platform,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [
+        proposal.tripId,
+        userId,
+        proposal.airline,
+        proposal.flightNumber,
+        proposal.departureAirport,
+        proposal.departureTime,
+        proposal.arrivalAirport,
+        proposal.arrivalTime,
+        proposal.duration,
+        stopsValue,
+        proposal.aircraft ?? null,
+        priceValue,
+        proposal.currency,
+        proposal.bookingUrl,
+        proposal.platform,
+        proposal.status ?? "active",
+        proposal.departureTerminal ?? null,
+        proposal.arrivalTerminal ?? null,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create flight proposal");
+    }
+
+    return mapFlightProposal(row);
+  }
+
+  async getTripFlightProposals(
+    tripId: number,
+    currentUserId: string,
+  ): Promise<FlightProposalWithDetails[]> {
+    const { rows } = await query<FlightProposalWithProposerRow>(
+      `
+      SELECT
+        fp.id,
+        fp.trip_id,
+        fp.proposed_by,
+        fp.airline,
+        fp.flight_number,
+        fp.departure_airport,
+        fp.departure_time,
+        fp.departure_terminal,
+        fp.arrival_airport,
+        fp.arrival_time,
+        fp.arrival_terminal,
+        fp.duration,
+        fp.stops,
+        fp.aircraft,
+        fp.price,
+        fp.currency,
+        fp.booking_url,
+        fp.platform,
+        fp.status,
+        fp.average_ranking,
+        fp.created_at,
+        fp.updated_at,
+        ${selectUserColumns("u", "proposer_")}
+      FROM flight_proposals fp
+      JOIN users u ON u.id = fp.proposed_by
+      WHERE fp.trip_id = $1
+      ORDER BY fp.created_at DESC NULLS LAST, fp.id DESC
+      `,
+      [tripId],
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const proposalIds = rows.map((row) => row.id);
+    const rankingMap = new Map<number, (FlightRanking & { user: User })[]>();
+
+    const { rows: rankingRows } = await query<FlightRankingWithUserRow>(
+      `
+      SELECT
+        fr.id,
+        fr.proposal_id,
+        fr.user_id,
+        fr.ranking,
+        fr.notes,
+        fr.created_at,
+        fr.updated_at,
+        ${selectUserColumns("u", "user_")}
+      FROM flight_rankings fr
+      JOIN users u ON u.id = fr.user_id
+      WHERE fr.proposal_id = ANY($1::int[])
+      ORDER BY fr.created_at ASC NULLS LAST, fr.id ASC
+      `,
+      [proposalIds],
+    );
+
+    for (const row of rankingRows) {
+      const ranking = mapFlightRankingWithUser(row);
+      const list = rankingMap.get(ranking.proposalId) ?? [];
+      list.push(ranking);
+      rankingMap.set(ranking.proposalId, list);
+    }
+
+    return rows.map((row) => {
+      const proposal = mapFlightProposal(row);
+      const proposer = mapUserFromPrefix(row, "proposer_");
+      const rankings = rankingMap.get(row.id) ?? [];
+      const currentUserRanking = rankings.find(
+        (ranking) => ranking.userId === currentUserId,
+      );
+
+      return {
+        ...proposal,
+        proposer,
+        rankings,
+        currentUserRanking,
+      };
+    });
+  }
+
+  async rankFlightProposal(
+    data: InsertFlightRanking,
+    userId: string,
+  ): Promise<void> {
+    await query(
+      `
+      INSERT INTO flight_rankings (
+        proposal_id,
+        user_id,
+        ranking,
+        notes
+      )
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+        ranking = EXCLUDED.ranking,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      `,
+      [data.proposalId, userId, data.ranking, data.notes ?? null],
+    );
+
+    await this.updateFlightProposalAverageRanking(data.proposalId);
+  }
+
+  async updateFlightProposalAverageRanking(proposalId: number): Promise<void> {
+    const { rows } = await query<{ average: number | string | null }>(
+      `
+      SELECT AVG(ranking)::numeric AS average
+      FROM flight_rankings
+      WHERE proposal_id = $1
+      `,
+      [proposalId],
+    );
+
+    const average = rows[0]?.average ?? null;
+
+    await query(
+      `
+      UPDATE flight_proposals
+      SET average_ranking = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId, average],
+    );
+  }
+
+  async updateFlightProposalStatus(
+    proposalId: number,
+    status: string,
+    userId: string,
+  ): Promise<FlightProposalWithDetails> {
+    const { rows: existingRows } = await query<{
+      proposed_by: string;
+      trip_id: number;
+    }>(
+      `
+      SELECT proposed_by, trip_id
+      FROM flight_proposals
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new Error("Flight proposal not found");
+    }
+
+    if (existing.proposed_by !== userId) {
+      throw new Error("Only the creator can update this flight proposal");
+    }
+
+    await query(
+      `
+      UPDATE flight_proposals
+      SET status = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId, status],
+    );
+
+    const proposals = await this.getTripFlightProposals(existing.trip_id, userId);
+    const proposal = proposals.find((item) => item.id === proposalId);
+    if (!proposal) {
+      throw new Error("Flight proposal not found after update");
+    }
+
+    return proposal;
+  }
+
+  async cancelFlightProposal(
+    proposalId: number,
+    userId: string,
+  ): Promise<FlightProposalWithDetails> {
+    const { rows } = await query<FlightProposalRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        arrival_airport,
+        departure_time,
+        status
+      FROM flight_proposals
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const proposalRow = rows[0];
+    if (!proposalRow) {
+      throw new Error("Flight proposal not found");
+    }
+
+    if (proposalRow.proposed_by !== userId) {
+      throw new Error("Only the creator can cancel this flight proposal");
+    }
+
+    if ((proposalRow.status ?? "").toLowerCase() !== "canceled") {
+      await query(
+        `
+        UPDATE flight_proposals
+        SET status = 'canceled',
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [proposalId],
+      );
+    }
+
+    const departureTime = proposalRow.departure_time
+      ? new Date(proposalRow.departure_time as Date | string)
+      : null;
+    const departureTimeIso =
+      departureTime && !Number.isNaN(departureTime.getTime())
+        ? departureTime.toISOString()
+        : null;
+
+    if (departureTimeIso) {
+      await query(
+        `
+        UPDATE flights
+        SET status = 'canceled',
+            updated_at = NOW()
+        WHERE trip_id = $1
+          AND flight_number = $2
+          AND airline = $3
+          AND departure_time = $4::timestamptz
+        `,
+        [
+          proposalRow.trip_id,
+          proposalRow.flight_number,
+          proposalRow.airline,
+          departureTimeIso,
+        ],
+      );
+    } else {
+      await query(
+        `
+        UPDATE flights
+        SET status = 'canceled',
+            updated_at = NOW()
+        WHERE trip_id = $1
+          AND flight_number = $2
+          AND airline = $3
+      `,
+        [
+          proposalRow.trip_id,
+          proposalRow.flight_number,
+          proposalRow.airline,
+        ],
+      );
+    }
+
+    await this.removeProposalActivities(proposalRow.trip_id, userId, [
+      `${proposalRow.airline} ${proposalRow.flight_number}`,
+      proposalRow.flight_number,
+    ]);
+
+    const proposals = await this.getTripFlightProposals(
+      proposalRow.trip_id,
+      userId,
+    );
+    const proposal = proposals.find((item) => item.id === proposalId);
+    if (!proposal) {
+      throw new Error("Flight proposal not found after cancellation");
+    }
+
+    const proposalTitle = `${proposalRow.airline} ${proposalRow.flight_number}`.trim()
+      || proposalRow.flight_number
+      || "Flight";
+
+    await this.notifyTripAboutProposalCancellation({
+      tripId: proposalRow.trip_id,
+      canceledByUserId: userId,
+      proposalTitle,
+      type: "flight",
+    });
+
+    return proposal;
+  }
+
+  async createRestaurantProposal(
+    proposal: InsertRestaurantProposal,
+    userId: string,
+  ): Promise<RestaurantProposal> {
+    const ratingValue = proposal.rating === undefined || proposal.rating === null
+      ? null
+      : String(proposal.rating);
+
+    const { rows } = await query<RestaurantProposalRow>(
+      `
+      INSERT INTO restaurant_proposals (
+        trip_id,
+        proposed_by,
+        restaurant_name,
+        address,
+        cuisine_type,
+        price_range,
+        rating,
+        phone_number,
+        website,
+        reservation_url,
+        platform,
+        atmosphere,
+        specialties,
+        dietary_options,
+        preferred_meal_time,
+        preferred_dates,
+        features,
+        status,
+        average_ranking
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'active'), NULL
+      )
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        restaurant_name,
+        address,
+        cuisine_type,
+        price_range,
+        rating,
+        phone_number,
+        website,
+        reservation_url,
+        platform,
+        atmosphere,
+        specialties,
+        dietary_options,
+        preferred_meal_time,
+        preferred_dates,
+        features,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [
+        proposal.tripId,
+        userId,
+        proposal.restaurantName,
+        proposal.address,
+        proposal.cuisineType ?? null,
+        proposal.priceRange ?? null,
+        ratingValue,
+        proposal.phoneNumber ?? null,
+        proposal.website ?? null,
+        proposal.reservationUrl ?? null,
+        proposal.platform ?? "Foursquare",
+        proposal.atmosphere ?? null,
+        proposal.specialties ?? null,
+        toDbJson(proposal.dietaryOptions ?? null),
+        proposal.preferredMealTime ?? null,
+        toDbJson(proposal.preferredDates ?? null),
+        toDbJson(proposal.features ?? null),
+        proposal.status ?? "active",
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create restaurant proposal");
+    }
+
+    return mapRestaurantProposal(row);
+  }
+
+  async getTripRestaurantProposals(
+    tripId: number,
+    currentUserId: string,
+  ): Promise<RestaurantProposalWithDetails[]> {
+    const { rows } = await query<RestaurantProposalWithProposerRow>(
+      `
+      SELECT
+        rp.id,
+        rp.trip_id,
+        rp.proposed_by,
+        rp.restaurant_name,
+        rp.address,
+        rp.cuisine_type,
+        rp.price_range,
+        rp.rating,
+        rp.phone_number,
+        rp.website,
+        rp.reservation_url,
+        rp.platform,
+        rp.atmosphere,
+        rp.specialties,
+        rp.dietary_options,
+        rp.preferred_meal_time,
+        rp.preferred_dates,
+        rp.features,
+        rp.status,
+        rp.average_ranking,
+        rp.created_at,
+        rp.updated_at,
+        ${selectUserColumns("u", "proposer_")}
+      FROM restaurant_proposals rp
+      JOIN users u ON u.id = rp.proposed_by
+      WHERE rp.trip_id = $1
+      ORDER BY rp.created_at DESC NULLS LAST, rp.id DESC
+      `,
+      [tripId],
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const proposalIds = rows.map((row) => row.id);
+    const rankingMap = new Map<number, (RestaurantRanking & { user: User })[]>();
+
+    const { rows: rankingRows } = await query<RestaurantRankingWithUserRow>(
+      `
+      SELECT
+        rr.id,
+        rr.proposal_id,
+        rr.user_id,
+        rr.ranking,
+        rr.notes,
+        rr.created_at,
+        rr.updated_at,
+        ${selectUserColumns("u", "user_")}
+      FROM restaurant_rankings rr
+      JOIN users u ON u.id = rr.user_id
+      WHERE rr.proposal_id = ANY($1::int[])
+      ORDER BY rr.created_at ASC NULLS LAST, rr.id ASC
+      `,
+      [proposalIds],
+    );
+
+    for (const row of rankingRows) {
+      const ranking = mapRestaurantRankingWithUser(row);
+      const list = rankingMap.get(ranking.proposalId) ?? [];
+      list.push(ranking);
+      rankingMap.set(ranking.proposalId, list);
+    }
+
+    return rows.map((row) => {
+      const proposal = mapRestaurantProposal(row);
+      const proposer = mapUserFromPrefix(row, "proposer_");
+      const rankings = rankingMap.get(row.id) ?? [];
+      const currentUserRanking = rankings.find(
+        (ranking) => ranking.userId === currentUserId,
+      );
+
+      return {
+        ...proposal,
+        proposer,
+        rankings,
+        currentUserRanking,
+      };
+    });
+  }
+
+  async rankRestaurantProposal(
+    data: InsertRestaurantRanking,
+    userId: string,
+  ): Promise<void> {
+    await query(
+      `
+      INSERT INTO restaurant_rankings (
+        proposal_id,
+        user_id,
+        ranking,
+        notes
+      )
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+        ranking = EXCLUDED.ranking,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      `,
+      [data.proposalId, userId, data.ranking, data.notes ?? null],
+    );
+
+    await this.updateRestaurantProposalAverageRanking(data.proposalId);
+  }
+
+  async updateRestaurantProposalAverageRanking(
+    proposalId: number,
+  ): Promise<void> {
+    const { rows } = await query<{ average: number | string | null }>(
+      `
+      SELECT AVG(ranking)::numeric AS average
+      FROM restaurant_rankings
+      WHERE proposal_id = $1
+      `,
+      [proposalId],
+    );
+
+    const average = rows[0]?.average ?? null;
+
+    await query(
+      `
+      UPDATE restaurant_proposals
+      SET average_ranking = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId, average],
+    );
+  }
+
+  async updateRestaurantProposalStatus(
+    proposalId: number,
+    status: string,
+    userId: string,
+  ): Promise<RestaurantProposalWithDetails> {
+    const { rows: existingRows } = await query<{
+      proposed_by: string;
+      trip_id: number;
+    }>(
+      `
+      SELECT proposed_by, trip_id
+      FROM restaurant_proposals
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const existing = existingRows[0];
+    if (!existing) {
+      throw new Error("Restaurant proposal not found");
+    }
+
+    if (existing.proposed_by !== userId) {
+      throw new Error("Only the creator can update this restaurant proposal");
+    }
+
+    await query(
+      `
+      UPDATE restaurant_proposals
+      SET status = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [proposalId, status],
+    );
+
+    const proposals = await this.getTripRestaurantProposals(
+      existing.trip_id,
+      userId,
+    );
+    const proposal = proposals.find((item) => item.id === proposalId);
+    if (!proposal) {
+      throw new Error("Restaurant proposal not found after update");
+    }
+
+    return proposal;
+  }
+
+  async cancelRestaurantProposal(
+    proposalId: number,
+    userId: string,
+  ): Promise<RestaurantProposalWithDetails> {
+    const { rows } = await query<RestaurantProposalRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        proposed_by,
+        restaurant_name,
+        reservation_url,
+        status
+      FROM restaurant_proposals
+      WHERE id = $1
+      `,
+      [proposalId],
+    );
+
+    const proposalRow = rows[0];
+    if (!proposalRow) {
+      throw new Error("Restaurant proposal not found");
+    }
+
+    if (proposalRow.proposed_by !== userId) {
+      throw new Error(
+        "Only the creator can cancel this restaurant proposal",
+      );
+    }
+
+    if ((proposalRow.status ?? "").toLowerCase() !== "canceled") {
+      await query(
+        `
+        UPDATE restaurant_proposals
+        SET status = 'canceled',
+            updated_at = NOW()
+        WHERE id = $1
+        `,
+        [proposalId],
+      );
+    }
+
+    if (proposalRow.reservation_url) {
+      await query(
+        `
+        UPDATE restaurants
+        SET reservation_status = 'canceled',
+            updated_at = NOW()
+        WHERE trip_id = $1
+          AND reservation_url = $2
+        `,
+        [proposalRow.trip_id, proposalRow.reservation_url],
+      );
+    } else {
+      await query(
+        `
+        UPDATE restaurants
+        SET reservation_status = 'canceled',
+            updated_at = NOW()
+        WHERE trip_id = $1
+          AND LOWER(name) = LOWER($2)
+          AND user_id = $3
+        `,
+        [proposalRow.trip_id, proposalRow.restaurant_name, userId],
+      );
+    }
+
+    await this.removeProposalActivities(proposalRow.trip_id, userId, [
+      proposalRow.restaurant_name,
+    ]);
+
+    const proposals = await this.getTripRestaurantProposals(
+      proposalRow.trip_id,
+      userId,
+    );
+    const proposal = proposals.find((item) => item.id === proposalId);
+    if (!proposal) {
+      throw new Error("Restaurant proposal not found after cancellation");
+    }
+
+    await this.notifyTripAboutProposalCancellation({
+      tripId: proposalRow.trip_id,
+      canceledByUserId: userId,
+      proposalTitle: proposalRow.restaurant_name,
+      type: "restaurant",
+    });
+
+    return proposal;
+  }
+
   async addFlight(): Promise<Flight> { throw new Error("Not implemented"); }
   async addHotel(): Promise<Hotel> { throw new Error("Not implemented"); }
-  async createFlightProposal(): Promise<FlightProposal> { throw new Error("Not implemented"); }
-  async getTripFlightProposals(): Promise<FlightProposalWithDetails[]> { throw new Error("Not implemented"); }
-  async rankFlightProposal(): Promise<void> { throw new Error("Not implemented"); }
-  async updateFlightProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
-  async updateFlightProposalStatus(): Promise<FlightProposal> { throw new Error("Not implemented"); }
 
   // Wish List / Ideas board methods
   async createWishListIdea(
@@ -6874,11 +8368,6 @@ ${selectUserColumns("participant_user", "participant_user_")}
       dismissedTips: Array.from(dismissedSet),
     });
   }
-  async createRestaurantProposal(): Promise<RestaurantProposal> { throw new Error("Not implemented"); }
-  async getTripRestaurantProposals(): Promise<RestaurantProposalWithDetails[]> { throw new Error("Not implemented"); }
-  async rankRestaurantProposal(): Promise<void> { throw new Error("Not implemented"); }
-  async updateRestaurantProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
-  async updateRestaurantProposalStatus(): Promise<RestaurantProposal> { throw new Error("Not implemented"); }
 }
 
 export const storage = new DatabaseStorage();

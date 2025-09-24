@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
@@ -35,20 +47,61 @@ import {
   Calendar,
   CheckCircle,
   XCircle,
-  User,
+  User as UserIcon,
   Heart
 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
-import type { 
-  HotelProposalWithDetails, 
-  FlightProposalWithDetails, 
-  ActivityProposalWithDetails, 
+import type {
+  HotelProposalWithDetails,
+  FlightProposalWithDetails,
+  ActivityProposalWithDetails,
   RestaurantProposalWithDetails,
-  TripWithDetails 
+  TripWithDetails,
+  User,
 } from "@shared/schema";
 
 interface ProposalsPageProps {
   tripId?: number;
+}
+
+type ProposalOwnerFilter = "all" | "mine";
+type ProposalStatusFilter = "all" | "active" | "canceled";
+
+const normalizeStatus = (status?: string | null): string =>
+  (status ?? "active").toLowerCase();
+
+type RankingWithUser = {
+  id: number;
+  user?: User | null;
+};
+
+function applyProposalFilters<T extends { proposedBy?: string | null; status?: string | null }>(
+  proposals: T[],
+  options: {
+    ownerFilter: ProposalOwnerFilter;
+    statusFilter: ProposalStatusFilter;
+    currentUserId?: string;
+  },
+): T[] {
+  const { ownerFilter, statusFilter, currentUserId } = options;
+
+  return proposals.filter((proposal) => {
+    const proposalStatus = normalizeStatus(proposal.status);
+
+    if (ownerFilter === "mine" && (!currentUserId || proposal.proposedBy !== currentUserId)) {
+      return false;
+    }
+
+    if (statusFilter === "active" && proposalStatus === "canceled") {
+      return false;
+    }
+
+    if (statusFilter === "canceled" && proposalStatus !== "canceled") {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
@@ -57,6 +110,66 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("hotels");
+  const [ownerFilter, setOwnerFilter] = useState<ProposalOwnerFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<ProposalStatusFilter>("all");
+  const [pendingCancel, setPendingCancel] = useState<
+    { type: "hotel" | "flight" | "restaurant"; id: number }
+  | null>(null);
+
+  const currentUserId = user?.id;
+  const isMyFilter = ownerFilter === "mine";
+
+  const renderVoteSummary = (rankings?: RankingWithUser[]) => {
+    const safeRankings = rankings ?? [];
+    const totalVotes = safeRankings.length;
+
+    if (totalVotes === 0) {
+      return (
+        <div className="flex items-center gap-2 text-sm text-neutral-600">
+          <Users className="w-4 h-4" />
+          <span>No votes yet</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-3 text-sm text-neutral-600">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4" />
+          <span>
+            {totalVotes} {totalVotes === 1 ? "vote" : "votes"}
+          </span>
+        </div>
+        <div className="flex items-center">
+          <div className="flex -space-x-2">
+            {safeRankings.slice(0, 3).map((ranking) => {
+              const member = ranking.user;
+              const displayLetter =
+                member?.firstName?.charAt(0) ??
+                member?.lastName?.charAt(0) ??
+                member?.email?.charAt(0) ??
+                "?";
+
+              return (
+                <Avatar key={ranking.id} className="h-6 w-6 border border-white">
+                  <AvatarImage
+                    src={member?.profileImageUrl ?? undefined}
+                    alt={member?.firstName ?? member?.email ?? "Trip member"}
+                  />
+                  <AvatarFallback>{displayLetter}</AvatarFallback>
+                </Avatar>
+              );
+            })}
+          </div>
+          {totalVotes > 3 && (
+            <span className="ml-2 text-xs text-neutral-500">
+              +{totalVotes - 3}
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -109,6 +222,74 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     queryKey: ["/api/trips", tripId, "restaurant-proposals"],
     enabled: !!tripId && isAuthenticated,
   });
+
+  const filteredHotelProposals = useMemo(
+    () =>
+      applyProposalFilters(hotelProposals, {
+        ownerFilter,
+        statusFilter,
+        currentUserId,
+      }),
+    [hotelProposals, ownerFilter, statusFilter, currentUserId],
+  );
+
+  const filteredFlightProposals = useMemo(
+    () =>
+      applyProposalFilters(flightProposals, {
+        ownerFilter,
+        statusFilter,
+        currentUserId,
+      }),
+    [flightProposals, ownerFilter, statusFilter, currentUserId],
+  );
+
+  const filteredActivityProposals = useMemo(
+    () =>
+      applyProposalFilters(activityProposals, {
+        ownerFilter,
+        statusFilter,
+        currentUserId,
+      }),
+    [activityProposals, ownerFilter, statusFilter, currentUserId],
+  );
+
+  const filteredRestaurantProposals = useMemo(
+    () =>
+      applyProposalFilters(restaurantProposals, {
+        ownerFilter,
+        statusFilter,
+        currentUserId,
+      }),
+    [restaurantProposals, ownerFilter, statusFilter, currentUserId],
+  );
+
+  const hotelHasUserProposals = useMemo(
+    () =>
+      Boolean(currentUserId) &&
+      hotelProposals.some((proposal) => proposal.proposedBy === currentUserId),
+    [hotelProposals, currentUserId],
+  );
+
+  const flightHasUserProposals = useMemo(
+    () =>
+      Boolean(currentUserId) &&
+      flightProposals.some((proposal) => proposal.proposedBy === currentUserId),
+    [flightProposals, currentUserId],
+  );
+
+  const activityHasUserProposals = useMemo(
+    () =>
+      Boolean(currentUserId) &&
+      activityProposals.some((proposal) => proposal.proposedBy === currentUserId),
+    [activityProposals, currentUserId],
+  );
+
+  const restaurantHasUserProposals = useMemo(
+    () =>
+      Boolean(currentUserId) &&
+      restaurantProposals.some((proposal) => proposal.proposedBy === currentUserId),
+    [restaurantProposals, currentUserId],
+  );
 
   // Hotel ranking mutation
   const rankHotelMutation = useMutation({
@@ -200,6 +381,208 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     },
   });
 
+  const cancelHotelProposalMutation = useMutation({
+    mutationFn: async (proposalId: number) => {
+      const response = await apiRequest(`/api/hotel-proposals/${proposalId}/cancel`, {
+        method: "POST",
+      });
+      return (await response.json()) as HotelProposalWithDetails;
+    },
+    onSuccess: (proposal) => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${proposal.tripId}/hotel-proposals`],
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${proposal.tripId}`] });
+      toast({
+        title: "Proposal canceled",
+        description: `${proposal.hotelName} was canceled for the group.`,
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+      toast({
+        title: "Unable to cancel proposal",
+        description: "Something went wrong while canceling this proposal. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelFlightProposalMutation = useMutation({
+    mutationFn: async (proposalId: number) => {
+      const response = await apiRequest(`/api/flight-proposals/${proposalId}/cancel`, {
+        method: "POST",
+      });
+      return (await response.json()) as FlightProposalWithDetails;
+    },
+    onSuccess: (proposal) => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${proposal.tripId}/flight-proposals`],
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${proposal.tripId}`] });
+      toast({
+        title: "Proposal canceled",
+        description: `${proposal.airline} ${proposal.flightNumber} was canceled for the group.`,
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+      toast({
+        title: "Unable to cancel proposal",
+        description: "Something went wrong while canceling this proposal. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelRestaurantProposalMutation = useMutation({
+    mutationFn: async (proposalId: number) => {
+      const response = await apiRequest(`/api/restaurant-proposals/${proposalId}/cancel`, {
+        method: "POST",
+      });
+      return (await response.json()) as RestaurantProposalWithDetails;
+    },
+    onSuccess: (proposal) => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${proposal.tripId}/restaurant-proposals`],
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${proposal.tripId}`] });
+      toast({
+        title: "Proposal canceled",
+        description: `${proposal.restaurantName} was canceled for the group.`,
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+      toast({
+        title: "Unable to cancel proposal",
+        description: "Something went wrong while canceling this proposal. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const getProposalName = (
+    type: "hotel" | "flight" | "restaurant",
+    proposal:
+      | HotelProposalWithDetails
+      | FlightProposalWithDetails
+      | RestaurantProposalWithDetails,
+  ) => {
+    if (type === "hotel") {
+      return (proposal as HotelProposalWithDetails).hotelName;
+    }
+    if (type === "flight") {
+      const flightProposal = proposal as FlightProposalWithDetails;
+      return `${flightProposal.airline} ${flightProposal.flightNumber}`.trim();
+    }
+    return (proposal as RestaurantProposalWithDetails).restaurantName;
+  };
+
+  const isCancelingProposal = (
+    type: "hotel" | "flight" | "restaurant",
+    proposalId: number,
+  ) => {
+    if (!pendingCancel || pendingCancel.type !== type || pendingCancel.id !== proposalId) {
+      return false;
+    }
+
+    if (type === "hotel") {
+      return cancelHotelProposalMutation.isPending;
+    }
+
+    if (type === "flight") {
+      return cancelFlightProposalMutation.isPending;
+    }
+
+    return cancelRestaurantProposalMutation.isPending;
+  };
+
+  const handleCancelProposal = async (
+    type: "hotel" | "flight" | "restaurant",
+    proposalId: number,
+  ) => {
+    setPendingCancel({ type, id: proposalId });
+    try {
+      if (type === "hotel") {
+        await cancelHotelProposalMutation.mutateAsync(proposalId);
+      } else if (type === "flight") {
+        await cancelFlightProposalMutation.mutateAsync(proposalId);
+      } else {
+        await cancelRestaurantProposalMutation.mutateAsync(proposalId);
+      }
+    } finally {
+      setPendingCancel(null);
+    }
+  };
+
+  const renderCancelAction = (
+    type: "hotel" | "flight" | "restaurant",
+    proposal:
+      | HotelProposalWithDetails
+      | FlightProposalWithDetails
+      | RestaurantProposalWithDetails,
+  ) => {
+    const isOwner = currentUserId && proposal.proposedBy === currentUserId;
+    const status = normalizeStatus(proposal.status);
+
+    if (!isOwner || status === "canceled") {
+      return null;
+    }
+
+    const isPending = isCancelingProposal(type, proposal.id);
+    const proposalName = getProposalName(type, proposal);
+    const testIdSuffix =
+      type === "hotel" ? "hotel" : type === "flight" ? "flight" : "restaurant";
+
+    return (
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={isPending}
+            data-testid={`button-open-cancel-${testIdSuffix}-${proposal.id}`}
+          >
+            {isPending ? "Canceling..." : "Cancel proposal"}
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this proposal for everyone?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`"${proposalName}" will be removed from the group calendar and everyone’s schedules.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep proposal</AlertDialogCancel>
+            <AlertDialogAction asChild>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  await handleCancelProposal(type, proposal.id);
+                }}
+                disabled={isPending}
+                data-testid={`button-confirm-cancel-${testIdSuffix}-${proposal.id}`}
+              >
+                {isPending ? "Canceling..." : "Yes, cancel it"}
+              </Button>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    );
+  };
+
   // Helper function to get user's ranking for a proposal
   const getUserRanking = (rankings: any[], userId: string) => {
     return rankings.find(r => r.userId === userId)?.ranking;
@@ -276,16 +659,68 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   // Helper function to get proposal status badge
   const getStatusBadge = (status: string, averageRanking?: number) => {
-    if (status === "selected") {
-      return <Badge className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Selected</Badge>;
+    const normalizedStatus = normalizeStatus(status);
+
+    if (normalizedStatus === "canceled") {
+      return (
+        <Badge className="bg-neutral-200 text-neutral-700">
+          <XCircle className="w-3 h-3 mr-1" />
+          Canceled
+        </Badge>
+      );
     }
-    if (status === "rejected") {
-      return <Badge className="bg-red-100 text-red-800"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
+
+    if (normalizedStatus === "scheduled" || normalizedStatus === "confirmed") {
+      return (
+        <Badge className="bg-indigo-100 text-indigo-700">
+          <Calendar className="w-3 h-3 mr-1" />
+          Scheduled
+        </Badge>
+      );
     }
-    if (typeof averageRanking === 'number' && averageRanking <= 1.5) {
-      return <Badge className="bg-yellow-100 text-yellow-800"><Crown className="w-3 h-3 mr-1" />Top Choice</Badge>;
+
+    if (normalizedStatus === "selected") {
+      return (
+        <Badge className="bg-green-100 text-green-800">
+          <CheckCircle className="w-3 h-3 mr-1" />
+          Selected
+        </Badge>
+      );
     }
-    return <Badge className="bg-blue-100 text-blue-800"><Vote className="w-3 h-3 mr-1" />Active Voting</Badge>;
+
+    if (normalizedStatus === "rejected") {
+      return (
+        <Badge className="bg-red-100 text-red-800">
+          <XCircle className="w-3 h-3 mr-1" />
+          Rejected
+        </Badge>
+      );
+    }
+
+    if (normalizedStatus === "proposed") {
+      return (
+        <Badge className="bg-slate-100 text-slate-700">
+          <Vote className="w-3 h-3 mr-1" />
+          Proposed
+        </Badge>
+      );
+    }
+
+    if (typeof averageRanking === "number" && averageRanking <= 1.5) {
+      return (
+        <Badge className="bg-yellow-100 text-yellow-800">
+          <Crown className="w-3 h-3 mr-1" />
+          Top Choice
+        </Badge>
+      );
+    }
+
+    return (
+      <Badge className="bg-blue-100 text-blue-800">
+        <Vote className="w-3 h-3 mr-1" />
+        Active Voting
+      </Badge>
+    );
   };
 
   // Restaurant proposal card component
@@ -354,7 +789,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               <span>Proposed by {proposal.proposer?.firstName || 'Unknown'}</span>
               <Clock className="w-4 h-4 ml-2" />
               <span data-testid={`text-restaurant-created-${proposal.id}`}>
@@ -371,46 +806,53 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
             )}
           </div>
 
-          <div className="flex gap-3 items-center">
-            <Select
-              value={userRanking?.toString() || ""}
-              onValueChange={(value) => {
-                rankRestaurantMutation.mutate({ 
-                  proposalId: proposal.id, 
-                  ranking: parseInt(value) 
-                });
-              }}
-              data-testid={`select-restaurant-ranking-${proposal.id}`}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Rank this option" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
-                <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
-                <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
-                <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
-                <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {userRanking && (
-              <Badge className={getRankingColor(userRanking)} data-testid={`badge-user-ranking-${proposal.id}`}>
-                Your choice: #{userRanking}
-              </Badge>
-            )}
-            
-            {proposal.website && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => window.open(proposal.website ?? undefined, '_blank')}
-                data-testid={`button-view-restaurant-${proposal.id}`}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Select
+                value={userRanking?.toString() || ""}
+                onValueChange={(value) => {
+                  rankRestaurantMutation.mutate({
+                    proposalId: proposal.id,
+                    ranking: parseInt(value)
+                  });
+                }}
+                data-testid={`select-restaurant-ranking-${proposal.id}`}
               >
-                <ExternalLink className="w-4 h-4 mr-1" />
-                View Restaurant
-              </Button>
-            )}
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Rank this option" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
+                  <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
+                  <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
+                  <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
+                  <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {userRanking && (
+                <Badge className={getRankingColor(userRanking)} data-testid={`badge-user-ranking-${proposal.id}`}>
+                  Your choice: #{userRanking}
+                </Badge>
+              )}
+
+              {proposal.website && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => window.open(proposal.website ?? undefined, '_blank')}
+                  data-testid={`button-view-restaurant-${proposal.id}`}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  View Restaurant
+                </Button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
+              {renderVoteSummary(proposal.rankings)}
+              {renderCancelAction("restaurant", proposal)}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -544,7 +986,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               <span>Proposed by {proposal.proposer?.firstName || 'Unknown'}</span>
               <Clock className="w-4 h-4 ml-2" />
               <span data-testid={`text-hotel-created-${proposal.id}`}>
@@ -561,44 +1003,51 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
             )}
           </div>
 
-          <div className="flex gap-3 items-center">
-            <Select
-              value={userRanking?.toString() || ""}
-              onValueChange={(value) => {
-                rankHotelMutation.mutate({ 
-                  proposalId: proposal.id, 
-                  ranking: parseInt(value) 
-                });
-              }}
-              data-testid={`select-hotel-ranking-${proposal.id}`}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Rank this option" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
-                <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
-                <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
-                <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
-                <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {userRanking && (
-              <Badge className={getRankingColor(userRanking)} data-testid={`badge-user-ranking-${proposal.id}`}>
-                Your choice: #{userRanking}
-              </Badge>
-            )}
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.open(proposal.bookingUrl, '_blank')}
-              data-testid={`button-view-hotel-${proposal.id}`}
-            >
-              <ExternalLink className="w-4 h-4 mr-1" />
-              View Hotel
-            </Button>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Select
+                value={userRanking?.toString() || ""}
+                onValueChange={(value) => {
+                  rankHotelMutation.mutate({
+                    proposalId: proposal.id,
+                    ranking: parseInt(value)
+                  });
+                }}
+                data-testid={`select-hotel-ranking-${proposal.id}`}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Rank this option" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
+                  <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
+                  <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
+                  <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
+                  <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {userRanking && (
+                <Badge className={getRankingColor(userRanking)} data-testid={`badge-user-ranking-${proposal.id}`}>
+                  Your choice: #{userRanking}
+                </Badge>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(proposal.bookingUrl, '_blank')}
+                data-testid={`button-view-hotel-${proposal.id}`}
+              >
+                <ExternalLink className="w-4 h-4 mr-1" />
+                View Hotel
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
+              {renderVoteSummary(proposal.rankings)}
+              {renderCancelAction("hotel", proposal)}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -664,7 +1113,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               <span>Proposed by {proposal.proposer?.firstName || 'Unknown'}</span>
               <Clock className="w-4 h-4 ml-2" />
               <span data-testid={`text-flight-created-${proposal.id}`}>
@@ -681,44 +1130,51 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
             )}
           </div>
 
-          <div className="flex gap-3 items-center">
-            <Select
-              value={userRanking?.toString() || ""}
-              onValueChange={(value) => {
-                rankFlightMutation.mutate({ 
-                  proposalId: proposal.id, 
-                  ranking: parseInt(value) 
-                });
-              }}
-              data-testid={`select-flight-ranking-${proposal.id}`}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Rank this option" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
-                <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
-                <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
-                <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
-                <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {userRanking && (
-              <Badge className={getRankingColor(userRanking)} data-testid={`badge-user-ranking-${proposal.id}`}>
-                Your choice: #{userRanking}
-              </Badge>
-            )}
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => window.open(proposal.bookingUrl, '_blank')}
-              data-testid={`button-view-flight-${proposal.id}`}
-            >
-              <ExternalLink className="w-4 h-4 mr-1" />
-              View Flight
-            </Button>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Select
+                value={userRanking?.toString() || ""}
+                onValueChange={(value) => {
+                  rankFlightMutation.mutate({
+                    proposalId: proposal.id,
+                    ranking: parseInt(value)
+                  });
+                }}
+                data-testid={`select-flight-ranking-${proposal.id}`}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue placeholder="Rank this option" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
+                  <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
+                  <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
+                  <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
+                  <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {userRanking && (
+                <Badge className={getRankingColor(userRanking)} data-testid={`badge-user-ranking-${proposal.id}`}>
+                  Your choice: #{userRanking}
+                </Badge>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(proposal.bookingUrl, '_blank')}
+                data-testid={`button-view-flight-${proposal.id}`}
+              >
+                <ExternalLink className="w-4 h-4 mr-1" />
+                View Flight
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 pt-3">
+              {renderVoteSummary(proposal.rankings)}
+              {renderCancelAction("flight", proposal)}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -726,22 +1182,55 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   };
 
   // Empty state component
-  const EmptyState = ({ type, icon: Icon }: { type: string; icon: any }) => (
-    <div className="text-center py-12">
-      <Icon className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
-      <h3 className="text-lg font-semibold text-neutral-600 mb-2">No {type} Proposals Yet</h3>
-      <p className="text-neutral-500 mb-6">
-        Group members can propose {type.toLowerCase()} options for voting. 
-        Check the {type} page to add proposals!
-      </p>
-      <Link href={`/trip/${tripId}/${type.toLowerCase()}`}>
-        <Button data-testid={`button-add-${type.toLowerCase()}-proposal`}>
-          <Icon className="w-4 h-4 mr-2" />
-          Browse {type}
-        </Button>
-      </Link>
-    </div>
-  );
+  const EmptyState = ({
+    type,
+    icon: Icon,
+    ownerFilter,
+    statusFilter,
+    hasAnyProposals,
+    hasUserProposals,
+  }: {
+    type: string;
+    icon: any;
+    ownerFilter: ProposalOwnerFilter;
+    statusFilter: ProposalStatusFilter;
+    hasAnyProposals: boolean;
+    hasUserProposals: boolean;
+  }) => {
+    const typeLower = type.toLowerCase();
+    let title = `No ${type} Proposals Yet`;
+    let description = `Group members can propose ${typeLower} options for voting. Check the ${type} page to add proposals!`;
+
+    if (ownerFilter === "mine") {
+      if (!hasUserProposals) {
+        title = "You haven’t proposed anything yet.";
+        description = `Use the ${typeLower} page to suggest something to your group.`;
+      } else if (statusFilter !== "all") {
+        title = "No proposals match these filters.";
+        description = "Try adjusting the status filter to see your proposals.";
+      } else {
+        title = "No proposals match these filters.";
+        description = "Adjust your filters to see more of your proposals.";
+      }
+    } else if (statusFilter !== "all" && hasAnyProposals) {
+      title = "No proposals match these filters.";
+      description = "Try changing the status filter to see other group suggestions.";
+    }
+
+    return (
+      <div className="text-center py-12">
+        <Icon className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-neutral-600 mb-2">{title}</h3>
+        <p className="text-neutral-500 mb-6">{description}</p>
+        <Link href={`/trip/${tripId}/${typeLower}`}>
+          <Button data-testid={`button-add-${typeLower}-proposal`}>
+            <Icon className="w-4 h-4 mr-2" />
+            Browse {type}
+          </Button>
+        </Link>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -778,23 +1267,73 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           </p>
         </div>
 
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <ToggleGroup
+            type="single"
+            value={ownerFilter}
+            onValueChange={(value) => {
+              if (value) {
+                setOwnerFilter(value as ProposalOwnerFilter);
+              }
+            }}
+            variant="outline"
+            className="w-full sm:w-auto"
+            data-testid="toggle-proposal-owner-filter"
+          >
+            <ToggleGroupItem
+              value="all"
+              className="flex-1 sm:flex-none px-4 py-2 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              data-testid="toggle-owner-all"
+            >
+              All proposals
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="mine"
+              className="flex-1 sm:flex-none px-4 py-2 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              data-testid="toggle-owner-mine"
+            >
+              My proposals
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => setStatusFilter(value as ProposalStatusFilter)}
+          >
+            <SelectTrigger className="sm:w-[220px]" data-testid="select-proposal-status">
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" data-testid="option-status-all">
+                All statuses
+              </SelectItem>
+              <SelectItem value="active" data-testid="option-status-active">
+                Active
+              </SelectItem>
+              <SelectItem value="canceled" data-testid="option-status-canceled">
+                Canceled
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
               <Hotel className="w-4 h-4" />
-              Hotels {hotelProposals.length > 0 && `(${hotelProposals.length})`}
+              Hotels {filteredHotelProposals.length > 0 && `(${filteredHotelProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="flights" className="flex items-center gap-2" data-testid="tab-flights">
               <Plane className="w-4 h-4" />
-              Flights {flightProposals.length > 0 && `(${flightProposals.length})`}
+              Flights {filteredFlightProposals.length > 0 && `(${filteredFlightProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
               <MapPin className="w-4 h-4" />
-              Activities {activityProposals.length > 0 && `(${activityProposals.length})`}
+              Activities {filteredActivityProposals.length > 0 && `(${filteredActivityProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
               <Utensils className="w-4 h-4" />
-              Restaurants {restaurantProposals.length > 0 && `(${restaurantProposals.length})`}
+              Restaurants {filteredRestaurantProposals.length > 0 && `(${filteredRestaurantProposals.length})`}
             </TabsTrigger>
           </TabsList>
 
@@ -803,14 +1342,21 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading hotel proposals..." />
               </div>
-            ) : hotelProposals.length > 0 ? (
+            ) : filteredHotelProposals.length > 0 ? (
               <div data-testid="list-hotel-proposals">
-                {hotelProposals.map((proposal) => (
+                {filteredHotelProposals.map((proposal) => (
                   <HotelProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
             ) : (
-              <EmptyState type="Hotel" icon={Hotel} />
+              <EmptyState
+                type="Hotel"
+                icon={Hotel}
+                ownerFilter={ownerFilter}
+                statusFilter={statusFilter}
+                hasAnyProposals={hotelProposals.length > 0}
+                hasUserProposals={hotelHasUserProposals}
+              />
             )}
           </TabsContent>
 
@@ -819,14 +1365,21 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading flight proposals..." />
               </div>
-            ) : flightProposals.length > 0 ? (
+            ) : filteredFlightProposals.length > 0 ? (
               <div data-testid="list-flight-proposals">
-                {flightProposals.map((proposal) => (
+                {filteredFlightProposals.map((proposal) => (
                   <FlightProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
             ) : (
-              <EmptyState type="Flight" icon={Plane} />
+              <EmptyState
+                type="Flight"
+                icon={Plane}
+                ownerFilter={ownerFilter}
+                statusFilter={statusFilter}
+                hasAnyProposals={flightProposals.length > 0}
+                hasUserProposals={flightHasUserProposals}
+              />
             )}
           </TabsContent>
 
@@ -835,13 +1388,20 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading activity proposals..." />
               </div>
-            ) : activityProposals.length > 0 ? (
+            ) : filteredActivityProposals.length > 0 ? (
               <div data-testid="list-activity-proposals">
                 {/* Activity proposals would go here once API is implemented */}
                 <p className="text-center text-neutral-500 py-8">Activity proposals coming soon!</p>
               </div>
             ) : (
-              <EmptyState type="Activity" icon={MapPin} />
+              <EmptyState
+                type="Activity"
+                icon={MapPin}
+                ownerFilter={ownerFilter}
+                statusFilter={statusFilter}
+                hasAnyProposals={activityProposals.length > 0}
+                hasUserProposals={activityHasUserProposals}
+              />
             )}
           </TabsContent>
 
@@ -850,14 +1410,21 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading restaurant proposals..." />
               </div>
-            ) : restaurantProposals.length > 0 ? (
+            ) : filteredRestaurantProposals.length > 0 ? (
               <div data-testid="list-restaurant-proposals">
-                {restaurantProposals.map((proposal) => (
+                {filteredRestaurantProposals.map((proposal) => (
                   <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
             ) : (
-              <EmptyState type="Restaurant" icon={Utensils} />
+              <EmptyState
+                type="Restaurant"
+                icon={Utensils}
+                ownerFilter={ownerFilter}
+                statusFilter={statusFilter}
+                hasAnyProposals={restaurantProposals.length > 0}
+                hasUserProposals={restaurantHasUserProposals}
+              />
             )}
           </TabsContent>
         </Tabs>
