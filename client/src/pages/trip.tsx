@@ -85,7 +85,9 @@ import {
   type HotelFormValues,
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
+
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
 
 const TRIP_TAB_KEYS = [
   "calendar",
@@ -1457,7 +1459,9 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
     enabled: !!tripId,
   });
 
+
   const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
+
 
   const formDefaults = useCallback(
     () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
@@ -1487,7 +1491,9 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
         description: "Your hotel booking has been saved to the trip.",
       });
       form.reset(formDefaults());
+
       setIsManualHotelFormOpen(false);
+
     },
     onError: (error) => {
       if (isUnauthorizedError(error as Error)) {
@@ -1593,6 +1599,17 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               </Form>
             </CollapsibleContent>
           </Collapsible>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <HotelFormFields
+                form={form}
+                isSubmitting={createHotelMutation.isPending}
+                submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+              />
+            </form>
+          </Form>
+
         </CardContent>
       </Card>
 
