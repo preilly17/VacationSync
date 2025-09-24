@@ -777,7 +777,14 @@ export default function HotelsPage() {
       hotelRating: hotel.hotelRating || 5,
       notes: hotel.notes || "",
       cancellationPolicy: hotel.cancellationPolicy || "",
-      amenities: hotel.amenities || "",
+      amenities:
+        typeof hotel.amenities === "string"
+          ? hotel.amenities
+          : Array.isArray(hotel.amenities)
+            ? hotel.amenities.join(", ")
+            : hotel.amenities
+              ? JSON.stringify(hotel.amenities)
+              : "",
       contactInfo: hotel.contactInfo || "",
     });
     setIsDialogOpen(true);
@@ -1548,9 +1555,9 @@ export default function HotelsPage() {
                             endDate: trip?.endDate,
                           }, tripId);
                           // Use the first available booking link, or fallback to a search
-                          const bookingUrl = hotel.bookingLinks && hotel.bookingLinks.length > 0 
-                            ? hotel.bookingLinks[0].url 
-                            : `https://www.booking.com/search.html?ss=${encodeURIComponent(hotel.name)}`;
+                          const bookingUrl =
+                            hotel.bookingUrl ||
+                            `https://www.booking.com/search.html?ss=${encodeURIComponent(hotel.name)}`;
                           window.open(bookingUrl, '_blank', 'noopener,noreferrer');
                         }}
                         className="flex-1 hover:bg-blue-50"

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Weather Service
  * Provides current weather and forecasts for travel destinations

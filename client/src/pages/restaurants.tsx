@@ -642,7 +642,7 @@ export default function RestaurantsPage() {
                         size="sm"
                         onClick={() => handleBookingLinkClick(restaurant, {
                           text: 'OpenTable',
-                          url: restaurant.openTableUrl,
+                          url: restaurant.openTableUrl ?? '',
                           type: 'opentable'
                         })}
                         data-testid="button-opentable"
@@ -659,7 +659,7 @@ export default function RestaurantsPage() {
                         size="sm"
                         onClick={() => handleBookingLinkClick(restaurant, {
                           text: 'Restaurant Website',
-                          url: restaurant.website,
+                          url: restaurant.website ?? '',
                           type: 'website'
                         })}
                         data-testid="button-restaurant-website"

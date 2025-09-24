@@ -63,7 +63,7 @@ export default function MemberSchedule() {
 
   // Handle errors
   useEffect(() => {
-    if (tripError && isUnauthorizedError(tripError as Error)) {
+    if (tripError && isUnauthorizedError(tripError)) {
       toast({
         title: "Unauthorized",
         description: "You are logged out. Logging in again...",
@@ -114,9 +114,15 @@ export default function MemberSchedule() {
     );
   };
 
-  const formatDateRange = (startDate: string, endDate: string) => {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+  const parseIsoDate = (value: TripWithDetails["startDate"]) =>
+    value instanceof Date ? value : new Date(value);
+
+  const formatDateRange = (
+    startDate: TripWithDetails["startDate"],
+    endDate: TripWithDetails["endDate"],
+  ) => {
+    const start = parseIsoDate(startDate);
+    const end = parseIsoDate(endDate);
     return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
   };
 
@@ -157,10 +163,9 @@ export default function MemberSchedule() {
   return (
     <div className="min-h-screen bg-neutral-100">
       {/* Mobile Navigation */}
-      <MobileNav 
+      <MobileNav
         trip={trip}
         user={currentUser}
-        onAddActivity={() => {}}
       />
 
       {/* Desktop Sidebar */}

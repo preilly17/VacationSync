@@ -35,17 +35,16 @@ interface RestaurantProposalModalProps {
   tripId: number;
 }
 
-const formSchema = insertRestaurantProposalSchema.omit({ 
-  tripId: true,
-  proposedBy: true,
-  status: true,
-  averageRanking: true,
-  createdAt: true
-}).extend({
-  preferredDate: z.date({
-    required_error: "Please select a preferred date for dining",
-  }),
-});
+const formSchema = insertRestaurantProposalSchema
+  .omit({
+    tripId: true,
+    status: true,
+  } as const)
+  .extend({
+    preferredDate: z.date({
+      required_error: "Please select a preferred date for dining",
+    }),
+  });
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -70,16 +69,16 @@ export function RestaurantProposalModal({
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      restaurantName: restaurant?.name || '',
-      address: restaurant?.address || '',
-      cuisineType: restaurant?.cuisine || restaurant?.cuisineType || '',
-      priceRange: restaurant?.priceRange || '$$',
-      rating: restaurant?.rating || 4.0,
-      phoneNumber: restaurant?.phone || restaurant?.phoneNumber || '',
-      website: restaurant?.website || '',
-      reservationUrl: restaurant?.reservationUrl || '',
-      platform: restaurant?.platform || 'Foursquare',
-      preferredMealTime: 'dinner',
+      restaurantName: restaurant?.name || "",
+      address: restaurant?.address || "",
+      cuisineType: restaurant?.cuisine || restaurant?.cuisineType || "",
+      priceRange: restaurant?.priceRange || "$$",
+      rating: restaurant?.rating ?? "4.0",
+      phoneNumber: restaurant?.phone || restaurant?.phoneNumber || "",
+      website: restaurant?.website || "",
+      reservationUrl: restaurant?.reservationUrl || "",
+      platform: restaurant?.platform || "Foursquare",
+      preferredMealTime: "dinner",
       preferredDates: [],
     },
   });
@@ -90,7 +89,7 @@ export function RestaurantProposalModal({
         ...data,
         tripId,
         preferredDates: selectedDate ? [format(selectedDate, 'yyyy-MM-dd')] : [],
-        rating: data.rating?.toString() || '4.0',
+        rating: data.rating ? data.rating.toString() : '4.0',
       };
       return apiRequest(`/api/trips/${tripId}/restaurant-proposals`, {
         method: "POST",
@@ -205,7 +204,7 @@ export function RestaurantProposalModal({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-base font-medium">Meal Time</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger data-testid="select-meal-time">
                         <SelectValue placeholder="Select meal time" />

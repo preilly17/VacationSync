@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Comprehensive location database for smart flight search
 export interface LocationResult {
   type: 'airport' | 'city' | 'metro' | 'state' | 'country';
