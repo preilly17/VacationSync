@@ -4,6 +4,51 @@
 
 :root {
   /* TripSync brand palette */
+  --background: hsl(210 40% 98%);
+  --foreground: hsl(222 47% 12%);
+  --muted: hsl(210 40% 96%);
+  --muted-foreground: hsl(215 16% 45%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 47% 12%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 47% 12%);
+  --border: hsl(214 32% 85%);
+  --input: hsl(214 32% 85%);
+
+  --primary: hsl(199 89% 48%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(25 95% 65%);
+  --secondary-foreground: hsl(222 47% 12%);
+  --accent: hsl(162 84% 55%);
+  --accent-foreground: hsl(222 47% 12%);
+
+  --destructive: hsl(0 76% 58%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --ring: hsl(199 89% 48%);
+  --radius: 0.875rem;
+
+  --sidebar-background: hsla(210 40% 98% / 0.85);
+  --sidebar-foreground: hsl(222 47% 12%);
+  --sidebar-primary: hsl(199 89% 48%);
+  --sidebar-primary-foreground: hsl(210 40% 98%);
+  --sidebar-accent: hsla(199 89% 48% / 0.12);
+  --sidebar-accent-foreground: hsl(222 47% 20%);
+  --sidebar-border: hsl(214 32% 85%);
+  --sidebar-ring: hsl(199 89% 48%);
+
+  --chart-1: hsl(199 89% 48%);
+  --chart-2: hsl(162 84% 55%);
+  --chart-3: hsl(25 95% 62%);
+  --chart-4: hsl(340 75% 60%);
+  --chart-5: hsl(226 83% 60%);
+
+  /* Neutral tokens tuned for light UI */
+  --neutral-900: hsl(222 47% 12%);
+  --neutral-600: hsl(215 16% 45%);
+  --neutral-100: hsl(213 32% 94%);
+}
+
+.dark {
   --background: hsl(222 47% 6%);
   --foreground: hsl(210 40% 96%);
   --muted: hsl(222 36% 12%);
@@ -26,51 +71,6 @@
   --destructive-foreground: hsl(210 40% 98%);
   --ring: hsl(199 89% 58%);
   --radius: 0.875rem;
-
-  --sidebar-background: hsla(223 47% 8% / 0.9);
-  --sidebar-foreground: hsl(210 40% 96%);
-  --sidebar-primary: hsl(199 89% 58%);
-  --sidebar-primary-foreground: hsl(210 40% 98%);
-  --sidebar-accent: hsla(199 89% 58% / 0.2);
-  --sidebar-accent-foreground: hsl(210 40% 96%);
-  --sidebar-border: hsla(215 32% 22% / 0.65);
-  --sidebar-ring: hsl(199 89% 58%);
-
-  --chart-1: hsl(199 89% 58%);
-  --chart-2: hsl(162 84% 60%);
-  --chart-3: hsl(25 95% 62%);
-  --chart-4: hsl(340 75% 60%);
-  --chart-5: hsl(226 83% 67%);
-
-  /* Neutral tokens tuned for dark UI */
-  --neutral-900: hsl(220 13% 12%);
-  --neutral-600: hsl(215 20% 65%);
-  --neutral-100: hsl(215 30% 18%);
-}
-
-.dark {
-  --background: hsl(222 47% 4%);
-  --foreground: hsl(210 40% 96%);
-  --muted: hsl(222 38% 10%);
-  --muted-foreground: hsl(214 18% 70%);
-  --popover: hsla(223 47% 8% / 0.95);
-  --popover-foreground: hsl(210 40% 96%);
-  --card: hsla(223 47% 10% / 0.92);
-  --card-foreground: hsl(210 40% 96%);
-  --border: hsla(215 32% 20% / 0.75);
-  --input: hsla(215 32% 18% / 0.9);
-
-  --primary: hsl(199 89% 62%);
-  --primary-foreground: hsl(210 40% 98%);
-  --secondary: hsl(25 95% 65%);
-  --secondary-foreground: hsl(222 47% 10%);
-  --accent: hsl(162 84% 62%);
-  --accent-foreground: hsl(222 47% 10%);
-
-  --destructive: hsl(0 76% 64%);
-  --destructive-foreground: hsl(210 40% 96%);
-  --ring: hsl(199 89% 62%);
-  --radius: 0.875rem;
 }
 
 @layer base {
@@ -82,13 +82,13 @@
     @apply font-sans antialiased bg-background text-foreground;
     font-family: "Inter", system-ui, sans-serif;
     min-height: 100vh;
-    background-color: #020617;
+    background-color: #f1f5f9;
     background-image:
-      radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.16), transparent 55%),
-      radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.14), transparent 55%),
-      radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.14), transparent 60%);
+      radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.22), transparent 55%),
+      radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.16), transparent 55%),
+      radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.18), transparent 60%);
     background-attachment: fixed;
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   .page-shell {
@@ -98,7 +98,7 @@
     isolation: isolate;
     overflow: hidden;
     color: var(--foreground);
-    background-color: #020617;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.94) 100%);
   }
 
   .page-shell::before {
@@ -106,11 +106,11 @@
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.18), transparent 55%),
-      radial-gradient(circle at 85% 15%, rgba(244, 114, 182, 0.18), transparent 55%),
-      radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.16), transparent 60%),
-      linear-gradient(145deg, rgba(2, 6, 23, 0.95), rgba(15, 23, 42, 0.92));
-    opacity: 0.96;
+      radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.25), transparent 55%),
+      radial-gradient(circle at 85% 15%, rgba(244, 114, 182, 0.22), transparent 55%),
+      radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.2), transparent 60%),
+      linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(226, 232, 240, 0.92));
+    opacity: 0.85;
     pointer-events: none;
     z-index: 0;
   }
@@ -118,9 +118,9 @@
   .page-shell::after {
     content: "";
     position: absolute;
-    inset: -15% -30% auto -30%;
-    height: 45%;
-    background: radial-gradient(circle, rgba(250, 204, 21, 0.12), transparent 65%);
+    inset: -12% -25% auto -25%;
+    height: 50%;
+    background: radial-gradient(circle, rgba(250, 204, 21, 0.18), transparent 65%);
     pointer-events: none;
     z-index: 0;
   }
@@ -131,28 +131,62 @@
   }
 }
 
+.dark body,
+body.dark {
+  background-color: #020617;
+  background-image:
+    radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.16), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgba(168, 85, 247, 0.14), transparent 55%),
+    radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.14), transparent 60%);
+  background-attachment: fixed;
+  color-scheme: dark;
+}
+
+.dark .page-shell,
+body.dark .page-shell {
+  background-color: #020617;
+}
+
+.dark .page-shell::before,
+body.dark .page-shell::before {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.18), transparent 55%),
+    radial-gradient(circle at 85% 15%, rgba(244, 114, 182, 0.18), transparent 55%),
+    radial-gradient(circle at 50% 80%, rgba(34, 197, 94, 0.16), transparent 60%),
+    linear-gradient(145deg, rgba(2, 6, 23, 0.95), rgba(15, 23, 42, 0.92));
+  opacity: 0.96;
+}
+
+.dark .page-shell::after,
+body.dark .page-shell::after {
+  inset: -15% -30% auto -30%;
+  height: 45%;
+  background: radial-gradient(circle, rgba(250, 204, 21, 0.12), transparent 65%);
+}
+
 .page-shell .bg-white,
 .page-shell .bg-slate-50,
 .page-shell .bg-neutral-50,
 .page-shell .bg-neutral-100,
 .page-shell .bg-slate-100 {
-  background-color: rgba(15, 23, 42, 0.65);
+  background-color: rgba(255, 255, 255, 0.92);
   color: var(--foreground);
-  backdrop-filter: blur(18px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 24px 48px -28px rgba(15, 23, 42, 0.25);
 }
 
 .page-shell [class*="bg-white/"],
 .page-shell [class*="bg-slate-50/"],
 .page-shell [class*="bg-neutral-100/"],
 .page-shell [class*="bg-neutral-50/"] {
-  background-color: rgba(15, 23, 42, 0.5);
+  background-color: rgba(255, 255, 255, 0.82);
   color: var(--foreground);
 }
 
 .page-shell .bg-slate-200,
 .page-shell .bg-neutral-200,
 .page-shell .bg-gray-200 {
-  background-color: rgba(148, 163, 184, 0.2);
+  background-color: rgba(226, 232, 240, 0.85);
   color: var(--foreground);
 }
 
@@ -161,42 +195,42 @@
 .page-shell .border-neutral-300,
 .page-shell .border-slate-300,
 .page-shell .border-white {
-  border-color: rgba(148, 163, 184, 0.25);
+  border-color: rgba(148, 163, 184, 0.45);
 }
 
 .page-shell .divide-slate-200,
 .page-shell .divide-neutral-200 {
-  border-color: rgba(148, 163, 184, 0.2);
+  border-color: rgba(148, 163, 184, 0.35);
 }
 
 .page-shell .text-slate-900,
 .page-shell .text-neutral-900,
 .page-shell .text-slate-800,
 .page-shell .text-neutral-800 {
-  color: rgba(226, 232, 240, 0.95);
+  color: rgba(15, 23, 42, 0.95);
 }
 
 .page-shell .text-slate-700,
 .page-shell .text-neutral-700 {
-  color: rgba(226, 232, 240, 0.85);
+  color: rgba(51, 65, 85, 0.9);
 }
 
 .page-shell .text-slate-600,
 .page-shell .text-neutral-600,
 .page-shell .text-gray-600 {
-  color: rgba(203, 213, 225, 0.82);
+  color: rgba(71, 85, 105, 0.85);
 }
 
 .page-shell .text-slate-500,
 .page-shell .text-neutral-500,
 .page-shell .text-gray-500 {
-  color: rgba(148, 163, 184, 0.78);
+  color: rgba(100, 116, 139, 0.8);
 }
 
 .page-shell .text-slate-400,
 .page-shell .text-neutral-400,
 .page-shell .text-gray-400 {
-  color: rgba(148, 163, 184, 0.65);
+  color: rgba(148, 163, 184, 0.7);
 }
 
 .page-shell .shadow-sm,
@@ -204,37 +238,37 @@
 .page-shell .shadow-lg,
 .page-shell .shadow-xl,
 .page-shell .shadow-2xl {
-  --tw-shadow: 0 35px 80px -35px rgba(15, 23, 42, 0.85);
-  --tw-shadow-colored: 0 35px 80px -35px rgba(15, 23, 42, 0.85);
+  --tw-shadow: 0 24px 48px -28px rgba(15, 23, 42, 0.25);
+  --tw-shadow-colored: 0 24px 48px -28px rgba(15, 23, 42, 0.25);
 }
 
 .page-shell .ring-1,
 .page-shell .ring-2,
 .page-shell .ring {
-  --tw-ring-color: rgba(148, 163, 184, 0.25);
+  --tw-ring-color: rgba(59, 130, 246, 0.22);
 }
 
 .page-shell .hover\:bg-slate-50:hover,
 .page-shell .hover\:bg-neutral-50:hover {
-  background-color: rgba(148, 163, 184, 0.12);
+  background-color: rgba(148, 163, 184, 0.14);
 }
 
 .page-shell .hover\:text-slate-900:hover,
 .page-shell .hover\:text-slate-800:hover {
-  color: rgba(226, 232, 240, 0.96);
+  color: rgba(15, 23, 42, 0.98);
 }
 
 .page-shell .from-sky-50 {
-  --tw-gradient-from: rgba(56, 189, 248, 0.22);
+  --tw-gradient-from: rgba(56, 189, 248, 0.28);
   --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(56, 189, 248, 0));
 }
 
 .page-shell .via-white {
-  --tw-gradient-stops: var(--tw-gradient-from), rgba(15, 23, 42, 0.75), var(--tw-gradient-to, rgba(15, 23, 42, 0));
+  --tw-gradient-stops: var(--tw-gradient-from), rgba(255, 255, 255, 0.85), var(--tw-gradient-to, rgba(255, 255, 255, 0));
 }
 
 .page-shell .to-rose-100 {
-  --tw-gradient-to: rgba(244, 114, 182, 0.25);
+  --tw-gradient-to: rgba(244, 114, 182, 0.32);
 }
 
 /* Travel-themed animations and patterns */
