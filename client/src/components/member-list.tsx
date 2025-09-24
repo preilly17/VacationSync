@@ -75,7 +75,9 @@ export function MemberList({ trip }: MemberListProps) {
                           </div>
                           <div className="flex items-center gap-1 text-xs text-gray-500">
                             <Calendar className="w-3 h-3" />
-                            Joined {new Date(member.joinedAt).toLocaleDateString()}
+                            {member.joinedAt
+                              ? `Joined ${new Date(member.joinedAt).toLocaleDateString()}`
+                              : "Join date unavailable"}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 mt-2">

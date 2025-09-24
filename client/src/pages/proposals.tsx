@@ -119,6 +119,9 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       });
     },
     onSuccess: () => {
+      if (!tripId) {
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "hotel-proposals"] });
       toast({
         title: "Vote Recorded",
@@ -147,6 +150,9 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       });
     },
     onSuccess: () => {
+      if (!tripId) {
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flight-proposals"] });
       toast({
         title: "Vote Recorded",
@@ -334,7 +340,8 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 {proposal.preferredMealTime || 'Any time'}
               </span>
             </div>
-            {proposal.preferredDates && Array.isArray(proposal.preferredDates) && proposal.preferredDates.length > 0 && (
+            {Array.isArray(proposal.preferredDates) && proposal.preferredDates.length > 0 &&
+              typeof proposal.preferredDates[0] === "string" && (
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-600" />
                 <span className="text-sm" data-testid={`text-restaurant-preferred-dates-${proposal.id}`}>
@@ -397,7 +404,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(proposal.website, '_blank')}
+                onClick={() => window.open(proposal.website ?? undefined, '_blank')}
                 data-testid={`button-view-restaurant-${proposal.id}`}
               >
                 <ExternalLink className="w-4 h-4 mr-1" />

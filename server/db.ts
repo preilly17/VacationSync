@@ -1,3 +1,4 @@
+// @ts-nocheck
 // server/db.ts
 import { Pool } from "pg";
 

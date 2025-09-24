@@ -61,8 +61,8 @@ export function ActivityCard({
   isLoading = false,
   isScheduleView = false,
 }: ActivityCardProps) {
-  const formatDateTime = (dateTime: string) => {
-    const date = new Date(dateTime);
+  const formatDateTime = (dateTime: ActivityWithDetails["startTime"]) => {
+    const date = dateTime instanceof Date ? dateTime : new Date(dateTime);
     return format(date, "MMM d, yyyy 'at' h:mm a");
   };
 

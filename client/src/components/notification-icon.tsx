@@ -32,25 +32,39 @@ interface NotificationWithDetails extends Notification {
 export function NotificationIcon() {
   const queryClient = useQueryClient();
 
-  const { data: unreadCount = 0, error: countError } = useQuery<{ count: number }>({
+  const {
+    data: unreadCountData,
+    error: countError,
+  } = useQuery<{ count: number }, Error>({
     queryKey: ["/api/notifications/unread-count"],
     refetchInterval: 30000, // Refresh every 30 seconds
     retry: false,
     enabled: false, // Disable for now to prevent auth errors
-    onError: (error) => {
-      console.warn("Failed to fetch unread notifications count:", error);
-    },
   });
 
-  const { data: notifications = [], error: notificationsError } = useQuery<NotificationWithDetails[]>({
+  const {
+    data: notifications = [],
+    error: notificationsError,
+  } = useQuery<NotificationWithDetails[], Error>({
     queryKey: ["/api/notifications"],
     refetchInterval: 30000,
     retry: false,
     enabled: false, // Disable for now to prevent auth errors
-    onError: (error) => {
-      console.warn("Failed to fetch notifications:", error);
-    },
   });
+
+  const unreadCount = unreadCountData?.count ?? 0;
+
+  React.useEffect(() => {
+    if (countError) {
+      console.warn("Failed to fetch unread notifications count:", countError);
+    }
+  }, [countError]);
+
+  React.useEffect(() => {
+    if (notificationsError) {
+      console.warn("Failed to fetch notifications:", notificationsError);
+    }
+  }, [notificationsError]);
 
   // Don't render if there are auth errors
   if (countError || notificationsError) {

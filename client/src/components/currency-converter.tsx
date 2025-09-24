@@ -177,7 +177,6 @@ export function CurrencyConverter({
         <Select
           value={currency}
           onValueChange={onCurrencyChange}
-          modal={false}
         >
           <SelectTrigger className="w-24">
             <SelectValue />
@@ -232,7 +231,6 @@ export function CurrencyConverter({
               <Select
                 value={targetCurrency}
                 onValueChange={setTargetCurrency}
-                modal={false}
               >
                 <SelectTrigger className="w-32">
                   <SelectValue />

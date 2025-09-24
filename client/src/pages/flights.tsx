@@ -575,7 +575,7 @@ export default function FlightsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flight-proposals"] });
       
     } catch (error) {
-      if (isUnauthorizedError(error)) {
+      if (error instanceof Error && isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
           description: "You need to be logged in to rank flights.",
@@ -609,7 +609,7 @@ export default function FlightsPage() {
         stops: flight.stops !== undefined ? flight.stops : 0,
         aircraft: flight.aircraft || 'Unknown Aircraft',
         price: flight.price || flight.totalPrice || 0,
-        bookingClass: flight.class || searchFormData.cabinClass || 'Economy',
+        bookingClass: flight.class || 'Economy',
         platform: 'Amadeus',
         bookingUrl: flight.bookingUrls?.kayak || flight.bookingUrls?.expedia || '#'
       };
@@ -628,7 +628,7 @@ export default function FlightsPage() {
       });
       
     } catch (error) {
-      if (isUnauthorizedError(error as Error)) {
+      if (error instanceof Error && isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
           description: "You need to be logged in to propose flights.",
@@ -640,9 +640,13 @@ export default function FlightsPage() {
         return;
       }
       console.error("Error proposing flight:", error);
+      const description =
+        error instanceof Error
+          ? error.message
+          : "Failed to propose flight to group. Please try again.";
       toast({
         title: "Error",
-        description: error?.message || "Failed to propose flight to group. Please try again.",
+        description,
         variant: "destructive",
       });
     }
@@ -699,12 +703,13 @@ export default function FlightsPage() {
       return;
     }
 
-    const submitData = {
+    const submitData: InsertFlight = {
       ...flightFormData,
-      tripId: parseInt(tripId!),
+      tripId: parseInt(tripId!, 10),
       departureTime: new Date(flightFormData.departureTime),
       arrivalTime: new Date(flightFormData.arrivalTime),
-      price: flightFormData.price || undefined,
+      price: flightFormData.price ? Number(flightFormData.price) : null,
+      currency: "USD",
     };
 
     if (editingFlight) {

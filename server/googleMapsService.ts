@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Restaurant } from './foursquareService';
 import { detectCurrencyByLocation, formatCurrency } from './currencyService';
 

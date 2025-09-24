@@ -40,6 +40,7 @@ interface AddExpenseModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tripId: number;
+  currentUserId?: string;
 }
 
 const formSchema = insertExpenseSchema
@@ -74,6 +75,7 @@ export function AddExpenseModal({
   open,
   onOpenChange,
   tripId,
+  currentUserId,
 }: AddExpenseModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -126,6 +128,29 @@ export function AddExpenseModal({
       selectedMembers: [],
     },
   });
+
+  useEffect(() => {
+    if (!open) return;
+    if (!currentUserId) return;
+    if (!trip?.members?.length) return;
+
+    const currentSelection = form.getValues("selectedMembers");
+    if (currentSelection && currentSelection.length > 0) {
+      return;
+    }
+
+    const isMember = trip.members.some(
+      (member) => member.user.id === currentUserId,
+    );
+
+    if (isMember) {
+      form.setValue("selectedMembers", [currentUserId], {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+    }
+  }, [open, currentUserId, trip, form]);
 
   const createExpenseMutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -237,7 +262,6 @@ export function AddExpenseModal({
                       Request payment in:
                     </label>
                     <Select
-                      modal={false}
                       value={requestCurrency}
                       onValueChange={setRequestCurrency}
                     >
@@ -307,7 +331,6 @@ export function AddExpenseModal({
                   <FormItem>
                     <FormLabel>Category</FormLabel>
                     <Select
-                      modal={false}
                       onValueChange={field.onChange}
                       defaultValue={field.value}
                     >
@@ -339,11 +362,15 @@ export function AddExpenseModal({
                   <FormItem>
                     <FormLabel>Split with Members</FormLabel>
                     <Card>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-medium">
-                          Select members to split this expense with
-                        </CardTitle>
-                      </CardHeader>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">
+                      Select members to split this expense with
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      You&apos;re pre-selected so you can quickly log solo purchases—add or
+                      remove travelers to adjust who shares the cost.
+                    </p>
+                  </CardHeader>
                       <CardContent className="space-y-2">
                         {trip?.members?.map((member) => {
                           const isSelected = field.value.includes(
@@ -579,7 +606,6 @@ export function AddExpenseModal({
                   <FormItem className="hidden">
                     <FormLabel>Split Type</FormLabel>
                     <Select
-                      modal={false}
                       onValueChange={field.onChange}
                       defaultValue={field.value}
                     >

@@ -30,19 +30,22 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
-import type { TripWithDetails } from "@shared/schema";
+import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 
 interface Activity {
   id: string;
   name: string;
-  description: string;
-  location: string;
+  description: string | null;
+  location: string | null;
   category: string;
   price: string;
   duration: string;
   rating: number;
   bookingUrl: string;
   provider?: string;
+  isGroupActivity?: boolean;
+  activityId?: number;
+  proposedBy?: string;
 }
 
 export default function Activities() {
@@ -111,7 +114,10 @@ export default function Activities() {
   }, [trip, autoSearchTriggered, hasSearched]);
 
   // Get group activities (already proposed to the trip)
-  const { data: groupActivities = [], isLoading: groupActivitiesLoading } = useQuery({
+  const {
+    data: groupActivities = [],
+    isLoading: groupActivitiesLoading,
+  } = useQuery<ActivityWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/activities`],
     enabled: !!tripId && isAuthenticated,
     retry: false,
@@ -145,9 +151,9 @@ export default function Activities() {
   });
 
   // Combine search activities with group activities for unified display
-  const combinedActivities = [
-    ...(searchActivities || []),
-    ...(groupActivities || []).map(activity => ({
+  const combinedActivities: Activity[] = [
+    ...(searchActivities ?? []),
+    ...groupActivities.map((activity) => ({
       id: `group-${activity.id}`,
       name: activity.name,
       description: activity.description,
@@ -160,7 +166,11 @@ export default function Activities() {
       provider: "Group Activity",
       isGroupActivity: true,
       activityId: activity.id,
-      proposedBy: activity.createdBy
+      proposedBy:
+        activity.poster.firstName ||
+        activity.poster.email ||
+        activity.poster.username ||
+        "Group member",
     }))
   ];
 
@@ -196,8 +206,8 @@ export default function Activities() {
         credentials: 'include',
         body: JSON.stringify({
           name: activity.name,
-          description: activity.description,
-          location: activity.location,
+          description: activity.description ?? '',
+          location: activity.location ?? '',
           startTime: startDateTime, // Send as ISO string
           endTime: null,
           category: activity.category,
@@ -218,7 +228,7 @@ export default function Activities() {
         description: "Your group can now see and accept this activity.",
       });
     } catch (error) {
-      if (isUnauthorizedError(error as Error)) {
+      if (isUnauthorizedError(error)) {
         toast({
           title: "Unauthorized",
           description: "You are logged out. Logging in again...",

@@ -58,10 +58,6 @@ export default function Login() {
       const response = await apiRequest("/api/auth/login", {
         method: "POST",
         body: JSON.stringify(data),
-        credentials: "include", // ✅ ensure session cookie is included
-        headers: {
-          "Content-Type": "application/json",
-        },
       });
       return response.json();
     },
@@ -73,13 +69,14 @@ export default function Login() {
       });
       setLocation(safeReturnTo ?? "/"); // ✅ redirect into app
     },
-    onError: (error: any) => {
+    onError: (error) => {
       let errorMessage = "Invalid username/email or password.";
+      const message = error instanceof Error ? error.message : "";
 
-      if (error.message.includes("not found")) {
+      if (message.includes("not found")) {
         errorMessage =
           "Account not found. Please check your credentials or create a new account.";
-      } else if (error.message.includes("password")) {
+      } else if (message.includes("password")) {
         errorMessage = "Incorrect password. Please try again.";
       }
 

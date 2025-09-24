@@ -275,6 +275,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         open={isAddExpenseModalOpen}
         onOpenChange={setIsAddExpenseModalOpen}
         tripId={tripId}
+        currentUserId={user?.id}
       />
     </div>
   );
