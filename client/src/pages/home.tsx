@@ -486,101 +486,97 @@ export default function Home() {
           ) : (
             <div className="grid gap-6 md:grid-cols-2">
               {sortedUpcomingTrips.map((trip) => (
-                <Card
+                <Link
                   key={trip.id}
-                  className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-transform duration-200 hover:-translate-y-1 hover:shadow-lg"
+                  href={`/trip/${trip.id}`}
+                  aria-label={`Open trip ${trip.name}`}
+                  className="group block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 >
-                  <div className="relative h-40 w-full overflow-hidden">
-                    <img
-                      src={getDestinationImage(trip.destination)}
-                      alt={`Scenic view of ${trip.destination}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
-                    <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
-                      <div>
-                        <p className="text-xs uppercase tracking-widest text-white/80">
-                          Adventure
-                        </p>
-                        <h3 className="text-lg font-semibold leading-tight">
-                          {trip.name}
-                        </h3>
-                      </div>
-                      <Badge className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur">
-                        <Users className="h-3.5 w-3.5" />
-                        {trip.memberCount}
-                      </Badge>
-                    </div>
-                  </div>
-                  <CardContent className="space-y-4 p-6">
-                    <div className="space-y-3 text-sm text-slate-600">
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-600">
-                          <MapPin className="h-4 w-4" />
-                        </span>
-                        <span className="font-medium text-slate-900">
-                          {trip.destination}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-                          <Calendar className="h-4 w-4" />
-                        </span>
-                        <span>{formatDateRange(trip.startDate, trip.endDate)}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
-                          <Clock className="h-4 w-4" />
-                        </span>
-                        <span className="font-medium text-slate-900">
-                          {getCountdownLabel(trip.startDate)}
-                        </span>
+                  <Card className="h-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-lg">
+                    <div className="relative h-40 w-full overflow-hidden">
+                      <img
+                        src={getDestinationImage(trip.destination)}
+                        alt={`Scenic view of ${trip.destination}`}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
+                      <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
+                        <div>
+                          <p className="text-xs uppercase tracking-widest text-white/80">
+                            Adventure
+                          </p>
+                          <h3 className="text-lg font-semibold leading-tight">
+                            {trip.name}
+                          </h3>
+                        </div>
+                        <Badge className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+                          <Users className="h-3.5 w-3.5" />
+                          {trip.memberCount}
+                        </Badge>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between gap-4 pt-2">
-                      <div className="flex -space-x-2">
-                        {(trip.members || []).slice(0, 3).map((member) => (
-                          <div
-                            key={member.id}
-                            className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
-                          >
-                            {member.user.profileImageUrl ? (
-                              <img
-                                src={member.user.profileImageUrl}
-                                alt={formatMemberName(
-                                  member.user.firstName,
-                                  member.user.email,
-                                )}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
-                                {getMemberInitial(
-                                  member.user.firstName,
-                                  member.user.email,
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                        {trip.memberCount > 3 && (
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
-                            +{trip.memberCount - 3}
-                          </div>
-                        )}
+                    <CardContent className="space-y-4 p-6">
+                      <div className="space-y-3 text-sm text-slate-600">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-600">
+                            <MapPin className="h-4 w-4" />
+                          </span>
+                          <span className="font-medium text-slate-900">
+                            {trip.destination}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                            <Calendar className="h-4 w-4" />
+                          </span>
+                          <span>{formatDateRange(trip.startDate, trip.endDate)}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+                            <Clock className="h-4 w-4" />
+                          </span>
+                          <span className="font-medium text-slate-900">
+                            {getCountdownLabel(trip.startDate)}
+                          </span>
+                        </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="rounded-full px-4"
-                        asChild
-                      >
-                        <Link href={`/trip/${trip.id}`}>View trip</Link>
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                      <div className="flex items-center gap-4 pt-2">
+                        <div className="flex -space-x-2">
+                          {(trip.members || []).slice(0, 3).map((member) => (
+                            <div
+                              key={member.id}
+                              className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
+                            >
+                              {member.user.profileImageUrl ? (
+                                <img
+                                  src={member.user.profileImageUrl}
+                                  alt={formatMemberName(
+                                    member.user.firstName,
+                                    member.user.email,
+                                  )}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
+                                  {getMemberInitial(
+                                    member.user.firstName,
+                                    member.user.email,
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {trip.memberCount > 3 && (
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                              +{trip.memberCount - 3}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
               ))}
             </div>
           )}
