@@ -2406,6 +2406,8 @@ export class DatabaseStorage implements IStorage {
     userId: string,
   ): Promise<Expense> {
     await query("BEGIN");
+    let participantIds: string[] = [];
+    let createdExpenseRow: ExpenseRow | null = null;
     try {
       const { rows } = await query<ExpenseRow>(
         `
@@ -2490,7 +2492,7 @@ export class DatabaseStorage implements IStorage {
       const selectedMembers = Array.isArray(expense.selectedMembers)
         ? expense.selectedMembers
         : undefined;
-      const participantIds = membersFromSplitData ?? selectedMembers ?? [];
+      participantIds = membersFromSplitData ?? selectedMembers ?? [];
 
       if (participantIds.length > 0) {
         const totalAmount = Number(expense.amount);
@@ -2557,13 +2559,78 @@ export class DatabaseStorage implements IStorage {
         }
       }
 
+      createdExpenseRow = row;
       await query("COMMIT");
-
-      return mapExpense(row);
     } catch (error) {
       await query("ROLLBACK");
       throw error;
     }
+
+    if (!createdExpenseRow) {
+      throw new Error("Failed to create expense");
+    }
+
+    const createdExpense = mapExpense(createdExpenseRow);
+    const participantsToNotify = Array.from(new Set(participantIds)).filter(
+      (participantId) =>
+        Boolean(participantId) && participantId !== createdExpense.paidBy,
+    );
+
+    if (participantsToNotify.length > 0) {
+      try {
+        const payerUser = await this.getUser(createdExpense.paidBy);
+        const payerName =
+          (payerUser?.firstName && payerUser.firstName.trim()) ||
+          (payerUser?.username && payerUser.username.trim()) ||
+          (payerUser?.email && payerUser.email.trim()) ||
+          "A trip member";
+
+        const currency = expense.currency ?? "USD";
+        const amountNumber = Number(expense.amount);
+        const hasValidAmount = Number.isFinite(amountNumber);
+        let formattedAmount = hasValidAmount
+          ? `${currency} ${amountNumber.toFixed(2)}`
+          : `${currency} ${expense.amount}`;
+
+        if (hasValidAmount) {
+          try {
+            formattedAmount = new Intl.NumberFormat("en-US", {
+              style: "currency",
+              currency,
+            }).format(amountNumber);
+          } catch {
+            formattedAmount = `${currency} ${amountNumber.toFixed(2)}`;
+          }
+        }
+
+        const trimmedDescription = expense.description.trim();
+        const expenseDescription = trimmedDescription
+          ? trimmedDescription
+          : "an expense";
+        const notificationTitle = `${payerName} added a new expense`;
+        const notificationMessage = `${payerName} recorded ${formattedAmount} for ${expenseDescription}. You're tagged to split it.`;
+
+        await Promise.all(
+          participantsToNotify.map((participantId) =>
+            this.createNotification({
+              userId: participantId,
+              type: "expense",
+              title: notificationTitle,
+              message: notificationMessage,
+              tripId: createdExpense.tripId,
+              expenseId: createdExpense.id,
+            }),
+          ),
+        );
+      } catch (notificationError) {
+        console.error(
+          "Failed to create expense notifications:",
+          notificationError,
+        );
+      }
+    }
+
+    return createdExpense;
   }
 
   async getTripExpenses(tripId: number): Promise<ExpenseWithDetails[]> {
