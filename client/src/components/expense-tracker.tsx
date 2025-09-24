@@ -32,7 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AddExpenseModal } from "./add-expense-modal";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { ExpenseWithDetails, TripWithDetails, User } from "@shared/schema";
+import type { ExpenseWithDetails, User } from "@shared/schema";
 import {
   CheckCircle2,
   Loader2,
@@ -55,8 +55,6 @@ interface ExpenseTrackerProps {
 }
 
 type SummaryView = "total" | "youPaid" | "youOwe" | "youAreOwed";
-
-type TimeFilter = "30" | "trip" | "all";
 
 type SortOption = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
 
@@ -143,7 +141,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [settlingId, setSettlingId] = useState<number | null>(null);
   const [detailView, setDetailView] = useState<SummaryView | null>(null);
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("trip");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOption, setSortOption] = useState<SortOption>("date-desc");
   const { toast } = useToast();
@@ -154,11 +151,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     isLoading: isLoadingExpenses,
   } = useQuery<ExpenseWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/expenses`],
-  });
-
-  const { data: trip } = useQuery<TripWithDetails>({
-    queryKey: [`/api/trips/${tripId}`],
-    enabled: Number.isFinite(tripId) && tripId > 0,
   });
 
   const { data: balances } = useQuery<ExpenseBalances>({
@@ -264,7 +256,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
 
   useEffect(() => {
     if (detailView) {
-      setTimeFilter("trip");
       setSearchTerm("");
       setSortOption("date-desc");
     }
@@ -276,7 +267,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     description: string;
     amount: number;
     amountClassName?: string;
-    emptyState: string;
   }[] = useMemo(
     () => [
       {
@@ -284,8 +274,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         title: "Total recorded",
         description: "All expenses logged for this trip.",
         amount: summary.total,
-        emptyState:
-          "Nothing here yet. Log an expense to start tracking spending for this trip.",
       },
       {
         type: "youPaid",
@@ -293,8 +281,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         description: "Amount you covered for everyone else.",
         amount: summary.youPaid,
         amountClassName: "text-blue-600",
-        emptyState:
-          "Nothing here yet. When you cover an expense, it’ll show up here.",
       },
       {
         type: "youOwe",
@@ -302,8 +288,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         description: "Outstanding amount you still need to pay.",
         amount: summary.owes,
         amountClassName: "text-rose-600",
-        emptyState:
-          "Nothing here yet. When someone logs an expense you owe, it’ll show up here.",
       },
       {
         type: "youAreOwed",
@@ -311,8 +295,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         description: "Friends still owe you this much.",
         amount: summary.owed,
         amountClassName: "text-emerald-600",
-        emptyState:
-          "Nothing here yet. When someone owes you for an expense, it’ll show up here.",
       },
     ],
     [summary.owed, summary.owes, summary.total, summary.youPaid],
@@ -325,16 +307,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
   const filteredExpenses = useMemo(() => {
     if (!detailView) {
       return [] as ExpenseWithDetails[];
-    }
-
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now);
-    thirtyDaysAgo.setDate(now.getDate() - 30);
-
-    const tripStart = trip?.startDate ? new Date(trip.startDate) : null;
-    const tripEnd = trip?.endDate ? new Date(trip.endDate) : null;
-    if (tripEnd) {
-      tripEnd.setHours(23, 59, 59, 999);
     }
 
     const matchesView = (expense: ExpenseWithDetails) => {
@@ -374,33 +346,16 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       return false;
     };
 
-    const matchesTimeFilter = (expense: ExpenseWithDetails) => {
-      if (timeFilter === "all") {
+    const matchesTrip = (expense: ExpenseWithDetails) => {
+      if (!Number.isFinite(tripId)) {
         return true;
       }
 
-      const createdAt = expense.createdAt ? new Date(expense.createdAt) : null;
-      if (!createdAt || Number.isNaN(createdAt.getTime())) {
+      if (typeof expense.tripId !== "number") {
         return true;
       }
 
-      if (timeFilter === "30") {
-        return createdAt >= thirtyDaysAgo;
-      }
-
-      if (!tripStart && !tripEnd) {
-        return true;
-      }
-
-      if (tripStart && createdAt < tripStart) {
-        return false;
-      }
-
-      if (tripEnd && createdAt > tripEnd) {
-        return false;
-      }
-
-      return true;
+      return expense.tripId === tripId;
     };
 
     const searchQuery = searchTerm.trim().toLowerCase();
@@ -421,7 +376,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     };
 
     const filtered = expenses.filter(
-      (expense) => matchesView(expense) && matchesTimeFilter(expense) && matchesSearch(expense),
+      (expense) => matchesView(expense) && matchesTrip(expense) && matchesSearch(expense),
     );
 
     return filtered.sort((a, b) => {
@@ -442,17 +397,9 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     expenses,
     searchTerm,
     sortOption,
-    timeFilter,
-    trip?.endDate,
-    trip?.startDate,
+    tripId,
     user?.id,
   ]);
-
-  const timeFilterOptions: { value: TimeFilter; label: string }[] = [
-    { value: "30", label: "Last 30 days" },
-    { value: "trip", label: "This trip" },
-    { value: "all", label: "All" },
-  ];
 
   const sortOptions: { value: SortOption; label: string }[] = [
     { value: "date-desc", label: "Date (newest)" },
@@ -785,23 +732,9 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                 </p>
               </div>
 
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div
-                  className="flex items-center gap-1 rounded-md border bg-muted/40 p-1"
-                  role="group"
-                  aria-label="Filter expenses by time"
-                >
-                  {timeFilterOptions.map((option) => (
-                    <Button
-                      key={option.value}
-                      type="button"
-                      size="sm"
-                      variant={timeFilter === option.value ? "secondary" : "ghost"}
-                      onClick={() => setTimeFilter(option.value)}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                <div className="text-sm text-muted-foreground sm:text-right">
+                  Showing expenses for this trip.
                 </div>
                 <Input
                   value={searchTerm}
@@ -832,8 +765,11 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
             </div>
 
             {filteredExpenses.length === 0 ? (
-              <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground">
-                {selectedCard?.emptyState ?? "Nothing to show here just yet."}
+              <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center">
+                <h4 className="text-base font-semibold">Nothing here yet</h4>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  When expenses for this trip appear, they’ll show up here.
+                </p>
               </div>
             ) : (
               <Table>
