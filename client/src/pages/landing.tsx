@@ -255,7 +255,7 @@ export default function Landing() {
                 </div>
               </div>
 
-              <div className="relative">
+              <div className="relative flex flex-col gap-6 lg:items-end">
                 <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
                 <div className="absolute -bottom-16 -right-10 h-56 w-56 rounded-full bg-emerald-400/20 blur-3xl" />
                 <Card className="relative border-none bg-white text-slate-900 shadow-2xl">
@@ -301,7 +301,7 @@ export default function Landing() {
                     </div>
                   </CardContent>
                 </Card>
-                <Card className="absolute -bottom-20 right-0 w-full max-w-sm border-none bg-slate-900 text-white/90 shadow-xl">
+                <Card className="relative w-full max-w-sm border-none bg-slate-900 text-white/90 shadow-xl lg:self-end">
                   <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-base text-white">
                       <Wallet className="w-5 h-5 text-emerald-300" />
