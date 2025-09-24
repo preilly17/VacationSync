@@ -154,8 +154,11 @@ export function PackingList({ tripId }: PackingListProps) {
     });
   };
 
-  const personalItems = packingItems.filter(item => item.itemType === 'personal');
-  const groupItems = packingItems.filter(item => item.itemType === 'group');
+  const personalItems = packingItems.filter(
+    (item) => item.itemType === "personal" && item.userId === user?.id,
+  );
+  const groupItems = packingItems.filter((item) => item.itemType === "group");
+  const visibleItems = [...personalItems, ...groupItems];
 
   const groupedPersonalItems = personalItems.reduce((acc, item) => {
     if (!acc[item.category || 'general']) {
@@ -177,8 +180,8 @@ export function PackingList({ tripId }: PackingListProps) {
     return categories.find(cat => cat.value === categoryValue) || categories[0];
   };
 
-  const completedCount = packingItems.filter(item => item.isChecked).length;
-  const totalCount = packingItems.length;
+  const completedCount = visibleItems.filter((item) => item.isChecked).length;
+  const totalCount = visibleItems.length;
 
   if (isLoading) {
     return (
