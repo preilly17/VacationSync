@@ -8,11 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Calendar, Plus, Users, MapPin, Settings, Plane, Camera, Heart, Compass, Trash2, Calculator, ArrowUpDown, DollarSign } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { CreateTripModal } from "@/components/create-trip-modal";
 import { NotificationIcon } from "@/components/notification-icon";
-import { OnboardingTutorial } from "@/components/onboarding-tutorial";
-import { useOnboarding } from "@/hooks/useOnboarding";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { TravelMascot } from "@/components/TravelMascot";
 import { ManualRefreshButton } from "@/components/manual-refresh-button";
@@ -24,31 +22,7 @@ import type { TripWithDetails } from "@shared/schema";
 export default function Home() {
   const { user } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const { shouldShowOnboarding, completeOnboarding, skipOnboarding } = useOnboarding();
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const { toast } = useToast();
-
-
-  useEffect(() => {
-    // Show onboarding after a short delay for better UX
-    const timer = setTimeout(() => {
-      if (shouldShowOnboarding()) {
-        setShowOnboarding(true);
-      }
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [shouldShowOnboarding]);
-
-  const handleOnboardingComplete = () => {
-    completeOnboarding();
-    setShowOnboarding(false);
-  };
-
-  const handleOnboardingSkip = () => {
-    skipOnboarding();
-    setShowOnboarding(false);
-  };
 
   const { data: trips, isLoading, error } = useQuery<TripWithDetails[]>({
     queryKey: ["/api/trips"],
@@ -135,6 +109,12 @@ export default function Home() {
             </div>
             <div className="flex items-center space-x-3">
               <NotificationIcon />
+              <Link href="/how-it-works">
+                <Button variant="outline" size="sm">
+                  <Compass className="w-4 h-4 mr-2" />
+                  How it works
+                </Button>
+              </Link>
               <Link href="/currency-converter">
                 <Button variant="outline" size="sm">
                   <Calculator className="w-4 h-4 mr-2" />
@@ -434,13 +414,6 @@ export default function Home() {
           setShowCreateModal(open);
         }}
       />
-      
-      {showOnboarding && (
-        <OnboardingTutorial
-          onComplete={handleOnboardingComplete}
-          onSkip={handleOnboardingSkip}
-        />
-      )}
     </div>
   );
 }

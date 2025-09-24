@@ -23,6 +23,7 @@ import AmadeusTest from "@/pages/amadeus-test";
 import LocationDatabase from "@/pages/location-database";
 import CurrencyConverter from "@/pages/currency-converter";
 import Logout from "@/pages/logout";
+import HowItWorks from "@/pages/how-it-works";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -50,6 +51,7 @@ function Router() {
         <Route path="/api/logout" component={Logout} />
         <Route path="/amadeus-test" component={AmadeusTest} />
         <Route path="/location-database" component={LocationDatabase} />
+        <Route path="/how-it-works" component={HowItWorks} />
         <Route path="/" component={Landing} />
         <Route path="*" component={Landing} />
       </Switch>
@@ -79,6 +81,7 @@ function Router() {
       <Route path="/join/:shareCode" component={Join} />
       <Route path="/profile" component={Profile} />
       <Route path="/currency-converter" component={CurrencyConverter} />
+      <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/amadeus-test" component={AmadeusTest} />
       <Route path="/location-database" component={LocationDatabase} />
       <Route path="/api/logout" component={Logout} />
