@@ -59,6 +59,10 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     },
   });
 
+  useEffect(() => {
+    form.register("coverImageUrl");
+  }, [form]);
+
   const setCoverImageValue = (value: string | null, markDirty = false) => {
     setCoverImagePreview(value);
     if (fileInputRef.current) {
@@ -138,15 +142,21 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     // Use selected destination if available, otherwise use form data
     const submitData = {
       ...data,
-      destination: selectedDestination?.displayName || selectedDestination?.name || data.destination
+      destination:
+        selectedDestination?.displayName ||
+        selectedDestination?.name ||
+        data.destination,
     };
-    console.log("Submitting trip update data:", submitData);
     updateTripMutation.mutate(submitData);
   };
 
   const handleDestinationSelect = (location: any) => {
     setSelectedDestination(location);
-    // Don't update form state immediately - only on submit
+    form.setValue(
+      "destination",
+      location.displayName || location.name,
+      { shouldDirty: true },
+    );
   };
 
   const handleCoverImageChange = (

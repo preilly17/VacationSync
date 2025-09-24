@@ -561,7 +561,6 @@ export default function Home() {
                   size="lg"
                   className="bg-primary px-6 text-white shadow-md transition hover:shadow-lg"
                   onClick={() => {
-                    console.log("Create trip button clicked, setting modal to true");
                     setShowCreateModal(true);
                   }}
                   data-onboarding="create-trip"
@@ -1146,7 +1145,6 @@ export default function Home() {
       <CreateTripModal
         open={showCreateModal}
         onOpenChange={(open) => {
-          console.log("CreateTripModal onOpenChange called with:", open);
           setShowCreateModal(open);
         }}
       />

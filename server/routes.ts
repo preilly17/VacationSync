@@ -610,6 +610,11 @@ export function setupRoutes(app: Express) {
       res.json(trip);
     } catch (error: unknown) {
       console.error("Error creating trip:", error);
+      if (error instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ message: "Invalid trip data", errors: error.errors });
+      }
       res.status(500).json({ message: "Failed to create trip" });
     }
   });
@@ -714,6 +719,11 @@ export function setupRoutes(app: Express) {
       res.json(updatedTrip);
     } catch (error: unknown) {
       console.error("Error updating trip:", error);
+      if (error instanceof z.ZodError) {
+        return res
+          .status(400)
+          .json({ message: "Invalid trip data", errors: error.errors });
+      }
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       if (errorMessage.includes("Only the trip creator")) {
         res.status(403).json({ message: "Only the trip creator can edit the trip" });

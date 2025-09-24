@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -34,14 +34,6 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
   const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const resetCoverImage = (markDirty = false) => {
-    setCoverImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-    form.setValue("coverImageUrl", null, { shouldDirty: markDirty });
-  };
-
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -52,6 +44,18 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
       coverImageUrl: null,
     },
   });
+
+  useEffect(() => {
+    form.register("coverImageUrl");
+  }, [form]);
+
+  const resetCoverImage = (markDirty = false) => {
+    setCoverImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    form.setValue("coverImageUrl", null, { shouldDirty: markDirty });
+  };
 
   const createTripMutation = useMutation({
     mutationFn: async (data: FormData) => {
@@ -104,7 +108,6 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
   });
 
   const onSubmit = (data: FormData) => {
-    console.log("Submitting trip data:", data);
     createTripMutation.mutate(data);
   };
 
