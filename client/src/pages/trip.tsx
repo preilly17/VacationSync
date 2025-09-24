@@ -824,14 +824,6 @@ export default function Trip() {
                                 Invite
                               </Button>
                             </div>
-                            <Button
-                              onClick={() => openAddActivityModal()}
-                              size="lg"
-                              className="w-full justify-center bg-primary text-white shadow-md hover:bg-red-600"
-                            >
-                              <Plus className="mr-2 h-4 w-4" />
-                              Add Activity
-                            </Button>
                           </div>
                         </div>
                       </div>
