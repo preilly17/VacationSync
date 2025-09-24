@@ -13,11 +13,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { format, formatDistanceToNow } from "date-fns";
-import { 
+import {
   ArrowLeft,
-  Hotel, 
-  Plane, 
-  MapPin, 
+  Hotel,
+  Plane,
+  MapPin,
   Utensils,
   Users,
   Star,
@@ -32,27 +32,34 @@ import {
   Calendar,
   CheckCircle,
   XCircle,
-  User
+  User,
+  Bell,
 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
-import type { 
-  HotelProposalWithDetails, 
-  FlightProposalWithDetails, 
-  ActivityProposalWithDetails, 
+import type {
+  HotelProposalWithDetails,
+  FlightProposalWithDetails,
+  ActivityProposalWithDetails,
   RestaurantProposalWithDetails,
-  TripWithDetails 
+  TripWithDetails,
+  ActivityWithDetails,
+  ActivityInviteStatus,
 } from "@shared/schema";
+import { ActivityCard } from "@/components/activity-card";
 
 interface ProposalsPageProps {
   tripId?: number;
 }
+
+type ProposalTab = "invites" | "hotels" | "flights" | "activities" | "restaurants";
 
 function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState("hotels");
+  const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
+  const [hasSeededTab, setHasSeededTab] = useState(false);
   const [proposalFilter, setProposalFilter] = useState<"all" | "mine">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "canceled">("all");
 
@@ -105,6 +112,11 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   const { data: restaurantProposals = [], isLoading: restaurantProposalsLoading } = useQuery<RestaurantProposalWithDetails[]>({
     queryKey: ["/api/trips", tripId, "restaurant-proposals"],
+    enabled: !!tripId && isAuthenticated,
+  });
+
+  const { data: activities = [], isLoading: activitiesLoading } = useQuery<ActivityWithDetails[]>({
+    queryKey: [`/api/trips/${tripId}/activities`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -193,6 +205,60 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       toast({
         title: "Error",
         description: "Failed to record your vote. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const respondToInviteMutation = useMutation({
+    mutationFn: async ({
+      activityId,
+      status,
+    }: {
+      activityId: number;
+      status: ActivityInviteStatus;
+    }) => {
+      const response = await apiRequest(`/api/activities/${activityId}/respond`, {
+        method: "POST",
+        body: { status },
+      });
+
+      return (await response.json()) as {
+        invite: unknown;
+        activity: ActivityWithDetails | null;
+      };
+    },
+    onSuccess: (_data, variables) => {
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      }
+
+      const status = variables.status;
+      let title = "RSVP updated";
+      let description = "We saved your response.";
+
+      if (status === "accepted") {
+        title = "You're going!";
+        description = "This activity is on your personal schedule now.";
+      } else if (status === "declined") {
+        title = "You declined this activity";
+        description = "We won't show it on your personal schedule.";
+      } else {
+        title = "Marked as undecided";
+        description = "You can update your RSVP anytime.";
+      }
+
+      toast({ title, description });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      toast({
+        title: "Unable to update RSVP",
+        description: "Please try again.",
         variant: "destructive",
       });
     },
@@ -1044,6 +1110,45 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     [applyProposalFilters, restaurantProposals],
   );
 
+  const pendingInviteActivities = useMemo(() => {
+    if (!user?.id) {
+      return [] as ActivityWithDetails[];
+    }
+
+    return activities
+      .filter((activity) => {
+        const invite =
+          activity.currentUserInvite ??
+          activity.invites.find((item) => item.userId === user.id);
+        return invite?.status === "pending";
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+      );
+  }, [activities, user?.id]);
+
+  useEffect(() => {
+    if (hasSeededTab || activitiesLoading) {
+      return;
+    }
+
+    if (pendingInviteActivities.length > 0) {
+      setActiveTab("invites");
+    }
+
+    setHasSeededTab(true);
+  }, [activitiesLoading, hasSeededTab, pendingInviteActivities.length]);
+
+  const handleRespondToInvite = useCallback(
+    (activityId: number, status: ActivityInviteStatus) => {
+      respondToInviteMutation.mutate({ activityId, status });
+    },
+    [respondToInviteMutation],
+  );
+
+  const respondingActivityId = respondToInviteMutation.variables?.activityId ?? null;
+
   return (
     <div className="min-h-screen bg-neutral-50">
       {/* Header */}
@@ -1121,8 +1226,16 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           </div>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as ProposalTab)}
+          className="space-y-6"
+        >
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="invites" className="flex items-center gap-2" data-testid="tab-invites">
+              <Bell className="w-4 h-4" />
+              My Invites {pendingInviteActivities.length > 0 && `(${pendingInviteActivities.length})`}
+            </TabsTrigger>
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
               <Hotel className="w-4 h-4" />
               Hotels {hotelProposals.length > 0 && `(${hotelProposals.length})`}
@@ -1140,6 +1253,41 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               Restaurants {restaurantProposals.length > 0 && `(${restaurantProposals.length})`}
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="invites" className="space-y-6">
+            {activitiesLoading ? (
+              <div className="flex justify-center py-8">
+                <TravelLoading text="Checking your invites..." />
+              </div>
+            ) : pendingInviteActivities.length > 0 ? (
+              <div className="space-y-4" data-testid="list-pending-invites">
+                {pendingInviteActivities.map((activity) => (
+                  <ActivityCard
+                    key={activity.id}
+                    activity={activity}
+                    currentUser={user || undefined}
+                    onAccept={() => handleRespondToInvite(activity.id, "accepted")}
+                    onDecline={() => handleRespondToInvite(activity.id, "declined")}
+                    onMaybe={() => handleRespondToInvite(activity.id, "pending")}
+                    isLoading={
+                      respondToInviteMutation.isPending &&
+                      respondingActivityId === activity.id
+                    }
+                  />
+                ))}
+              </div>
+            ) : (
+              <Card className="border border-dashed border-neutral-200 bg-neutral-50">
+                <CardContent className="py-10 text-center space-y-3">
+                  <Bell className="w-10 h-10 mx-auto text-neutral-400" />
+                  <h3 className="text-lg font-semibold text-neutral-900">No pending invites</h3>
+                  <p className="text-sm text-neutral-600">
+                    You're all caught up! We'll list new activity invites here when your group adds you.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
 
           <TabsContent value="hotels" className="space-y-6">
             {hotelProposalsLoading ? (

@@ -6,6 +6,8 @@ import {
   type InsertTripCalendar,
   type TripMember,
   type Activity,
+  type ActivityInvite,
+  type ActivityInviteStatus,
   type ActivityAcceptance,
   type InsertActivity,
   type ActivityWithDetails,
@@ -156,6 +158,14 @@ const toIsoString = (value: Date | string | null | undefined): string => {
   return value instanceof Date ? value.toISOString() : value;
 };
 
+const toInviteStatus = (value: unknown): ActivityInviteStatus => {
+  if (value === "accepted" || value === "declined" || value === "pending") {
+    return value;
+  }
+
+  return "pending";
+};
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -281,6 +291,18 @@ type ActivityRow = {
 };
 
 type ActivityWithPosterRow = ActivityRow & PrefixedUserRow<"poster_">;
+
+type ActivityInviteRow = {
+  id: number;
+  activity_id: number;
+  user_id: string;
+  status: string;
+  responded_at: Date | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type ActivityInviteWithUserRow = ActivityInviteRow & PrefixedUserRow<"user_">;
 
 type ActivityAcceptanceWithUserRow = {
   id: number;
@@ -1085,20 +1107,36 @@ const mapActivity = (row: ActivityRow): Activity => ({
   updatedAt: row.updated_at,
 });
 
+const mapActivityInvite = (row: ActivityInviteRow): ActivityInvite => ({
+  id: row.id,
+  activityId: row.activity_id,
+  userId: row.user_id,
+  status: toInviteStatus(row.status),
+  respondedAt: row.responded_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
 const mapActivityWithDetails = (
   row: ActivityRow & {
     poster: User;
+    invites: (ActivityInvite & { user: User })[];
     acceptances: (ActivityAcceptance & { user: User })[];
     comments: (ActivityComment & { user: User })[];
+    currentUserInvite?: ActivityInvite & { user: User };
     isAccepted?: boolean;
     hasResponded?: boolean;
   },
 ): ActivityWithDetails => ({
   ...mapActivity(row),
   poster: row.poster,
+  invites: row.invites,
   acceptances: row.acceptances,
   comments: row.comments,
   acceptedCount: row.acceptances.length,
+  pendingCount: row.invites.filter((invite) => invite.status === "pending").length,
+  declinedCount: row.invites.filter((invite) => invite.status === "declined").length,
+  currentUserInvite: row.currentUserInvite,
   isAccepted: row.isAccepted,
   hasResponded: row.hasResponded,
 });
@@ -1628,6 +1666,10 @@ export class DatabaseStorage implements IStorage {
 
   private proposalLinksInitialized = false;
 
+  private activityInvitesInitPromise: Promise<void> | null = null;
+
+  private activityInvitesInitialized = false;
+
   private async ensureWishListStructures(): Promise<void> {
     if (this.wishListInitialized) {
       return;
@@ -1774,6 +1816,113 @@ export class DatabaseStorage implements IStorage {
     } finally {
       this.proposalLinksInitPromise = null;
     }
+  }
+
+  private async ensureActivityInviteStructures(): Promise<void> {
+    if (this.activityInvitesInitialized) {
+      return;
+    }
+
+    if (this.activityInvitesInitPromise) {
+      await this.activityInvitesInitPromise;
+      return;
+    }
+
+    this.activityInvitesInitPromise = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS activity_invites (
+          id SERIAL PRIMARY KEY,
+          activity_id INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          status TEXT NOT NULL DEFAULT 'pending',
+          responded_at TIMESTAMPTZ,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (activity_id, user_id)
+        )
+      `);
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_activity_invites_activity ON activity_invites(activity_id)`,
+      );
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_activity_invites_user ON activity_invites(user_id)`,
+      );
+
+      this.activityInvitesInitialized = true;
+    })();
+
+    try {
+      await this.activityInvitesInitPromise;
+    } finally {
+      this.activityInvitesInitPromise = null;
+    }
+  }
+
+  private async upsertActivityInvites(
+    activityId: number,
+    userIds: string[],
+    status: ActivityInviteStatus = "pending",
+  ): Promise<void> {
+    const uniqueIds = Array.from(new Set(userIds));
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    await this.ensureActivityInviteStructures();
+
+    await query(
+      `
+      INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
+      SELECT
+        $1,
+        uid,
+        $2,
+        CASE WHEN $2 = 'pending' THEN NULL ELSE NOW() END
+      FROM UNNEST($3::text[]) AS uid
+      ON CONFLICT (activity_id, user_id) DO UPDATE
+        SET status = EXCLUDED.status,
+            responded_at = EXCLUDED.responded_at,
+            updated_at = NOW()
+      `,
+      [activityId, status, uniqueIds],
+    );
+  }
+
+  async setActivityInviteStatus(
+    activityId: number,
+    userId: string,
+    status: ActivityInviteStatus,
+  ): Promise<ActivityInvite> {
+    await this.ensureActivityInviteStructures();
+
+    const { rows } = await query<ActivityInviteRow>(
+      `
+      INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
+      VALUES ($1, $2, $3, CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END)
+      ON CONFLICT (activity_id, user_id) DO UPDATE
+        SET status = EXCLUDED.status,
+            responded_at = EXCLUDED.responded_at,
+            updated_at = NOW()
+      RETURNING
+        id,
+        activity_id,
+        user_id,
+        status,
+        responded_at,
+        created_at,
+        updated_at
+      `,
+      [activityId, userId, status],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to update activity invite");
+    }
+
+    return mapActivityInvite(row);
   }
 
   async initializeWishList(): Promise<void> {
@@ -2276,7 +2425,7 @@ export class DatabaseStorage implements IStorage {
       );
       await query(
         `
-        DELETE FROM activity_acceptances
+        DELETE FROM activity_invites
         WHERE activity_id IN (SELECT id FROM activities WHERE trip_calendar_id = $1)
         `,
         [tripId],
@@ -2622,6 +2771,7 @@ export class DatabaseStorage implements IStorage {
   async createActivity(
     activity: InsertActivity,
     userId: string,
+    inviteeIds: string[] = [],
   ): Promise<Activity> {
     const costValue = activity.cost ?? null;
 
@@ -2684,7 +2834,39 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Failed to create activity");
     }
 
+    if (inviteeIds.length > 0) {
+      await this.upsertActivityInvites(row.id, inviteeIds, "pending");
+    }
+
     return mapActivity(row);
+  }
+
+  async getActivityById(activityId: number): Promise<Activity | undefined> {
+    const { rows } = await query<ActivityRow>(
+      `
+      SELECT
+        id,
+        trip_calendar_id,
+        posted_by,
+        name,
+        description,
+        start_time,
+        end_time,
+        location,
+        cost,
+        max_capacity,
+        category,
+        created_at,
+        updated_at
+      FROM activities
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [activityId],
+    );
+
+    const row = rows[0];
+    return row ? mapActivity(row) : undefined;
   }
 
   async getTripActivities(
@@ -2746,42 +2928,31 @@ export class DatabaseStorage implements IStorage {
 
     const activityIds = activityRows.map((row) => row.id);
 
-    const { rows: acceptanceRows } = await query<ActivityAcceptanceWithUserRow>(
+    await this.ensureActivityInviteStructures();
+
+    const { rows: inviteRows } = await query<ActivityInviteWithUserRow>(
       `
       SELECT
-        aa.id,
-        aa.activity_id,
-        aa.user_id AS acceptance_user_id,
-        aa.accepted_at,
-        u.id AS user_id,
-        u.email AS user_email,
-        u.username AS user_username,
-        u.first_name AS user_first_name,
-        u.last_name AS user_last_name,
-        u.phone_number AS user_phone_number,
-        u.password_hash AS user_password_hash,
-        u.profile_image_url AS user_profile_image_url,
-        u.cashapp_username AS user_cashapp_username,
-        u.cash_app_username AS user_cash_app_username,
-        u.cashapp_phone AS user_cashapp_phone,
-        u.cash_app_phone AS user_cash_app_phone,
-        u.venmo_username AS user_venmo_username,
-        u.venmo_phone AS user_venmo_phone,
-        u.timezone AS user_timezone,
-        u.default_location AS user_default_location,
-        u.default_location_code AS user_default_location_code,
-        u.default_city AS user_default_city,
-        u.default_country AS user_default_country,
-        u.auth_provider AS user_auth_provider,
-        u.notification_preferences AS user_notification_preferences,
-        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
-        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
-        u.created_at AS user_created_at,
-        u.updated_at AS user_updated_at
-      FROM activity_acceptances aa
-      JOIN users u ON u.id = aa.user_id
-      WHERE aa.activity_id = ANY($1::int[])
-      ORDER BY aa.accepted_at ASC, aa.id ASC
+        ai.id,
+        ai.activity_id,
+        ai.user_id,
+        ai.status,
+        ai.responded_at,
+        ai.created_at,
+        ai.updated_at,
+        ${selectUserColumns("u", "user_")}
+      FROM activity_invites ai
+      JOIN users u ON u.id = ai.user_id
+      WHERE ai.activity_id = ANY($1::int[])
+      ORDER BY
+        CASE ai.status
+          WHEN 'accepted' THEN 0
+          WHEN 'pending' THEN 1
+          ELSE 2
+        END,
+        ai.responded_at ASC NULLS LAST,
+        ai.created_at ASC,
+        ai.id ASC
       `,
       [activityIds],
     );
@@ -2827,18 +2998,15 @@ export class DatabaseStorage implements IStorage {
       [activityIds],
     );
 
-    const acceptanceMap = new Map<number, (ActivityAcceptance & { user: User })[]>();
-    for (const row of acceptanceRows) {
-      const acceptance: ActivityAcceptance & { user: User } = {
-        id: row.id,
-        activityId: row.activity_id,
-        userId: row.acceptance_user_id,
-        acceptedAt: row.accepted_at,
+    const inviteMap = new Map<number, (ActivityInvite & { user: User })[]>();
+    for (const row of inviteRows) {
+      const invite: ActivityInvite & { user: User } = {
+        ...mapActivityInvite(row),
         user: mapUserFromPrefix(row, "user_"),
       };
-      const list = acceptanceMap.get(row.activity_id) ?? [];
-      list.push(acceptance);
-      acceptanceMap.set(row.activity_id, list);
+      const list = inviteMap.get(row.activity_id) ?? [];
+      list.push(invite);
+      inviteMap.set(row.activity_id, list);
     }
 
     const commentMap = new Map<number, (ActivityComment & { user: User })[]>();
@@ -2854,16 +3022,32 @@ export class DatabaseStorage implements IStorage {
 
     return activityRows.map((row) => {
       const poster = mapUserFromPrefix(row, "poster_");
-      const acceptances = acceptanceMap.get(row.id) ?? [];
+      const invites = inviteMap.get(row.id) ?? [];
+      const acceptances = invites
+        .filter((invite) => invite.status === "accepted")
+        .map((invite) => ({
+          id: invite.id,
+          activityId: invite.activityId,
+          userId: invite.userId,
+          acceptedAt: invite.respondedAt,
+          user: invite.user,
+        }));
       const comments = commentMap.get(row.id) ?? [];
-      const isAccepted = acceptances.some((acceptance) => acceptance.userId === userId) || undefined;
-      const hasResponded = isAccepted;
+      const currentUserInvite = invites.find((invite) => invite.userId === userId);
+      const isAccepted =
+        currentUserInvite?.status === "accepted" ? true : undefined;
+      const hasResponded =
+        currentUserInvite && currentUserInvite.status !== "pending"
+          ? true
+          : undefined;
 
       return mapActivityWithDetails({
         ...row,
         poster,
+        invites,
         acceptances,
         comments,
+        currentUserInvite,
         isAccepted,
         hasResponded,
       });
@@ -2871,25 +3055,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async acceptActivity(activityId: number, userId: string): Promise<void> {
-    await query(
-      `
-      INSERT INTO activity_acceptances (activity_id, user_id, accepted_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (activity_id, user_id) DO UPDATE
-        SET accepted_at = NOW()
-      `,
-      [activityId, userId],
-    );
+    await this.setActivityInviteStatus(activityId, userId, "accepted");
   }
 
   async declineActivity(activityId: number, userId: string): Promise<void> {
-    await query(
-      `
-      DELETE FROM activity_acceptances
-      WHERE activity_id = $1 AND user_id = $2
-      `,
-      [activityId, userId],
-    );
+    await this.setActivityInviteStatus(activityId, userId, "declined");
   }
 
   async addComment(
@@ -6658,7 +6828,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     for (const link of rows) {
       switch (link.scheduled_table) {
         case "activities":
-          await query(`DELETE FROM activity_acceptances WHERE activity_id = $1`, [link.scheduled_id]);
+          await query(`DELETE FROM activity_invites WHERE activity_id = $1`, [link.scheduled_id]);
           await query(`DELETE FROM activity_comments WHERE activity_id = $1`, [link.scheduled_id]);
           await query(`DELETE FROM activities WHERE id = $1`, [link.scheduled_id]);
           break;

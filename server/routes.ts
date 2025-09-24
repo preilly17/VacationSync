@@ -5,7 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
-import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema } from "@shared/schema";
+import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema } from "@shared/schema";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
 
@@ -1564,25 +1564,15 @@ export function setupRoutes(app: Express) {
       const validatedData = createActivityWithAttendeesSchema.parse(rawData);
       const { attendeeIds = [], ...activityData } = validatedData;
 
-      const activity = await storage.createActivity(activityData, userId);
-
       const validMemberIds = new Set(trip.members.map((member) => member.userId));
-      const uniqueAttendeeIds = Array.from(
+      const filteredAttendeeIds = Array.from(
         new Set(attendeeIds.filter((id) => typeof id === 'string' && validMemberIds.has(id))),
       );
+      const inviteeIds = Array.from(new Set([...filteredAttendeeIds, userId]));
 
-      if (uniqueAttendeeIds.length > 0) {
-        await Promise.all(uniqueAttendeeIds.map((attendeeId) => storage.acceptActivity(activity.id, attendeeId)));
-      }
+      const activity = await storage.createActivity(activityData, userId, inviteeIds);
 
-      const organizerMember = trip.members.find((member) => member.userId === userId);
-      const organizerName =
-        organizerMember?.user.firstName?.trim() ||
-        organizerMember?.user.username ||
-        organizerMember?.user.email ||
-        'A trip member';
-
-      const attendeesToNotify = uniqueAttendeeIds.filter((attendeeId) => attendeeId !== userId);
+      const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
       if (attendeesToNotify.length > 0) {
         const eventDate = new Date(activity.startTime);
@@ -1598,9 +1588,9 @@ export function setupRoutes(app: Express) {
             storage
               .createNotification({
                 userId: attendeeId,
-                type: 'activity_attendance',
-                title: `${organizerName} added you to ${activity.name}`,
-                message: `You're marked as attending ${activity.name} on ${formattedDate}.`,
+                type: 'activity_invite',
+                title: `You've been invited to ${activity.name}`,
+                message: `You've been invited to ${activity.name} on ${formattedDate}.`,
                 tripId: tripId,
                 activityId: activity.id,
               })
@@ -1627,6 +1617,89 @@ export function setupRoutes(app: Express) {
       } else {
         res.status(500).json({ message: 'Failed to create activity' });
       }
+    }
+  });
+
+  app.post('/api/activities/:activityId/respond', async (req: any, res) => {
+    try {
+      const activityId = parseInt(req.params.activityId);
+      if (isNaN(activityId)) {
+        return res.status(400).json({ message: 'Invalid activity ID' });
+      }
+
+      let userId = getRequestUserId(req);
+      if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
+        userId = 'demo-user';
+      }
+
+      if (!userId) {
+        return res.status(401).json({ message: 'User ID not found' });
+      }
+
+      const rawStatus = typeof req.body?.status === 'string' ? req.body.status.toLowerCase() : '';
+      const statusResult = activityInviteStatusSchema.safeParse(rawStatus);
+      if (!statusResult.success) {
+        return res.status(400).json({ message: 'Invalid RSVP status' });
+      }
+
+      const activity = await storage.getActivityById(activityId);
+      if (!activity) {
+        return res.status(404).json({ message: 'Activity not found' });
+      }
+
+      const trip = await storage.getTripById(activity.tripCalendarId);
+      if (!trip) {
+        return res.status(404).json({ message: 'Trip not found' });
+      }
+
+      const isMember = trip.members.some((member) => member.userId === userId);
+      if (!isMember) {
+        return res.status(403).json({ message: 'You are no longer a member of this trip' });
+      }
+
+      const updatedInvite = await storage.setActivityInviteStatus(activityId, userId, statusResult.data);
+
+      if (
+        activity.postedBy !== userId &&
+        (statusResult.data === 'accepted' || statusResult.data === 'declined')
+      ) {
+        const responderMember = trip.members.find((member) => member.userId === userId);
+        const responderName = responderMember
+          ? getUserDisplayName(responderMember.user)
+          : 'A trip member';
+
+        const message =
+          statusResult.data === 'accepted'
+            ? `${responderName} accepted ${activity.name}.`
+            : `${responderName} declined ${activity.name}.`;
+
+        await storage.createNotification({
+          userId: activity.postedBy,
+          type: 'activity_rsvp',
+          title: 'RSVP update',
+          message,
+          tripId: activity.tripCalendarId,
+          activityId: activity.id,
+        });
+      }
+
+      broadcastToTrip(activity.tripCalendarId, {
+        type: 'activity_invite_updated',
+        activityId,
+        userId,
+        status: statusResult.data,
+      });
+
+      const activities = await storage.getTripActivities(activity.tripCalendarId, userId);
+      const updatedActivity = activities.find((item) => item.id === activityId);
+
+      res.json({
+        invite: updatedInvite,
+        activity: updatedActivity ?? null,
+      });
+    } catch (error: unknown) {
+      console.error('Error responding to activity invite:', error);
+      res.status(500).json({ message: 'Failed to update activity invite' });
     }
   });
 
