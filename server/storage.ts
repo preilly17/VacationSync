@@ -59,6 +59,15 @@ import {
   type TravelTipWithDetails,
   type UserTipPreferences,
   type InsertUserTipPreferences,
+  type WishListIdea,
+  type InsertWishListIdea,
+  type WishListIdeaWithDetails,
+  type WishListComment,
+  type InsertWishListComment,
+  type WishListCommentWithUser,
+  type WishListProposalDraft,
+  type InsertWishListProposalDraft,
+  type WishListProposalDraftWithDetails,
 } from "@shared/schema";
 
 const toNumber = (value: string | number): number => {
@@ -76,6 +85,39 @@ const toNumberOrNull = (
     return null;
   }
   return toNumber(value);
+};
+
+const toStringArray = (value: unknown): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return toStringArray(parsed);
+    } catch {
+      const trimmed = value.trim();
+      return trimmed ? [trimmed] : [];
+    }
+  }
+
+  if (typeof value === "object") {
+    const maybeArray = Object.values(value ?? {});
+    return maybeArray
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+  }
+
+  return [];
 };
 
 export interface IStorage {
@@ -559,6 +601,57 @@ type UserTipPreferencesRow = {
 type InsertTravelTipInput = Omit<InsertTravelTip, "isActive"> & {
   isActive?: boolean;
 };
+
+type WishListIdeaRow = {
+  id: number;
+  trip_id: number;
+  title: string;
+  url: string | null;
+  notes: string | null;
+  tags: unknown;
+  thumbnail_url: string | null;
+  image_url: string | null;
+  metadata: unknown;
+  created_by: string;
+  promoted_draft_id: number | null;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type WishListIdeaWithCountsRow = WishListIdeaRow &
+  PrefixedUserRow<"creator_"> & {
+    save_count: string | null;
+    saved_by_user: boolean;
+    comment_count: string | null;
+  };
+
+type WishListCommentRow = {
+  id: number;
+  item_id: number;
+  user_id: string;
+  comment: string;
+  created_at: Date | null;
+};
+
+type WishListCommentWithUserRow = WishListCommentRow &
+  PrefixedUserRow<"user_">;
+
+type WishListProposalDraftRow = {
+  id: number;
+  trip_id: number;
+  item_id: number;
+  created_by: string;
+  title: string;
+  url: string | null;
+  notes: string | null;
+  tags: unknown;
+  status: string;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type WishListProposalDraftWithCreatorRow = WishListProposalDraftRow &
+  PrefixedUserRow<"creator_">;
 
 const mapUserFromPrefix = (
   row: Record<string, unknown>,
@@ -1122,6 +1215,73 @@ const mapTravelTipWithDetails = (
   };
 };
 
+const mapWishListIdea = (row: WishListIdeaRow): WishListIdea => ({
+  id: row.id,
+  tripId: row.trip_id,
+  title: row.title,
+  url: row.url,
+  notes: row.notes,
+  tags: toStringArray(row.tags),
+  thumbnailUrl: row.thumbnail_url,
+  imageUrl: row.image_url,
+  metadata:
+    row.metadata && typeof row.metadata === "object"
+      ? (row.metadata as Record<string, unknown>)
+      : null,
+  createdBy: row.created_by,
+  promotedDraftId: row.promoted_draft_id,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapWishListIdeaWithDetails = (
+  row: WishListIdeaWithCountsRow,
+): WishListIdeaWithDetails => ({
+  ...mapWishListIdea(row),
+  saveCount: Number(row.save_count ?? 0),
+  commentCount: Number(row.comment_count ?? 0),
+  currentUserSaved: Boolean(row.saved_by_user),
+  creator: mapUserFromPrefix(row, "creator_"),
+});
+
+const mapWishListComment = (row: WishListCommentRow): WishListComment => ({
+  id: row.id,
+  itemId: row.item_id,
+  userId: row.user_id,
+  comment: row.comment,
+  createdAt: row.created_at,
+});
+
+const mapWishListCommentWithUser = (
+  row: WishListCommentWithUserRow,
+): WishListCommentWithUser => ({
+  ...mapWishListComment(row),
+  user: mapUserFromPrefix(row, "user_"),
+});
+
+const mapWishListProposalDraft = (
+  row: WishListProposalDraftRow,
+): WishListProposalDraft => ({
+  id: row.id,
+  tripId: row.trip_id,
+  itemId: row.item_id,
+  createdBy: row.created_by,
+  title: row.title,
+  url: row.url,
+  notes: row.notes,
+  tags: toStringArray(row.tags),
+  status: row.status,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapWishListProposalDraftWithDetails = (
+  row: WishListProposalDraftWithCreatorRow,
+): WishListProposalDraftWithDetails => ({
+  ...mapWishListProposalDraft(row),
+  creator: mapUserFromPrefix(row, "creator_"),
+});
+
 const mapUserTipPreferences = (
   row: UserTipPreferencesRow,
 ): UserTipPreferences => ({
@@ -1156,6 +1316,124 @@ const generateShareCode = (): string => {
 };
 
 export class DatabaseStorage implements IStorage {
+  private wishListInitPromise: Promise<void> | null = null;
+
+  private wishListInitialized = false;
+
+  private async ensureWishListStructures(): Promise<void> {
+    if (this.wishListInitialized) {
+      return;
+    }
+
+    if (this.wishListInitPromise) {
+      await this.wishListInitPromise;
+      return;
+    }
+
+    this.wishListInitPromise = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS trip_wish_list_items (
+          id SERIAL PRIMARY KEY,
+          trip_id INTEGER NOT NULL REFERENCES trip_calendars(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          url TEXT,
+          notes TEXT,
+          tags JSONB DEFAULT '[]'::jsonb,
+          thumbnail_url TEXT,
+          image_url TEXT,
+          metadata JSONB,
+          created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          promoted_draft_id INTEGER UNIQUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_trip_wish_list_items_trip ON trip_wish_list_items(trip_id)`,
+      );
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_trip_wish_list_items_created_at ON trip_wish_list_items(trip_id, created_at DESC)`,
+      );
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS trip_wish_list_saves (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER NOT NULL REFERENCES trip_wish_list_items(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (item_id, user_id)
+        )
+      `);
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_trip_wish_list_saves_item ON trip_wish_list_saves(item_id)`,
+      );
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS trip_wish_list_comments (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER NOT NULL REFERENCES trip_wish_list_items(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          comment TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_trip_wish_list_comments_item ON trip_wish_list_comments(item_id)`,
+      );
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS trip_proposal_drafts (
+          id SERIAL PRIMARY KEY,
+          trip_id INTEGER NOT NULL REFERENCES trip_calendars(id) ON DELETE CASCADE,
+          item_id INTEGER UNIQUE REFERENCES trip_wish_list_items(id) ON DELETE CASCADE,
+          created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          url TEXT,
+          notes TEXT,
+          tags JSONB DEFAULT '[]'::jsonb,
+          status TEXT NOT NULL DEFAULT 'draft',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_trip_proposal_drafts_trip ON trip_proposal_drafts(trip_id, created_at DESC)`,
+      );
+
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.constraint_column_usage
+            WHERE table_name = 'trip_wish_list_items'
+              AND constraint_name = 'fk_trip_wish_list_items_promoted_draft'
+          ) THEN
+            ALTER TABLE trip_wish_list_items
+            ADD CONSTRAINT fk_trip_wish_list_items_promoted_draft
+            FOREIGN KEY (promoted_draft_id)
+            REFERENCES trip_proposal_drafts(id)
+            ON DELETE SET NULL;
+          END IF;
+        END
+        $$;
+      `);
+
+      this.wishListInitialized = true;
+    })();
+
+    try {
+      await this.wishListInitPromise;
+    } finally {
+      this.wishListInitPromise = null;
+    }
+  }
+
+  async initializeWishList(): Promise<void> {
+    await this.ensureWishListStructures();
+  }
+
   async getUser(id: string): Promise<User | undefined> {
     const { rows } = await query<User>(
       `
@@ -1478,6 +1756,31 @@ export class DatabaseStorage implements IStorage {
     );
 
     return rows[0]?.exists ?? false;
+  }
+
+  async isTripAdmin(tripId: number, userId: string): Promise<boolean> {
+    const { rows } = await query<{ is_admin: boolean }>(
+      `
+      SELECT CASE
+        WHEN EXISTS (
+          SELECT 1
+          FROM trip_calendars tc
+          WHERE tc.id = $1 AND tc.created_by = $2
+        ) THEN TRUE
+        WHEN EXISTS (
+          SELECT 1
+          FROM trip_members tm
+          WHERE tm.trip_calendar_id = $1
+            AND tm.user_id = $2
+            AND (tm.role = 'admin' OR tm.role = 'owner')
+        ) THEN TRUE
+        ELSE FALSE
+      END AS is_admin
+      `,
+      [tripId, userId],
+    );
+
+    return rows[0]?.is_admin ?? false;
   }
 
   async joinTrip(
@@ -5641,6 +5944,535 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async rankFlightProposal(): Promise<void> { throw new Error("Not implemented"); }
   async updateFlightProposalAverageRanking(): Promise<void> { throw new Error("Not implemented"); }
   async updateFlightProposalStatus(): Promise<FlightProposal> { throw new Error("Not implemented"); }
+
+  // Wish List / Ideas board methods
+  async createWishListIdea(
+    idea: InsertWishListIdea,
+    userId: string,
+  ): Promise<WishListIdea> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<WishListIdeaRow>(
+      `
+      INSERT INTO trip_wish_list_items (
+        trip_id,
+        title,
+        url,
+        notes,
+        tags,
+        thumbnail_url,
+        image_url,
+        metadata,
+        created_by
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING
+        id,
+        trip_id,
+        title,
+        url,
+        notes,
+        tags,
+        thumbnail_url,
+        image_url,
+        metadata,
+        created_by,
+        promoted_draft_id,
+        created_at,
+        updated_at
+      `,
+      [
+        idea.tripId,
+        idea.title.trim(),
+        idea.url ?? null,
+        idea.notes ?? null,
+        toDbJson(idea.tags ?? []),
+        idea.thumbnailUrl ?? null,
+        idea.imageUrl ?? null,
+        toDbJson(idea.metadata ?? null),
+        userId,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create wish list idea");
+    }
+
+    return mapWishListIdea(row);
+  }
+
+  async getWishListIdeaById(
+    ideaId: number,
+  ): Promise<WishListIdea | undefined> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<WishListIdeaRow>(
+      `
+      SELECT
+        id,
+        trip_id,
+        title,
+        url,
+        notes,
+        tags,
+        thumbnail_url,
+        image_url,
+        metadata,
+        created_by,
+        promoted_draft_id,
+        created_at,
+        updated_at
+      FROM trip_wish_list_items
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [ideaId],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return undefined;
+    }
+
+    return mapWishListIdea(row);
+  }
+
+  async getWishListIdeaForUser(
+    ideaId: number,
+    userId: string,
+  ): Promise<WishListIdeaWithDetails | undefined> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<WishListIdeaWithCountsRow>(
+      `
+      SELECT
+        i.id,
+        i.trip_id,
+        i.title,
+        i.url,
+        i.notes,
+        i.tags,
+        i.thumbnail_url,
+        i.image_url,
+        i.metadata,
+        i.created_by,
+        i.promoted_draft_id,
+        i.created_at,
+        i.updated_at,
+        (
+          SELECT COUNT(*)::int
+          FROM trip_wish_list_saves s
+          WHERE s.item_id = i.id
+        ) AS save_count,
+        EXISTS (
+          SELECT 1
+          FROM trip_wish_list_saves s
+          WHERE s.item_id = i.id AND s.user_id = $2
+        ) AS saved_by_user,
+        (
+          SELECT COUNT(*)::int
+          FROM trip_wish_list_comments c
+          WHERE c.item_id = i.id
+        ) AS comment_count,
+        ${selectUserColumns("creator", "creator_")}
+      FROM trip_wish_list_items i
+      JOIN users creator ON creator.id = i.created_by
+      WHERE i.id = $1
+      LIMIT 1
+      `,
+      [ideaId, userId],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return undefined;
+    }
+
+    return mapWishListIdeaWithDetails(row);
+  }
+
+  async getTripWishListIdeas(
+    tripId: number,
+    userId: string,
+    options: {
+      sort?: "newest" | "oldest" | "most_saved";
+      tag?: string | null;
+      submittedBy?: string | null;
+      search?: string | null;
+    } = {},
+  ): Promise<WishListIdeaWithDetails[]> {
+    await this.ensureWishListStructures();
+
+    const conditions: string[] = ["i.trip_id = $1"];
+    const values: unknown[] = [tripId, userId];
+    let paramIndex = 3;
+
+    if (options.tag) {
+      conditions.push(
+        `EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(COALESCE(i.tags, '[]'::jsonb)) AS tag
+          WHERE LOWER(tag) = LOWER($${paramIndex})
+        )`,
+      );
+      values.push(options.tag);
+      paramIndex += 1;
+    }
+
+    if (options.submittedBy) {
+      conditions.push(`i.created_by = $${paramIndex}`);
+      values.push(options.submittedBy);
+      paramIndex += 1;
+    }
+
+    if (options.search) {
+      const searchValue = `%${options.search.toLowerCase()}%`;
+      conditions.push(
+        `(
+          LOWER(i.title) LIKE $${paramIndex}
+          OR LOWER(COALESCE(i.notes, '')) LIKE $${paramIndex}
+          OR LOWER(COALESCE(i.url, '')) LIKE $${paramIndex}
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(COALESCE(i.tags, '[]'::jsonb)) AS tag
+            WHERE LOWER(tag) LIKE $${paramIndex}
+          )
+        )`,
+      );
+      values.push(searchValue);
+      paramIndex += 1;
+    }
+
+    let sql = `
+      SELECT
+        i.id,
+        i.trip_id,
+        i.title,
+        i.url,
+        i.notes,
+        i.tags,
+        i.thumbnail_url,
+        i.image_url,
+        i.metadata,
+        i.created_by,
+        i.promoted_draft_id,
+        i.created_at,
+        i.updated_at,
+        (
+          SELECT COUNT(*)::int
+          FROM trip_wish_list_saves s
+          WHERE s.item_id = i.id
+        ) AS save_count,
+        EXISTS (
+          SELECT 1
+          FROM trip_wish_list_saves s
+          WHERE s.item_id = i.id AND s.user_id = $2
+        ) AS saved_by_user,
+        (
+          SELECT COUNT(*)::int
+          FROM trip_wish_list_comments c
+          WHERE c.item_id = i.id
+        ) AS comment_count,
+        ${selectUserColumns("creator", "creator_")}
+      FROM trip_wish_list_items i
+      JOIN users creator ON creator.id = i.created_by
+    `;
+
+    if (conditions.length > 0) {
+      sql += ` WHERE ${conditions.join(" AND ")}`;
+    }
+
+    const sort = options.sort ?? "newest";
+    if (sort === "oldest") {
+      sql += " ORDER BY i.created_at ASC, i.id ASC";
+    } else if (sort === "most_saved") {
+      sql += " ORDER BY save_count DESC, i.created_at DESC, i.id DESC";
+    } else {
+      sql += " ORDER BY i.created_at DESC, i.id DESC";
+    }
+
+    const { rows } = await query<WishListIdeaWithCountsRow>(sql, values);
+
+    return rows.map(mapWishListIdeaWithDetails);
+  }
+
+  async toggleWishListSave(
+    ideaId: number,
+    userId: string,
+  ): Promise<{ saved: boolean; saveCount: number }> {
+    await this.ensureWishListStructures();
+
+    await query("BEGIN");
+    let saved = false;
+    try {
+      const { rows: existingRows } = await query<{ id: number }>(
+        `
+        SELECT id
+        FROM trip_wish_list_saves
+        WHERE item_id = $1 AND user_id = $2
+        LIMIT 1
+        `,
+        [ideaId, userId],
+      );
+
+      if (existingRows[0]) {
+        await query(
+          `
+          DELETE FROM trip_wish_list_saves
+          WHERE id = $1
+          `,
+          [existingRows[0].id],
+        );
+        saved = false;
+      } else {
+        await query(
+          `
+          INSERT INTO trip_wish_list_saves (item_id, user_id)
+          VALUES ($1, $2)
+          `,
+          [ideaId, userId],
+        );
+        saved = true;
+      }
+
+      const { rows: countRows } = await query<{ count: number }>(
+        `
+        SELECT COUNT(*)::int AS count
+        FROM trip_wish_list_saves
+        WHERE item_id = $1
+        `,
+        [ideaId],
+      );
+
+      await query("COMMIT");
+      return { saved, saveCount: Number(countRows[0]?.count ?? 0) };
+    } catch (error) {
+      await query("ROLLBACK");
+      throw error;
+    }
+  }
+
+  async addWishListComment(
+    ideaId: number,
+    userId: string,
+    comment: string,
+  ): Promise<WishListCommentWithUser> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<WishListCommentRow>(
+      `
+      INSERT INTO trip_wish_list_comments (item_id, user_id, comment)
+      VALUES ($1, $2, $3)
+      RETURNING id, item_id, user_id, comment, created_at
+      `,
+      [ideaId, userId, comment],
+    );
+
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Failed to add comment");
+    }
+
+    const { rows: withUserRows } = await query<WishListCommentWithUserRow>(
+      `
+      SELECT
+        c.id,
+        c.item_id,
+        c.user_id,
+        c.comment,
+        c.created_at,
+        ${selectUserColumns("u", "user_")}
+      FROM trip_wish_list_comments c
+      JOIN users u ON u.id = c.user_id
+      WHERE c.id = $1
+      LIMIT 1
+      `,
+      [inserted.id],
+    );
+
+    const rowWithUser = withUserRows[0];
+    if (!rowWithUser) {
+      throw new Error("Failed to load created comment");
+    }
+
+    return mapWishListCommentWithUser(rowWithUser);
+  }
+
+  async getWishListComments(
+    ideaId: number,
+  ): Promise<WishListCommentWithUser[]> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<WishListCommentWithUserRow>(
+      `
+      SELECT
+        c.id,
+        c.item_id,
+        c.user_id,
+        c.comment,
+        c.created_at,
+        ${selectUserColumns("u", "user_")}
+      FROM trip_wish_list_comments c
+      JOIN users u ON u.id = c.user_id
+      WHERE c.item_id = $1
+      ORDER BY c.created_at ASC, c.id ASC
+      `,
+      [ideaId],
+    );
+
+    return rows.map(mapWishListCommentWithUser);
+  }
+
+  async deleteWishListIdea(ideaId: number): Promise<void> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<{ id: number }>(
+      `
+      DELETE FROM trip_wish_list_items
+      WHERE id = $1
+      RETURNING id
+      `,
+      [ideaId],
+    );
+
+    if (!rows[0]) {
+      throw new Error("Wish list idea not found");
+    }
+  }
+
+  async promoteWishListIdea(
+    ideaId: number,
+    userId: string,
+  ): Promise<WishListProposalDraftWithDetails> {
+    await this.ensureWishListStructures();
+
+    const idea = await this.getWishListIdeaById(ideaId);
+    if (!idea) {
+      throw new Error("Wish list idea not found");
+    }
+
+    const { rows } = await query<WishListProposalDraftRow>(
+      `
+      INSERT INTO trip_proposal_drafts (
+        trip_id,
+        item_id,
+        created_by,
+        title,
+        url,
+        notes,
+        tags,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft')
+      ON CONFLICT (item_id) DO UPDATE SET
+        title = EXCLUDED.title,
+        url = EXCLUDED.url,
+        notes = EXCLUDED.notes,
+        tags = EXCLUDED.tags,
+        status = 'draft',
+        created_by = EXCLUDED.created_by,
+        updated_at = NOW()
+      RETURNING
+        id,
+        trip_id,
+        item_id,
+        created_by,
+        title,
+        url,
+        notes,
+        tags,
+        status,
+        created_at,
+        updated_at
+      `,
+      [
+        idea.tripId,
+        idea.id,
+        userId,
+        idea.title,
+        idea.url ?? null,
+        idea.notes ?? null,
+        toDbJson(idea.tags ?? []),
+      ],
+    );
+
+    const draftRow = rows[0];
+    if (!draftRow) {
+      throw new Error("Failed to promote wish list idea");
+    }
+
+    await query(
+      `
+      UPDATE trip_wish_list_items
+      SET promoted_draft_id = $2, updated_at = NOW()
+      WHERE id = $1
+      `,
+      [ideaId, draftRow.id],
+    );
+
+    const { rows: draftWithCreator } = await query<WishListProposalDraftWithCreatorRow>(
+      `
+      SELECT
+        d.id,
+        d.trip_id,
+        d.item_id,
+        d.created_by,
+        d.title,
+        d.url,
+        d.notes,
+        d.tags,
+        d.status,
+        d.created_at,
+        d.updated_at,
+        ${selectUserColumns("creator", "creator_")}
+      FROM trip_proposal_drafts d
+      JOIN users creator ON creator.id = d.created_by
+      WHERE d.id = $1
+      LIMIT 1
+      `,
+      [draftRow.id],
+    );
+
+    const draftWithDetails = draftWithCreator[0];
+    if (!draftWithDetails) {
+      throw new Error("Failed to load proposal draft");
+    }
+
+    return mapWishListProposalDraftWithDetails(draftWithDetails);
+  }
+
+  async getTripProposalDrafts(
+    tripId: number,
+  ): Promise<WishListProposalDraftWithDetails[]> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<WishListProposalDraftWithCreatorRow>(
+      `
+      SELECT
+        d.id,
+        d.trip_id,
+        d.item_id,
+        d.created_by,
+        d.title,
+        d.url,
+        d.notes,
+        d.tags,
+        d.status,
+        d.created_at,
+        d.updated_at,
+        ${selectUserColumns("creator", "creator_")}
+      FROM trip_proposal_drafts d
+      JOIN users creator ON creator.id = d.created_by
+      WHERE d.trip_id = $1
+      ORDER BY d.created_at DESC, d.id DESC
+      `,
+      [tripId],
+    );
+
+    return rows.map(mapWishListProposalDraftWithDetails);
+  }
+
   async getTravelTips(
     filters: {
       category?: string;

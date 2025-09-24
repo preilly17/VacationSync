@@ -4,9 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
-import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema } from "@shared/schema";
+import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema } from "@shared/schema";
 import { z } from "zod";
-import * as travelTipsService from "./travelTipsService";
+import { unfurlLinkMetadata } from "./wishListService";
 
 // Validation schemas for route parameters
 const notificationIdSchema = z.object({
@@ -18,6 +18,30 @@ const notificationIdSchema = z.object({
     return num;
   }),
 });
+
+const getUserDisplayName = (user: {
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string | null;
+  email?: string | null;
+}): string => {
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+
+  if (first && last) {
+    return `${first} ${last}`;
+  }
+
+  if (first) {
+    return first;
+  }
+
+  if (user.username && user.username.trim()) {
+    return user.username.trim();
+  }
+
+  return user.email?.trim() ?? "Trip member";
+};
 
 const hotelSearchSchema = z.object({
   cityCode: z.string().min(3).max(3, "City code must be 3 characters"),
@@ -2615,107 +2639,370 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Travel Tips API Routes
-  app.get("/api/trips/:tripId/travel-tips", isAuthenticated, async (req: any, res) => {
+  // Wish List / Ideas board routes
+  app.get("/api/trips/:tripId/wish-list", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getRequestUserId(req);
       const tripId = parseInt(req.params.tripId, 10);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
-      if (isNaN(tripId)) {
+
+      if (Number.isNaN(tripId)) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
 
-      // Check if user is member of the trip
       const isMember = await storage.isTripMember(tripId, userId);
       if (!isMember) {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const maxTips = parseInt(req.query.maxTips as string) || 10;
-      const categoryFilter = req.query.categories ? 
-        (req.query.categories as string).split(',') as any[] : undefined;
+      const isAdmin = await storage.isTripAdmin(tripId, userId);
 
-      const tips = await travelTipsService.generateTipsForTrip(tripId, userId, {
-        maxTips,
-        categoryFilter
+      const sortParam = typeof req.query.sort === "string" ? req.query.sort : undefined;
+      const allowedSorts = new Set(["newest", "oldest", "most_saved"]);
+      const sort = allowedSorts.has(sortParam ?? "")
+        ? (sortParam as "newest" | "oldest" | "most_saved")
+        : "newest";
+
+      const tag =
+        typeof req.query.tag === "string" && req.query.tag.trim() !== ""
+          ? req.query.tag.trim()
+          : null;
+      const submittedBy =
+        typeof req.query.submittedBy === "string" && req.query.submittedBy.trim() !== ""
+          ? req.query.submittedBy.trim()
+          : null;
+      const search =
+        typeof req.query.search === "string" && req.query.search.trim() !== ""
+          ? req.query.search.trim()
+          : null;
+
+      const ideas = await storage.getTripWishListIdeas(tripId, userId, {
+        sort,
+        tag,
+        submittedBy,
+        search,
       });
 
-      res.json(tips);
-    } catch (error: unknown) {
-      console.error("Error generating travel tips:", error);
-      res.status(500).json({ message: "Failed to generate travel tips" });
-    }
-  });
+      const enrichedIdeas = ideas.map((idea) => ({
+        ...idea,
+        canDelete: isAdmin || idea.createdBy === userId,
+      }));
 
-  app.get("/api/travel-tips/search", isAuthenticated, async (req: any, res) => {
-    try {
-      const destination = req.query.destination as string;
-      const activityCategories = req.query.activities ? 
-        (req.query.activities as string).split(',') : undefined;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const tagSet = new Set<string>();
+      const submitterMap = new Map<string, { id: string; name: string }>();
 
-      if (!destination) {
-        return res.status(400).json({ message: "Destination is required" });
+      for (const idea of enrichedIdeas) {
+        for (const ideaTag of idea.tags ?? []) {
+          if (ideaTag) {
+            tagSet.add(ideaTag);
+          }
+        }
+
+        submitterMap.set(idea.creator.id, {
+          id: idea.creator.id,
+          name: getUserDisplayName(idea.creator),
+        });
       }
 
-      const tips = await travelTipsService.searchTipsByDestination(
-        destination, 
-        activityCategories, 
-        { limit }
+      const availableTags = Array.from(tagSet).sort((a, b) => a.localeCompare(b));
+      const submitters = Array.from(submitterMap.values()).sort((a, b) =>
+        a.name.localeCompare(b.name),
       );
 
-      res.json(tips);
+      res.json({
+        ideas: enrichedIdeas,
+        meta: {
+          availableTags,
+          submitters,
+          sort,
+          isAdmin,
+        },
+      });
     } catch (error: unknown) {
-      console.error("Error searching travel tips:", error);
-      res.status(500).json({ message: "Failed to search travel tips" });
+      console.error("Error fetching wish list ideas:", error);
+      res.status(500).json({ message: "Failed to fetch wish list ideas" });
     }
   });
 
-  app.get("/api/travel-tips/categories", isAuthenticated, async (req: any, res) => {
+  app.post("/api/trips/:tripId/wish-list", isAuthenticated, async (req: any, res) => {
     try {
-      const categories = req.query.categories as string;
-      const destination = req.query.destination as string;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const userId = getRequestUserId(req);
+      const tripId = parseInt(req.params.tripId, 10);
 
-      if (!categories) {
-        return res.status(400).json({ message: "Categories are required" });
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
       }
 
-      const categoryArray = categories.split(',');
-      // Get tips for first category with specified limit
-      const tips = await travelTipsService.getTipsByCategory(
-        categoryArray[0] as any,
-        limit
-      );
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip ID" });
+      }
 
-      res.json(tips);
+      const isMember = await storage.isTripMember(tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const validatedData = insertWishListIdeaSchema.parse({
+        ...req.body,
+        tripId,
+      });
+
+      const created = await storage.createWishListIdea(validatedData, userId);
+      const detailedIdea = await storage.getWishListIdeaForUser(created.id, userId);
+
+      if (!detailedIdea) {
+        throw new Error("Failed to load created wish list idea");
+      }
+
+      const isAdmin = await storage.isTripAdmin(tripId, userId);
+
+      res.status(201).json({
+        idea: {
+          ...detailedIdea,
+          canDelete: isAdmin || detailedIdea.createdBy === userId,
+        },
+      });
     } catch (error: unknown) {
-      console.error("Error getting tips by category:", error);
-      res.status(500).json({ message: "Failed to get tips by category" });
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Invalid idea data",
+          errors: error.issues,
+        });
+      }
+
+      console.error("Error creating wish list idea:", error);
+      res.status(500).json({ message: "Failed to create wish list idea" });
     }
   });
 
-  app.get("/api/travel-tips/statistics", isAuthenticated, async (req: any, res) => {
+  app.post("/api/wish-list/:ideaId/save", isAuthenticated, async (req: any, res) => {
     try {
-      const stats = travelTipsService.getTipStatistics();
-      res.json(stats);
+      const userId = getRequestUserId(req);
+      const ideaId = parseInt(req.params.ideaId, 10);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (Number.isNaN(ideaId)) {
+        return res.status(400).json({ message: "Invalid idea ID" });
+      }
+
+      const idea = await storage.getWishListIdeaById(ideaId);
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+
+      const isMember = await storage.isTripMember(idea.tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const result = await storage.toggleWishListSave(ideaId, userId);
+      res.json(result);
     } catch (error: unknown) {
-      console.error("Error getting tip statistics:", error);
-      res.status(500).json({ message: "Failed to get tip statistics" });
+      console.error("Error toggling wish list save:", error);
+      res.status(500).json({ message: "Failed to update save" });
     }
   });
 
-  app.get("/api/travel-tips/categories-list", isAuthenticated, async (req: any, res) => {
+  app.get("/api/wish-list/:ideaId/comments", isAuthenticated, async (req: any, res) => {
     try {
-      const categories = travelTipsService.getAvailableTipCategories();
-      res.json({ categories });
+      const userId = getRequestUserId(req);
+      const ideaId = parseInt(req.params.ideaId, 10);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (Number.isNaN(ideaId)) {
+        return res.status(400).json({ message: "Invalid idea ID" });
+      }
+
+      const idea = await storage.getWishListIdeaById(ideaId);
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+
+      const isMember = await storage.isTripMember(idea.tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const comments = await storage.getWishListComments(ideaId);
+      res.json(comments);
     } catch (error: unknown) {
-      console.error("Error getting available categories:", error);
-      res.status(500).json({ message: "Failed to get available categories" });
+      console.error("Error fetching wish list comments:", error);
+      res.status(500).json({ message: "Failed to fetch comments" });
+    }
+  });
+
+  app.post("/api/wish-list/:ideaId/comments", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getRequestUserId(req);
+      const ideaId = parseInt(req.params.ideaId, 10);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (Number.isNaN(ideaId)) {
+        return res.status(400).json({ message: "Invalid idea ID" });
+      }
+
+      const idea = await storage.getWishListIdeaById(ideaId);
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+
+      const isMember = await storage.isTripMember(idea.tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const { comment } = insertWishListCommentSchema.parse(req.body ?? {});
+
+      const createdComment = await storage.addWishListComment(ideaId, userId, comment);
+      const comments = await storage.getWishListComments(ideaId);
+
+      res.status(201).json({
+        comment: createdComment,
+        commentCount: comments.length,
+      });
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          message: "Invalid comment",
+          errors: error.issues,
+        });
+      }
+
+      console.error("Error adding wish list comment:", error);
+      res.status(500).json({ message: "Failed to add comment" });
+    }
+  });
+
+  app.delete("/api/wish-list/:ideaId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getRequestUserId(req);
+      const ideaId = parseInt(req.params.ideaId, 10);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (Number.isNaN(ideaId)) {
+        return res.status(400).json({ message: "Invalid idea ID" });
+      }
+
+      const idea = await storage.getWishListIdeaById(ideaId);
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+
+      const isMember = await storage.isTripMember(idea.tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const isAdmin = await storage.isTripAdmin(idea.tripId, userId);
+      if (!isAdmin && idea.createdBy !== userId) {
+        return res.status(403).json({ message: "Only the creator or a trip admin can delete this idea" });
+      }
+
+      await storage.deleteWishListIdea(ideaId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error deleting wish list idea:", error);
+      res.status(500).json({ message: "Failed to delete wish list idea" });
+    }
+  });
+
+  app.post("/api/wish-list/:ideaId/promote", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getRequestUserId(req);
+      const ideaId = parseInt(req.params.ideaId, 10);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (Number.isNaN(ideaId)) {
+        return res.status(400).json({ message: "Invalid idea ID" });
+      }
+
+      const idea = await storage.getWishListIdeaById(ideaId);
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+
+      const isMember = await storage.isTripMember(idea.tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const draft = await storage.promoteWishListIdea(ideaId, userId);
+      const detailedIdea = await storage.getWishListIdeaForUser(ideaId, userId);
+      const isAdmin = await storage.isTripAdmin(idea.tripId, userId);
+
+      res.json({
+        draft,
+        idea: detailedIdea
+          ? { ...detailedIdea, canDelete: isAdmin || detailedIdea.createdBy === userId }
+          : undefined,
+      });
+    } catch (error: unknown) {
+      console.error("Error promoting wish list idea:", error);
+      res.status(500).json({ message: "Failed to promote idea" });
+    }
+  });
+
+  app.post("/api/wish-list/unfurl", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const { url } = req.body ?? {};
+      if (typeof url !== "string" || url.trim() === "") {
+        return res.status(400).json({ message: "URL is required" });
+      }
+
+      const metadata = await unfurlLinkMetadata(url);
+      res.json(metadata);
+    } catch (error: unknown) {
+      console.error("Error unfurling link:", error);
+      res.status(400).json({ message: "Failed to fetch link metadata" });
+    }
+  });
+
+  app.get("/api/trips/:tripId/proposal-drafts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getRequestUserId(req);
+      const tripId = parseInt(req.params.tripId, 10);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip ID" });
+      }
+
+      const isMember = await storage.isTripMember(tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const drafts = await storage.getTripProposalDrafts(tripId);
+      res.json(drafts);
+    } catch (error: unknown) {
+      console.error("Error fetching proposal drafts:", error);
+      res.status(500).json({ message: "Failed to fetch proposal drafts" });
     }
   });
 

@@ -2,8 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import cors, { type CorsOptions } from "cors";
 import { setupRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
-import { seedTravelTipsDatabase } from "./travelTipsService";
 import { createSessionMiddleware } from "./sessionAuth";
+import { storage } from "./storage";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -91,10 +91,10 @@ server.listen({ port, host, reusePort: true }, () => {
 // Run setup tasks *after* server starts
 (async () => {
   try {
-    await seedTravelTipsDatabase();
-    log("🌱 Travel tips database initialization completed");
+    await storage.initializeWishList();
+    log("📝 Wish list tables ready");
   } catch (error) {
-    log(`❌ Failed to initialize travel tips database: ${error}`);
+    log(`❌ Failed to initialize wish list tables: ${error}`);
   }
 
   try {

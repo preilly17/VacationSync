@@ -1,5 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Calendar, Clock, Users, Settings, Home, Package, DollarSign, ShoppingCart, MapPin, Plane, Hotel, Utensils, Vote, Lightbulb } from "lucide-react";
+import { Calendar, Clock, Users, Settings, Home, Package, DollarSign, ShoppingCart, MapPin, Plane, Hotel, Utensils, Vote, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import type { TripWithDetails, User } from "@shared/schema";
 
@@ -148,17 +148,17 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
             <DollarSign className="w-4 h-4 mr-3" />
             Expenses
           </button>
-          {/* 11. Travel Tips */}
+          {/* 11. Wish List */}
           <button
-            onClick={() => onTabChange("travel-tips")}
+            onClick={() => onTabChange("wish-list")}
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg ${
-              activeTab === "travel-tips"
+              activeTab === "wish-list"
                 ? "text-primary bg-red-50"
                 : "text-neutral-600 hover:text-neutral-900 hover:bg-gray-50"
             }`}
           >
-            <Lightbulb className="w-4 h-4 mr-3" />
-            Travel Tips
+            <Sparkles className="w-4 h-4 mr-3" />
+            Wish List
           </button>
           <Link href={`/trip/${trip.id}/members`} className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg ${
             activeTab === "members"

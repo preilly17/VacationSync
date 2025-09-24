@@ -1022,3 +1022,180 @@ export type InsertUserTipPreferences = z.infer<
 export type UserTipPreferencesWithUser = UserTipPreferences & {
   user: User;
 };
+
+export interface WishListIdea {
+  id: number;
+  tripId: number;
+  title: string;
+  url: string | null;
+  notes: string | null;
+  tags: string[];
+  thumbnailUrl: string | null;
+  imageUrl: string | null;
+  metadata: Record<string, unknown> | null;
+  createdBy: string;
+  promotedDraftId: number | null;
+  createdAt: IsoDate | null;
+  updatedAt: IsoDate | null;
+}
+
+const wishListUrlSchema = z
+  .string()
+  .trim()
+  .optional()
+  .nullable()
+  .transform((value) => {
+    if (!value) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (trimmed === "") {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return parsed.toString();
+      }
+    } catch {
+      // Ignore parsing errors and fall back to the raw string if it looks like a URL
+      if (/^[\w.-]+\.[A-Za-z]{2,}(\/.*)?$/.test(trimmed)) {
+        return `https://${trimmed}`;
+      }
+      return trimmed;
+    }
+
+    return trimmed;
+  });
+
+export const insertWishListIdeaSchema = z.object({
+  tripId: z.number(),
+  title: z.string().trim().min(1, "Title is required"),
+  url: wishListUrlSchema,
+  notes: z.string().trim().optional().nullable().transform((value) => {
+    if (!value) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }),
+  tags: z
+    .array(z.string().trim().min(1))
+    .optional()
+    .transform((value) => {
+      if (!value) {
+        return [] as string[];
+      }
+      const unique = new Set<string>();
+      for (const tag of value) {
+        const normalized = tag.trim();
+        if (normalized) {
+          unique.add(normalized);
+        }
+      }
+      return Array.from(unique);
+    }),
+  thumbnailUrl: z.string().trim().optional().nullable().transform((value) => {
+    if (!value) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }),
+  imageUrl: z.string().trim().optional().nullable().transform((value) => {
+    if (!value) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }),
+  metadata: z
+    .any()
+    .optional()
+    .nullable()
+    .transform((value) => (value && typeof value === "object" ? (value as Record<string, unknown>) : null)),
+});
+
+export type InsertWishListIdea = z.infer<typeof insertWishListIdeaSchema>;
+
+export type WishListIdeaWithDetails = WishListIdea & {
+  creator: User;
+  saveCount: number;
+  commentCount: number;
+  currentUserSaved: boolean;
+  canDelete?: boolean;
+};
+
+export interface WishListComment {
+  id: number;
+  itemId: number;
+  userId: string;
+  comment: string;
+  createdAt: IsoDate | null;
+}
+
+export const insertWishListCommentSchema = z.object({
+  comment: z.string().trim().min(1, "Comment is required"),
+});
+
+export type InsertWishListComment = z.infer<typeof insertWishListCommentSchema>;
+
+export type WishListCommentWithUser = WishListComment & {
+  user: User;
+};
+
+export interface WishListProposalDraft {
+  id: number;
+  tripId: number;
+  itemId: number;
+  createdBy: string;
+  title: string;
+  url: string | null;
+  notes: string | null;
+  tags: string[];
+  status: string;
+  createdAt: IsoDate | null;
+  updatedAt: IsoDate | null;
+}
+
+export const insertWishListProposalDraftSchema = z.object({
+  tripId: z.number(),
+  itemId: z.number(),
+  createdBy: z.string().min(1),
+  title: z.string().trim().min(1),
+  url: wishListUrlSchema,
+  notes: z.string().trim().optional().nullable().transform((value) => {
+    if (!value) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }),
+  tags: z
+    .array(z.string().trim().min(1))
+    .optional()
+    .transform((value) => {
+      if (!value) {
+        return [] as string[];
+      }
+      const unique = new Set<string>();
+      for (const tag of value) {
+        const normalized = tag.trim();
+        if (normalized) {
+          unique.add(normalized);
+        }
+      }
+      return Array.from(unique);
+    }),
+  status: z.string().trim().default("draft"),
+});
+
+export type InsertWishListProposalDraft = z.infer<
+  typeof insertWishListProposalDraftSchema
+>;
+
+export type WishListProposalDraftWithDetails = WishListProposalDraft & {
+  creator: User;
+};
