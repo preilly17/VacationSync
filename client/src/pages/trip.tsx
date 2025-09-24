@@ -1574,15 +1574,18 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
                 </p>
               </div>
               <CollapsibleTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto justify-between sm:justify-center">
-                  <span>{isManualHotelFormOpen ? "Hide manual form" : "Add hotel details"}</span>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto justify-between sm:justify-center"
+                >
+                  <span>{isManualHotelFormOpen ? "Close" : "Add a Hotel"}</span>
                   <ChevronDown
                     className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
                   />
                 </Button>
               </CollapsibleTrigger>
             </div>
-            <CollapsibleContent className="space-y-6 pt-4">
+            <CollapsibleContent className="space-y-6 pt-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)}>
                   <HotelFormFields
@@ -1599,16 +1602,6 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               </Form>
             </CollapsibleContent>
           </Collapsible>
-
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <HotelFormFields
-                form={form}
-                isSubmitting={createHotelMutation.isPending}
-                submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
-              />
-            </form>
-          </Form>
 
         </CardContent>
       </Card>
