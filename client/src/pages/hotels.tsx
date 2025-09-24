@@ -11,38 +11,31 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { apiFetch } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Plus, Bed, Search, Filter, ArrowLeft, Building, ChevronRight, DollarSign, Calculator, ArrowUpDown } from "lucide-react";
+import { MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Plus, Bed, Search, Filter, ArrowLeft, Building, ChevronRight, DollarSign, Calculator, ArrowUpDown } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
-import { insertHotelSchema, type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
+import { type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
-
-const formSchema = insertHotelSchema.extend({
-  checkInDate: z.date(),
-  checkOutDate: z.date(),
-  amenities: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
-  contactInfo: z.string().optional().nullable(),
-  images: z.string().optional().nullable(),
-  policies: z.string().optional().nullable(),
-});
-
-type HotelFormValues = z.infer<typeof formSchema>;
+import {
+  createHotelFormDefaults,
+  hotelFormSchema,
+  parseAmenitiesInput,
+  parseJsonInput,
+  stringifyJsonValue,
+  transformHotelFormValues,
+  type HotelFormValues,
+} from "@/lib/hotel-form";
+import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
 
 export default function HotelsPage() {
   const params = useParams();
@@ -635,151 +628,33 @@ export default function HotelsPage() {
     }
   };
 
-  const createDefaultFormValues = useCallback((): HotelFormValues => ({
-    tripId,
-    hotelName: "",
-    hotelChain: null,
-    hotelRating: null,
-    address: "",
-    city: "",
-    country: "",
-    zipCode: null,
-    latitude: null,
-    longitude: null,
-    checkInDate: trip?.startDate ? new Date(trip.startDate) : new Date(),
-    checkOutDate: trip?.endDate ? new Date(trip.endDate) : new Date(),
-    roomType: null,
-    roomCount: null,
-    guestCount: null,
-    bookingReference: null,
-    totalPrice: null,
-    pricePerNight: null,
-    currency: "USD",
-    status: "confirmed",
-    bookingSource: null,
-    purchaseUrl: null,
-    amenities: "",
-    images: "",
-    policies: "",
-    contactInfo: "",
-    bookingPlatform: null,
-    bookingUrl: null,
-    cancellationPolicy: null,
-    notes: "",
-  }), [tripId, trip]);
-
-  const parseJsonInput = (value?: string | null) => {
-    if (!value || value.trim() === "") {
-      return null;
-    }
-
-    const trimmed = value.trim();
-
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return trimmed;
-    }
-  };
-
-  const parseAmenitiesInput = (value?: string | null) => {
-    if (!value || value.trim() === "") {
-      return null;
-    }
-
-    const trimmed = value.trim();
-
-    if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-      try {
-        return JSON.parse(trimmed);
-      } catch {
-        // fall through to comma parsing
-      }
-    }
-
-    const items = trimmed
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-    if (items.length === 0) {
-      return trimmed;
-    }
-
-    return items.length === 1 ? items[0] : items;
-  };
-
-  const stringifyJsonValue = (value: unknown) => {
-    if (value === null || value === undefined) {
-      return "";
-    }
-
-    if (typeof value === "string") {
-      return value;
-    }
-
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  };
-
-  const transformHotelFormValues = (values: HotelFormValues): InsertHotel => ({
-    tripId: values.tripId,
-    hotelName: values.hotelName.trim(),
-    hotelChain: values.hotelChain?.trim() ? values.hotelChain.trim() : null,
-    hotelRating: values.hotelRating ?? null,
-    address: values.address.trim(),
-    city: values.city.trim(),
-    country: values.country.trim(),
-    zipCode: values.zipCode?.trim() ? values.zipCode.trim() : null,
-    latitude: values.latitude ?? null,
-    longitude: values.longitude ?? null,
-    checkInDate: values.checkInDate.toISOString(),
-    checkOutDate: values.checkOutDate.toISOString(),
-    roomType: values.roomType?.trim() ? values.roomType.trim() : null,
-    roomCount: values.roomCount ?? null,
-    guestCount: values.guestCount ?? null,
-    bookingReference: values.bookingReference?.trim() ? values.bookingReference.trim() : null,
-    totalPrice: values.totalPrice ?? null,
-    pricePerNight: values.pricePerNight ?? null,
-    currency: values.currency?.trim() ? values.currency.trim() : "USD",
-    status: values.status?.trim() ? values.status.trim() : "confirmed",
-    bookingSource: values.bookingSource?.trim() ? values.bookingSource.trim() : null,
-    purchaseUrl: values.purchaseUrl?.trim() ? values.purchaseUrl.trim() : null,
-    amenities: parseAmenitiesInput(values.amenities),
-    images: parseJsonInput(values.images),
-    policies: parseJsonInput(values.policies),
-    contactInfo: values.contactInfo?.trim() ? values.contactInfo.trim() : null,
-    bookingPlatform: values.bookingPlatform?.trim() ? values.bookingPlatform.trim() : null,
-    bookingUrl: values.bookingUrl?.trim() ? values.bookingUrl.trim() : null,
-    cancellationPolicy: values.cancellationPolicy?.trim() ? values.cancellationPolicy.trim() : null,
-    notes: values.notes?.trim() ? values.notes.trim() : null,
-  });
+  const formDefaults = useCallback(
+    () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
+    [tripId, trip?.startDate, trip?.endDate],
+  );
 
   const form = useForm<HotelFormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: createDefaultFormValues(),
+    resolver: zodResolver(hotelFormSchema),
+    defaultValues: formDefaults(),
   });
 
   const handleDialogClose = useCallback(() => {
     setIsDialogOpen(false);
     setEditingHotel(null);
-    form.reset(createDefaultFormValues());
-  }, [createDefaultFormValues, form]);
+    form.reset(formDefaults());
+  }, [form, formDefaults]);
 
   const openCreateDialog = useCallback(() => {
     setEditingHotel(null);
-    form.reset(createDefaultFormValues());
+    form.reset(formDefaults());
     setIsDialogOpen(true);
-  }, [createDefaultFormValues, form]);
+  }, [form, formDefaults]);
 
   useEffect(() => {
     if (!isDialogOpen && !editingHotel) {
-      form.reset(createDefaultFormValues());
+      form.reset(formDefaults());
     }
-  }, [createDefaultFormValues, editingHotel, form, isDialogOpen]);
+  }, [editingHotel, form, formDefaults, isDialogOpen]);
 
   const createHotelMutation = useMutation({
     mutationFn: async (payload: InsertHotel) => {
@@ -886,7 +761,7 @@ export default function HotelsPage() {
 
   const handleEdit = (hotel: HotelWithDetails) => {
     setEditingHotel(hotel);
-    const defaults = createDefaultFormValues();
+    const defaults = formDefaults();
     form.reset({
       ...defaults,
       tripId,
@@ -1044,27 +919,6 @@ export default function HotelsPage() {
         </TabsList>
 
         <TabsContent value="search" className="space-y-6 mt-6">
-          <Card className="border border-dashed">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5" />
-                Add hotel manually
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Enter every required field from the hotel schema to save a custom booking without using search results.
-              </p>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">
-                Required fields include hotelName, address, city, country, checkInDate, and checkOutDate.
-              </p>
-              <Button onClick={openCreateDialog} className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Add hotel manually
-              </Button>
-            </CardContent>
-          </Card>
-
           {/* Hotel Search Interface */}
           <Card>
             <CardContent className="space-y-4">
@@ -1177,695 +1031,14 @@ export default function HotelsPage() {
             </DialogDescription>
           </DialogHeader>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="hotelName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center gap-1">
-                          hotelName
-                          <span className="text-destructive">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="Grand Hotel" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="hotelChain"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>hotelChain</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Hilton Worldwide"
-                            value={field.value ?? ""}
-                            onChange={(event) => field.onChange(event.target.value)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="address"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center gap-1">
-                          address
-                          <span className="text-destructive">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="123 Main St" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="city"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center gap-1">
-                          city
-                          <span className="text-destructive">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="New York" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="country"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="flex items-center gap-1">
-                          country
-                          <span className="text-destructive">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="United States" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="zipCode"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>zipCode</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="10001"
-                            value={field.value ?? ""}
-                            onChange={(event) => field.onChange(event.target.value)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="checkInDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel className="flex items-center gap-1">
-                        checkInDate
-                        <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground",
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Select date</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) => date < new Date()}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="checkOutDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel className="flex items-center gap-1">
-                        checkOutDate
-                        <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground",
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Select date</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) => date < new Date()}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <FormField
-                  control={form.control}
-                  name="totalPrice"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>totalPrice</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="299.00"
-                          value={field.value ?? ""}
-                          onChange={(event) =>
-                            field.onChange(
-                              event.target.value === ""
-                                ? null
-                                : parseFloat(event.target.value),
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="pricePerNight"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>pricePerNight</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="99.00"
-                          value={field.value ?? ""}
-                          onChange={(event) =>
-                            field.onChange(
-                              event.target.value === ""
-                                ? null
-                                : parseFloat(event.target.value),
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="currency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-1">
-                        currency
-                        <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select currency" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="USD">USD</SelectItem>
-                          <SelectItem value="EUR">EUR</SelectItem>
-                          <SelectItem value="GBP">GBP</SelectItem>
-                          <SelectItem value="CAD">CAD</SelectItem>
-                          <SelectItem value="AUD">AUD</SelectItem>
-                          <SelectItem value="JPY">JPY</SelectItem>
-                          <SelectItem value="MXN">MXN</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="status"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="flex items-center gap-1">
-                        status
-                        <span className="text-destructive">*</span>
-                      </FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="confirmed">confirmed</SelectItem>
-                          <SelectItem value="pending">pending</SelectItem>
-                          <SelectItem value="cancelled">cancelled</SelectItem>
-                          <SelectItem value="on-hold">on-hold</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <FormField
-                  control={form.control}
-                  name="guestCount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>guestCount</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={field.value ?? ""}
-                          onChange={(event) =>
-                            field.onChange(
-                              event.target.value === ""
-                                ? null
-                                : parseInt(event.target.value, 10),
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="roomCount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>roomCount</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={field.value ?? ""}
-                          onChange={(event) =>
-                            field.onChange(
-                              event.target.value === ""
-                                ? null
-                                : parseInt(event.target.value, 10),
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="roomType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>roomType</FormLabel>
-                      <Select
-                        onValueChange={(value) => field.onChange(value)}
-                        value={field.value ?? undefined}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select room type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="standard">standard</SelectItem>
-                          <SelectItem value="deluxe">deluxe</SelectItem>
-                          <SelectItem value="suite">suite</SelectItem>
-                          <SelectItem value="penthouse">penthouse</SelectItem>
-                          <SelectItem value="studio">studio</SelectItem>
-                          <SelectItem value="apartment">apartment</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="hotelRating"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>hotelRating</FormLabel>
-                      <Select
-                        onValueChange={(value) => field.onChange(value ? parseInt(value, 10) : null)}
-                        value={field.value != null ? field.value.toString() : undefined}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select rating" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="1">1</SelectItem>
-                          <SelectItem value="2">2</SelectItem>
-                          <SelectItem value="3">3</SelectItem>
-                          <SelectItem value="4">4</SelectItem>
-                          <SelectItem value="5">5</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="latitude"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>latitude</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.000001"
-                          value={field.value ?? ""}
-                          onChange={(event) =>
-                            field.onChange(
-                              event.target.value === ""
-                                ? null
-                                : parseFloat(event.target.value),
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="longitude"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>longitude</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.000001"
-                          value={field.value ?? ""}
-                          onChange={(event) =>
-                            field.onChange(
-                              event.target.value === ""
-                                ? null
-                                : parseFloat(event.target.value),
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="bookingReference"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>bookingReference</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="ABC123"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="bookingSource"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>bookingSource</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Agent name or source"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="bookingPlatform"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>bookingPlatform</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? undefined}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select platform" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="booking.com">booking.com</SelectItem>
-                          <SelectItem value="expedia">expedia</SelectItem>
-                          <SelectItem value="hotels.com">hotels.com</SelectItem>
-                          <SelectItem value="airbnb">airbnb</SelectItem>
-                          <SelectItem value="vrbo">vrbo</SelectItem>
-                          <SelectItem value="direct">direct</SelectItem>
-                          <SelectItem value="other">other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="bookingUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>bookingUrl</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="url"
-                          placeholder="https://booking.com/..."
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="purchaseUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>purchaseUrl</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="url"
-                          placeholder="https://portal..."
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="contactInfo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>contactInfo</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Phone, email, or JSON"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="cancellationPolicy"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>cancellationPolicy</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Free cancellation until..."
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="amenities"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>amenities</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="WiFi, Pool, Gym"
-                          value={field.value ?? ""}
-                          onChange={(event) => field.onChange(event.target.value)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>notes</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Additional details about the hotel..."
-                        value={field.value ?? ""}
-                        onChange={(event) => field.onChange(event.target.value)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <HotelFormFields
+                form={form}
+                isSubmitting={createHotelMutation.isPending || updateHotelMutation.isPending}
+                submitLabel={editingHotel ? "Save Changes" : "Add Hotel"}
+                onCancel={handleDialogClose}
+                showCancelButton
               />
-
-              <FormField
-                control={form.control}
-                name="images"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>images</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder='["https://example.com/image.jpg"]'
-                        value={field.value ?? ""}
-                        onChange={(event) => field.onChange(event.target.value)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="policies"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>policies</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder='{"checkIn": "3pm", "checkOut": "11am"}'
-                        value={field.value ?? ""}
-                        onChange={(event) => field.onChange(event.target.value)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={handleDialogClose}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createHotelMutation.isPending || updateHotelMutation.isPending}>
-                  {editingHotel ? "Update Hotel" : "Add Hotel"}
-                </Button>
-              </div>
             </form>
           </Form>
           </DialogContent>
