@@ -124,19 +124,27 @@ const tripSteps: Step[] = [
 
 export default function HowItWorks() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 text-slate-800">
       <div className="bg-gradient-to-br from-primary/80 to-red-500 text-white">
-        <div className="max-w-5xl mx-auto px-6 py-16">
-          <Badge variant="secondary" className="bg-white/20 text-white border-white/40 mb-4">
-            Product guide
-          </Badge>
-          <h1 className="text-3xl md:text-4xl font-bold mb-4">How TripSync works</h1>
-          <p className="max-w-3xl text-white/90 text-lg md:text-xl leading-relaxed">
-            Collaborate with your travel group to plan unforgettable adventures. This guide summarizes the interactive tour and highlights where to find the tools you need.
-          </p>
+        <div className="mx-auto max-w-5xl px-6 py-16">
+          <div className="flex flex-col gap-4">
+            <Badge
+              variant="secondary"
+              className="mb-2 w-fit rounded-full border-white/40 bg-white/20 px-3 py-1 text-sm font-medium uppercase tracking-wide text-white"
+            >
+              Product guide
+            </Badge>
+            <h1 className="text-3xl font-bold md:text-4xl">How TripSync works</h1>
+            <p className="max-w-3xl text-lg leading-relaxed text-white/90 md:text-xl">
+              Collaborate with your travel group to plan unforgettable adventures. This guide summarizes the interactive tour and highlights where to find the tools you need.
+            </p>
+          </div>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/">
-              <Button variant="secondary" className="bg-white text-primary hover:bg-white/90">
+              <Button
+                variant="secondary"
+                className="bg-white text-primary shadow-md transition hover:-translate-y-0.5 hover:bg-white/90"
+              >
                 Back to dashboard
               </Button>
             </Link>
@@ -144,64 +152,74 @@ export default function HowItWorks() {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-6 py-12 space-y-10">
-        <Card>
-          <CardHeader>
-            <CardTitle>Home dashboard essentials</CardTitle>
-            <CardDescription>
+      <div className="mx-auto max-w-5xl space-y-12 px-6 py-12">
+        <Card className="border-none bg-white/95 shadow-xl ring-1 ring-primary/10">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl text-slate-900">Home dashboard essentials</CardTitle>
+            <CardDescription className="text-base text-slate-600">
               These steps mirror the original onboarding tour and show how to get oriented when you sign in.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-5 pt-4">
             {dashboardSteps.map((step, index) => (
-              <div key={step.title} className="flex gap-4">
-                <div className="mt-1 h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                  <step.icon className="w-5 h-5" />
+              <article
+                key={step.title}
+                className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm transition hover:border-primary/30 hover:shadow-md md:flex-row md:items-start"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <step.icon className="h-6 w-6" />
                 </div>
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {step.title}
-                    </h3>
-                    <Badge variant="secondary">Step {index + 1}</Badge>
+                    <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+                    <Badge
+                      variant="secondary"
+                      className="border border-sky-100 bg-sky-50 text-sky-700"
+                    >
+                      Step {index + 1}
+                    </Badge>
                   </div>
-                  <p className="text-sm text-slate-600 leading-relaxed">{step.description}</p>
+                  <p className="text-sm leading-relaxed text-slate-600">{step.description}</p>
                   {step.tip && (
-                    <div className="text-sm text-primary-700 bg-primary/5 border border-primary/10 rounded-lg px-4 py-3">
+                    <div className="rounded-lg border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-700">
                       💡 {step.tip}
                     </div>
                   )}
                 </div>
-              </div>
+              </article>
             ))}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Deep-dive into trip planning</CardTitle>
-            <CardDescription>
+        <Card className="border-none bg-white/95 shadow-xl ring-1 ring-emerald-100/60">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-2xl text-slate-900">Deep-dive into trip planning</CardTitle>
+            <CardDescription className="text-base text-slate-600">
               When you open a specific trip, use these focus areas to collaborate and keep everyone informed.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
+          <CardContent className="space-y-5 pt-4">
             {tripSteps.map((step, index) => (
-              <div key={step.title} className="flex gap-4">
-                <div className="mt-1 h-10 w-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                  <step.icon className="w-5 h-5" />
+              <article
+                key={step.title}
+                className="flex flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm transition hover:border-emerald-200 hover:shadow-md md:flex-row md:items-start"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                  <step.icon className="h-6 w-6" />
                 </div>
-                <div className="flex-1 space-y-2">
+                <div className="flex-1 space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-lg font-semibold text-slate-900">
-                      {step.title}
-                    </h3>
-                    <Badge variant="outline" className="text-xs uppercase tracking-wide">
+                    <h3 className="text-lg font-semibold text-slate-900">{step.title}</h3>
+                    <Badge
+                      variant="outline"
+                      className="border border-emerald-200 bg-emerald-50 text-xs font-medium uppercase tracking-wide text-emerald-700"
+                    >
                       {index + 1} of {tripSteps.length}
                     </Badge>
                   </div>
-                  <p className="text-sm text-slate-600 leading-relaxed">{step.description}</p>
+                  <p className="text-sm leading-relaxed text-slate-600">{step.description}</p>
                 </div>
-              </div>
+              </article>
             ))}
           </CardContent>
         </Card>
