@@ -1,9 +1,16 @@
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   Form,
   FormControl,
@@ -21,20 +28,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { apiRequest } from "@/lib/queryClient";
-import {
-  generateCashAppUrl,
-  generateVenmoUrl,
-  generatePaymentNote,
-} from "@/lib/paymentUtils";
-import { CurrencyConverter } from "@/components/currency-converter";
 import { useToast } from "@/hooks/use-toast";
-import { insertExpenseSchema, type TripWithDetails } from "@shared/schema";
-import { useCallback, useEffect, useState } from "react";
-import { DollarSign, Smartphone } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import type { TripWithDetails } from "@shared/schema";
+import { Loader2, Users } from "lucide-react";
 
 interface AddExpenseModalProps {
   open: boolean;
@@ -42,25 +40,6 @@ interface AddExpenseModalProps {
   tripId: number;
   currentUserId?: string;
 }
-
-const formSchema = insertExpenseSchema
-  .omit({
-    tripId: true,
-  })
-  .extend({
-    amount: z
-      .string()
-      .min(1, "Amount is required")
-      .refine(
-        (val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0,
-        "Amount must be a positive number",
-      ),
-    selectedMembers: z
-      .array(z.string())
-      .min(1, "Select at least one member to split with"),
-  });
-
-type FormData = z.infer<typeof formSchema>;
 
 const expenseCategories = [
   { value: "food", label: "Food & Dining" },
@@ -71,6 +50,111 @@ const expenseCategories = [
   { value: "other", label: "Other" },
 ];
 
+const currencyOptions = [
+  { value: "USD", label: "US Dollar" },
+  { value: "EUR", label: "Euro" },
+  { value: "GBP", label: "British Pound" },
+  { value: "CAD", label: "Canadian Dollar" },
+  { value: "AUD", label: "Australian Dollar" },
+  { value: "JPY", label: "Japanese Yen" },
+];
+
+const formSchema = z.object({
+  description: z
+    .string()
+    .trim()
+    .min(1, "Description is required"),
+  amount: z
+    .string()
+    .trim()
+    .min(1, "Amount is required")
+    .refine((value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed > 0;
+    }, "Amount must be greater than 0"),
+  currency: z.string().min(1, "Currency is required"),
+  category: z.string().min(1, "Category is required"),
+  participants: z
+    .array(z.string())
+    .min(1, "Select at least one traveler to split this expense"),
+  receiptUrl: z.preprocess(
+    (value) =>
+      typeof value === "string" && value.trim().length === 0 ? undefined : value,
+    z
+      .string()
+      .trim()
+      .url("Enter a valid URL")
+      .optional(),
+  ),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+const defaultValues: FormValues = {
+  description: "",
+  amount: "",
+  currency: "USD",
+  category: "other",
+  participants: [],
+  receiptUrl: undefined,
+};
+
+type CreateExpenseInput = {
+  tripId: number;
+  description: string;
+  amount: number;
+  currency: string;
+  category: string;
+  splitType: "equal";
+  splitData: {
+    members: string[];
+    splitAmount: number;
+    splitType: "equal";
+  };
+  selectedMembers: string[];
+  receiptUrl?: string;
+};
+
+function formatCurrency(amount: number, currency: string) {
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).format(safeAmount);
+  } catch {
+    return `${currency} ${safeAmount.toFixed(2)}`;
+  }
+}
+
+function getMemberDisplayName(member?: TripWithDetails["members"][number]["user"]) {
+  if (!member) {
+    return "Traveler";
+  }
+
+  return (
+    member.firstName?.trim() ||
+    member.username?.trim() ||
+    member.email
+  );
+}
+
+function getMemberInitials(member?: TripWithDetails["members"][number]["user"]) {
+  if (!member) {
+    return "TR";
+  }
+
+  const parts = [member.firstName, member.lastName]
+    .filter(Boolean)
+    .map((part) => part?.trim()[0] ?? "");
+
+  if (parts.length === 0) {
+    return (member.email ?? "T").slice(0, 2).toUpperCase();
+  }
+
+  return parts.join("").toUpperCase();
+}
+
 export function AddExpenseModal({
   open,
   onOpenChange,
@@ -79,98 +163,75 @@ export function AddExpenseModal({
 }: AddExpenseModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [requestCurrency, setRequestCurrency] = useState<string>("USD"); // Currency to request payment in
-  const [conversionData, setConversionData] = useState<{
-    fromCurrency: string;
-    toCurrency: string;
-    rate: number;
-    originalAmount: number;
-    convertedAmount: number;
-    lastUpdated: Date;
-  } | null>(null);
-  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
-    null,
-  );
 
-  // Get trip data to access members
-  const { data: trip } = useQuery<TripWithDetails>({
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues,
+  });
+
+  const { data: trip, isLoading: isTripLoading } = useQuery<TripWithDetails>({
     queryKey: [`/api/trips/${tripId}`],
+    enabled: open,
   });
 
   useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
     if (!open) {
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open]);
-
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      description: "",
-      amount: "",
-      category: "other",
-      currency: "USD",
-      splitType: "equal",
-      activityId: undefined,
-      splitData: null,
-      receiptUrl: undefined,
-      selectedMembers: [],
-    },
-  });
-
-  useEffect(() => {
-    if (!open) return;
-    if (!currentUserId) return;
-    if (!trip?.members?.length) return;
-
-    const currentSelection = form.getValues("selectedMembers");
-    if (currentSelection && currentSelection.length > 0) {
+    const members = trip?.members ?? [];
+    if (!currentUserId) {
       return;
     }
 
-    const isMember = trip.members.some(
+    const isPartOfTrip = members.some(
       (member) => member.user.id === currentUserId,
     );
 
-    if (isMember) {
-      form.setValue("selectedMembers", [currentUserId], {
-        shouldDirty: true,
-        shouldTouch: true,
+    if (!isPartOfTrip) {
+      return;
+    }
+
+    const selected = form.getValues("participants");
+    if (selected.length === 0) {
+      form.setValue("participants", [currentUserId], {
+        shouldDirty: false,
         shouldValidate: true,
       });
     }
-  }, [open, currentUserId, trip, form]);
+  }, [open, trip, currentUserId, form]);
+
+  const closeModal = () => {
+    onOpenChange(false);
+    form.reset(defaultValues);
+  };
 
   const createExpenseMutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      const totalAmount = parseFloat(data.amount);
-      const splitAmount = totalAmount / data.selectedMembers.length;
+    mutationFn: async (values: FormValues) => {
+      const amountNumber = Number(values.amount);
+      const participants = values.participants;
+      const splitAmount =
+        participants.length > 0 ? amountNumber / participants.length : 0;
 
-      const expenseData = {
-        ...data,
-        amount: totalAmount,
+      const payload: CreateExpenseInput = {
         tripId,
+        description: values.description.trim(),
+        amount: amountNumber,
+        currency: values.currency,
+        category: values.category,
+        splitType: "equal",
         splitData: {
-          members: data.selectedMembers,
-          splitAmount: splitAmount,
+          members: participants,
+          splitAmount,
           splitType: "equal",
         },
+        selectedMembers: participants,
+        ...(values.receiptUrl ? { receiptUrl: values.receiptUrl } : {}),
       };
 
       await apiRequest(`/api/trips/${tripId}/expenses`, {
         method: "POST",
-        body: JSON.stringify(expenseData),
+        body: payload,
       });
     },
     onSuccess: () => {
@@ -181,450 +242,245 @@ export function AddExpenseModal({
         queryKey: [`/api/trips/${tripId}/expenses/balances`],
       });
       toast({
-        title: "Success",
-        description: "Expense added successfully",
+        title: "Expense added",
+        description: "Everyone in the split has been notified.",
       });
-      onOpenChange(false);
-      form.reset();
+      closeModal();
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to create expense";
       toast({
-        title: "Error",
-        description: error.message || "Failed to add expense",
+        title: "Something went wrong",
+        description: message,
         variant: "destructive",
       });
     },
   });
 
-  const onSubmit = (data: FormData) => {
-    createExpenseMutation.mutate(data);
-  };
+  const amountInput = form.watch("amount");
+  const selectedParticipants = form.watch("participants");
+  const currency = form.watch("currency") || "USD";
 
-  const handleContentRef = useCallback((node: HTMLDivElement | null) => {
-    setPortalContainer(node);
-  }, []);
+  const totalAmount = useMemo(() => {
+    const parsed = Number.parseFloat(amountInput);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [amountInput]);
+
+  const perPersonShare = useMemo(() => {
+    if (selectedParticipants.length === 0) {
+      return null;
+    }
+
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+      return null;
+    }
+
+    return totalAmount / selectedParticipants.length;
+  }, [selectedParticipants, totalAmount]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        ref={handleContentRef}
-        className="w-full max-w-[820px] sm:w-[92vw] md:w-[820px] max-h-[92vh] overflow-hidden p-0 gap-0"
-      >
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          closeModal();
+        } else {
+          onOpenChange(true);
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden p-0">
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex h-full max-h-full flex-col"
+            onSubmit={form.handleSubmit((values) => createExpenseMutation.mutate(values))}
+            className="flex h-full flex-col"
           >
-            <header className="flex flex-shrink-0 items-center border-b border-border px-6 py-5 pr-12">
-              <DialogTitle className="text-lg font-semibold">
-                Add New Expense
-              </DialogTitle>
-            </header>
+            <DialogHeader className="space-y-2 border-b px-6 py-5 text-left">
+              <DialogTitle>Log a shared expense</DialogTitle>
+              <DialogDescription>
+                Capture what was spent and who is splitting the cost. We&rsquo;ll do
+                the math for you.
+              </DialogDescription>
+            </DialogHeader>
 
-            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5 pb-8 overscroll-contain">
-              <FormField
-                control={form.control}
-                name="description"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description</FormLabel>
-                    <FormControl>
-                      <Input placeholder="What did you spend on?" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="space-y-3">
-                <FormLabel>Amount &amp; Currency</FormLabel>
-                <CurrencyConverter
-                  amount={form.watch("amount") || ""}
-                  onAmountChange={(amount) => form.setValue("amount", amount)}
-                  currency={form.watch("currency") || "USD"}
-                  onCurrencyChange={(currency) =>
-                    form.setValue("currency", currency)
-                  }
-                  tripId={tripId}
-                  showConversion={
-                    requestCurrency !== (form.watch("currency") || "USD")
-                  }
-                  onConversionChange={(conversion) =>
-                    setConversionData(conversion)
-                  }
-                  targetCurrency={requestCurrency}
-                  portalContainer={portalContainer}
+            <div className="max-h-[65vh] flex-1 space-y-6 overflow-y-auto px-6 py-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                      <FormLabel>Description</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Dinner at the beach restaurant"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
 
-                <div className="rounded-lg border bg-blue-50 p-4 shadow-sm shadow-blue-100/20">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <label className="text-sm font-medium text-blue-900">
-                      Request payment in:
-                    </label>
-                    <Select
-                      value={requestCurrency}
-                      onValueChange={setRequestCurrency}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent container={portalContainer ?? undefined}>
-                        <SelectItem value="USD">💵 USD</SelectItem>
-                        <SelectItem value="EUR">💶 EUR</SelectItem>
-                        <SelectItem value="GBP">💷 GBP</SelectItem>
-                        <SelectItem value="JPY">💴 JPY</SelectItem>
-                        <SelectItem value="CAD">🍁 CAD</SelectItem>
-                        <SelectItem value="AUD">🇦🇺 AUD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="min-h-[18px] text-xs text-blue-700">
-                    {requestCurrency === (form.watch("currency") || "USD")
-                      ? "Using original expense currency - no conversion needed"
-                      : `Payment requests will use ${requestCurrency} (converted from ${form.watch("currency") || "USD"})`}
-                  </p>
-                </div>
-
-                <div className="flex min-h-[44px] flex-col justify-center rounded-lg border border-green-200 bg-green-50 p-3">
-                  {requestCurrency !== (form.watch("currency") || "USD") ? (
-                    conversionData ? (
-                      <div className="flex flex-col gap-2 text-sm text-green-800 sm:flex-row sm:items-center sm:justify-between">
-                        <span>
-                          {form.watch("currency")} {form.watch("amount")} ={" "}
-                          {requestCurrency}{" "}
-                          {conversionData.convertedAmount.toFixed(2)}
-                        </span>
-                        <span className="text-xs text-green-600">
-                          Rate: 1 {conversionData.fromCurrency} ={" "}
-                          {conversionData.rate.toFixed(4)}{" "}
-                          {conversionData.toCurrency}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-green-700">
-                        Fetching the latest conversion rate...
-                      </span>
-                    )
-                  ) : (
-                    <span className="text-xs text-green-700">
-                      Select a different request currency to preview conversion
-                      details here.
-                    </span>
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
                   )}
-                </div>
+                />
 
-                <p
-                  className={`min-h-[18px] text-xs ${
-                    form.formState.errors.amount
-                      ? "font-medium text-destructive"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {form.formState.errors.amount?.message ?? " "}
-                </p>
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose a currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {currencyOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label} ({option.value})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="category"
+                  render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                      <FormLabel>Category</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a category" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {expenseCategories.map((category) => (
+                            <SelectItem key={category.value} value={category.value}>
+                              {category.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               <FormField
                 control={form.control}
-                name="category"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a category" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent container={portalContainer ?? undefined}>
-                        {expenseCategories.map((category) => (
-                          <SelectItem
-                            key={category.value}
-                            value={category.value}
-                          >
-                            {category.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                name="participants"
+                render={({ field }) => {
+                  const selected = new Set(field.value);
 
-              <FormField
-                control={form.control}
-                name="selectedMembers"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Split with Members</FormLabel>
-                    <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">
-                      Select members to split this expense with
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      You&apos;re pre-selected so you can quickly log solo purchases—add or
-                      remove travelers to adjust who shares the cost.
-                    </p>
-                  </CardHeader>
-                      <CardContent className="space-y-2">
-                        {trip?.members?.map((member) => {
-                          const isSelected = field.value.includes(
-                            member.user.id,
-                          );
-                          return (
-                            <div
-                              key={member.user.id}
-                              className="flex flex-wrap items-center gap-3 rounded-lg border p-2 hover:bg-gray-50"
-                            >
-                              <Checkbox
-                                id={member.user.id}
-                                checked={isSelected}
-                                onCheckedChange={(checked) => {
-                                  const newSelection = checked
-                                    ? [...field.value, member.user.id]
-                                    : field.value.filter(
-                                        (id) => id !== member.user.id,
-                                      );
-                                  field.onChange(newSelection);
-                                }}
-                              />
-                              <Avatar className="h-8 w-8">
-                                <AvatarImage
-                                  src={member.user.profileImageUrl || undefined}
-                                />
-                                <AvatarFallback>
-                                  {member.user.firstName?.[0] ||
-                                    member.user.email?.[0] ||
-                                    "U"}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium">
-                                  {member.user.firstName} {member.user.lastName}
-                                </p>
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                                  {(member.user.cashAppUsername ||
-                                    member.user.phoneNumber) && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs whitespace-nowrap"
-                                    >
-                                      <Smartphone className="mr-1 h-3 w-3" />
-                                      CashApp
-                                    </Badge>
-                                  )}
-                                  {(member.user.venmoUsername ||
-                                    member.user.phoneNumber) && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-xs whitespace-nowrap"
-                                    >
-                                      <Smartphone className="mr-1 h-3 w-3" />
-                                      Venmo
-                                    </Badge>
-                                  )}
-                                  {member.user.phoneNumber && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="whitespace-nowrap text-xs text-green-700 bg-green-100"
-                                    >
-                                      Phone
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                              {isSelected && field.value.length > 0 && (
-                                <div className="ml-auto text-right">
-                                  <p className="text-sm font-medium">
-                                    {(() => {
-                                      const expenseCurrency =
-                                        form.watch("currency") || "USD";
-                                      const originalAmount = parseFloat(
-                                        form.watch("amount") || "0",
-                                      );
+                  return (
+                    <FormItem>
+                      <FormLabel>Split with</FormLabel>
+                      <div className="rounded-lg border">
+                        <div className="max-h-60 overflow-y-auto">
+                          {isTripLoading ? (
+                            <div className="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Loading travelers...
+                            </div>
+                          ) : trip?.members?.length ? (
+                            trip.members.map((member) => {
+                              const memberId = member.user.id;
+                              const isChecked = selected.has(memberId);
 
-                                      if (
-                                        requestCurrency !== expenseCurrency &&
-                                        conversionData
-                                      ) {
-                                        return `${requestCurrency} ${(conversionData.convertedAmount / field.value.length).toFixed(2)}`;
+                              return (
+                                <div
+                                  key={memberId}
+                                  className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                                >
+                                  <Checkbox
+                                    id={`participant-${memberId}`}
+                                    checked={isChecked}
+                                    onCheckedChange={(checked) => {
+                                      if (checked) {
+                                        field.onChange([...field.value, memberId]);
+                                      } else {
+                                        field.onChange(
+                                          field.value.filter((id) => id !== memberId),
+                                        );
                                       }
-
-                                      return `${expenseCurrency} ${(originalAmount / field.value.length).toFixed(2)}`;
-                                    })()}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    per person
-                                  </p>
+                                    }}
+                                  />
+                                  <Avatar className="h-9 w-9">
+                                    <AvatarImage
+                                      src={member.user.profileImageUrl || undefined}
+                                      alt={getMemberDisplayName(member.user)}
+                                    />
+                                    <AvatarFallback>
+                                      {getMemberInitials(member.user)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium">
+                                      {getMemberDisplayName(member.user)}
+                                      {member.user.id === currentUserId ? " (you)" : ""}
+                                    </p>
+                                    <p className="truncate text-xs text-muted-foreground">
+                                      {member.user.email}
+                                    </p>
+                                  </div>
                                 </div>
-                              )}
+                              );
+                            })
+                          ) : (
+                            <div className="flex flex-col items-center gap-3 px-6 py-8 text-center text-sm text-muted-foreground">
+                              <Users className="h-5 w-5" />
+                              Invite travelers to your trip so you can split expenses together.
                             </div>
-                          );
-                        })}
-                      </CardContent>
-                    </Card>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {form.watch("selectedMembers")?.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                      <DollarSign className="h-4 w-4" />
-                      Payment App Quick Links
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {form.watch("selectedMembers")?.map((memberId) => {
-                      const member = trip?.members?.find(
-                        (m) => m.user.id === memberId,
-                      )?.user;
-                      if (!member) return null;
-
-                      const expenseCurrency = form.watch("currency") || "USD";
-                      const originalAmount = parseFloat(
-                        form.watch("amount") || "0",
-                      );
-
-                      const splitAmount =
-                        requestCurrency !== expenseCurrency && conversionData
-                          ? (
-                              conversionData.convertedAmount /
-                              form.watch("selectedMembers").length
-                            ).toFixed(2)
-                          : (
-                              originalAmount /
-                              form.watch("selectedMembers").length
-                            ).toFixed(2);
-
-                      const displayCurrency = requestCurrency;
-
-                      return (
-                        <div
-                          key={memberId}
-                          className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 p-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage
-                                src={member.profileImageUrl || undefined}
-                              />
-                              <AvatarFallback className="text-xs">
-                                {member.firstName?.[0] ||
-                                  member.email?.[0] ||
-                                  "U"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm font-medium">
-                              {member.firstName} {member.lastName}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-medium">
-                              {displayCurrency} {splitAmount}
-                            </span>
-                            <div className="flex flex-wrap gap-2">
-                              {(() => {
-                                const cashAppUrl = generateCashAppUrl(
-                                  member,
-                                  splitAmount,
-                                );
-                                const expenseName =
-                                  form.getValues().description;
-                                const venmoUrl = generateVenmoUrl(
-                                  member,
-                                  splitAmount,
-                                  generatePaymentNote(
-                                    expenseName || "Trip expense",
-                                    trip?.name || undefined,
-                                  ),
-                                );
-
-                                return (
-                                  <>
-                                    {cashAppUrl && (
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          window.open(cashAppUrl, "_blank");
-                                          toast({
-                                            title: "Opening CashApp",
-                                            description: member.phoneNumber
-                                              ? "Redirecting to CashApp with phone number for direct payment"
-                                              : "Redirecting to CashApp with username",
-                                          });
-                                        }}
-                                        className="px-2 py-1 text-xs"
-                                      >
-                                        CashApp
-                                      </Button>
-                                    )}
-                                    {venmoUrl && (
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          window.open(venmoUrl, "_blank");
-                                          toast({
-                                            title: "Opening Venmo",
-                                            description: member.phoneNumber
-                                              ? "Redirecting to Venmo with phone number for direct payment"
-                                              : "Redirecting to Venmo with username",
-                                          });
-                                        }}
-                                        className="px-2 py-1 text-xs"
-                                      >
-                                        Venmo
-                                      </Button>
-                                    )}
-                                  </>
-                                );
-                              })()}
-                            </div>
-                          </div>
+                          )}
                         </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              )}
-
-              <FormField
-                control={form.control}
-                name="splitType"
-                render={({ field }) => (
-                  <FormItem className="hidden">
-                    <FormLabel>Split Type</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="How to split the expense" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent container={portalContainer ?? undefined}>
-                        <SelectItem value="equal">Split Equally</SelectItem>
-                        <SelectItem value="percentage">
-                          By Percentage
-                        </SelectItem>
-                        <SelectItem value="exact">Exact Amounts</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                      </div>
+                      <FormMessage />
+                      <div className="rounded-md border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                        {field.value.length === 0
+                          ? "Select at least one traveler to split this cost."
+                          : perPersonShare
+                          ? `Each person owes ${formatCurrency(perPersonShare, currency)}.`
+                          : "Enter an amount to see the per-person share."}
+                      </div>
+                    </FormItem>
+                  );
+                }}
               />
 
               <FormField
@@ -632,12 +488,12 @@ export function AddExpenseModal({
                 name="receiptUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Receipt URL (Optional)</FormLabel>
+                    <FormLabel>Receipt URL (optional)</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Link to receipt or photo"
+                        placeholder="https://"
                         {...field}
-                        value={field.value || ""}
+                        value={field.value ?? ""}
                       />
                     </FormControl>
                     <FormMessage />
@@ -646,25 +502,30 @@ export function AddExpenseModal({
               />
             </div>
 
-            <footer className="flex flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
+            <div className="flex flex-col gap-2 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:justify-end">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
-                className="w-full sm:w-auto"
+                onClick={closeModal}
+                className="sm:w-auto"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                className="w-full sm:w-auto"
+                className="sm:w-auto"
                 disabled={createExpenseMutation.isPending}
               >
-                {createExpenseMutation.isPending
-                  ? "Adding..."
-                  : "Create expense"}
+                {createExpenseMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save expense"
+                )}
               </Button>
-            </footer>
+            </div>
           </form>
         </Form>
       </DialogContent>
