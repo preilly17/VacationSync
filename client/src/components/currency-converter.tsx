@@ -37,6 +37,7 @@ interface CurrencyConverterProps {
   className?: string;
   onConversionChange?: (conversion: CurrencyConversion | null) => void;
   targetCurrency?: string;
+  portalContainer?: HTMLElement | null;
 }
 
 export function CurrencyConverter({
@@ -48,7 +49,8 @@ export function CurrencyConverter({
   showConversion = true,
   className = "",
   onConversionChange,
-  targetCurrency: propTargetCurrency
+  targetCurrency: propTargetCurrency,
+  portalContainer,
 }: CurrencyConverterProps) {
   const [targetCurrency, setTargetCurrency] = useState<string>(propTargetCurrency || "USD");
   const [conversionResult, setConversionResult] = useState<CurrencyConversion | null>(null);
@@ -180,7 +182,7 @@ export function CurrencyConverter({
           <SelectTrigger className="w-24">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent container={portalContainer ?? undefined}>
             {currencies.map((curr) => (
               <SelectItem key={curr.code} value={curr.code}>
                 <div className="flex items-center gap-2">
@@ -235,7 +237,7 @@ export function CurrencyConverter({
                 <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent container={portalContainer ?? undefined}>
                   {currencies
                     .filter(curr => curr.code !== currency)
                     .map((curr) => (

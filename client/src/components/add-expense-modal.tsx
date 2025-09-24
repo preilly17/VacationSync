@@ -33,7 +33,7 @@ import {
 import { CurrencyConverter } from "@/components/currency-converter";
 import { useToast } from "@/hooks/use-toast";
 import { insertExpenseSchema, type TripWithDetails } from "@shared/schema";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DollarSign, Smartphone } from "lucide-react";
 
 interface AddExpenseModalProps {
@@ -86,11 +86,31 @@ export function AddExpenseModal({
     convertedAmount: number;
     lastUpdated: Date;
   } | null>(null);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
+    null,
+  );
 
   // Get trip data to access members
   const { data: trip } = useQuery<TripWithDetails>({
     queryKey: [`/api/trips/${tripId}`],
   });
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+
+    if (!open) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -155,21 +175,28 @@ export function AddExpenseModal({
     createExpenseMutation.mutate(data);
   };
 
+  const handleContentRef = useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node);
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-[820px] sm:w-[92vw] md:w-[820px] max-h-[92vh] overflow-hidden p-0 gap-0">
+      <DialogContent
+        ref={handleContentRef}
+        className="w-full max-w-[820px] sm:w-[92vw] md:w-[820px] max-h-[92vh] overflow-hidden p-0 gap-0"
+      >
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(onSubmit)}
-            className="grid h-full min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto]"
+            className="flex h-full max-h-full flex-col"
           >
-            <header className="flex items-center border-b border-border px-6 py-5 pr-12">
+            <header className="flex flex-shrink-0 items-center border-b border-border px-6 py-5 pr-12">
               <DialogTitle className="text-lg font-semibold">
                 Add New Expense
               </DialogTitle>
             </header>
 
-            <div className="min-h-0 space-y-6 overflow-y-auto px-6 py-5 pb-32 overscroll-contain sm:pb-8">
+            <div className="flex-1 space-y-6 overflow-y-auto px-6 py-5 pb-8 overscroll-contain">
               <FormField
                 control={form.control}
                 name="description"
@@ -201,6 +228,7 @@ export function AddExpenseModal({
                     setConversionData(conversion)
                   }
                   targetCurrency={requestCurrency}
+                  portalContainer={portalContainer}
                 />
 
                 <div className="rounded-lg border bg-blue-50 p-4 shadow-sm shadow-blue-100/20">
@@ -216,7 +244,7 @@ export function AddExpenseModal({
                       <SelectTrigger className="w-32">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent container={portalContainer ?? undefined}>
                         <SelectItem value="USD">💵 USD</SelectItem>
                         <SelectItem value="EUR">💶 EUR</SelectItem>
                         <SelectItem value="GBP">💷 GBP</SelectItem>
@@ -288,7 +316,7 @@ export function AddExpenseModal({
                           <SelectValue placeholder="Select a category" />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent>
+                      <SelectContent container={portalContainer ?? undefined}>
                         {expenseCategories.map((category) => (
                           <SelectItem
                             key={category.value}
@@ -560,7 +588,7 @@ export function AddExpenseModal({
                           <SelectValue placeholder="How to split the expense" />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent>
+                      <SelectContent container={portalContainer ?? undefined}>
                         <SelectItem value="equal">Split Equally</SelectItem>
                         <SelectItem value="percentage">
                           By Percentage
@@ -592,7 +620,7 @@ export function AddExpenseModal({
               />
             </div>
 
-            <footer className="sticky bottom-0 flex flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
+            <footer className="flex flex-col gap-3 border-t border-border bg-gradient-to-t from-background via-background/95 to-background px-6 py-4 sm:flex-row sm:justify-end sm:gap-3">
               <Button
                 type="button"
                 variant="outline"
