@@ -3054,6 +3054,52 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
+  async cancelActivity(activityId: number, currentUserId: string): Promise<Activity> {
+    const activity = await this.getActivityById(activityId);
+    if (!activity) {
+      throw new Error("Activity not found");
+    }
+
+    if (activity.postedBy !== currentUserId) {
+      throw new Error("You can only cancel activities you created");
+    }
+
+    const trip = await this.getTripById(activity.tripCalendarId);
+    if (!trip) {
+      throw new Error("Trip not found");
+    }
+
+    const isMember = trip.members.some((member) => member.userId === currentUserId);
+    if (!isMember) {
+      throw new Error("You are no longer a member of this trip");
+    }
+
+    await query("BEGIN");
+    try {
+      await query(`DELETE FROM activity_comments WHERE activity_id = $1`, [activityId]);
+      await query(`DELETE FROM activity_invites WHERE activity_id = $1`, [activityId]);
+      await query(`DELETE FROM notifications WHERE activity_id = $1`, [activityId]);
+      await query(
+        `DELETE FROM proposal_schedule_links WHERE scheduled_table = 'activities' AND scheduled_id = $1`,
+        [activityId],
+      );
+      await query(`DELETE FROM activities WHERE id = $1`, [activityId]);
+      await query("COMMIT");
+    } catch (error) {
+      await query("ROLLBACK");
+      throw error;
+    }
+
+    await this.notifyProposalCancellation({
+      tripId: activity.tripCalendarId,
+      proposalType: "activity",
+      proposalName: activity.name,
+      canceledBy: currentUserId,
+    });
+
+    return activity;
+  }
+
   async acceptActivity(activityId: number, userId: string): Promise<void> {
     await this.setActivityInviteStatus(activityId, userId, "accepted");
   }
@@ -6884,7 +6930,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
   private async notifyProposalCancellation(options: {
     tripId: number;
-    proposalType: "hotel" | "flight" | "restaurant";
+    proposalType: "hotel" | "flight" | "restaurant" | "activity";
     proposalName: string;
     canceledBy: string;
   }): Promise<void> {
@@ -6927,7 +6973,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
         ? "hotel"
         : proposalType === "flight"
         ? "flight"
-        : "restaurant";
+        : proposalType === "restaurant"
+        ? "restaurant"
+        : "activity";
 
     const title = `${typeLabel.charAt(0).toUpperCase()}${typeLabel.slice(1)} proposal canceled`;
     const message = `${displayName} canceled the ${typeLabel} proposal "${proposalName}".`;

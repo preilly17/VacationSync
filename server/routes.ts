@@ -1703,6 +1703,48 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.post('/api/activities/:activityId/cancel', isAuthenticated, async (req: any, res) => {
+    try {
+      const activityId = parseInt(req.params.activityId);
+      if (Number.isNaN(activityId)) {
+        return res.status(400).json({ message: 'Invalid activity ID' });
+      }
+
+      let userId = getRequestUserId(req);
+      if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
+        userId = 'demo-user';
+      }
+
+      if (!userId) {
+        return res.status(401).json({ message: 'User ID not found' });
+      }
+
+      const activity = await storage.cancelActivity(activityId, userId);
+
+      broadcastToTrip(activity.tripCalendarId, {
+        type: 'activity_canceled',
+        activityId,
+      });
+
+      res.json({ success: true, activityId });
+    } catch (error: unknown) {
+      console.error('Error canceling activity:', error);
+      if (error instanceof Error) {
+        if (error.message === 'Activity not found' || error.message === 'Trip not found') {
+          return res.status(404).json({ message: error.message });
+        }
+        if (
+          error.message.includes('cancel activities you created') ||
+          error.message.includes('no longer a member')
+        ) {
+          return res.status(403).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: 'Failed to cancel activity' });
+    }
+  });
+
   // WebSocket setup
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });

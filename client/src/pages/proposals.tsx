@@ -205,13 +205,14 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       type,
       proposalId,
     }: {
-      type: "hotel" | "flight" | "restaurant";
+      type: "hotel" | "flight" | "restaurant" | "activity";
       proposalId: number;
     }) => {
       const endpointMap = {
         hotel: `/api/hotel-proposals/${proposalId}/cancel`,
         flight: `/api/flight-proposals/${proposalId}/cancel`,
         restaurant: `/api/restaurant-proposals/${proposalId}/cancel`,
+        activity: `/api/activities/${proposalId}/cancel`,
       } as const;
 
       const res = await apiRequest(endpointMap[type], { method: "POST" });
@@ -231,6 +232,9 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           break;
         case "restaurant":
           queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
+          break;
+        case "activity":
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
           break;
       }
 
@@ -517,6 +521,12 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     const startTime = proposal.startTime ? new Date(proposal.startTime) : null;
     const endTime = proposal.endTime ? new Date(proposal.endTime) : null;
     const createdAt = proposal.createdAt ? new Date(proposal.createdAt) : null;
+    const normalizedStatus = (proposal.status ?? "scheduled").toLowerCase();
+    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCancelling =
+      cancelProposalMutation.isPending &&
+      cancelProposalMutation.variables?.proposalId === proposal.id &&
+      cancelProposalMutation.variables?.type === "activity";
 
     const durationMinutes =
       startTime && endTime ? Math.max(differenceInMinutes(endTime, startTime), 0) : null;
@@ -583,6 +593,23 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
             </div>
             <div className="flex flex-col items-end gap-2">
               {getStatusBadge(proposal.status || "scheduled")}
+              {canCancel ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  disabled={isCancelling}
+                  onClick={() => {
+                    if (window.confirm("Cancel this proposal for everyone?")) {
+                      cancelProposalMutation.mutate({ type: "activity", proposalId: proposal.id });
+                    }
+                  }}
+                  data-testid={`button-cancel-activity-proposal-${proposal.id}`}
+                >
+                  <XCircle className="w-4 h-4 mr-1" />
+                  {isCancelling ? "Canceling..." : "Cancel"}
+                </Button>
+              ) : null}
               {createdAt ? (
                 <span className="text-xs text-neutral-500" data-testid={`text-activity-created-${proposal.id}`}>
                   Added {formatDistanceToNow(createdAt, { addSuffix: true })}
