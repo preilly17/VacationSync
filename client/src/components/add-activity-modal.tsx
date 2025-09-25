@@ -287,6 +287,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
                 id="cost"
                 type="number"
                 step="0.01"
+                inputMode="decimal"
                 placeholder="0.00"
                 {...form.register("cost")}
               />
@@ -299,6 +300,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
               <Input
                 id="maxCapacity"
                 type="number"
+                inputMode="numeric"
                 placeholder="No limit"
                 {...form.register("maxCapacity")}
               />

@@ -12,13 +12,15 @@ interface MobileNavProps {
 }
 
 export function MobileNav({ trip, user }: MobileNavProps) {
+  // MOBILE-ONLY top navigation shell
   return (
-    <nav className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
+    <nav className="md:hidden bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="sm" className="p-0">
+              {/* // MOBILE-ONLY enlarged tap target */}
+              <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full">
                 <Menu className="w-5 h-5 text-neutral-600" />
               </Button>
             </SheetTrigger>
