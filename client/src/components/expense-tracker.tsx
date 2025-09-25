@@ -336,7 +336,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       }
 
       const shareForCurrentUser = expense.shares.find(
-        (share) => share.userId === user.id,
+        (share) => share.userId === user.id && share.userId !== expense.paidBy.id,
       );
 
       if (detailView === "youPaid") {
@@ -356,7 +356,11 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
           return false;
         }
         return expense.shares.some(
-          (share) => share.userId !== user.id && share.amount > 0 && !share.isPaid,
+          (share) =>
+            share.userId !== user.id &&
+            share.userId !== expense.paidBy.id &&
+            share.amount > 0 &&
+            !share.isPaid,
         );
       }
 
@@ -539,14 +543,17 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
           </Card>
         ) : (
           expenses.map((expense) => {
-            const shareForCurrentUser = expense.shares.find(
+            const sharesExcludingPayer = expense.shares.filter(
+              (share) => share.userId !== expense.paidBy.id,
+            );
+            const shareForCurrentUser = sharesExcludingPayer.find(
               (share) => share.userId === user?.id,
             );
             const isDeleting = deletingId === expense.id;
             const isSettling = settlingId === expense.id;
             const perPerson =
-              expense.shares.length > 0
-                ? expense.totalAmount / expense.shares.length
+              sharesExcludingPayer.length > 0
+                ? expense.totalAmount / sharesExcludingPayer.length
                 : expense.totalAmount;
 
             return (
@@ -582,7 +589,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                       <p className="text-xl font-semibold">
                         {formatCurrency(expense.totalAmount, expense.currency)}
                       </p>
-                      {expense.shares.length > 1 ? (
+                      {sharesExcludingPayer.length > 1 ? (
                         <p className="text-xs text-muted-foreground">
                           {formatCurrency(perPerson, expense.currency)} each
                         </p>
@@ -618,7 +625,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                 </CardHeader>
 
                 <CardContent className="space-y-3 pt-4">
-                  {expense.shares.map((share) => {
+                  {sharesExcludingPayer.map((share) => {
                     const isCurrentUser = share.userId === user?.id;
                     return (
                       <div
@@ -679,6 +686,8 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                           expense.currency,
                         )} on this expense.`
                       )
+                    ) : expense.paidBy.id === user?.id ? (
+                      "You covered this expense for everyone else."
                     ) : (
                       "You are not part of this split."
                     )}
@@ -803,11 +812,14 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                 </TableHeader>
                 <TableBody>
                   {filteredExpenses.map((expense) => {
-                    const shareForCurrentUser = expense.shares.find(
+                    const sharesExcludingPayer = expense.shares.filter(
+                      (share) => share.userId !== expense.paidBy.id,
+                    );
+                    const shareForCurrentUser = sharesExcludingPayer.find(
                       (share) => share.userId === user?.id,
                     );
 
-                    const outstandingFromOthers = expense.shares
+                    const outstandingFromOthers = sharesExcludingPayer
                       .filter((share) => share.userId !== user?.id && !share.isPaid)
                       .reduce((total, share) => total + share.amount, 0);
 
