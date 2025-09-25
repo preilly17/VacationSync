@@ -49,11 +49,6 @@ export default function HotelsPage() {
   const [searchResults, setSearchResults] = useState<HotelSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchLocation, setSearchLocation] = useState<any>(null);
-  const [searchFilters, setSearchFilters] = useState({
-    maxPrice: '',
-    minRating: 'any',
-    sortBy: 'price'
-  });
   const [checkInDate, setCheckInDate] = useState('');
   const [checkOutDate, setCheckOutDate] = useState('');
   const [adultCount, setAdultCount] = useState('2');
@@ -392,70 +387,46 @@ export default function HotelsPage() {
 
       let results = await response.json();
       console.log("Hotel search response:", results);
-      
+
       // Check if results is valid array
       if (!Array.isArray(results)) {
         console.error("Invalid results format:", results);
         throw new Error("Invalid response format from hotel search API");
       }
-      
+
       const source = "Amadeus API";
-      
-      // Apply filters with error handling
-      if (searchFilters.minRating && searchFilters.minRating !== 'any') {
-        results = results.filter((hotel: any) => {
-          const rating = parseFloat(hotel.rating) || 0;
-          return rating >= parseFloat(searchFilters.minRating);
-        });
-      }
-      
-      if (searchFilters.maxPrice) {
-        results = results.filter((hotel: any) => {
-          try {
-            // 🔧 INTEGRATION FIX: Use numeric pricePerNightValue instead of parsing formatted strings
-            const pricePerNight = hotel.pricePerNightValue || 
-              parseFloat(String(hotel.price || '0').replace(/[^0-9.]/g, '')) || 0;
-            return pricePerNight <= parseFloat(searchFilters.maxPrice);
-          } catch (e) {
-            return true; // Include hotel if price parsing fails
-          }
-        });
-      }
-      
-      // Apply sorting with error handling
-      if (searchFilters.sortBy === 'price') {
-        results.sort((a: any, b: any) => {
-          try {
-            // 🔧 INTEGRATION FIX: Use numeric pricePerNightValue for accurate sorting
-            const priceA = a.pricePerNightValue || 
-              parseFloat(String(a.price || '0').replace(/[^0-9.]/g, '')) || 0;
-            const priceB = b.pricePerNightValue || 
-              parseFloat(String(b.price || '0').replace(/[^0-9.]/g, '')) || 0;
-            return priceA - priceB;
-          } catch (e) {
-            return 0;
-          }
-        });
-      } else if (searchFilters.sortBy === 'rating') {
-        results.sort((a: any, b: any) => {
-          const ratingA = parseFloat(a.rating) || 0;
-          const ratingB = parseFloat(b.rating) || 0;
-          return ratingB - ratingA;
-        });
-      }
-      
-      setSearchResults(results);
-      
+
+      const parsePriceValue = (hotel: any) => {
+        if (hotel.pricePerNightValue != null) {
+          const value = Number(hotel.pricePerNightValue);
+          return Number.isFinite(value) ? value : 0;
+        }
+
+        const rawPrice = String(hotel.price ?? "");
+        const numericPrice = parseFloat(rawPrice.replace(/[^0-9.]/g, ""));
+        return Number.isFinite(numericPrice) ? numericPrice : 0;
+      };
+
+      const processedResults = [...results].sort((a: any, b: any) => {
+        try {
+          return parsePriceValue(a) - parsePriceValue(b);
+        } catch (error) {
+          return 0;
+        }
+      });
+
+      setSearchResults(processedResults);
+
       // Show appropriate toast based on data source
       if (source === "Amadeus API") {
         toast({
           title: "Live Hotel Data",
-          description: `Found ${results.length} hotels with real-time pricing via Amadeus API`,
+          description: `Found ${processedResults.length} hotels with real-time pricing via Amadeus API`,
         });
       } else {
         toast({
           title: "Enhanced Database Hotels",
-          description: `Found ${results.length} authentic hotels with market-based pricing`,
+          description: `Found ${processedResults.length} authentic hotels with market-based pricing`,
           variant: "default",
         });
       }
@@ -1083,11 +1054,10 @@ export default function HotelsPage() {
         <TabsContent value="search" className="space-y-6 mt-6">
           {/* Hotel Search Interface */}
           <Card>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Search Location</Label>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                <div className="space-y-2 md:col-span-2 xl:col-span-2">
+                  <Label>Destination</Label>
                   <SmartLocationSearch
                     placeholder="Search destination city..."
                     value={searchLocation?.displayName || searchLocation?.name || ''}
@@ -1105,127 +1075,68 @@ export default function HotelsPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="hotel-check-in">Check-in</Label>
-                    <Input
-                      id="hotel-check-in"
-                      type="date"
-                      value={checkInDate}
-                      onChange={(event) => setCheckInDate(event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="hotel-check-out">Check-out</Label>
-                    <Input
-                      id="hotel-check-out"
-                      type="date"
-                      value={checkOutDate}
-                      onChange={(event) => setCheckOutDate(event.target.value)}
-                      min={checkInDate || undefined}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="hotel-adults">Adults</Label>
-                    <Input
-                      id="hotel-adults"
-                      type="number"
-                      min={1}
-                      value={adultCount}
-                      onChange={(event) => setAdultCount(event.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="hotel-children">Children</Label>
-                    <Input
-                      id="hotel-children"
-                      type="number"
-                      min={0}
-                      value={childCount}
-                      onChange={(event) => setChildCount(event.target.value)}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Search Filters</Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="hotel-check-in">Check-in</Label>
                   <Input
-                    placeholder="Max price"
+                    id="hotel-check-in"
+                    type="date"
+                    value={checkInDate}
+                    onChange={(event) => setCheckInDate(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hotel-check-out">Check-out</Label>
+                  <Input
+                    id="hotel-check-out"
+                    type="date"
+                    value={checkOutDate}
+                    onChange={(event) => setCheckOutDate(event.target.value)}
+                    min={checkInDate || undefined}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hotel-adults">Adults</Label>
+                  <Input
+                    id="hotel-adults"
                     type="number"
-                      value={searchFilters.maxPrice}
-                      onChange={(e) => setSearchFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
-                    />
-                    <Select 
-                      value={searchFilters.minRating} 
-                      onValueChange={(value) => setSearchFilters(prev => ({ ...prev, minRating: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Min rating" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="any">Any rating</SelectItem>
-                        <SelectItem value="3">3+ stars</SelectItem>
-                        <SelectItem value="4">4+ stars</SelectItem>
-                        <SelectItem value="5">5 stars</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select 
-                      value={searchFilters.sortBy} 
-                      onValueChange={(value) => setSearchFilters(prev => ({ ...prev, sortBy: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="price">Price</SelectItem>
-                        <SelectItem value="rating">Rating</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                    min={1}
+                    value={adultCount}
+                    onChange={(event) => setAdultCount(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hotel-children">Children</Label>
+                  <Input
+                    id="hotel-children"
+                    type="number"
+                    min={0}
+                    value={childCount}
+                    onChange={(event) => setChildCount(event.target.value)}
+                  />
                 </div>
               </div>
-              
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap gap-3">
                 <Button
                   type="button"
                   onClick={() => handleExternalSearch('airbnb')}
-                  className="bg-[#FF5A5F] hover:bg-[#e24e52] text-white flex items-center gap-2 shadow-sm"
+                  className="bg-[#FF5A5F] hover:bg-[#e24e52] text-white shadow-sm"
                 >
-                  <img
-                    src="https://upload.wikimedia.org/wikipedia/commons/6/69/Airbnb_Logo_B%C3%A9lo.svg"
-                    alt="Airbnb logo"
-                    className="h-4 w-4"
-                  />
                   Search Airbnb
                 </Button>
                 <Button
                   type="button"
                   onClick={() => handleExternalSearch('vrbo')}
-                  className="bg-[#0A4385] hover:bg-[#08376b] text-white flex items-center gap-2 shadow-sm"
+                  className="bg-[#0A4385] hover:bg-[#08376b] text-white shadow-sm"
                 >
-                  <img
-                    src="https://upload.wikimedia.org/wikipedia/commons/1/12/VRBO_logo.svg"
-                    alt="VRBO logo"
-                    className="h-4 w-auto"
-                  />
                   Search VRBO
                 </Button>
                 <Button
                   type="button"
                   onClick={() => handleExternalSearch('expedia')}
-                  className="bg-[#FEC601] hover:bg-[#e0b000] text-gray-900 flex items-center gap-2 shadow-sm"
+                  className="bg-[#FEC601] hover:bg-[#e0b000] text-gray-900 shadow-sm"
                 >
-                  <img
-                    src="https://upload.wikimedia.org/wikipedia/commons/6/6b/Expedia_Logo.svg"
-                    alt="Expedia logo"
-                    className="h-4 w-auto"
-                  />
                   Search Expedia
                 </Button>
               </div>
@@ -1272,62 +1183,6 @@ export default function HotelsPage() {
           </Form>
           </DialogContent>
         </Dialog>
-
-      {/* Hotel Search Section */}
-      <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Search Hotels in {trip?.destination}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 flex-1">
-                <Input
-                  placeholder="Max Price ($)"
-                  value={searchFilters.maxPrice}
-                  onChange={(e) => setSearchFilters({ ...searchFilters, maxPrice: e.target.value })}
-                />
-                <Select
-                  value={searchFilters.minRating}
-                  onValueChange={(value) => setSearchFilters({ ...searchFilters, minRating: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Min Rating" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any">Any Rating</SelectItem>
-                    <SelectItem value="3">3+ Stars</SelectItem>
-                    <SelectItem value="4">4+ Stars</SelectItem>
-                    <SelectItem value="4.5">4.5+ Stars</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={searchFilters.sortBy}
-                  onValueChange={(value) => setSearchFilters({ ...searchFilters, sortBy: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sort By" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="price">Price (Low to High)</SelectItem>
-                    <SelectItem value="rating">Rating (High to Low)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={searchHotels} disabled={isSearching}>
-                {isSearching ? "Searching..." : "Find Hotels"}
-              </Button>
-            </div>
-            
-            {trip && (
-              <div className="text-sm text-muted-foreground">
-                Searching for hotels in {trip.destination} from {format(new Date(trip.startDate), 'MMM d')} to {format(new Date(trip.endDate), 'MMM d')}
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
       {/* Search Results */}
       {searchResults.length > 0 && (
