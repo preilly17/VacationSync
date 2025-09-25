@@ -32,6 +32,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { TripWithDetails } from "@shared/schema";
+import { computeSplits } from "@shared/expenses";
 import { Loader2, Users } from "lucide-react";
 
 interface AddExpenseModalProps {
@@ -76,7 +77,7 @@ const formSchema = z.object({
   category: z.string().min(1, "Category is required"),
   participants: z
     .array(z.string())
-    .min(1, "Select at least one traveler to split this expense"),
+    .min(1, "Choose at least one person to split with."),
   receiptUrl: z.preprocess(
     (value) =>
       typeof value === "string" && value.trim().length === 0 ? undefined : value,
@@ -99,19 +100,13 @@ const defaultValues: FormValues = {
   receiptUrl: undefined,
 };
 
-type CreateExpenseInput = {
-  tripId: number;
-  description: string;
-  amount: number;
+type CreateExpensePayload = {
+  amountCents: number;
   currency: string;
+  description: string;
   category: string;
-  splitType: "equal";
-  splitData: {
-    members: string[];
-    splitAmount: number;
-    splitType: "equal";
-  };
-  selectedMembers: string[];
+  participantUserIds: string[];
+  payerUserId: string;
   receiptUrl?: string;
 };
 
@@ -212,27 +207,45 @@ export function AddExpenseModal({
 
   const createExpenseMutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const amountNumber = Number(values.amount);
-      const participants = currentUserId
-        ? values.participants.filter((id) => id !== currentUserId)
-        : values.participants;
-      const splitAmount =
-        participants.length > 0 ? amountNumber / participants.length : 0;
+      if (!currentUserId) {
+        throw new Error("We couldn't identify the payer for this expense.");
+      }
 
-      const payload: CreateExpenseInput = {
-        tripId,
-        description: values.description.trim(),
-        amount: amountNumber,
+      if (!trip) {
+        throw new Error("Trip details are still loading. Please try again.");
+      }
+
+      const parsedAmount = Number.parseFloat(values.amount);
+      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+        throw new Error("Amount must be greater than 0");
+      }
+
+      const amountCents = Math.round(parsedAmount * 100);
+      const selectedSet = new Set(values.participants);
+      const participantUserIds = trip.members
+        .map((member) => member.user.id)
+        .filter(
+          (memberId) =>
+            memberId !== currentUserId && selectedSet.has(memberId),
+        );
+
+      if (participantUserIds.length === 0) {
+        throw new Error("Choose at least one person to split with.");
+      }
+
+      // Validate the split locally to keep UI and backend logic in sync.
+      computeSplits(amountCents, participantUserIds);
+
+      const payload: CreateExpensePayload = {
+        amountCents,
         currency: values.currency,
+        description: values.description.trim(),
         category: values.category,
-        splitType: "equal",
-        splitData: {
-          members: participants,
-          splitAmount,
-          splitType: "equal",
-        },
-        selectedMembers: participants,
-        ...(values.receiptUrl ? { receiptUrl: values.receiptUrl } : {}),
+        participantUserIds,
+        payerUserId: currentUserId,
+        ...(values.receiptUrl
+          ? { receiptUrl: values.receiptUrl.trim() }
+          : {}),
       };
 
       await apiRequest(`/api/trips/${tripId}/expenses`, {
@@ -282,17 +295,51 @@ export function AddExpenseModal({
     return Number.isFinite(parsed) ? parsed : 0;
   }, [amountInput]);
 
-  const perPersonShare = useMemo(() => {
-    if (participantsExcludingPayer.length === 0) {
-      return null;
+  const orderedParticipants = useMemo(() => {
+    if (!trip) {
+      return participantsExcludingPayer;
     }
 
+    const selectedSet = new Set(participantsExcludingPayer);
+    return trip.members
+      .map((member) => member.user.id)
+      .filter((memberId) => memberId !== currentUserId && selectedSet.has(memberId));
+  }, [trip, currentUserId, participantsExcludingPayer]);
+
+  const amountCents = useMemo(() => {
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       return null;
     }
 
-    return totalAmount / participantsExcludingPayer.length;
-  }, [participantsExcludingPayer, totalAmount]);
+    return Math.round(totalAmount * 100);
+  }, [totalAmount]);
+
+  const splitPreview = useMemo(() => {
+    if (!trip || amountCents === null) {
+      return null;
+    }
+
+    if (orderedParticipants.length === 0) {
+      return null;
+    }
+
+    try {
+      const splits = computeSplits(amountCents, orderedParticipants);
+      const summaries = splits.map((split) => {
+        const member = trip.members.find((item) => item.user.id === split.userId);
+        return {
+          userId: split.userId,
+          amountCents: split.amountCents,
+          label: getMemberDisplayName(member?.user),
+          formattedAmount: formatCurrency(split.amountCents / 100, currency),
+        };
+      });
+
+      return { splits, summaries };
+    } catch {
+      return null;
+    }
+  }, [trip, orderedParticipants, amountCents, currency]);
 
   return (
     <Dialog
@@ -420,6 +467,13 @@ export function AddExpenseModal({
                 name="participants"
                 render={({ field }) => {
                   const selected = new Set(field.value);
+                  const payerMember = trip?.members?.find(
+                    (member) => member.user.id === currentUserId,
+                  );
+                  const otherMembers = (trip?.members ?? []).filter(
+                    (member) => member.user.id !== currentUserId,
+                  );
+                  const hasMembers = (payerMember ? 1 : 0) + otherMembers.length > 0;
 
                   return (
                     <FormItem>
@@ -431,55 +485,89 @@ export function AddExpenseModal({
                               <Loader2 className="h-4 w-4 animate-spin" />
                               Loading travelers...
                             </div>
-                          ) : trip?.members?.length ? (
-                            trip.members.map((member) => {
-                              const memberId = member.user.id;
-                              const isCurrentUser = memberId === currentUserId;
-                              const isChecked = selected.has(memberId);
-
-                              return (
-                                <div
-                                  key={memberId}
-                                  className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
-                                >
+                          ) : hasMembers ? (
+                            <>
+                              {payerMember ? (
+                                <div className="flex items-center gap-3 border-b px-4 py-3">
                                   <Checkbox
-                                    id={`participant-${memberId}`}
-                                    checked={isChecked}
-                                    disabled={isCurrentUser}
-                                    onCheckedChange={(checked) => {
-                                      if (isCurrentUser) {
-                                        return;
-                                      }
-                                      if (checked) {
-                                        field.onChange([...field.value, memberId]);
-                                      } else {
-                                        field.onChange(
-                                          field.value.filter((id) => id !== memberId),
-                                        );
-                                      }
-                                    }}
+                                    id={`participant-${payerMember.user.id}`}
+                                    checked={false}
+                                    disabled
                                   />
                                   <Avatar className="h-9 w-9">
                                     <AvatarImage
-                                      src={member.user.profileImageUrl || undefined}
-                                      alt={getMemberDisplayName(member.user)}
+                                      src={
+                                        payerMember.user.profileImageUrl || undefined
+                                      }
+                                      alt={getMemberDisplayName(payerMember.user)}
                                     />
                                     <AvatarFallback>
-                                      {getMemberInitials(member.user)}
+                                      {getMemberInitials(payerMember.user)}
                                     </AvatarFallback>
                                   </Avatar>
                                   <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-medium">
-                                      {getMemberDisplayName(member.user)}
-                                      {isCurrentUser ? " (payer)" : ""}
+                                      You (payer)
                                     </p>
                                     <p className="truncate text-xs text-muted-foreground">
-                                      {member.user.email}
+                                      {payerMember.user.email}
                                     </p>
                                   </div>
                                 </div>
-                              );
-                            })
+                              ) : null}
+
+                              {otherMembers.length > 0 ? (
+                                otherMembers.map((member) => {
+                                  const memberId = member.user.id;
+                                  const isChecked = selected.has(memberId);
+
+                                  return (
+                                    <div
+                                      key={memberId}
+                                      className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                                    >
+                                      <Checkbox
+                                        id={`participant-${memberId}`}
+                                        checked={isChecked}
+                                        onCheckedChange={(checked) => {
+                                          if (checked) {
+                                            if (!selected.has(memberId)) {
+                                              field.onChange([...field.value, memberId]);
+                                            }
+                                          } else {
+                                            field.onChange(
+                                              field.value.filter((id) => id !== memberId),
+                                            );
+                                          }
+                                        }}
+                                      />
+                                      <Avatar className="h-9 w-9">
+                                        <AvatarImage
+                                          src={member.user.profileImageUrl || undefined}
+                                          alt={getMemberDisplayName(member.user)}
+                                        />
+                                        <AvatarFallback>
+                                          {getMemberInitials(member.user)}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-medium">
+                                          {getMemberDisplayName(member.user)}
+                                        </p>
+                                        <p className="truncate text-xs text-muted-foreground">
+                                          {member.user.email}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              ) : (
+                                <div className="flex flex-col items-center gap-3 px-6 py-8 text-center text-sm text-muted-foreground">
+                                  <Users className="h-5 w-5" />
+                                  Invite travelers to your trip so you can split expenses together.
+                                </div>
+                              )}
+                            </>
                           ) : (
                             <div className="flex flex-col items-center gap-3 px-6 py-8 text-center text-sm text-muted-foreground">
                               <Users className="h-5 w-5" />
@@ -491,10 +579,16 @@ export function AddExpenseModal({
                       <FormMessage />
                       <div className="rounded-md border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
                         {participantsExcludingPayer.length === 0
-                          ? "Select at least one traveler to split this cost."
-                          : perPersonShare
-                          ? `Each person owes ${formatCurrency(perPersonShare, currency)}.`
-                          : "Enter an amount to see the per-person share."}
+                          ? "Choose at least one person to split with."
+                          : amountCents === null
+                          ? "Enter an amount to see the split."
+                          : splitPreview
+                          ? `Requests: ${splitPreview.summaries
+                              .map(
+                                (summary) => `${summary.label} ${summary.formattedAmount}`,
+                              )
+                              .join(" • ")}`
+                          : "We couldn't calculate the split. Double-check the details."}
                       </div>
                     </FormItem>
                   );
@@ -532,7 +626,11 @@ export function AddExpenseModal({
               <Button
                 type="submit"
                 className="sm:w-auto"
-                disabled={createExpenseMutation.isPending}
+                disabled={
+                  createExpenseMutation.isPending ||
+                  participantsExcludingPayer.length === 0 ||
+                  amountCents === null
+                }
               >
                 {createExpenseMutation.isPending ? (
                   <>
@@ -540,7 +638,7 @@ export function AddExpenseModal({
                     Saving...
                   </>
                 ) : (
-                  "Save expense"
+                  "Save & send requests"
                 )}
               </Button>
             </div>

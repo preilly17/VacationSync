@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { computeSplits, centsToAmount } from "@shared/expenses";
 import {
   type User,
   type UpsertUser,
@@ -71,6 +72,12 @@ import {
   type InsertWishListProposalDraft,
   type WishListProposalDraftWithDetails,
 } from "@shared/schema";
+
+type CreateExpensePayload = InsertExpense & {
+  selectedMembers?: string[];
+  participantUserIds?: string[];
+  amountCents?: number;
+};
 
 const toNumber = (value: string | number): number => {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -1205,6 +1212,7 @@ const mapExpenseShare = (row: ExpenseShareRow): ExpenseShare => ({
   userId: row.user_id,
   amount: toNumber(row.amount),
   isPaid: row.is_paid,
+  status: row.is_paid ? "paid" : "pending",
   paidAt: row.paid_at,
   createdAt: row.created_at,
 });
@@ -3488,13 +3496,67 @@ export class DatabaseStorage implements IStorage {
     }
   }
   async createExpense(
-    expense: InsertExpense & { selectedMembers?: string[] },
+    expense: CreateExpensePayload,
     userId: string,
   ): Promise<Expense> {
     await query("BEGIN");
     let participantIds: string[] = [];
     let createdExpenseRow: ExpenseRow | null = null;
     try {
+      const payerId = expense.paidBy ?? userId;
+      const splitDataInput = (expense.splitData ?? null) as
+        | Record<string, unknown>
+        | null;
+      const membersFromSplitData = Array.isArray(
+        (splitDataInput as Record<string, unknown>)?.members as unknown[],
+      )
+        ? ((splitDataInput as { members: string[] }).members ?? [])
+        : undefined;
+      const selectedMembers = Array.isArray(expense.selectedMembers)
+        ? expense.selectedMembers
+        : undefined;
+      const participantUserIds = Array.isArray(expense.participantUserIds)
+        ? expense.participantUserIds
+        : undefined;
+
+      const rawParticipantIds =
+        participantUserIds ?? membersFromSplitData ?? selectedMembers ?? [];
+      const dedupedParticipants: string[] = [];
+      const seenParticipants = new Set<string>();
+      for (const rawId of rawParticipantIds) {
+        if (typeof rawId !== "string") {
+          continue;
+        }
+        const trimmed = rawId.trim();
+        if (!trimmed || trimmed === payerId || seenParticipants.has(trimmed)) {
+          continue;
+        }
+        seenParticipants.add(trimmed);
+        dedupedParticipants.push(trimmed);
+      }
+
+      if (dedupedParticipants.length === 0) {
+        throw new Error("Choose at least one person to split with.");
+      }
+
+      const amountCents =
+        typeof expense.amountCents === "number"
+          ? expense.amountCents
+          : Math.round(Number(expense.amount) * 100);
+
+      if (!Number.isInteger(amountCents) || amountCents <= 0) {
+        throw new Error("Amount must be greater than zero");
+      }
+
+      const splits = computeSplits(amountCents, dedupedParticipants);
+      const totalAmount = centsToAmount(amountCents);
+      const splitDataToStore: Record<string, unknown> = {
+        algorithm: "equal_payer_included",
+        members: dedupedParticipants,
+        totalAmountCents: amountCents,
+        splits,
+      };
+
       const { rows } = await query<ExpenseRow>(
         `
         INSERT INTO expenses (
@@ -3547,8 +3609,8 @@ export class DatabaseStorage implements IStorage {
         `,
         [
           expense.tripId,
-          expense.paidBy ?? userId,
-          expense.amount,
+          payerId,
+          totalAmount,
           expense.currency,
           expense.exchangeRate ?? null,
           expense.originalCurrency ?? null,
@@ -3556,8 +3618,8 @@ export class DatabaseStorage implements IStorage {
           expense.description,
           expense.category,
           expense.activityId ?? null,
-          expense.splitType ?? "equal",
-          expense.splitData ?? null,
+          "equal",
+          splitDataToStore,
           expense.receiptUrl ?? null,
         ],
       );
@@ -3567,82 +3629,21 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Failed to create expense");
       }
 
-      const splitData = (expense.splitData ?? null) as
-        | Record<string, unknown>
-        | null;
-      const membersFromSplitData = Array.isArray(
-        (splitData as Record<string, unknown>)?.members as unknown[],
-      )
-        ? ((splitData as { members: string[] }).members ?? [])
-        : undefined;
-      const selectedMembers = Array.isArray(expense.selectedMembers)
-        ? expense.selectedMembers
-        : undefined;
-      participantIds = membersFromSplitData ?? selectedMembers ?? [];
+      participantIds = dedupedParticipants;
 
-      if (participantIds.length > 0) {
-        const totalAmount = Number(expense.amount);
-        const splitType = expense.splitType ?? "equal";
-        const exactAmounts =
-          (splitData?.amounts as Record<string, unknown> | undefined) ??
-          undefined;
-        const percentages =
-          (splitData?.percentages as Record<string, unknown> | undefined) ??
-          undefined;
-        const splitAmountValue = splitData?.splitAmount;
-
-        for (const participantId of participantIds) {
-          let shareAmount =
-            participantIds.length > 0
-              ? totalAmount / participantIds.length
-              : 0;
-
-          if (splitType === "exact" && exactAmounts) {
-            const value = exactAmounts[participantId];
-            if (typeof value === "number") {
-              shareAmount = value;
-            } else if (typeof value === "string") {
-              const parsed = Number(value);
-              if (!Number.isNaN(parsed)) {
-                shareAmount = parsed;
-              }
-            }
-          } else if (splitType === "percentage" && percentages) {
-            const value = percentages[participantId];
-            let percentageAmount = 0;
-            if (typeof value === "number") {
-              percentageAmount = value;
-            } else if (typeof value === "string") {
-              const parsed = Number(value);
-              if (!Number.isNaN(parsed)) {
-                percentageAmount = parsed;
-              }
-            }
-            shareAmount = totalAmount * (percentageAmount / 100);
-          } else if (splitAmountValue !== undefined) {
-            if (typeof splitAmountValue === "number") {
-              shareAmount = splitAmountValue;
-            } else if (typeof splitAmountValue === "string") {
-              const parsed = Number(splitAmountValue);
-              if (!Number.isNaN(parsed)) {
-                shareAmount = parsed;
-              }
-            }
-          }
-
-          await query(
-            `
-            INSERT INTO expense_shares (
-              expense_id,
-              user_id,
-              amount,
-              is_paid
-            )
-            VALUES ($1, $2, $3, FALSE)
-            `,
-            [row.id, participantId, shareAmount],
-          );
-        }
+      for (const split of splits) {
+        await query(
+          `
+          INSERT INTO expense_shares (
+            expense_id,
+            user_id,
+            amount,
+            is_paid
+          )
+          VALUES ($1, $2, $3, FALSE)
+          `,
+          [row.id, split.userId, centsToAmount(split.amountCents)],
+        );
       }
 
       createdExpenseRow = row;
@@ -4073,70 +4074,44 @@ export class DatabaseStorage implements IStorage {
             : []);
 
         if (participantIds.length > 0) {
-          const totalAmount =
-            updates.amount !== undefined
-              ? Number(updates.amount)
-              : Number(updatedExpense.amount);
-          const splitType = updates.splitType ?? updatedExpense.split_type;
-          const exactAmounts =
-            (splitData?.amounts as Record<string, unknown> | undefined) ??
-            undefined;
-          const percentages =
-            (splitData?.percentages as Record<string, unknown> | undefined) ??
-            undefined;
-          const splitAmountValue = splitData?.splitAmount;
+          const payerId = updates.paidBy ?? updatedExpense.paid_by;
+          const dedupedParticipants: string[] = [];
+          const seenParticipants = new Set<string>();
 
-          for (const participantId of participantIds) {
-            let shareAmount =
-              participantIds.length > 0
-                ? totalAmount / participantIds.length
-                : 0;
-
-            if (splitType === "exact" && exactAmounts) {
-              const value = exactAmounts[participantId];
-              if (typeof value === "number") {
-                shareAmount = value;
-              } else if (typeof value === "string") {
-                const parsed = Number(value);
-                if (!Number.isNaN(parsed)) {
-                  shareAmount = parsed;
-                }
-              }
-            } else if (splitType === "percentage" && percentages) {
-              const value = percentages[participantId];
-              let percentageAmount = 0;
-              if (typeof value === "number") {
-                percentageAmount = value;
-              } else if (typeof value === "string") {
-                const parsed = Number(value);
-                if (!Number.isNaN(parsed)) {
-                  percentageAmount = parsed;
-                }
-              }
-              shareAmount = totalAmount * (percentageAmount / 100);
-            } else if (splitAmountValue !== undefined) {
-              if (typeof splitAmountValue === "number") {
-                shareAmount = splitAmountValue;
-              } else if (typeof splitAmountValue === "string") {
-                const parsed = Number(splitAmountValue);
-                if (!Number.isNaN(parsed)) {
-                  shareAmount = parsed;
-                }
-              }
+          for (const rawId of participantIds) {
+            if (typeof rawId !== "string") {
+              continue;
             }
+            const trimmed = rawId.trim();
+            if (!trimmed || trimmed === payerId || seenParticipants.has(trimmed)) {
+              continue;
+            }
+            seenParticipants.add(trimmed);
+            dedupedParticipants.push(trimmed);
+          }
 
-            await query(
-              `
-              INSERT INTO expense_shares (
-                expense_id,
-                user_id,
-                amount,
-                is_paid
-              )
-              VALUES ($1, $2, $3, FALSE)
-              `,
-              [expenseId, participantId, shareAmount],
-            );
+          if (dedupedParticipants.length > 0) {
+            const totalAmount =
+              updates.amount !== undefined
+                ? Number(updates.amount)
+                : Number(updatedExpense.amount);
+            const amountCents = Math.round(totalAmount * 100);
+            const splits = computeSplits(amountCents, dedupedParticipants);
+
+            for (const split of splits) {
+              await query(
+                `
+                INSERT INTO expense_shares (
+                  expense_id,
+                  user_id,
+                  amount,
+                  is_paid
+                )
+                VALUES ($1, $2, $3, FALSE)
+                `,
+                [expenseId, split.userId, centsToAmount(split.amountCents)],
+              );
+            }
           }
         }
       }
