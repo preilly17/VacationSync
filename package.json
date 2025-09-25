@@ -10,7 +10,8 @@
     "build": "npm run build:client && npm run build:backend",
     "build:full": "npm run build",
     "start": "NODE_ENV=production node dist/index.js",
-    "check": "tsc"
+    "check": "tsc",
+    "test": "tsx scripts/run-tests.ts"
   },
   "dependencies": {
     "@duffel/api": "^4.15.1",

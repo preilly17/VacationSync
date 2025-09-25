@@ -24,6 +24,7 @@ import LocationDatabase from "@/pages/location-database";
 import CurrencyConverter from "@/pages/currency-converter";
 import Logout from "@/pages/logout";
 import HowItWorks from "@/pages/how-it-works";
+import SharedExpensePage from "@/pages/shared-expense";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -85,6 +86,7 @@ function Router() {
         <Route path="/flights" component={Flights} />
         <Route path="/restaurants" component={Restaurants} />
         <Route path="/hotels" component={Hotels} />
+        <Route path="/shared-expenses" component={SharedExpensePage} />
         <Route path="/join/:shareCode" component={Join} />
         <Route path="/profile" component={Profile} />
         <Route path="/currency-converter" component={CurrencyConverter} />

@@ -58,8 +58,8 @@ const categoryIcons = {
 
 const MAX_VISIBLE_EVENTS = 3;
 
-const formatBadgeTime = (dateString: string) => {
-  const dateValue = new Date(dateString);
+const formatBadgeTime = (dateInput: string | Date) => {
+  const dateValue = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
   return format(dateValue, "h:mmaaa").toLowerCase().replace("m", "");
 };
 

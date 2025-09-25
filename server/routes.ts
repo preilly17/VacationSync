@@ -5,6 +5,12 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
+import {
+  createExpense as createSharedExpense,
+  listExpenses as listSharedExpenses,
+  markParticipantPaid as markSharedParticipantPaid,
+} from "./sharedExpenseStore";
+import { convertCurrency } from "./currencyService";
 import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema } from "@shared/schema";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
@@ -86,6 +92,30 @@ const activitiesDiscoverSchema = z.object({
     }
     return num;
   }).optional(),
+});
+
+const createSharedExpenseSchema = z.object({
+  payerUserId: z.string().min(1),
+  amountSrcMinor: z.number().int().positive(),
+  srcCurrency: z.string().min(1),
+  tgtCurrency: z.string().min(1),
+  fxRate: z
+    .string()
+    .min(1)
+    .refine((val) => !Number.isNaN(Number(val)) && Number(val) > 0, {
+      message: "FX rate must be a positive decimal string",
+    }),
+  fxRateProvider: z.string().min(1),
+  fxRateTimestamp: z
+    .string()
+    .min(1)
+    .refine((val) => !Number.isNaN(Date.parse(val)), {
+      message: "fxRateTimestamp must be ISO-8601",
+    }),
+  fxFeeBps: z.number().int().min(0).optional(),
+  description: z.string().min(1),
+  category: z.string().min(1),
+  participantUserIds: z.array(z.string()).min(1),
 });
 
 const weatherSearchSchema = z.object({
@@ -1945,16 +1975,16 @@ export function setupRoutes(app: Express) {
     try {
       const itemId = parseInt(req.params.id);
       let userId = getRequestUserId(req);
-      
+
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
         userId = 'demo-user';
       }
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
       const packingItem = await storage.getPackingItemById(itemId);
       if (!packingItem) {
         return res.status(404).json({ message: "Packing item not found" });
@@ -1969,6 +1999,82 @@ export function setupRoutes(app: Express) {
     } catch (error: unknown) {
       console.error("Error deleting packing item:", error);
       res.status(500).json({ message: "Failed to delete packing item" });
+    }
+  });
+
+  // Shared expense feature routes
+  app.get('/api/expenses', (_req, res) => {
+    res.json(listSharedExpenses());
+  });
+
+  app.post('/api/expenses', (req, res) => {
+    try {
+      const parsed = createSharedExpenseSchema.parse(req.body);
+      const seen = new Set<string>();
+      const orderedParticipants: string[] = [];
+      for (const id of parsed.participantUserIds) {
+        if (id === parsed.payerUserId) {
+          continue;
+        }
+        if (!seen.has(id)) {
+          seen.add(id);
+          orderedParticipants.push(id);
+        }
+      }
+
+      if (orderedParticipants.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "Choose at least one participant who isn't the payer" });
+      }
+
+      const expense = createSharedExpense({
+        ...parsed,
+        participantUserIds: orderedParticipants,
+      });
+
+      res.status(201).json({
+        expense,
+        participants: expense.participants,
+        requestsSummary: expense.requestsSummary,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0]?.message ?? "Invalid input" });
+      }
+      const message = error instanceof Error ? error.message : "Failed to create expense";
+      res.status(400).json({ message });
+    }
+  });
+
+  app.post('/api/expenses/:id/participants/:userId/mark-paid', (req, res) => {
+    try {
+      const { id, userId } = req.params;
+      const updated = markSharedParticipantPaid(id, userId);
+      res.json({ expense: updated });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to update expense";
+      res.status(404).json({ message });
+    }
+  });
+
+  app.get('/api/fx/quote', async (req, res) => {
+    try {
+      const src = String(req.query.src ?? "").toUpperCase();
+      const tgt = String(req.query.tgt ?? "").toUpperCase();
+      if (!src || !tgt) {
+        return res.status(400).json({ message: "src and tgt query parameters are required" });
+      }
+
+      const quote = await convertCurrency(1, src, tgt);
+      res.json({
+        rate: quote.rate.toFixed(6),
+        provider: "OpenEx",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to fetch FX quote";
+      res.status(500).json({ message });
     }
   });
 
