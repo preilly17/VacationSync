@@ -8,6 +8,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
@@ -43,6 +54,63 @@ import type {
   RestaurantProposalWithDetails,
   TripWithDetails,
 } from "@shared/schema";
+
+type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
+
+type ParsedApiError = {
+  status?: number;
+  message: string;
+};
+
+const parseApiError = (error: unknown): ParsedApiError => {
+  if (error instanceof Error) {
+    const match = error.message.match(/^(\d{3}):\s*(.*)$/);
+    if (match) {
+      const status = Number(match[1]);
+      const body = match[2]?.trim();
+      if (body) {
+        const tryParse = (value: string) => {
+          try {
+            const parsed = JSON.parse(value);
+            if (parsed && typeof parsed === "object" && "message" in parsed) {
+              const parsedMessage = parsed.message;
+              if (typeof parsedMessage === "string") {
+                return parsedMessage;
+              }
+              if (parsedMessage != null) {
+                return String(parsedMessage);
+              }
+            }
+          } catch {
+            return null;
+          }
+          return null;
+        };
+
+        const directParse = tryParse(body);
+        if (directParse) {
+          return { status, message: directParse };
+        }
+
+        const sanitized = body
+          .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":')
+          .replace(/'/g, '"');
+        const sanitizedParse = tryParse(sanitized);
+        if (sanitizedParse) {
+          return { status, message: sanitizedParse };
+        }
+
+        return { status, message: body };
+      }
+
+      return { status, message: `Request failed with status ${status}` };
+    }
+
+    return { message: error.message };
+  }
+
+  return { message: "Something went wrong. Please try again." };
+};
 
 interface ProposalsPageProps {
   tripId?: number;
@@ -204,7 +272,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       type,
       proposalId,
     }: {
-      type: "hotel" | "flight" | "restaurant" | "activity";
+      type: CancelableProposalType;
       proposalId: number;
     }) => {
       const endpointMap = {
@@ -215,26 +283,43 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       } as const;
 
       const res = await apiRequest(endpointMap[type], { method: "POST" });
-      return res.json();
+      try {
+        return await res.json();
+      } catch {
+        return null;
+      }
     },
     onSuccess: (_data, variables) => {
       if (!tripId) {
         return;
       }
 
-      switch (variables.type) {
-        case "hotel":
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
-          break;
-        case "flight":
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] });
-          break;
-        case "restaurant":
-          queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
-          break;
-        case "activity":
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-          break;
+      const { proposalId, type } = variables;
+
+      if (type === "hotel") {
+        queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
+          [`/api/trips/${tripId}/hotel-proposals`],
+          (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
+        );
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      } else if (type === "flight") {
+        queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
+          [`/api/trips/${tripId}/flight-proposals`],
+          (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
+        );
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] });
+      } else if (type === "restaurant") {
+        queryClient.setQueryData<RestaurantProposalWithDetails[] | undefined>(
+          ["/api/trips", tripId, "restaurant-proposals"],
+          (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
+        );
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
+      } else if (type === "activity") {
+        queryClient.setQueryData<ActivityWithDetails[] | undefined>(
+          [`/api/trips/${tripId}/activities`],
+          (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
+        );
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
       }
 
       toast({
@@ -243,14 +328,110 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       });
     },
     onError: (error) => {
-      const errorMessage = error instanceof Error ? error.message : "Failed to cancel proposal";
+      const parsedError = parseApiError(error);
+
+      if (parsedError.status === 401 || isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      let title = "Unable to cancel proposal";
+      let description = parsedError.message || "Failed to cancel proposal. Please try again.";
+
+      if (parsedError.status === 403) {
+        title = "You can't cancel this proposal";
+        if (!parsedError.message) {
+          description = "Only the person who created it can cancel.";
+        }
+      } else if (parsedError.status === 404) {
+        title = "Proposal not found";
+        if (!parsedError.message) {
+          description = "This proposal may have already been removed.";
+        }
+      }
+
       toast({
-        title: "Unable to cancel proposal",
-        description: errorMessage,
+        title,
+        description,
         variant: "destructive",
       });
     },
   });
+
+  const CancelProposalButton = ({
+    type,
+    proposalId,
+    proposalName,
+    isCancelling,
+    triggerTestId,
+    disabled,
+  }: {
+    type: CancelableProposalType;
+    proposalId: number;
+    proposalName?: string | null;
+    isCancelling: boolean;
+    triggerTestId: string;
+    disabled?: boolean;
+  }) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+    const typeLabelMap: Record<CancelableProposalType, string> = {
+      hotel: "hotel",
+      flight: "flight",
+      restaurant: "restaurant",
+      activity: "activity",
+    };
+
+    const proposalDisplayName = proposalName?.trim();
+    const formattedName = proposalDisplayName ? `"${proposalDisplayName}"` : "this proposal";
+
+    const handleConfirm = async () => {
+      try {
+        await cancelProposalMutation.mutateAsync({ type, proposalId });
+        setIsDialogOpen(false);
+      } catch {
+        // Errors are handled via the mutation's onError callback.
+      }
+    };
+
+    return (
+      <AlertDialog
+        open={isDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!isCancelling) {
+            setIsDialogOpen(nextOpen);
+          }
+        }}
+      >
+        <AlertDialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+            disabled={disabled || isCancelling}
+            data-testid={triggerTestId}
+          >
+            <XCircle className="w-4 h-4 mr-1" />
+            {isCancelling ? "Canceling..." : "Cancel"}
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Cancel ${typeLabelMap[type]} proposal?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {`Canceling will remove ${formattedName} from everyone's proposals, clear it from calendars, and send a cancellation notice.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>Keep proposal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirm} disabled={isCancelling}>
+              {isCancelling ? "Canceling..." : "Yes, cancel it"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    );
+  };
 
   type BaseProposal = {
     id: number;
@@ -589,21 +770,13 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
             <div className="flex flex-col items-end gap-2">
               {getStatusBadge(proposal.status || "scheduled")}
               {canCancel ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                  disabled={isCancelling}
-                  onClick={() => {
-                    if (window.confirm("Cancel this proposal for everyone?")) {
-                      cancelProposalMutation.mutate({ type: "activity", proposalId: proposal.id });
-                    }
-                  }}
-                  data-testid={`button-cancel-activity-proposal-${proposal.id}`}
-                >
-                  <XCircle className="w-4 h-4 mr-1" />
-                  {isCancelling ? "Canceling..." : "Cancel"}
-                </Button>
+                <CancelProposalButton
+                  type="activity"
+                  proposalId={proposal.id}
+                  proposalName={proposal.activityName ?? proposal.name}
+                  isCancelling={isCancelling}
+                  triggerTestId={`button-cancel-activity-proposal-${proposal.id}`}
+                />
               ) : null}
               {createdAt ? (
                 <span className="text-xs text-neutral-500" data-testid={`text-activity-created-${proposal.id}`}>
@@ -695,21 +868,13 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 proposal.averageRanking ?? undefined,
               )}
               {canCancel && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                  disabled={isCancelling}
-                  onClick={() => {
-                    if (window.confirm("Cancel this proposal for everyone?")) {
-                      cancelProposalMutation.mutate({ type: "restaurant", proposalId: proposal.id });
-                    }
-                  }}
-                  data-testid={`button-cancel-restaurant-proposal-${proposal.id}`}
-                >
-                  <XCircle className="w-4 h-4 mr-1" />
-                  {isCancelling ? "Canceling..." : "Cancel"}
-                </Button>
+                <CancelProposalButton
+                  type="restaurant"
+                  proposalId={proposal.id}
+                  proposalName={proposal.restaurantName}
+                  isCancelling={isCancelling}
+                  triggerTestId={`button-cancel-restaurant-proposal-${proposal.id}`}
+                />
               )}
             </div>
           </div>
@@ -877,21 +1042,13 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 proposal.averageRanking ?? undefined,
               )}
               {canCancel && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                  disabled={isCancelling}
-                  onClick={() => {
-                    if (window.confirm("Cancel this proposal for everyone?")) {
-                      cancelProposalMutation.mutate({ type: "hotel", proposalId: proposal.id });
-                    }
-                  }}
-                  data-testid={`button-cancel-hotel-proposal-${proposal.id}`}
-                >
-                  <XCircle className="w-4 h-4 mr-1" />
-                  {isCancelling ? "Canceling..." : "Cancel"}
-                </Button>
+                <CancelProposalButton
+                  type="hotel"
+                  proposalId={proposal.id}
+                  proposalName={proposal.hotelName}
+                  isCancelling={isCancelling}
+                  triggerTestId={`button-cancel-hotel-proposal-${proposal.id}`}
+                />
               )}
             </div>
           </div>
@@ -1066,21 +1223,13 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 proposal.averageRanking ?? undefined,
               )}
               {canCancel && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                  disabled={isCancelling}
-                  onClick={() => {
-                    if (window.confirm("Cancel this proposal for everyone?")) {
-                      cancelProposalMutation.mutate({ type: "flight", proposalId: proposal.id });
-                    }
-                  }}
-                  data-testid={`button-cancel-flight-proposal-${proposal.id}`}
-                >
-                  <XCircle className="w-4 h-4 mr-1" />
-                  {isCancelling ? "Canceling..." : "Cancel"}
-                </Button>
+                <CancelProposalButton
+                  type="flight"
+                  proposalId={proposal.id}
+                  proposalName={[proposal.airline, proposal.flightNumber].filter(Boolean).join(" ")}
+                  isCancelling={isCancelling}
+                  triggerTestId={`button-cancel-flight-proposal-${proposal.id}`}
+                />
               )}
             </div>
           </div>
