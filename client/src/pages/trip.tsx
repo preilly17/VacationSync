@@ -145,6 +145,31 @@ const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
   { key: "groceries", label: "Groceries", icon: ShoppingCart },
 ];
 
+const parseTripDateToLocal = (value?: string | null): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  const [datePart] = value.split("T");
+
+  if (datePart) {
+    const parts = datePart.split("-");
+    if (parts.length === 3) {
+      const [yearString, monthString, dayString] = parts;
+      const year = Number.parseInt(yearString, 10);
+      const month = Number.parseInt(monthString, 10);
+      const day = Number.parseInt(dayString, 10);
+
+      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+        return new Date(year, month - 1, day);
+      }
+    }
+  }
+
+  const fallback = new Date(value);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+};
+
 interface DayViewProps {
   date: Date;
   activities: ActivityWithDetails[];
@@ -565,8 +590,15 @@ export default function Trip() {
     ...(trip?.members || []).map((member: any) => member.userId)
   ];
 
-  const tripStartDate = trip?.startDate ? startOfDay(new Date(trip.startDate)) : null;
-  const tripEndDate = trip?.endDate ? startOfDay(new Date(trip.endDate)) : null;
+  const tripStartDate = useMemo(() => {
+    const parsed = parseTripDateToLocal(trip?.startDate);
+    return parsed ? startOfDay(parsed) : null;
+  }, [trip?.startDate]);
+
+  const tripEndDate = useMemo(() => {
+    const parsed = parseTripDateToLocal(trip?.endDate);
+    return parsed ? startOfDay(parsed) : null;
+  }, [trip?.endDate]);
 
   const clampDateToTrip = (date: Date) => {
     if (!tripStartDate && !tripEndDate) {
@@ -587,13 +619,12 @@ export default function Trip() {
   };
 
   useEffect(() => {
-    if (trip?.startDate) {
-      const start = startOfDay(new Date(trip.startDate));
-      setGroupViewDate((prev) => (prev ? prev : start));
-      setScheduleViewDate((prev) => (prev ? prev : start));
-      setSelectedDate((prev) => (prev ? prev : start));
+    if (tripStartDate) {
+      setGroupViewDate((prev) => (prev ? prev : tripStartDate));
+      setScheduleViewDate((prev) => (prev ? prev : tripStartDate));
+      setSelectedDate((prev) => (prev ? prev : tripStartDate));
     }
-  }, [trip?.startDate]);
+  }, [tripStartDate]);
 
   useEffect(() => {
     if (activeTab === "calendar" && groupCalendarView === "day" && groupViewDate) {
@@ -792,17 +823,16 @@ export default function Trip() {
 
   // Auto-navigate calendar to trip dates when trip loads
   useEffect(() => {
-    if (trip?.startDate) {
-      const tripStartDate = new Date(trip.startDate);
+    if (tripStartDate) {
       const currentMonthStart = startOfMonth(currentMonth);
       const tripMonthStart = startOfMonth(tripStartDate);
-      
+
       // Only update if we're not already showing the correct month
       if (!isSameMonth(currentMonthStart, tripMonthStart)) {
         setCurrentMonth(tripStartDate);
       }
     }
-  }, [trip?.startDate]);
+  }, [tripStartDate]);
 
   if (authLoading || tripLoading) {
     return (
