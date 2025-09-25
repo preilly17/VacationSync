@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { format, formatDistanceToNow } from "date-fns";
+import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
 import {
   ArrowLeft,
   Hotel,
@@ -33,12 +33,13 @@ import {
   CheckCircle,
   XCircle,
   User,
+  Activity,
 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import type {
   HotelProposalWithDetails,
   FlightProposalWithDetails,
-  ActivityProposalWithDetails,
+  ActivityWithDetails,
   RestaurantProposalWithDetails,
   TripWithDetails,
 } from "@shared/schema";
@@ -99,10 +100,9 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   // For now, activity and restaurant proposals use placeholder data
   // TODO: Implement API routes for activity and restaurant proposals
-  const { data: activityProposals = [], isLoading: activityProposalsLoading } = useQuery<ActivityProposalWithDetails[]>({
-    queryKey: [`/api/trips/${tripId}/activity-proposals`],
+  const { data: rawActivityProposals = [], isLoading: activityProposalsLoading } = useQuery<ActivityWithDetails[]>({
+    queryKey: [`/api/trips/${tripId}/activities`],
     enabled: !!tripId && isAuthenticated,
-    queryFn: () => Promise.resolve([]), // Placeholder - will need actual API route
   });
 
   const { data: restaurantProposals = [], isLoading: restaurantProposalsLoading } = useQuery<RestaurantProposalWithDetails[]>({
@@ -256,6 +256,36 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     proposedBy?: string | null;
     proposer?: { id?: string | null } | null;
   };
+
+  type NormalizedActivityProposal = ActivityWithDetails & {
+    tripId: number;
+    proposedBy: string;
+    proposer: ActivityWithDetails["poster"];
+    status: string;
+    activityName: string;
+    rankings: [];
+    averageRanking: number | null;
+  };
+
+  const getActivityProposalStatus = useCallback((activity: ActivityWithDetails) => {
+    const now = new Date();
+    const startTime = activity.startTime ? new Date(activity.startTime) : null;
+    const endTime = activity.endTime ? new Date(activity.endTime) : null;
+
+    if (!startTime) {
+      return "proposed";
+    }
+
+    if (endTime && endTime < now) {
+      return "completed";
+    }
+
+    if (startTime <= now && (!endTime || endTime >= now)) {
+      return "in-progress";
+    }
+
+    return "scheduled";
+  }, []);
 
   const isMyProposal = useCallback(
     (proposal: BaseProposal): boolean => {
@@ -448,8 +478,20 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       return <Badge className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Selected</Badge>;
     }
 
+    if (normalizedStatus === "booked") {
+      return <Badge className="bg-emerald-100 text-emerald-700"><CheckCircle className="w-3 h-3 mr-1" />Booked</Badge>;
+    }
+
     if (normalizedStatus === "scheduled") {
       return <Badge className="bg-emerald-100 text-emerald-700"><Calendar className="w-3 h-3 mr-1" />Scheduled</Badge>;
+    }
+
+    if (normalizedStatus === "in-progress") {
+      return <Badge className="bg-sky-100 text-sky-700"><Activity className="w-3 h-3 mr-1" />Happening Now</Badge>;
+    }
+
+    if (normalizedStatus === "completed") {
+      return <Badge className="bg-lime-100 text-lime-700"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
     }
 
     if (normalizedStatus === "rejected") {
@@ -469,6 +511,131 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     }
 
     return <Badge className="bg-blue-100 text-blue-800"><Vote className="w-3 h-3 mr-1" />Active Voting</Badge>;
+  };
+
+  const ActivityProposalCard = ({ proposal }: { proposal: NormalizedActivityProposal }) => {
+    const startTime = proposal.startTime ? new Date(proposal.startTime) : null;
+    const endTime = proposal.endTime ? new Date(proposal.endTime) : null;
+    const createdAt = proposal.createdAt ? new Date(proposal.createdAt) : null;
+
+    const durationMinutes =
+      startTime && endTime ? Math.max(differenceInMinutes(endTime, startTime), 0) : null;
+
+    const formattedDuration = (() => {
+      if (durationMinutes === null) {
+        return null;
+      }
+
+      if (durationMinutes === 0) {
+        return "Less than 1 minute";
+      }
+
+      if (durationMinutes < 60) {
+        return `${durationMinutes} min`;
+      }
+
+      const hours = Math.floor(durationMinutes / 60);
+      const minutes = durationMinutes % 60;
+      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    })();
+
+    const acceptedCount =
+      typeof proposal.acceptedCount === "number"
+        ? proposal.acceptedCount
+        : proposal.acceptances?.length ?? 0;
+
+    const pendingCount = proposal.pendingCount ?? 0;
+    const declinedCount = proposal.declinedCount ?? 0;
+
+    const proposerName =
+      proposal.proposer?.firstName?.trim() ||
+      proposal.proposer?.username?.trim() ||
+      proposal.proposer?.email?.trim() ||
+      "Group member";
+
+    return (
+      <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-activity-proposal-${proposal.id}`}>
+        <CardHeader className="pb-3">
+          <div className="flex justify-between items-start gap-4">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2" data-testid={`text-activity-name-${proposal.id}`}>
+                <MapPin className="w-5 h-5 text-purple-600" />
+                {proposal.activityName}
+              </CardTitle>
+              <CardDescription className="flex flex-wrap items-center gap-2 mt-1 text-neutral-600">
+                {proposal.category ? (
+                  <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded text-xs" data-testid={`text-activity-category-${proposal.id}`}>
+                    {proposal.category}
+                  </span>
+                ) : null}
+                {startTime ? (
+                  <span className="flex items-center gap-1" data-testid={`text-activity-start-${proposal.id}`}>
+                    <Calendar className="w-3 h-3" />
+                    {format(startTime, "EEE, MMM d • h:mm a")}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1" data-testid={`text-activity-start-${proposal.id}`}>
+                    <Calendar className="w-3 h-3" />
+                    Date to be decided
+                  </span>
+                )}
+              </CardDescription>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              {getStatusBadge(proposal.status || "scheduled")}
+              {createdAt ? (
+                <span className="text-xs text-neutral-500" data-testid={`text-activity-created-${proposal.id}`}>
+                  Added {formatDistanceToNow(createdAt, { addSuffix: true })}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm text-neutral-600">
+            <div className="flex items-center gap-2" data-testid={`text-activity-time-${proposal.id}`}>
+              <Clock className="w-4 h-4 text-neutral-400" />
+              {startTime ? format(startTime, "h:mm a") : "Time TBD"}
+              {formattedDuration ? <span className="text-neutral-400">• {formattedDuration}</span> : null}
+            </div>
+            <div className="flex items-center gap-2" data-testid={`text-activity-location-${proposal.id}`}>
+              <MapPin className="w-4 h-4 text-neutral-400" />
+              {proposal.location ? proposal.location : "Location TBD"}
+            </div>
+            <div className="flex items-center gap-2" data-testid={`text-activity-attendance-${proposal.id}`}>
+              <Users className="w-4 h-4 text-neutral-400" />
+              <span className="font-medium text-neutral-700">{acceptedCount}</span> going
+              {pendingCount > 0 ? (
+                <span className="text-neutral-400">• {pendingCount} pending</span>
+              ) : null}
+              {declinedCount > 0 ? (
+                <span className="text-neutral-400">• {declinedCount} declined</span>
+              ) : null}
+            </div>
+          </div>
+
+          {proposal.description ? (
+            <p className="text-sm text-neutral-600" data-testid={`text-activity-description-${proposal.id}`}>
+              {proposal.description}
+            </p>
+          ) : null}
+
+          <div className="flex items-center justify-between text-sm text-neutral-600">
+            <div className="flex items-center gap-2" data-testid={`text-activity-proposer-${proposal.id}`}>
+              <User className="w-4 h-4 text-neutral-400" />
+              Proposed by {proposerName}
+            </div>
+            <Link
+              href={`/trip/${proposal.tripId}`}
+              className="text-primary hover:underline flex items-center gap-1"
+              data-testid={`link-view-activity-${proposal.id}`}
+            >
+              <ExternalLink className="w-4 h-4" /> View in trip
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    );
   };
 
   // Restaurant proposal card component
@@ -1042,6 +1209,21 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     </div>
   );
 
+  const activityProposals = useMemo<NormalizedActivityProposal[]>(
+    () =>
+      rawActivityProposals.map((activity) => ({
+        ...activity,
+        tripId: activity.tripCalendarId,
+        proposedBy: activity.postedBy,
+        proposer: activity.poster,
+        status: getActivityProposalStatus(activity),
+        activityName: activity.name,
+        rankings: [],
+        averageRanking: null,
+      })),
+    [getActivityProposalStatus, rawActivityProposals],
+  );
+
   const filteredHotelProposals = useMemo(
     () => applyProposalFilters(hotelProposals),
     [applyProposalFilters, hotelProposals],
@@ -1243,9 +1425,9 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      <p className="text-center text-neutral-500 py-8">
-                        Activity proposals coming soon!
-                      </p>
+                      {myActivityProposals.map((proposal) => (
+                        <ActivityProposalCard key={proposal.id} proposal={proposal} />
+                      ))}
                     </div>
                   </section>
                 )}
@@ -1318,8 +1500,9 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               </div>
             ) : filteredActivityProposals.length > 0 ? (
               <div data-testid="list-activity-proposals">
-                {/* Activity proposals would go here once API is implemented */}
-                <p className="text-center text-neutral-500 py-8">Activity proposals coming soon!</p>
+                {filteredActivityProposals.map((proposal) => (
+                  <ActivityProposalCard key={proposal.id} proposal={proposal} />
+                ))}
               </div>
             ) : proposalFilter === "mine" ? (
               <MyProposalsEmptyState type="Activity" />
