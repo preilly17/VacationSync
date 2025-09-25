@@ -30,7 +30,8 @@ import {
   Cloud,
   Sparkles,
   CheckCircle,
-  Settings
+  Settings,
+  type LucideIcon
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
@@ -113,6 +114,21 @@ type TripTab = (typeof TRIP_TAB_KEYS)[number];
 
 const isTripTab = (value: string): value is TripTab =>
   TRIP_TAB_KEYS.includes(value as TripTab);
+
+// MOBILE-ONLY bottom navigation config
+const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
+  { key: "calendar", label: "Group", icon: Calendar },
+  { key: "schedule", label: "Personal", icon: Clock },
+  { key: "packing", label: "Packing", icon: Package },
+  { key: "expenses", label: "Expenses", icon: DollarSign },
+  { key: "flights", label: "Flights", icon: Plane },
+  { key: "hotels", label: "Hotels", icon: Hotel },
+  { key: "proposals", label: "Proposals", icon: CheckCircle },
+  { key: "wish-list", label: "Wish List", icon: Sparkles },
+  { key: "activities", label: "Discover", icon: MapPin },
+  { key: "restaurants", label: "Dining", icon: Utensils },
+  { key: "groceries", label: "Groceries", icon: ShoppingCart },
+];
 
 interface DayViewProps {
   date: Date;
@@ -717,20 +733,22 @@ export default function Trip() {
     );
   }
 
+  // MOBILE-ONLY: Force Safari to respect viewport height on mobile.
   return (
     <>
-      <div className="min-h-screen bg-neutral-100">
+      <div className="min-h-dvh md:min-h-screen bg-neutral-100">
         {/* Mobile Navigation */}
-        <MobileNav 
+        <MobileNav
           trip={trip}
           user={user}
         />
 
         {/* Main Content Container */}
-        <div className="relative">
-          <div className="flex">
+        {/* // MOBILE-ONLY: Provide breathing room for bottom nav & safe area. */}
+        <div className="relative pb-[calc(env(safe-area-inset-bottom)+6rem)] md:pb-0">
+          <div className="md:flex">
             {/* Vertical Tab Navigation */}
-            <div className="hidden lg:block w-64 bg-white border-r border-gray-200 min-h-screen fixed left-0 top-0 z-40" data-tutorial="trip-navigation">
+            <div className="hidden md:flex md:w-64 md:flex-col bg-white border-r border-gray-200 min-h-dvh md:fixed md:left-0 md:top-0 md:z-40" data-tutorial="trip-navigation">
               <div className="p-6">
                 <h2 className="text-lg font-semibold text-neutral-900 mb-4">Trip Sections</h2>
                 <nav className="space-y-2">
@@ -878,7 +896,7 @@ export default function Trip() {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 lg:ml-64">
+            <div className="flex-1 md:ml-64">
               <div className="p-4 lg:p-8">
                 {/* Back to Dashboard Button */}
                 <Link href="/">
@@ -1347,78 +1365,46 @@ export default function Trip() {
             </div>
           </div>
 
-          {/* Mobile Bottom Navigation */}
-          <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2">
-            <div className="flex justify-around">
-              <button 
-                onClick={() => setActiveTab("calendar")}
-                className={`flex flex-col items-center py-2 ${activeTab === "calendar" ? "text-primary" : "text-neutral-600"}`}
-              >
-                <Calendar className="w-5 h-5" />
-                <span className="text-xs mt-1 font-medium">Group</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab("schedule")}
-                className={`flex flex-col items-center py-2 ${activeTab === "schedule" ? "text-primary" : "text-neutral-600"}`}
-              >
-                <Clock className="w-5 h-5" />
-                <span className="text-xs mt-1">Personal</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab("packing")}
-                className={`flex flex-col items-center py-2 ${activeTab === "packing" ? "text-primary" : "text-neutral-600"}`}
-              >
-                <Package className="w-5 h-5" />
-                <span className="text-xs mt-1">Packing</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab("expenses")}
-                className={`flex flex-col items-center py-2 ${activeTab === "expenses" ? "text-primary" : "text-neutral-600"}`}
-              >
-                <DollarSign className="w-5 h-5" />
-                <span className="text-xs mt-1">Expenses</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab("flights")}
-                className={`flex flex-col items-center py-2 ${activeTab === "flights" ? "text-primary" : "text-neutral-600"}`}
-              >
-                <Plane className="w-5 h-5" />
-                <span className="text-xs mt-1">Flights</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab("hotels")}
-                className={`flex flex-col items-center py-2 ${activeTab === "hotels" ? "text-primary" : "text-neutral-600"}`}
-              >
-                <Hotel className="w-5 h-5" />
-                <span className="text-xs mt-1">Hotels</span>
-              </button>
-              <button 
-                onClick={() => setActiveTab("proposals")}
-                className={`flex flex-col items-center py-2 ${activeTab === "proposals" ? "text-primary" : "text-neutral-600"}`}
-                data-testid="mobile-button-proposals"
-              >
-                <CheckCircle className="w-5 h-5" />
-                <span className="text-xs mt-1">Proposals</span>
-              </button>
-              <button
-                onClick={() => setActiveTab("wish-list")}
-                className={`flex flex-col items-center py-2 ${activeTab === "wish-list" ? "text-primary" : "text-neutral-600"}`}
-                data-testid="mobile-button-wish-list"
-              >
-                <Sparkles className="w-5 h-5" />
-                <span className="text-xs mt-1">Wish List</span>
-              </button>
-              <button 
-                onClick={() => setShowAddActivity(true)}
-                className="flex flex-col items-center py-2 text-neutral-600"
-              >
-                <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center mb-1">
-                  <Plus className="text-white w-4 h-4" />
-                </div>
-                <span className="text-xs text-primary font-medium">Add</span>
-              </button>
+          {/* // MOBILE-ONLY floating action button */}
+          <button
+            type="button"
+            onClick={() => setShowAddActivity(true)}
+            className="md:hidden fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/40 transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60 active:scale-95"
+            aria-label="Add Activity"
+          >
+            <Plus className="h-6 w-6 text-white" />
+          </button>
+
+          {/* // MOBILE-ONLY bottom tab bar */}
+          <nav className="md:hidden fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 shadow-[0_-8px_20px_rgba(15,23,42,0.08)] backdrop-blur supports-[backdrop-filter]:bg-white/80">
+            <div className="flex items-stretch gap-1 overflow-x-auto px-3">
+              {MOBILE_TAB_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.key;
+
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setActiveTab(item.key)}
+                    className={`relative flex min-h-[44px] flex-none basis-24 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${
+                      isActive ? "text-primary" : "text-neutral-500"
+                    }`}
+                    data-testid={item.key === "proposals" ? "mobile-button-proposals" : item.key === "wish-list" ? "mobile-button-wish-list" : undefined}
+                  >
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                    <span className="w-full truncate text-[11px]">{item.label}</span>
+                    <span
+                      className={`mt-1 h-0.5 w-12 rounded-full transition-colors ${
+                        isActive ? "bg-primary" : "bg-transparent"
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                );
+              })}
             </div>
-          </div>
+          </nav>
         </div>
 
         <AddActivityModal
