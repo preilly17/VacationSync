@@ -56,7 +56,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
-  const [proposalFilter, setProposalFilter] = useState<"all" | "mine">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "canceled">("all");
 
   // Redirect if not authenticated
@@ -309,10 +308,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const applyProposalFilters = useCallback(
     <T extends BaseProposal>(items: T[]): T[] => {
       return items.filter((item) => {
-        if (proposalFilter === "mine" && !isMyProposal(item)) {
-          return false;
-        }
-
         if (statusFilter === "all") {
           return true;
         }
@@ -325,7 +320,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
         return normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
       });
     },
-    [isMyProposal, proposalFilter, statusFilter],
+    [statusFilter],
   );
 
   const getUserRanking = (
@@ -1189,7 +1184,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   // Empty state component
   const EmptyState = ({ type, icon: Icon }: { type: string; icon: any }) => {
-    const showGlobalEmpty = proposalFilter === "all" && noProposalsAtAll;
+    const showGlobalEmpty = noProposalsAtAll;
 
     return (
       <div className="text-center py-12">
@@ -1212,21 +1207,19 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     );
   };
 
-  const MyProposalsEmptyState = ({ type }: { type?: string }) => {
-    const testId = type
-      ? `empty-my-${type.toLowerCase()}-proposals`
-      : "empty-my-proposals";
-
-    return (
-      <div className="text-center py-12" data-testid={testId}>
-        <User className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-neutral-600 mb-2">You haven’t proposed anything yet.</h3>
-        <p className="text-neutral-500">
-          Suggest an activity, restaurant, hotel, or flight to get started.
-        </p>
-      </div>
-    );
-  };
+  const MyProposalsEmptyState = ({ hasAny }: { hasAny: boolean }) => (
+    <div className="text-center py-12" data-testid="empty-my-proposals">
+      <User className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
+      <h3 className="text-lg font-semibold text-neutral-600 mb-2">
+        {hasAny ? "No proposals match these filters." : "You haven’t proposed anything yet."}
+      </h3>
+      <p className="text-neutral-500">
+        {hasAny
+          ? "Try adjusting the filters to see your proposals."
+          : "Suggest an activity, restaurant, hotel, or flight to get started."}
+      </p>
+    </div>
+  );
 
   const FilteredEmptyState = ({ type }: { type: string }) => (
     <div className="text-center py-12" data-testid={`empty-filtered-${type.toLowerCase()}-proposals`}>
@@ -1285,11 +1278,35 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     [restaurantProposals, isMyProposal],
   );
 
+  const filteredMyHotelProposals = useMemo(
+    () => applyProposalFilters(myHotelProposals),
+    [applyProposalFilters, myHotelProposals],
+  );
+  const filteredMyFlightProposals = useMemo(
+    () => applyProposalFilters(myFlightProposals),
+    [applyProposalFilters, myFlightProposals],
+  );
+  const filteredMyActivityProposals = useMemo(
+    () => applyProposalFilters(myActivityProposals),
+    [applyProposalFilters, myActivityProposals],
+  );
+  const filteredMyRestaurantProposals = useMemo(
+    () => applyProposalFilters(myRestaurantProposals),
+    [applyProposalFilters, myRestaurantProposals],
+  );
+
   const totalMyProposals =
+    filteredMyHotelProposals.length +
+    filteredMyFlightProposals.length +
+    filteredMyActivityProposals.length +
+    filteredMyRestaurantProposals.length;
+
+  const hasAnyMyProposals =
     myHotelProposals.length +
     myFlightProposals.length +
     myActivityProposals.length +
-    myRestaurantProposals.length;
+    myRestaurantProposals.length >
+    0;
 
   const totalAvailableProposals =
     hotelProposals.length +
@@ -1334,33 +1351,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           </p>
         </div>
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-6" data-testid="proposals-filters">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-neutral-600">Show</span>
-            <div className="inline-flex rounded-md border border-neutral-200 bg-white p-1 shadow-sm">
-              <Button
-                type="button"
-                size="sm"
-                variant={proposalFilter === "all" ? "default" : "ghost"}
-                className={`rounded-sm ${proposalFilter === "all" ? "bg-primary text-white hover:bg-primary/90" : "text-neutral-700"}`}
-                onClick={() => setProposalFilter("all")}
-                data-testid="filter-proposals-all"
-              >
-                All proposals
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={proposalFilter === "mine" ? "default" : "ghost"}
-                className={`rounded-sm ${proposalFilter === "mine" ? "bg-primary text-white hover:bg-primary/90" : "text-neutral-700"}`}
-                onClick={() => setProposalFilter("mine")}
-                data-testid="filter-proposals-mine"
-              >
-                My proposals
-              </Button>
-            </div>
-          </div>
-
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end mb-6" data-testid="proposals-filters">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-neutral-600">Status</span>
             <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
@@ -1411,64 +1402,64 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           <TabsContent value="my-proposals" className="space-y-6">
             {totalMyProposals > 0 ? (
               <div className="space-y-8" data-testid="list-my-proposals">
-                {myHotelProposals.length > 0 && (
+                {filteredMyHotelProposals.length > 0 && (
                   <section className="space-y-4" data-testid="section-my-hotel-proposals">
                     <div className="flex items-center gap-2 text-neutral-700">
                       <Hotel className="w-4 h-4" />
                       <h3 className="text-lg font-semibold">
-                        Hotel proposals ({myHotelProposals.length})
+                        Hotel proposals ({filteredMyHotelProposals.length})
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      {myHotelProposals.map((proposal) => (
+                      {filteredMyHotelProposals.map((proposal) => (
                         <HotelProposalCard key={proposal.id} proposal={proposal} />
                       ))}
                     </div>
                   </section>
                 )}
 
-                {myFlightProposals.length > 0 && (
+                {filteredMyFlightProposals.length > 0 && (
                   <section className="space-y-4" data-testid="section-my-flight-proposals">
                     <div className="flex items-center gap-2 text-neutral-700">
                       <Plane className="w-4 h-4" />
                       <h3 className="text-lg font-semibold">
-                        Flight proposals ({myFlightProposals.length})
+                        Flight proposals ({filteredMyFlightProposals.length})
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      {myFlightProposals.map((proposal) => (
+                      {filteredMyFlightProposals.map((proposal) => (
                         <FlightProposalCard key={proposal.id} proposal={proposal} />
                       ))}
                     </div>
                   </section>
                 )}
 
-                {myActivityProposals.length > 0 && (
+                {filteredMyActivityProposals.length > 0 && (
                   <section className="space-y-4" data-testid="section-my-activity-proposals">
                     <div className="flex items-center gap-2 text-neutral-700">
                       <MapPin className="w-4 h-4" />
                       <h3 className="text-lg font-semibold">
-                        Activity proposals ({myActivityProposals.length})
+                        Activity proposals ({filteredMyActivityProposals.length})
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      {myActivityProposals.map((proposal) => (
+                      {filteredMyActivityProposals.map((proposal) => (
                         <ActivityProposalCard key={proposal.id} proposal={proposal} />
                       ))}
                     </div>
                   </section>
                 )}
 
-                {myRestaurantProposals.length > 0 && (
+                {filteredMyRestaurantProposals.length > 0 && (
                   <section className="space-y-4" data-testid="section-my-restaurant-proposals">
                     <div className="flex items-center gap-2 text-neutral-700">
                       <Utensils className="w-4 h-4" />
                       <h3 className="text-lg font-semibold">
-                        Restaurant proposals ({myRestaurantProposals.length})
+                        Restaurant proposals ({filteredMyRestaurantProposals.length})
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      {myRestaurantProposals.map((proposal) => (
+                      {filteredMyRestaurantProposals.map((proposal) => (
                         <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                       ))}
                     </div>
@@ -1476,7 +1467,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                 )}
               </div>
             ) : (
-              <MyProposalsEmptyState />
+              <MyProposalsEmptyState hasAny={hasAnyMyProposals} />
             )}
           </TabsContent>
 
@@ -1491,8 +1482,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                   <HotelProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : proposalFilter === "mine" ? (
-              <MyProposalsEmptyState type="Hotel" />
             ) : hotelProposals.length > 0 ? (
               <FilteredEmptyState type="Hotel" />
             ) : (
@@ -1511,8 +1500,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                   <FlightProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : proposalFilter === "mine" ? (
-              <MyProposalsEmptyState type="Flight" />
             ) : flightProposals.length > 0 ? (
               <FilteredEmptyState type="Flight" />
             ) : (
@@ -1531,8 +1518,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                   <ActivityProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : proposalFilter === "mine" ? (
-              <MyProposalsEmptyState type="Activity" />
             ) : activityProposals.length > 0 ? (
               <FilteredEmptyState type="Activity" />
             ) : (
@@ -1551,8 +1536,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
                   <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : proposalFilter === "mine" ? (
-              <MyProposalsEmptyState type="Restaurant" />
             ) : restaurantProposals.length > 0 ? (
               <FilteredEmptyState type="Restaurant" />
             ) : (
