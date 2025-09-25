@@ -196,16 +196,108 @@ export default function HotelsPage() {
     return segments.join('--');
   };
 
-  const normalizeForVrbo = (destination: string) => {
-    if (!destination) return '';
+  const getNumericString = (value: unknown): string | null => {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.trunc(value).toString();
+    }
 
-    return destination
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .trim()
-      .replace(/\s+/g, '-');
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (/^\d+$/.test(trimmed)) {
+        return trimmed;
+      }
+    }
+
+    return null;
+  };
+
+  const getRegionIdForVrbo = (location: any): string | null => {
+    if (!location) return null;
+
+    const candidates = [
+      location.regionId,
+      location.regionID,
+      location.region_id,
+      location.RegionId,
+      location.RegionID,
+    ];
+
+    for (const candidate of candidates) {
+      const numeric = getNumericString(candidate);
+      if (numeric) {
+        return numeric;
+      }
+    }
+
+    return null;
+  };
+
+  const getCoordinatesForVrbo = (location: any): string | null => {
+    if (!location) return null;
+
+    const latCandidates = [
+      location.latitude,
+      location.lat,
+      location.latLong?.lat,
+      location.latLng?.lat,
+      location.location?.lat,
+      Array.isArray(location.coordinates) ? location.coordinates[0] : undefined,
+    ];
+
+    const lngCandidates = [
+      location.longitude,
+      location.lon,
+      location.lng,
+      location.latLong?.lng,
+      location.latLng?.lng,
+      location.location?.lng,
+      Array.isArray(location.coordinates) ? location.coordinates[1] : undefined,
+    ];
+
+    const parseCoordinate = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+
+      if (typeof value === 'string') {
+        const numeric = Number.parseFloat(value);
+        if (Number.isFinite(numeric)) {
+          return numeric;
+        }
+      }
+
+      return null;
+    };
+
+    const latitude = latCandidates.map(parseCoordinate).find((value) => value !== null);
+    const longitude = lngCandidates.map(parseCoordinate).find((value) => value !== null);
+
+    if (latitude === null || latitude === undefined || longitude === null || longitude === undefined) {
+      return null;
+    }
+
+    return `${latitude},${longitude}`;
+  };
+
+  const getTypeaheadCollationId = (location: any): string | null => {
+    if (!location) return null;
+
+    const candidates = [
+      location.typeaheadCollationId,
+      location.typeaheadCollationID,
+      location.collationId,
+      location.collationID,
+      location.typeaheadId,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.trim()) {
+        return candidate.trim();
+      }
+    }
+
+    return null;
   };
 
   const handleExternalSearch = (provider: 'airbnb' | 'vrbo' | 'expedia') => {
@@ -275,14 +367,38 @@ export default function HotelsPage() {
     }
 
     if (provider === 'vrbo') {
-      const vrboSlug = normalizeForVrbo(trimmedDestination) || normalizeForVrbo(trimmedDestination.replace(/,/g, ' '));
-      const params = new URLSearchParams({
-        checkin: checkInDate,
-        checkout: checkOutDate,
-        adults: adults.toString(),
-        children: childrenValue.toString(),
-      });
-      url = `https://www.vrbo.com/search/keywords:${vrboSlug || encodeURIComponent(trimmedDestination)}?${params.toString()}`;
+      const vrboDestination = (searchLocation?.displayName || trimmedDestination).trim();
+      const params = new URLSearchParams();
+      params.set('destination', vrboDestination);
+
+      const regionId = getRegionIdForVrbo(searchLocation);
+      if (regionId) {
+        params.set('regionId', regionId);
+      }
+
+      const latLong = getCoordinatesForVrbo(searchLocation);
+      if (latLong) {
+        params.set('latLong', latLong);
+      }
+
+      params.set('flexibility', '0_DAY');
+      params.set('d1', checkInDate);
+      params.set('startDate', checkInDate);
+      params.set('d2', checkOutDate);
+      params.set('endDate', checkOutDate);
+      params.set('adults', adults.toString());
+
+      if (childCount !== '') {
+        params.set('children', childrenValue.toString());
+      }
+
+      const typeaheadId = getTypeaheadCollationId(searchLocation);
+      if (typeaheadId) {
+        params.set('typeaheadCollationId', typeaheadId);
+      }
+
+      // FIXED VRBO LINK BUILDER
+      url = `https://www.vrbo.com/search?${params.toString()}`;
     }
 
     if (provider === 'expedia') {
