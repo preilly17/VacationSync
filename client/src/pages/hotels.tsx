@@ -90,37 +90,6 @@ export default function HotelsPage() {
     }
   }, [trip?.startDate, trip?.endDate]);
 
-  // Auto-search hotels and auto-populate when trip or user data is loaded
-  useEffect(() => {
-    if (!isSearching && searchResults.length === 0 && !searchLocation) {
-      let locationToSet = null;
-
-      // First priority: trip destination
-      if (trip && trip.destination) {
-        console.log('Auto-searching hotels for trip destination:', trip.destination);
-        locationToSet = {
-          name: trip.destination,
-          iataCode: trip.destination.includes('(') ? 
-            trip.destination.match(/\(([^)]+)\)/)?.[1] : null,
-          type: 'CITY'
-        };
-      }
-      // Second priority: user's default location when no trip destination
-      else if (user && (!trip || !trip.destination) && (user.defaultCity || user.defaultLocation)) {
-        const defaultLoc = user.defaultCity || user.defaultLocation;
-        console.log('Auto-searching hotels for user default location:', defaultLoc);
-        locationToSet = {
-          name: defaultLoc,
-          type: 'CITY'
-        };
-      }
-
-      if (locationToSet) {
-        setSearchLocation(locationToSet);
-        searchHotels(locationToSet);
-      }
-    }
-  }, [trip, user, isSearching, searchResults.length, searchLocation]);
 
   // Function to get location data for hotel search
   const getLocationForSearch = (location: any): { coordinates?: [number, number]; cityName?: string; countryCode?: string } => {
@@ -1063,9 +1032,6 @@ export default function HotelsPage() {
                     value={searchLocation?.displayName || searchLocation?.name || ''}
                     onLocationSelect={(location) => {
                       setSearchLocation(location);
-                      if (location) {
-                        searchHotels(location);
-                      }
                     }}
                   />
                   {trip?.destination && !searchLocation && (
