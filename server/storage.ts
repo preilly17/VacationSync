@@ -122,6 +122,19 @@ const toStringArray = (value: unknown): string[] => {
   return [];
 };
 
+const normalizeUserId = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return String(value).trim() || null;
+};
+
 const toOptionalString = (value: unknown): string | null => {
   if (value === null || value === undefined) {
     return null;
@@ -3060,7 +3073,10 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Activity not found");
     }
 
-    if (activity.postedBy !== currentUserId) {
+    const proposerId = normalizeUserId(activity.postedBy);
+    const requesterId = normalizeUserId(currentUserId);
+
+    if (!proposerId || !requesterId || proposerId !== requesterId) {
       throw new Error("You can only cancel activities you created");
     }
 
@@ -7184,7 +7200,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Hotel proposal not found");
     }
 
-    if (proposal.proposedBy !== currentUserId) {
+    const proposerId = normalizeUserId(proposal.proposedBy);
+    const requesterId = normalizeUserId(currentUserId);
+
+    if (!proposerId || !requesterId || proposerId !== requesterId) {
       throw new Error("You can only cancel proposals you created");
     }
 
@@ -7440,7 +7459,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Flight proposal not found");
     }
 
-    if (proposal.proposedBy !== currentUserId) {
+    const proposerId = normalizeUserId(proposal.proposedBy);
+    const requesterId = normalizeUserId(currentUserId);
+
+    if (!proposerId || !requesterId || proposerId !== requesterId) {
       throw new Error("You can only cancel proposals you created");
     }
 
@@ -8623,7 +8645,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Restaurant proposal not found");
     }
 
-    if (proposal.proposedBy !== currentUserId) {
+    const proposerId = normalizeUserId(proposal.proposedBy);
+    const requesterId = normalizeUserId(currentUserId);
+
+    if (!proposerId || !requesterId || proposerId !== requesterId) {
       throw new Error("You can only cancel proposals you created");
     }
 
