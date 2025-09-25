@@ -192,9 +192,13 @@ export function AddExpenseModal({
       return;
     }
 
-    const selected = form.getValues("participants");
-    if (selected.length === 0) {
-      form.setValue("participants", [currentUserId], {
+    const currentParticipants = form.getValues("participants");
+    const filteredParticipants = currentParticipants.filter(
+      (participantId) => participantId !== currentUserId,
+    );
+
+    if (filteredParticipants.length !== currentParticipants.length) {
+      form.setValue("participants", filteredParticipants, {
         shouldDirty: false,
         shouldValidate: true,
       });
@@ -209,7 +213,9 @@ export function AddExpenseModal({
   const createExpenseMutation = useMutation({
     mutationFn: async (values: FormValues) => {
       const amountNumber = Number(values.amount);
-      const participants = values.participants;
+      const participants = currentUserId
+        ? values.participants.filter((id) => id !== currentUserId)
+        : values.participants;
       const splitAmount =
         participants.length > 0 ? amountNumber / participants.length : 0;
 
@@ -262,6 +268,13 @@ export function AddExpenseModal({
 
   const amountInput = form.watch("amount");
   const selectedParticipants = form.watch("participants");
+  const participantsExcludingPayer = useMemo(
+    () =>
+      currentUserId
+        ? selectedParticipants.filter((id) => id !== currentUserId)
+        : selectedParticipants,
+    [currentUserId, selectedParticipants],
+  );
   const currency = form.watch("currency") || "USD";
 
   const totalAmount = useMemo(() => {
@@ -270,7 +283,7 @@ export function AddExpenseModal({
   }, [amountInput]);
 
   const perPersonShare = useMemo(() => {
-    if (selectedParticipants.length === 0) {
+    if (participantsExcludingPayer.length === 0) {
       return null;
     }
 
@@ -278,8 +291,8 @@ export function AddExpenseModal({
       return null;
     }
 
-    return totalAmount / selectedParticipants.length;
-  }, [selectedParticipants, totalAmount]);
+    return totalAmount / participantsExcludingPayer.length;
+  }, [participantsExcludingPayer, totalAmount]);
 
   return (
     <Dialog
@@ -421,6 +434,7 @@ export function AddExpenseModal({
                           ) : trip?.members?.length ? (
                             trip.members.map((member) => {
                               const memberId = member.user.id;
+                              const isCurrentUser = memberId === currentUserId;
                               const isChecked = selected.has(memberId);
 
                               return (
@@ -431,7 +445,11 @@ export function AddExpenseModal({
                                   <Checkbox
                                     id={`participant-${memberId}`}
                                     checked={isChecked}
+                                    disabled={isCurrentUser}
                                     onCheckedChange={(checked) => {
+                                      if (isCurrentUser) {
+                                        return;
+                                      }
                                       if (checked) {
                                         field.onChange([...field.value, memberId]);
                                       } else {
@@ -453,7 +471,7 @@ export function AddExpenseModal({
                                   <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-medium">
                                       {getMemberDisplayName(member.user)}
-                                      {member.user.id === currentUserId ? " (you)" : ""}
+                                      {isCurrentUser ? " (payer)" : ""}
                                     </p>
                                     <p className="truncate text-xs text-muted-foreground">
                                       {member.user.email}
@@ -472,7 +490,7 @@ export function AddExpenseModal({
                       </div>
                       <FormMessage />
                       <div className="rounded-md border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                        {field.value.length === 0
+                        {participantsExcludingPayer.length === 0
                           ? "Select at least one traveler to split this cost."
                           : perPersonShare
                           ? `Each person owes ${formatCurrency(perPersonShare, currency)}.`
