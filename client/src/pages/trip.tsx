@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +47,7 @@ import { PackingList } from "@/components/packing-list";
 import { ExpenseTracker } from "@/components/expense-tracker";
 import { GroceryList } from "@/components/grocery-list";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -94,6 +94,7 @@ import {
 import { apiRequest } from "@/lib/queryClient";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 
 const TRIP_TAB_KEYS = [
@@ -114,6 +115,20 @@ type TripTab = (typeof TRIP_TAB_KEYS)[number];
 
 const isTripTab = (value: string): value is TripTab =>
   TRIP_TAB_KEYS.includes(value as TripTab);
+
+type SummaryPanel = "activities" | "rsvps" | "next";
+
+const inviteStatusLabelMap: Record<ActivityInviteStatus, string> = {
+  accepted: "Accepted",
+  pending: "Maybe",
+  declined: "Declined",
+};
+
+const inviteStatusBadgeClasses: Record<ActivityInviteStatus, string> = {
+  accepted: "bg-green-100 text-green-800 border-green-200",
+  pending: "bg-amber-100 text-amber-800 border-amber-200",
+  declined: "bg-red-100 text-red-800 border-red-200",
+};
 
 // MOBILE-ONLY bottom navigation config
 const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
@@ -350,6 +365,7 @@ export default function Trip() {
   const [scheduleViewDate, setScheduleViewDate] = useState<Date | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
+  const [summaryPanel, setSummaryPanel] = useState<SummaryPanel | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -471,6 +487,60 @@ export default function Trip() {
     [respondToInviteMutation, selectedActivity],
   );
 
+  const openSummaryPanel = (panel: SummaryPanel) => {
+    setSummaryPanel(panel);
+  };
+
+  const closeSummaryPanel = () => {
+    setSummaryPanel(null);
+  };
+
+  const handleSummaryCardKeyDown = (panel: SummaryPanel, event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openSummaryPanel(panel);
+    }
+  };
+
+  const handleDialogItemKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+    action: () => void,
+  ) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      action();
+    }
+  };
+
+  const handleOpenActivityFromPanel = (activity: ActivityWithDetails) => {
+    closeSummaryPanel();
+    handleActivityClick(activity);
+  };
+
+  const handleQuickRespond = (
+    activityId: number,
+    status: ActivityInviteStatus,
+    currentStatus?: ActivityInviteStatus,
+  ) => {
+    if (currentStatus === status) {
+      return;
+    }
+
+    respondToInviteMutation.mutate({ activityId, status });
+  };
+
+  const handleViewOnCalendar = (activity: ActivityWithDetails) => {
+    const targetDate = clampDateToTrip(new Date(activity.startTime));
+    if (targetDate) {
+      setActiveTab("calendar");
+      setGroupCalendarView("day");
+      setGroupViewDate(targetDate);
+      setSelectedDate(targetDate);
+    }
+
+    closeSummaryPanel();
+  };
+
   // Packing data
   const { data: packingItems = [] } = useQuery({
     queryKey: [`/api/trips/${id}/packing`],
@@ -537,39 +607,57 @@ export default function Trip() {
     }
   }, [activeTab, scheduleCalendarView, scheduleViewDate]);
 
-  // Filter activities by category and people
-  const getFilteredActivities = () => {
+  const filteredActivities = useMemo(() => {
     let filtered = activities;
-    
-    // Filter by category
+
     if (categoryFilter !== "all") {
       filtered = filtered.filter((activity) => activity.category === categoryFilter);
     }
-    
-    // Filter by people
+
     if (peopleFilter !== "all") {
-      filtered = filtered.filter((activity) => {
-        return activity.invites?.some(
+      filtered = filtered.filter((activity) =>
+        activity.invites?.some(
           (invite) => invite.userId === peopleFilter && invite.status === "accepted",
-        );
-      });
-    }
-    
-    return filtered;
-  };
-
-  // Get user's personal schedule (only accepted activities)
-  const getMySchedule = () => {
-    if (!user) return [];
-    return activities.filter((activity) => {
-      return activity.invites?.some(
-        (invite) => invite.userId === user.id && invite.status === "accepted",
+        ),
       );
-    });
-  };
+    }
 
-  const myScheduleActivities = getMySchedule();
-  const filteredActivities = getFilteredActivities();
+    return filtered;
+  }, [activities, categoryFilter, peopleFilter]);
+
+  const myScheduleActivities = useMemo(() => {
+    if (!user) return [];
+    return activities.filter((activity) =>
+      activity.invites?.some((invite) => invite.userId === user.id && invite.status === "accepted"),
+    );
+  }, [activities, user]);
+
+  const filteredMyInvitedActivities = useMemo(() => {
+    if (!user) return [];
+    return filteredActivities.filter((activity) =>
+      activity.invites?.some((invite) => invite.userId === user.id),
+    );
+  }, [filteredActivities, user]);
+
+  const sortedMyInvitedActivities = useMemo(() => {
+    const now = Date.now();
+    return [...filteredMyInvitedActivities].sort((a, b) => {
+      const aTime = new Date(a.startTime).getTime();
+      const bTime = new Date(b.startTime).getTime();
+      const aIsPast = Number.isNaN(aTime) ? 1 : aTime < now ? 1 : 0;
+      const bIsPast = Number.isNaN(bTime) ? 1 : bTime < now ? 1 : 0;
+
+      if (aIsPast !== bIsPast) {
+        return aIsPast - bIsPast;
+      }
+
+      if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+        return 0;
+      }
+
+      return aTime - bTime;
+    });
+  }, [filteredMyInvitedActivities]);
   const currentGroupDay = groupViewDate ?? tripStartDate ?? null;
   const currentScheduleDay = scheduleViewDate ?? tripStartDate ?? null;
 
@@ -674,14 +762,16 @@ export default function Trip() {
     ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
     : null;
 
-  const now = new Date();
-  const upcomingActivities = activities
-    .map((activity) => ({
-      activity,
-      start: new Date(activity.startTime),
-    }))
-    .filter(({ start }) => !Number.isNaN(start.getTime()) && start.getTime() >= now.getTime())
-    .sort((a, b) => a.start.getTime() - b.start.getTime());
+  const upcomingActivities = useMemo(() => {
+    const now = new Date();
+    return filteredActivities
+      .map((activity) => ({
+        activity,
+        start: new Date(activity.startTime),
+      }))
+      .filter(({ start }) => !Number.isNaN(start.getTime()) && start.getTime() >= now.getTime())
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
+  }, [filteredActivities]);
 
   const nextActivityEntry = upcomingActivities[0];
   const nextActivity = nextActivityEntry?.activity;
@@ -692,6 +782,13 @@ export default function Trip() {
   const nextActivityDateLabel = nextActivityStart
     ? format(nextActivityStart, "MMM d • h:mm a")
     : null;
+  const nextActivityAttendees = useMemo(() => {
+    if (!nextActivity) {
+      return [];
+    }
+
+    return (nextActivity.invites ?? []).filter((invite) => invite.status === "accepted");
+  }, [nextActivity]);
 
   // Auto-navigate calendar to trip dates when trip loads
   useEffect(() => {
@@ -1004,11 +1101,20 @@ export default function Trip() {
                   </div>
                   {activeTab === "calendar" && (
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                      <div
+                        className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-transform duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 hover:-translate-y-0.5 hover:shadow-md cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Open activities planned details"
+                        onClick={() => openSummaryPanel("activities")}
+                        onKeyDown={(event) => handleSummaryCardKeyDown("activities", event)}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-medium text-neutral-500">Activities planned</p>
-                            <p className="mt-1 text-2xl font-semibold text-neutral-900">{activities.length}</p>
+                            <p className="mt-1 text-2xl font-semibold text-neutral-900">
+                              {upcomingActivities.length}
+                            </p>
                           </div>
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                             <CheckCircle className="h-5 w-5" />
@@ -1016,19 +1122,35 @@ export default function Trip() {
                         </div>
                         <p className="mt-3 text-xs text-neutral-500">Track everything happening across the trip.</p>
                       </div>
-                      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                      <div
+                        className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-transform duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 hover:-translate-y-0.5 hover:shadow-md cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Open your RSVPs details"
+                        onClick={() => openSummaryPanel("rsvps")}
+                        onKeyDown={(event) => handleSummaryCardKeyDown("rsvps", event)}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-medium text-neutral-500">Your RSVPs</p>
-                            <p className="mt-1 text-2xl font-semibold text-neutral-900">{myScheduleActivities.length}</p>
+                            <p className="mt-1 text-2xl font-semibold text-neutral-900">
+                              {filteredMyInvitedActivities.length}
+                            </p>
                           </div>
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                             <UserIcon className="h-5 w-5" />
                           </div>
                         </div>
-                        <p className="mt-3 text-xs text-neutral-500">Keep tabs on the plans you’ve accepted.</p>
+                        <p className="mt-3 text-xs text-neutral-500">Keep tabs on the plans you’ve been invited to.</p>
                       </div>
-                      <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
+                      <div
+                        className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-transform duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-4 hover:-translate-y-0.5 hover:shadow-md cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        aria-label="Open next on the calendar details"
+                        onClick={() => openSummaryPanel("next")}
+                        onKeyDown={(event) => handleSummaryCardKeyDown("next", event)}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm font-medium text-neutral-500">Next on the calendar</p>
@@ -1406,6 +1528,301 @@ export default function Trip() {
             </div>
           </nav>
         </div>
+
+        <Dialog open={summaryPanel !== null} onOpenChange={(open) => !open && closeSummaryPanel()}>
+          {summaryPanel && (
+            <DialogContent className="max-w-3xl">
+              {summaryPanel === "activities" && (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Activities planned</DialogTitle>
+                    <DialogDescription>
+                      Upcoming activities that match your current filters.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {activitiesLoading ? (
+                    <div className="py-12 text-center text-sm text-neutral-500">
+                      Loading activities…
+                    </div>
+                  ) : upcomingActivities.length > 0 ? (
+                    <ScrollArea className="max-h-[60vh] pr-4">
+                      <div className="space-y-3 py-1">
+                        {upcomingActivities.map(({ activity, start }) => {
+                          const startLabel = format(start, "EEEE, MMM d");
+                          const timeLabel = format(start, "h:mm a");
+                          const locationLabel = activity.location?.trim();
+                          const categoryLabel = !locationLabel && activity.category ? activity.category : null;
+
+                          return (
+                            <div
+                              key={activity.id}
+                              className="group rounded-xl border border-neutral-200 bg-white/90 p-4 shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 hover:border-primary/40"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => handleOpenActivityFromPanel(activity)}
+                              onKeyDown={(event) =>
+                                handleDialogItemKeyDown(event, () => handleOpenActivityFromPanel(activity))
+                              }
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
+                                  <p className="mt-1 text-sm text-neutral-600">
+                                    {startLabel} • {timeLabel}
+                                  </p>
+                                  {locationLabel ? (
+                                    <p className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+                                      <MapPin className="h-3.5 w-3.5 text-neutral-400" />
+                                      {locationLabel}
+                                    </p>
+                                  ) : categoryLabel ? (
+                                    <p className="mt-2 text-xs text-neutral-500">Category: {categoryLabel}</p>
+                                  ) : null}
+                                </div>
+                                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                  <Calendar className="h-5 w-5" />
+                                </div>
+                              </div>
+                              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
+                                <span>
+                                  {activity.acceptedCount} going
+                                  {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
+                                  {activity.declinedCount > 0 && ` • ${activity.declinedCount} declined`}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-sm font-medium text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleViewOnCalendar(activity);
+                                  }}
+                                >
+                                  View on calendar
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-sm text-neutral-600">
+                      No upcoming activities match your current filters.
+                    </div>
+                  )}
+                </>
+              )}
+
+              {summaryPanel === "rsvps" && (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Your RSVPs</DialogTitle>
+                    <DialogDescription>
+                      Review and update your responses for activities that match the current filters.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {!user ? (
+                    <div className="py-12 text-center text-sm text-neutral-500">
+                      Sign in to manage your RSVPs.
+                    </div>
+                  ) : activitiesLoading ? (
+                    <div className="py-12 text-center text-sm text-neutral-500">
+                      Loading your invitations…
+                    </div>
+                  ) : sortedMyInvitedActivities.length > 0 ? (
+                    <ScrollArea className="max-h-[60vh] pr-4">
+                      <div className="space-y-3 py-1">
+                        {sortedMyInvitedActivities.map((activity) => {
+                          const invite = activity.invites?.find((entry) => entry.userId === user.id);
+                          const status: ActivityInviteStatus = invite?.status ?? "pending";
+                          const start = new Date(activity.startTime);
+                          const dateLabel = Number.isNaN(start.getTime())
+                            ? null
+                            : format(start, "EEEE, MMM d");
+                          const timeLabel = Number.isNaN(start.getTime()) ? null : format(start, "h:mm a");
+                          const locationLabel = activity.location?.trim();
+
+                          return (
+                            <div
+                              key={activity.id}
+                              className="group rounded-xl border border-neutral-200 bg-white/90 p-4 shadow-sm transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 hover:border-primary/40"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => handleOpenActivityFromPanel(activity)}
+                              onKeyDown={(event) =>
+                                handleDialogItemKeyDown(event, () => handleOpenActivityFromPanel(activity))
+                              }
+                            >
+                              <div className="flex items-start justify-between gap-4">
+                                <div>
+                                  <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
+                                  {(dateLabel || timeLabel) && (
+                                    <p className="mt-1 text-sm text-neutral-600">
+                                      {dateLabel}
+                                      {dateLabel && timeLabel ? " • " : ""}
+                                      {timeLabel}
+                                    </p>
+                                  )}
+                                  {locationLabel && (
+                                    <p className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
+                                      <MapPin className="h-3.5 w-3.5 text-neutral-400" />
+                                      {locationLabel}
+                                    </p>
+                                  )}
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className={`border ${inviteStatusBadgeClasses[status]}`}
+                                  title={status === "pending" ? "Pending response" : `Status: ${inviteStatusLabelMap[status]}`}
+                                >
+                                  {inviteStatusLabelMap[status]}
+                                </Badge>
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap items-center gap-2">
+                                {(["accepted", "pending", "declined"] as ActivityInviteStatus[]).map((option) => {
+                                  const isActive = status === option;
+                                  const label =
+                                    option === "accepted"
+                                      ? "Going"
+                                      : option === "pending"
+                                        ? "Maybe"
+                                        : "Can't make it";
+
+                                  return (
+                                    <button
+                                      key={option}
+                                      type="button"
+                                      className={`rounded-full border px-3 py-1 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 ${
+                                        isActive
+                                          ? "border-primary/50 bg-primary/10 text-primary"
+                                          : "border-neutral-200 text-neutral-600 hover:border-primary/40 hover:text-primary"
+                                      }`}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        handleQuickRespond(activity.id, option, status);
+                                      }}
+                                      aria-pressed={isActive}
+                                      disabled={respondToInviteMutation.isPending}
+                                    >
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500">
+                                <span>
+                                  {activity.acceptedCount} going
+                                  {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
+                                  {activity.declinedCount > 0 && ` • ${activity.declinedCount} declined`}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="text-sm font-medium text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleViewOnCalendar(activity);
+                                  }}
+                                >
+                                  View on calendar
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-sm text-neutral-600">
+                      No invitations match your current filters.
+                    </div>
+                  )}
+                </>
+              )}
+
+              {summaryPanel === "next" && (
+                <>
+                  <DialogHeader>
+                    <DialogTitle>Next on the calendar</DialogTitle>
+                    <DialogDescription>
+                      Here’s the next upcoming event that matches your current filters.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {nextActivity ? (
+                    <div className="space-y-5">
+                      <div className="rounded-xl border border-neutral-200 bg-white/90 p-5 shadow-sm">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-lg font-semibold text-neutral-900">{nextActivity.name}</p>
+                            {nextActivityDateLabel && (
+                              <p className="mt-1 text-sm text-neutral-600">{nextActivityDateLabel}</p>
+                            )}
+                            {nextActivityCountdown && (
+                              <p className="text-xs text-neutral-500">{nextActivityCountdown}</p>
+                            )}
+                            {nextActivity.location ? (
+                              <p className="mt-3 flex items-center gap-2 text-sm text-neutral-600">
+                                <MapPin className="h-4 w-4 text-neutral-400" />
+                                {nextActivity.location}
+                              </p>
+                            ) : nextActivity.category ? (
+                              <p className="mt-3 text-xs text-neutral-500">Category: {nextActivity.category}</p>
+                            ) : null}
+                          </div>
+                          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                            <Clock className="h-6 w-6" />
+                          </div>
+                        </div>
+
+                        <div className="mt-5 space-y-3 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                            Who’s going
+                          </p>
+                          {nextActivityAttendees.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {nextActivityAttendees.map((invite) => (
+                                <Badge
+                                  key={invite.id}
+                                  variant="outline"
+                                  className="border-neutral-300 bg-white text-neutral-700"
+                                >
+                                  {getParticipantDisplayName(invite.user)}
+                                </Badge>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-neutral-500">No one has RSVP’d yes yet.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button
+                          className="bg-primary text-white hover:bg-red-600"
+                          onClick={() => handleOpenActivityFromPanel(nextActivity)}
+                        >
+                          Open event
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="border-neutral-200 bg-white text-neutral-700 hover:border-primary hover:text-primary"
+                          onClick={() => handleOpenActivityFromPanel(nextActivity)}
+                        >
+                          Message group
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center text-sm text-neutral-600">
+                      Add an activity to see what’s coming up next.
+                    </div>
+                  )}
+                </>
+              )}
+            </DialogContent>
+          )}
+        </Dialog>
 
         <AddActivityModal
           open={showAddActivity}
