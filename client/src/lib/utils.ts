@@ -70,9 +70,9 @@ export function parseDateValue(
       return null;
     }
 
-    const dateOnlyMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (dateOnlyMatch) {
-      const [, year, month, day] = dateOnlyMatch;
+    const isoLikeMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s].*)?$/);
+    if (isoLikeMatch) {
+      const [, year, month, day] = isoLikeMatch;
       const parsedDate = new Date(
         Number(year),
         Number(month) - 1,
