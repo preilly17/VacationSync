@@ -13,6 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
+import { parseDateValue } from "@/lib/utils";
 
 interface EditTripModalProps {
   open: boolean;
@@ -42,14 +43,16 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
+  const parsedTripStartDate = parseDateValue(trip.startDate) ?? new Date(trip.startDate);
+  const parsedTripEndDate = parseDateValue(trip.endDate) ?? new Date(trip.endDate);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: trip.name,
       destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      startDate: format(parsedTripStartDate, "yyyy-MM-dd"),
+      endDate: format(parsedTripEndDate, "yyyy-MM-dd"),
     },
   });
 
@@ -59,8 +62,8 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       form.reset({
         name: trip.name,
         destination: trip.destination,
-        startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-        endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+        startDate: format(parsedTripStartDate, "yyyy-MM-dd"),
+        endDate: format(parsedTripEndDate, "yyyy-MM-dd"),
       });
       // Set destination for SmartLocationSearch
       setSelectedDestination({ 
@@ -138,8 +141,8 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     form.reset({
       name: trip.name,
       destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      startDate: format(parsedTripStartDate, "yyyy-MM-dd"),
+      endDate: format(parsedTripEndDate, "yyyy-MM-dd"),
     });
     // Reset selected destination to original
     setSelectedDestination({ 

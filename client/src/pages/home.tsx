@@ -48,6 +48,7 @@ import { TravelMascot } from "@/components/TravelMascot";
 import { ManualRefreshButton } from "@/components/manual-refresh-button";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { parseDateValue } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import type { TripWithDetails } from "@shared/schema";
 import { Progress } from "@/components/ui/progress";
@@ -408,21 +409,32 @@ export default function Home() {
     endDate: string | Date,
   ) => {
     const start =
-      typeof startDate === "string" ? new Date(startDate) : startDate;
-    const end = typeof endDate === "string" ? new Date(endDate) : endDate;
+      typeof startDate === "string"
+        ? parseDateValue(startDate) ?? new Date(startDate)
+        : startDate;
+    const end =
+      typeof endDate === "string"
+        ? parseDateValue(endDate) ?? new Date(endDate)
+        : endDate;
     return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
   };
 
   const getUpcomingTrips = () => {
     if (!trips) return [];
     const now = new Date();
-    return trips.filter((trip) => new Date(trip.startDate) >= now);
+    return trips.filter((trip) => {
+      const tripStart = parseDateValue(trip.startDate) ?? new Date(trip.startDate);
+      return tripStart >= now;
+    });
   };
 
   const getPastTrips = () => {
     if (!trips) return [];
     const now = new Date();
-    return trips.filter((trip) => new Date(trip.endDate) < now);
+    return trips.filter((trip) => {
+      const tripEnd = parseDateValue(trip.endDate) ?? new Date(trip.endDate);
+      return tripEnd < now;
+    });
   };
 
   const handleStatClick = (statType: StatType) => {
@@ -623,7 +635,7 @@ export default function Home() {
         : "Destination TBA";
     const mapKey = rawDestination || "Destination TBA";
     const existingDestination = destinationMap.get(mapKey);
-    const tripStart = new Date(trip.startDate);
+    const tripStart = parseDateValue(trip.startDate) ?? new Date(trip.startDate);
     const isUpcoming = tripStart >= currentDate;
 
     if (existingDestination) {

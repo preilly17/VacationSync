@@ -92,6 +92,7 @@ import {
   type HotelFormValues,
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
+import { parseDateValue } from "@/lib/utils";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -495,8 +496,11 @@ export default function Trip() {
     ...(trip?.members || []).map((member: any) => member.userId)
   ];
 
-  const tripStartDate = trip?.startDate ? startOfDay(new Date(trip.startDate)) : null;
-  const tripEndDate = trip?.endDate ? startOfDay(new Date(trip.endDate)) : null;
+  const parsedTripStartDate = parseDateValue(trip?.startDate ?? null);
+  const parsedTripEndDate = parseDateValue(trip?.endDate ?? null);
+
+  const tripStartDate = parsedTripStartDate ? startOfDay(parsedTripStartDate) : null;
+  const tripEndDate = parsedTripEndDate ? startOfDay(parsedTripEndDate) : null;
 
   const clampDateToTrip = (date: Date) => {
     if (!tripStartDate && !tripEndDate) {
@@ -517,13 +521,12 @@ export default function Trip() {
   };
 
   useEffect(() => {
-    if (trip?.startDate) {
-      const start = startOfDay(new Date(trip.startDate));
-      setGroupViewDate((prev) => (prev ? prev : start));
-      setScheduleViewDate((prev) => (prev ? prev : start));
-      setSelectedDate((prev) => (prev ? prev : start));
+    if (tripStartDate) {
+      setGroupViewDate((prev) => (prev ? prev : tripStartDate));
+      setScheduleViewDate((prev) => (prev ? prev : tripStartDate));
+      setSelectedDate((prev) => (prev ? prev : tripStartDate));
     }
-  }, [trip?.startDate]);
+  }, [tripStartDate]);
 
   useEffect(() => {
     if (activeTab === "calendar" && groupCalendarView === "day" && groupViewDate) {
@@ -670,8 +673,8 @@ export default function Trip() {
   };
 
   const totalMembers = trip?.members?.length ?? 0;
-  const tripDurationDays = trip?.startDate && trip?.endDate
-    ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
+  const tripDurationDays = tripStartDate && tripEndDate
+    ? Math.max(differenceInCalendarDays(tripEndDate, tripStartDate) + 1, 1)
     : null;
 
   const now = new Date();
@@ -695,17 +698,16 @@ export default function Trip() {
 
   // Auto-navigate calendar to trip dates when trip loads
   useEffect(() => {
-    if (trip?.startDate) {
-      const tripStartDate = new Date(trip.startDate);
+    if (tripStartDate) {
       const currentMonthStart = startOfMonth(currentMonth);
       const tripMonthStart = startOfMonth(tripStartDate);
-      
+
       // Only update if we're not already showing the correct month
       if (!isSameMonth(currentMonthStart, tripMonthStart)) {
         setCurrentMonth(tripStartDate);
       }
     }
-  }, [trip?.startDate]);
+  }, [tripStartDate]);
 
   if (authLoading || tripLoading) {
     return (
@@ -1676,7 +1678,7 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               Destination: <span className="font-semibold text-neutral-900">{trip?.destination ?? "TBD"}</span>
             </p>
             <p>
-              Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), 'MMM d, yyyy')} – ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
+              Dates: <span className="font-semibold text-neutral-900">{tripStartDate && tripEndDate ? `${format(tripStartDate, 'MMM d, yyyy')} – ${format(tripEndDate, 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
             </p>
           </div>
           <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
@@ -1988,6 +1990,9 @@ interface WeatherResponse {
 
 // Weather Report Component
 function WeatherReport({ trip }: { trip: TripWithDetails }) {
+  const normalizedTripStartDate = parseDateValue(trip.startDate);
+  const normalizedTripEndDate = parseDateValue(trip.endDate);
+
   const { data: weatherData, isLoading: weatherLoading, error: weatherError, refetch } = useQuery<WeatherResponse>({
     queryKey: ['weather', {
       location: trip.destination,
@@ -1999,8 +2004,8 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
       const params = new URLSearchParams({
         location: trip.destination,
         units: 'F',
-        startDate: new Date(trip.startDate).toISOString().split('T')[0],
-        endDate: new Date(trip.endDate).toISOString().split('T')[0]
+        startDate: normalizedTripStartDate?.toISOString().split('T')[0] ?? "",
+        endDate: normalizedTripEndDate?.toISOString().split('T')[0] ?? ""
       });
       
       const response = await apiFetch(`/api/weather?${params}`);
@@ -2089,8 +2094,8 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
   };
 
   // Filter forecast to only show days within trip dates
-  const tripStartDate = new Date(trip.startDate);
-  const tripEndDate = new Date(trip.endDate);
+  const tripStartDate = normalizedTripStartDate ?? new Date(trip.startDate);
+  const tripEndDate = normalizedTripEndDate ?? new Date(trip.endDate);
   const tripForecast = forecast.filter((day: WeatherForecast) => {
     const forecastDate = new Date(day.date);
     return forecastDate >= tripStartDate && forecastDate <= tripEndDate;

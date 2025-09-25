@@ -24,6 +24,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import type { TripWithDetails, ActivityWithDetails, User as UserType } from "@shared/schema";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { parseDateValue } from "@/lib/utils";
 
 const getParticipantDisplayName = (user: UserType) => {
   const first = user.firstName?.trim();
@@ -141,14 +142,14 @@ export default function MemberSchedule() {
 
   // Auto-navigate calendar to trip dates when trip loads
   useEffect(() => {
-    if (trip?.startDate) {
-      const tripStartDate = new Date(trip.startDate);
+    const parsedStartDate = parseDateValue(trip?.startDate ?? null);
+    if (parsedStartDate) {
       const currentMonthStart = startOfMonth(currentMonth);
-      const tripMonthStart = startOfMonth(tripStartDate);
-      
+      const tripMonthStart = startOfMonth(parsedStartDate);
+
       // Only update if we're not already showing the correct month
       if (!isSameMonth(currentMonthStart, tripMonthStart)) {
-        setCurrentMonth(tripStartDate);
+        setCurrentMonth(parsedStartDate);
       }
     }
   }, [trip?.startDate]);
@@ -159,7 +160,7 @@ export default function MemberSchedule() {
   };
 
   const parseIsoDate = (value: TripWithDetails["startDate"]) =>
-    value instanceof Date ? value : new Date(value);
+    parseDateValue(value) ?? new Date(value);
 
   const formatDateRange = (
     startDate: TripWithDetails["startDate"],

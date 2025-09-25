@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isWithinInterval } from "date-fns";
+import { parseDateValue } from "@/lib/utils";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 
 interface CalendarGridProps {
@@ -60,6 +60,8 @@ export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onD
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const tripStart = parseDateValue(trip.startDate) ?? new Date(trip.startDate);
+  const tripEnd = parseDateValue(trip.endDate) ?? new Date(trip.endDate);
 
   const getActivitiesForDay = (day: Date) => {
     return activities.filter(activity => 
@@ -68,9 +70,18 @@ export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onD
   };
 
   const isTripDay = (day: Date) => {
+    if (
+      !tripStart ||
+      !tripEnd ||
+      Number.isNaN(tripStart.getTime()) ||
+      Number.isNaN(tripEnd.getTime())
+    ) {
+      return false;
+    }
+
     return isWithinInterval(day, {
-      start: new Date(trip.startDate),
-      end: new Date(trip.endDate)
+      start: tripStart,
+      end: tripEnd,
     });
   };
 

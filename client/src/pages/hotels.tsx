@@ -19,7 +19,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Plus, Bed, Search, Filter, ArrowLeft, Building, ChevronRight, DollarSign, Calculator, ArrowUpDown } from "lucide-react";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, parseDateValue } from "@/lib/utils";
 import { type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
@@ -69,6 +69,16 @@ export default function HotelsPage() {
     queryKey: [`/api/trips/${tripId}`],
     enabled: !!tripId,
   });
+
+  const parsedTripStartDate = parseDateValue(trip?.startDate ?? null);
+  const parsedTripEndDate = parseDateValue(trip?.endDate ?? null);
+  const tripHasDates = Boolean(trip?.startDate && trip?.endDate);
+  const tripStartLabel = tripHasDates && trip?.startDate
+    ? format((parsedTripStartDate ?? new Date(trip.startDate)), 'MMM d')
+    : null;
+  const tripEndLabel = tripHasDates && trip?.endDate
+    ? format((parsedTripEndDate ?? new Date(trip.endDate)), 'MMM d')
+    : null;
 
   const { data: hotels = [], isLoading } = useQuery<HotelWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotels`],
@@ -202,8 +212,10 @@ export default function HotelsPage() {
 
       // Use trip dates - required by backend
       if (trip?.startDate && trip?.endDate) {
-        searchParams.checkInDate = format(new Date(trip.startDate), 'yyyy-MM-dd');
-        searchParams.checkOutDate = format(new Date(trip.endDate), 'yyyy-MM-dd');
+        const checkInDate = parsedTripStartDate ?? new Date(trip.startDate);
+        const checkOutDate = parsedTripEndDate ?? new Date(trip.endDate);
+        searchParams.checkInDate = format(checkInDate, 'yyyy-MM-dd');
+        searchParams.checkOutDate = format(checkOutDate, 'yyyy-MM-dd');
       } else {
         toast({
           title: "Search Error",
@@ -323,8 +335,12 @@ export default function HotelsPage() {
     const destLower = destination.toLowerCase();
     
     if (destLower.includes('tokyo') || destLower.includes('japan')) {
-      const baseDate = trip?.startDate ? new Date(trip.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-      const endDate = trip?.endDate ? new Date(trip.endDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      const baseDate = trip?.startDate
+        ? (parsedTripStartDate ?? new Date(trip.startDate)).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+      const endDate = trip?.endDate
+        ? (parsedTripEndDate ?? new Date(trip.endDate)).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
       
       return [
         {
@@ -1092,9 +1108,9 @@ export default function HotelsPage() {
               </Button>
             </div>
             
-            {trip && (
+            {trip && tripStartLabel && tripEndLabel && (
               <div className="text-sm text-muted-foreground">
-                Searching for hotels in {trip.destination} from {format(new Date(trip.startDate), 'MMM d')} to {format(new Date(trip.endDate), 'MMM d')}
+                Searching for hotels in {trip.destination} from {tripStartLabel} to {tripEndLabel}
               </div>
             )}
           </CardContent>
@@ -1115,9 +1131,11 @@ export default function HotelsPage() {
                     </span>
                   )}
                 </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Hotels for {trip?.destination} • {trip && format(new Date(trip.startDate), 'MMM d')} - {trip && format(new Date(trip.endDate), 'MMM d')}
-                </p>
+                {trip && tripStartLabel && tripEndLabel && (
+                  <p className="text-sm text-muted-foreground">
+                    Hotels for {trip.destination} • {tripStartLabel} - {tripEndLabel}
+                  </p>
+                )}
               </div>
               <Button onClick={openCreateDialog}>
                 <Plus className="h-4 w-4 mr-2" />

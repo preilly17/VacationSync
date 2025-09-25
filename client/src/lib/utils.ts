@@ -52,3 +52,43 @@ export function formatCurrency(
     return `${currency} ${amount.toFixed(fractionDigits)}`;
   }
 }
+
+export function parseDateValue(
+  value: string | Date | null | undefined,
+): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return new Date(value.getTime());
+  }
+
+  if (typeof value === "string") {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      return null;
+    }
+
+    const dateOnlyMatch = trimmedValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (dateOnlyMatch) {
+      const [, year, month, day] = dateOnlyMatch;
+      const parsedDate = new Date(
+        Number(year),
+        Number(month) - 1,
+        Number(day),
+      );
+
+      if (!Number.isNaN(parsedDate.getTime())) {
+        return parsedDate;
+      }
+    }
+
+    const parsedDate = new Date(trimmedValue);
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate;
+    }
+  }
+
+  return null;
+}
