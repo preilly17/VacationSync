@@ -119,6 +119,12 @@ export default function Login() {
                       <div className="relative">
                         <User className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
+                          type="email"
+                          inputMode="email"
+                          autoCapitalize="none"
+                          autoComplete="email"
+                          autoCorrect="off"
+                          spellCheck={false}
                           placeholder="john@example.com or johndoe"
                           className="pl-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
@@ -141,6 +147,7 @@ export default function Login() {
                         <Lock className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
                           type={showPassword ? "text" : "password"}
+                          autoComplete="current-password"
                           placeholder="••••••••"
                           className="pl-11 pr-11 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:ring-primary"
                           {...field}
