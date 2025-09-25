@@ -288,7 +288,7 @@ export function PackingList({ tripId }: PackingListProps) {
               <Users className="w-5 h-5 text-blue-600" />
               <h3 className="text-lg font-medium text-gray-900">Personal Items</h3>
               <Badge variant="outline">
-                {personalItems.filter(item => item.isChecked).length}/{personalItems.length} packed
+                You: {personalItems.filter(item => item.isChecked).length}/{personalItems.length} packed
               </Badge>
             </div>
             
@@ -311,7 +311,7 @@ export function PackingList({ tripId }: PackingListProps) {
                           {category.label}
                         </Badge>
                         <span className="text-sm text-gray-500">
-                          {items.filter(item => item.isChecked).length}/{items.length} packed
+                          You: {items.filter(item => item.isChecked).length}/{items.length} packed
                         </span>
                       </div>
                       <div className="space-y-2">
@@ -381,7 +381,7 @@ export function PackingList({ tripId }: PackingListProps) {
               <Package className="w-5 h-5 text-green-600" />
               <h3 className="text-lg font-medium text-gray-900">Group Items</h3>
               <Badge variant="outline">
-                {groupItems.filter(item => item.isChecked).length}/{groupItems.length} handled
+                You: {groupItems.filter(item => item.isChecked).length}/{groupItems.length} handled
               </Badge>
             </div>
             
@@ -407,7 +407,7 @@ export function PackingList({ tripId }: PackingListProps) {
                           {category.label}
                         </Badge>
                         <span className="text-sm text-gray-500">
-                          {items.filter(item => item.isChecked).length}/{items.length} handled
+                          You: {items.filter(item => item.isChecked).length}/{items.length} handled
                         </span>
                       </div>
                       <div className="space-y-2">
@@ -432,15 +432,22 @@ export function PackingList({ tripId }: PackingListProps) {
                               </div>
                               <div className="flex-1">
                                 <span className={`font-medium block transition-colors ${
-                                  item.isChecked 
-                                    ? 'line-through text-blue-600' 
+                                  item.isChecked
+                                    ? 'line-through text-blue-600'
                                     : 'text-gray-900'
                                 }`}>
                                   {item.item}
                                 </span>
-                                {item.isChecked && (
-                                  <span className="text-sm text-blue-600 font-medium">✓ Handled</span>
-                                )}
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  {item.isChecked && (
+                                    <span className="text-sm text-blue-600 font-medium">✓ Handled</span>
+                                  )}
+                                  {item.groupStatus && item.groupStatus.memberCount > 0 && (
+                                    <Badge variant="secondary" className="text-xs font-normal px-2 py-0.5">
+                                      Group: {item.groupStatus.checkedCount}/{item.groupStatus.memberCount} handled
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
                             </div>
                             <div className="flex items-center space-x-2">

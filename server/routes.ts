@@ -1933,7 +1933,7 @@ export function setupRoutes(app: Express) {
         return res.status(403).json({ message: "You are not allowed to update this item" });
       }
 
-      await storage.togglePackingItem(itemId, userId);
+      await storage.togglePackingItem(itemId, userId, packingItem.itemType);
       res.json({ success: true });
     } catch (error: unknown) {
       console.error("Error toggling packing item:", error);

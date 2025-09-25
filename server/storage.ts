@@ -364,6 +364,12 @@ type PackingItemWithUserRow = {
   created_at: Date | null;
 } & PrefixedUserRow<"user_">;
 
+type PackingItemWithStatusRow = PackingItemWithUserRow & {
+  current_user_is_checked: boolean;
+  group_checked_count: number;
+  trip_member_count: number;
+};
+
 type ExpenseRow = {
   id: number;
   trip_id: number;
@@ -1683,6 +1689,10 @@ export class DatabaseStorage implements IStorage {
 
   private activityInvitesInitialized = false;
 
+  private packingInitPromise: Promise<void> | null = null;
+
+  private packingInitialized = false;
+
   private async ensureWishListStructures(): Promise<void> {
     if (this.wishListInitialized) {
       return;
@@ -1870,6 +1880,46 @@ export class DatabaseStorage implements IStorage {
       await this.activityInvitesInitPromise;
     } finally {
       this.activityInvitesInitPromise = null;
+    }
+  }
+
+  private async ensurePackingStructures(): Promise<void> {
+    if (this.packingInitialized) {
+      return;
+    }
+
+    if (this.packingInitPromise) {
+      await this.packingInitPromise;
+      return;
+    }
+
+    this.packingInitPromise = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS packing_item_statuses (
+          id SERIAL PRIMARY KEY,
+          item_id INTEGER NOT NULL REFERENCES packing_items(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          is_checked BOOLEAN NOT NULL DEFAULT FALSE,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (item_id, user_id)
+        )
+      `);
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_packing_item_statuses_item ON packing_item_statuses(item_id)`,
+      );
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_packing_item_statuses_user ON packing_item_statuses(user_id)`,
+      );
+
+      this.packingInitialized = true;
+    })();
+
+    try {
+      await this.packingInitPromise;
+    } finally {
+      this.packingInitPromise = null;
     }
   }
 
@@ -3199,6 +3249,8 @@ export class DatabaseStorage implements IStorage {
     item: InsertPackingItem,
     userId: string,
   ): Promise<PackingItem> {
+    await this.ensurePackingStructures();
+
     const { rows } = await query<PackingItemRow>(
       `
       INSERT INTO packing_items (
@@ -3273,8 +3325,24 @@ export class DatabaseStorage implements IStorage {
     tripId: number,
     userId: string,
   ): Promise<(PackingItem & { user: User })[]> {
-    const { rows } = await query<PackingItemWithUserRow>(
+    await this.ensurePackingStructures();
+
+    const { rows } = await query<PackingItemWithStatusRow>(
       `
+      WITH member_counts AS (
+        SELECT tm.trip_calendar_id AS trip_id, COUNT(*) AS member_count
+        FROM trip_members tm
+        WHERE tm.trip_calendar_id = $1
+        GROUP BY tm.trip_calendar_id
+      ),
+      status_counts AS (
+        SELECT
+          pis.item_id,
+          COUNT(*) FILTER (WHERE pis.is_checked) AS checked_count
+        FROM packing_item_statuses pis
+        WHERE pis.item_id IN (SELECT id FROM packing_items WHERE trip_id = $1)
+        GROUP BY pis.item_id
+      )
       SELECT
         pi.id,
         pi.trip_id,
@@ -3285,6 +3353,9 @@ export class DatabaseStorage implements IStorage {
         pi.is_checked,
         pi.assigned_user_id,
         pi.created_at,
+        COALESCE(pis_current.is_checked, FALSE) AS current_user_is_checked,
+        COALESCE(sc.checked_count, 0) AS group_checked_count,
+        COALESCE(mc.member_count, 0) AS trip_member_count,
         u.id AS user_id,
         u.email AS user_email,
         u.username AS user_username,
@@ -3312,6 +3383,10 @@ export class DatabaseStorage implements IStorage {
         u.updated_at AS user_updated_at
       FROM packing_items pi
       JOIN users u ON u.id = pi.user_id
+      LEFT JOIN packing_item_statuses pis_current
+        ON pis_current.item_id = pi.id AND pis_current.user_id = $2
+      LEFT JOIN status_counts sc ON sc.item_id = pi.id
+      LEFT JOIN member_counts mc ON mc.trip_id = pi.trip_id
       WHERE pi.trip_id = $1
         AND (
           pi.item_type = 'group'
@@ -3322,8 +3397,8 @@ export class DatabaseStorage implements IStorage {
       [tripId, userId],
     );
 
-    return rows.map((row) => ({
-      ...mapPackingItem({
+    return rows.map((row) => {
+      const base = mapPackingItem({
         id: row.id,
         trip_id: row.trip_id,
         user_id: row.item_user_id,
@@ -3333,12 +3408,56 @@ export class DatabaseStorage implements IStorage {
         is_checked: row.is_checked,
         assigned_user_id: row.assigned_user_id,
         created_at: row.created_at,
-      }),
-      user: mapUserFromPrefix(row, "user_"),
-    }));
+      });
+
+      const groupStatus =
+        base.itemType === "group"
+          ? {
+              checkedCount: Math.max(Number(row.group_checked_count), 0),
+              memberCount: Math.max(Number(row.trip_member_count), 0),
+            }
+          : undefined;
+
+      return {
+        ...base,
+        isChecked:
+          base.itemType === "group"
+            ? Boolean(row.current_user_is_checked)
+            : base.isChecked,
+        groupStatus,
+        user: mapUserFromPrefix(row, "user_"),
+      };
+    });
   }
 
-  async togglePackingItem(itemId: number, _userId: string): Promise<void> {
+  async togglePackingItem(
+    itemId: number,
+    userId: string,
+    itemType: "personal" | "group",
+  ): Promise<void> {
+    if (itemType === "group") {
+      await this.ensurePackingStructures();
+
+      const { rows } = await query<{ is_checked: boolean }>(
+        `
+        INSERT INTO packing_item_statuses (item_id, user_id, is_checked)
+        VALUES ($1, $2, TRUE)
+        ON CONFLICT (item_id, user_id)
+        DO UPDATE SET
+          is_checked = NOT packing_item_statuses.is_checked,
+          updated_at = NOW()
+        RETURNING is_checked
+        `,
+        [itemId, userId],
+      );
+
+      if (!rows[0]) {
+        throw new Error("Packing item status not found");
+      }
+
+      return;
+    }
+
     const { rows } = await query<{ id: number }>(
       `
       UPDATE packing_items

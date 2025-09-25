@@ -226,6 +226,11 @@ export const insertActivityCommentSchema = z.object({
 
 export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;
 
+export interface PackingItemGroupStatus {
+  checkedCount: number;
+  memberCount: number;
+}
+
 export interface PackingItem {
   id: number;
   tripId: number;
@@ -236,6 +241,7 @@ export interface PackingItem {
   isChecked: boolean;
   assignedUserId: string | null;
   createdAt: IsoDate | null;
+  groupStatus?: PackingItemGroupStatus;
 }
 
 export const insertPackingItemSchema = z.object({
