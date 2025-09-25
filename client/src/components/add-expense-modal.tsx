@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -32,8 +32,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { TripWithDetails } from "@shared/schema";
-import { computeSplits } from "@shared/expenses";
 import { Loader2, Users } from "lucide-react";
+import { HelperText } from "@/components/ui/helper-text";
 
 interface AddExpenseModalProps {
   open: boolean;
@@ -122,6 +122,29 @@ function formatCurrency(amount: number, currency: string) {
   }
 }
 
+function parseExpenseError(error: unknown): string {
+  if (error instanceof Error) {
+    const match = error.message.match(/^\d+:\s*(.*)$/);
+    if (match) {
+      const payload = match[1];
+      try {
+        const parsed = JSON.parse(payload);
+        if (parsed && typeof parsed.message === "string") {
+          return parsed.message;
+        }
+      } catch {
+        if (payload) {
+          return payload;
+        }
+      }
+    }
+
+    return error.message;
+  }
+
+  return "Something went wrong";
+}
+
 function getMemberDisplayName(member?: TripWithDetails["members"][number]["user"]) {
   if (!member) {
     return "Traveler";
@@ -158,6 +181,7 @@ export function AddExpenseModal({
 }: AddExpenseModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -203,51 +227,11 @@ export function AddExpenseModal({
   const closeModal = () => {
     onOpenChange(false);
     form.reset(defaultValues);
+    setSubmitError(null);
   };
 
   const createExpenseMutation = useMutation({
-    mutationFn: async (values: FormValues) => {
-      if (!currentUserId) {
-        throw new Error("We couldn't identify the payer for this expense.");
-      }
-
-      if (!trip) {
-        throw new Error("Trip details are still loading. Please try again.");
-      }
-
-      const parsedAmount = Number.parseFloat(values.amount);
-      if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-        throw new Error("Amount must be greater than 0");
-      }
-
-      const amountCents = Math.round(parsedAmount * 100);
-      const selectedSet = new Set(values.participants);
-      const participantUserIds = trip.members
-        .map((member) => member.user.id)
-        .filter(
-          (memberId) =>
-            memberId !== currentUserId && selectedSet.has(memberId),
-        );
-
-      if (participantUserIds.length === 0) {
-        throw new Error("Choose at least one person to split with.");
-      }
-
-      // Validate the split locally to keep UI and backend logic in sync.
-      computeSplits(amountCents, participantUserIds);
-
-      const payload: CreateExpensePayload = {
-        amountCents,
-        currency: values.currency,
-        description: values.description.trim(),
-        category: values.category,
-        participantUserIds,
-        payerUserId: currentUserId,
-        ...(values.receiptUrl
-          ? { receiptUrl: values.receiptUrl.trim() }
-          : {}),
-      };
-
+    mutationFn: async (payload: CreateExpensePayload) => {
       await apiRequest(`/api/trips/${tripId}/expenses`, {
         method: "POST",
         body: payload,
@@ -264,82 +248,208 @@ export function AddExpenseModal({
         title: "Expense added",
         description: "Everyone in the split has been notified.",
       });
+      setSubmitError(null);
       closeModal();
     },
     onError: (error: unknown) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Failed to create expense";
-      toast({
-        title: "Something went wrong",
-        description: message,
-        variant: "destructive",
-      });
+      const message = parseExpenseError(error);
+      setSubmitError(message);
+
+      const statusMatch =
+        error instanceof Error ? error.message.match(/^(\d+)/) : null;
+      const statusCode = statusMatch ? Number(statusMatch[1]) : undefined;
+
+      if (!statusCode || statusCode >= 500) {
+        toast({
+          title: "Something went wrong",
+          description: message,
+          variant: "destructive",
+        });
+      }
     },
   });
 
   const amountInput = form.watch("amount");
   const selectedParticipants = form.watch("participants");
-  const participantsExcludingPayer = useMemo(
+  const currencyCode = form.watch("currency") || "USD";
+
+  const selectedDebtorIds = useMemo(
     () =>
       currentUserId
         ? selectedParticipants.filter((id) => id !== currentUserId)
         : selectedParticipants,
     [currentUserId, selectedParticipants],
   );
-  const currency = form.watch("currency") || "USD";
-
-  const totalAmount = useMemo(() => {
-    const parsed = Number.parseFloat(amountInput);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }, [amountInput]);
-
-  const orderedParticipants = useMemo(() => {
-    if (!trip) {
-      return participantsExcludingPayer;
-    }
-
-    const selectedSet = new Set(participantsExcludingPayer);
-    return trip.members
-      .map((member) => member.user.id)
-      .filter((memberId) => memberId !== currentUserId && selectedSet.has(memberId));
-  }, [trip, currentUserId, participantsExcludingPayer]);
 
   const amountCents = useMemo(() => {
-    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+    const parsed = Number.parseFloat(amountInput);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
       return null;
     }
 
-    return Math.round(totalAmount * 100);
-  }, [totalAmount]);
+    return Math.round(parsed * 100);
+  }, [amountInput]);
 
-  const splitPreview = useMemo(() => {
-    if (!trip || amountCents === null) {
-      return null;
+  const tripMembers = trip?.members ?? [];
+
+  const memberLookup = useMemo(() => {
+    const map = new Map<string, TripWithDetails["members"][number]["user"]>();
+    for (const member of tripMembers) {
+      map.set(member.user.id, member.user);
+    }
+    return map;
+  }, [tripMembers]);
+
+  const getName = useCallback(
+    (id: string) => getMemberDisplayName(memberLookup.get(id)),
+    [memberLookup],
+  );
+
+  const computeRequestsForForm = useCallback(
+    (totalAmountCents: number, debtorIds: string[]) => {
+      if (totalAmountCents <= 0) {
+        return { perDebtor: new Map<string, number>(), summary: "" };
+      }
+
+      const nTotal = debtorIds.length + 1;
+      const base = Math.floor(totalAmountCents / nTotal);
+      let remainder = totalAmountCents - base * nTotal;
+
+      const perDebtor = new Map<string, number>();
+      for (const id of debtorIds) {
+        let share = base;
+        if (remainder > 0) {
+          share += 1;
+          remainder -= 1;
+        }
+        perDebtor.set(id, share);
+      }
+
+      const fmt = (cents: number) => formatCurrency(cents / 100, currencyCode);
+      const labels = debtorIds.reduce<string[]>((acc, id) => {
+        const amountForDebtor = perDebtor.get(id);
+        if (amountForDebtor === undefined) {
+          return acc;
+        }
+        acc.push(`${getName(id)} ${fmt(amountForDebtor)}`);
+        return acc;
+      }, []);
+
+      const summary = debtorIds.length
+        ? `Requests: ${labels.join(" • ")}`
+        : "Select at least one person to split with.";
+
+      return { perDebtor, summary };
+    },
+    [currencyCode, getName],
+  );
+
+  const requestPreview = useMemo(() => {
+    if (amountCents === null || selectedDebtorIds.length === 0) {
+      return { perDebtor: new Map<string, number>(), summary: "" };
     }
 
-    if (orderedParticipants.length === 0) {
-      return null;
+    return computeRequestsForForm(amountCents, selectedDebtorIds);
+  }, [amountCents, selectedDebtorIds, computeRequestsForForm]);
+
+  const helperSummary = useMemo(() => {
+    if (selectedDebtorIds.length === 0) {
+      return "Select at least one person to split with.";
     }
+
+    if (amountCents === null) {
+      return "Enter an amount to see the split.";
+    }
+
+    return (
+      requestPreview.summary || "We couldn't calculate the split. Double-check the details."
+    );
+  }, [selectedDebtorIds, amountCents, requestPreview.summary]);
+
+  const debtors = useMemo(
+    () =>
+      tripMembers.filter((member) => member.user.id !== currentUserId),
+    [tripMembers, currentUserId],
+  );
+
+  const canSubmit = amountCents !== null && selectedDebtorIds.length > 0;
+
+  useEffect(() => {
+    if (submitError) {
+      setSubmitError(null);
+    }
+  }, [amountCents, selectedDebtorIds]);
+
+  const onSubmit = useCallback(async () => {
+    setSubmitError(null);
+
+    if (!currentUserId) {
+      setSubmitError("We couldn't identify the payer for this expense.");
+      return;
+    }
+
+    if (!trip) {
+      setSubmitError("Trip details are still loading. Please try again.");
+      return;
+    }
+
+    const amountValue = form.getValues("amount");
+    if (!amountValue) {
+      setSubmitError("Enter a valid amount.");
+      return;
+    }
+
+    const parsedAmount = Number(amountValue);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setSubmitError("Enter a valid amount.");
+      return;
+    }
+
+    const rawParticipants = form
+      .getValues("participants")
+      .filter((id) => id !== currentUserId);
+
+    if (rawParticipants.length === 0) {
+      setSubmitError("Choose at least one person to split with.");
+      return;
+    }
+
+    const amountInCents = Math.round(parsedAmount * 100);
+    const { perDebtor } = computeRequestsForForm(amountInCents, rawParticipants);
+
+    const hasMissingShare = rawParticipants.some(
+      (id) => perDebtor.get(id) === undefined,
+    );
+    if (hasMissingShare) {
+      setSubmitError("We couldn't calculate the split. Double-check the details.");
+      return;
+    }
+
+    const payload: CreateExpensePayload = {
+      payerUserId: currentUserId,
+      amountCents: amountInCents,
+      currency: currencyCode,
+      description: form.getValues("description").trim(),
+      category: form.getValues("category"),
+      participantUserIds: rawParticipants,
+      ...(form.getValues("receiptUrl")
+        ? { receiptUrl: form.getValues("receiptUrl")!.trim() }
+        : {}),
+    };
 
     try {
-      const splits = computeSplits(amountCents, orderedParticipants);
-      const summaries = splits.map((split) => {
-        const member = trip.members.find((item) => item.user.id === split.userId);
-        return {
-          userId: split.userId,
-          amountCents: split.amountCents,
-          label: getMemberDisplayName(member?.user),
-          formattedAmount: formatCurrency(split.amountCents / 100, currency),
-        };
-      });
-
-      return { splits, summaries };
+      await createExpenseMutation.mutateAsync(payload);
     } catch {
-      return null;
+      // handled in onError
     }
-  }, [trip, orderedParticipants, amountCents, currency]);
+  }, [
+    computeRequestsForForm,
+    createExpenseMutation,
+    currencyCode,
+    currentUserId,
+    form,
+    trip,
+  ]);
 
   return (
     <Dialog
@@ -355,7 +465,7 @@ export function AddExpenseModal({
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden p-0">
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit((values) => createExpenseMutation.mutate(values))}
+            onSubmit={form.handleSubmit(onSubmit)}
             className="flex h-full flex-col"
           >
             <DialogHeader className="space-y-2 border-b px-6 py-5 text-left">
@@ -467,13 +577,7 @@ export function AddExpenseModal({
                 name="participants"
                 render={({ field }) => {
                   const selected = new Set(field.value);
-                  const payerMember = trip?.members?.find(
-                    (member) => member.user.id === currentUserId,
-                  );
-                  const otherMembers = (trip?.members ?? []).filter(
-                    (member) => member.user.id !== currentUserId,
-                  );
-                  const hasMembers = (payerMember ? 1 : 0) + otherMembers.length > 0;
+                  const hasMembers = debtors.length > 0;
 
                   return (
                     <FormItem>
@@ -486,88 +590,50 @@ export function AddExpenseModal({
                               Loading travelers...
                             </div>
                           ) : hasMembers ? (
-                            <>
-                              {payerMember ? (
-                                <div className="flex items-center gap-3 border-b px-4 py-3">
+                            debtors.map((member) => {
+                              const memberId = member.user.id;
+                              const isChecked = selected.has(memberId);
+
+                              return (
+                                <div
+                                  key={memberId}
+                                  className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
+                                >
                                   <Checkbox
-                                    id={`participant-${payerMember.user.id}`}
-                                    checked={false}
-                                    disabled
+                                    id={`participant-${memberId}`}
+                                    checked={isChecked}
+                                    onCheckedChange={(checked) => {
+                                      if (checked) {
+                                        if (!selected.has(memberId)) {
+                                          field.onChange([...field.value, memberId]);
+                                        }
+                                      } else {
+                                        field.onChange(
+                                          field.value.filter((id) => id !== memberId),
+                                        );
+                                      }
+                                    }}
                                   />
                                   <Avatar className="h-9 w-9">
                                     <AvatarImage
-                                      src={
-                                        payerMember.user.profileImageUrl || undefined
-                                      }
-                                      alt={getMemberDisplayName(payerMember.user)}
+                                      src={member.user.profileImageUrl || undefined}
+                                      alt={getMemberDisplayName(member.user)}
                                     />
                                     <AvatarFallback>
-                                      {getMemberInitials(payerMember.user)}
+                                      {getMemberInitials(member.user)}
                                     </AvatarFallback>
                                   </Avatar>
                                   <div className="min-w-0 flex-1">
                                     <p className="truncate text-sm font-medium">
-                                      You (payer)
+                                      {getMemberDisplayName(member.user)}
                                     </p>
                                     <p className="truncate text-xs text-muted-foreground">
-                                      {payerMember.user.email}
+                                      {member.user.email}
                                     </p>
                                   </div>
                                 </div>
-                              ) : null}
-
-                              {otherMembers.length > 0 ? (
-                                otherMembers.map((member) => {
-                                  const memberId = member.user.id;
-                                  const isChecked = selected.has(memberId);
-
-                                  return (
-                                    <div
-                                      key={memberId}
-                                      className="flex items-center gap-3 border-b px-4 py-3 last:border-b-0"
-                                    >
-                                      <Checkbox
-                                        id={`participant-${memberId}`}
-                                        checked={isChecked}
-                                        onCheckedChange={(checked) => {
-                                          if (checked) {
-                                            if (!selected.has(memberId)) {
-                                              field.onChange([...field.value, memberId]);
-                                            }
-                                          } else {
-                                            field.onChange(
-                                              field.value.filter((id) => id !== memberId),
-                                            );
-                                          }
-                                        }}
-                                      />
-                                      <Avatar className="h-9 w-9">
-                                        <AvatarImage
-                                          src={member.user.profileImageUrl || undefined}
-                                          alt={getMemberDisplayName(member.user)}
-                                        />
-                                        <AvatarFallback>
-                                          {getMemberInitials(member.user)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                      <div className="min-w-0 flex-1">
-                                        <p className="truncate text-sm font-medium">
-                                          {getMemberDisplayName(member.user)}
-                                        </p>
-                                        <p className="truncate text-xs text-muted-foreground">
-                                          {member.user.email}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  );
-                                })
-                              ) : (
-                                <div className="flex flex-col items-center gap-3 px-6 py-8 text-center text-sm text-muted-foreground">
-                                  <Users className="h-5 w-5" />
-                                  Invite travelers to your trip so you can split expenses together.
-                                </div>
-                              )}
-                            </>
+                              );
+                            })
                           ) : (
                             <div className="flex flex-col items-center gap-3 px-6 py-8 text-center text-sm text-muted-foreground">
                               <Users className="h-5 w-5" />
@@ -577,19 +643,7 @@ export function AddExpenseModal({
                         </div>
                       </div>
                       <FormMessage />
-                      <div className="rounded-md border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                        {participantsExcludingPayer.length === 0
-                          ? "Choose at least one person to split with."
-                          : amountCents === null
-                          ? "Enter an amount to see the split."
-                          : splitPreview
-                          ? `Requests: ${splitPreview.summaries
-                              .map(
-                                (summary) => `${summary.label} ${summary.formattedAmount}`,
-                              )
-                              .join(" • ")}`
-                          : "We couldn't calculate the split. Double-check the details."}
-                      </div>
+                      <HelperText>{helperSummary}</HelperText>
                     </FormItem>
                   );
                 }}
@@ -614,33 +668,36 @@ export function AddExpenseModal({
               />
             </div>
 
-            <div className="flex flex-col gap-2 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closeModal}
-                className="sm:w-auto"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="sm:w-auto"
-                disabled={
-                  createExpenseMutation.isPending ||
-                  participantsExcludingPayer.length === 0 ||
-                  amountCents === null
-                }
-              >
-                {createExpenseMutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save & send requests"
-                )}
-              </Button>
+            <div className="flex flex-col gap-3 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-end">
+              {submitError ? (
+                <p className="text-sm font-medium text-destructive sm:mr-auto">
+                  {submitError}
+                </p>
+              ) : null}
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeModal}
+                  className="sm:w-auto"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="sm:w-auto"
+                  disabled={createExpenseMutation.isPending || !canSubmit}
+                >
+                  {createExpenseMutation.isPending ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Save & send requests"
+                  )}
+                </Button>
+              </div>
             </div>
           </form>
         </Form>
