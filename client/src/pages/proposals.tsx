@@ -33,7 +33,6 @@ import {
   CheckCircle,
   XCircle,
   User,
-  Bell,
 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import type {
@@ -42,16 +41,13 @@ import type {
   ActivityProposalWithDetails,
   RestaurantProposalWithDetails,
   TripWithDetails,
-  ActivityWithDetails,
-  ActivityInviteStatus,
 } from "@shared/schema";
-import { ActivityCard } from "@/components/activity-card";
 
 interface ProposalsPageProps {
   tripId?: number;
 }
 
-type ProposalTab = "invites" | "hotels" | "flights" | "activities" | "restaurants";
+type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
 
 function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const [, setLocation] = useLocation();
@@ -59,7 +55,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
-  const [hasSeededTab, setHasSeededTab] = useState(false);
   const [proposalFilter, setProposalFilter] = useState<"all" | "mine">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "canceled">("all");
 
@@ -112,11 +107,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   const { data: restaurantProposals = [], isLoading: restaurantProposalsLoading } = useQuery<RestaurantProposalWithDetails[]>({
     queryKey: ["/api/trips", tripId, "restaurant-proposals"],
-    enabled: !!tripId && isAuthenticated,
-  });
-
-  const { data: activities = [], isLoading: activitiesLoading } = useQuery<ActivityWithDetails[]>({
-    queryKey: [`/api/trips/${tripId}/activities`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -205,60 +195,6 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       toast({
         title: "Error",
         description: "Failed to record your vote. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const respondToInviteMutation = useMutation({
-    mutationFn: async ({
-      activityId,
-      status,
-    }: {
-      activityId: number;
-      status: ActivityInviteStatus;
-    }) => {
-      const response = await apiRequest(`/api/activities/${activityId}/respond`, {
-        method: "POST",
-        body: { status },
-      });
-
-      return (await response.json()) as {
-        invite: unknown;
-        activity: ActivityWithDetails | null;
-      };
-    },
-    onSuccess: (_data, variables) => {
-      if (tripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-      }
-
-      const status = variables.status;
-      let title = "RSVP updated";
-      let description = "We saved your response.";
-
-      if (status === "accepted") {
-        title = "You're going!";
-        description = "This activity is on your personal schedule now.";
-      } else if (status === "declined") {
-        title = "You declined this activity";
-        description = "We won't show it on your personal schedule.";
-      } else {
-        title = "Marked as undecided";
-        description = "You can update your RSVP anytime.";
-      }
-
-      toast({ title, description });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        window.location.href = "/login";
-        return;
-      }
-
-      toast({
-        title: "Unable to update RSVP",
-        description: "Please try again.",
         variant: "destructive",
       });
     },
@@ -1058,32 +994,45 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   };
 
   // Empty state component
-  const EmptyState = ({ type, icon: Icon }: { type: string; icon: any }) => (
-    <div className="text-center py-12">
-      <Icon className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
-      <h3 className="text-lg font-semibold text-neutral-600 mb-2">No {type} Proposals Yet</h3>
-      <p className="text-neutral-500 mb-6">
-        Group members can propose {type.toLowerCase()} options for voting. 
-        Check the {type} page to add proposals!
-      </p>
-      <Link href={`/trip/${tripId}/${type.toLowerCase()}`}>
-        <Button data-testid={`button-add-${type.toLowerCase()}-proposal`}>
-          <Icon className="w-4 h-4 mr-2" />
-          Browse {type}
-        </Button>
-      </Link>
-    </div>
-  );
+  const EmptyState = ({ type, icon: Icon }: { type: string; icon: any }) => {
+    const showGlobalEmpty = proposalFilter === "all" && noProposalsAtAll;
 
-  const MyProposalsEmptyState = ({ type }: { type: string }) => (
-    <div className="text-center py-12" data-testid={`empty-my-${type.toLowerCase()}-proposals`}>
-      <User className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
-      <h3 className="text-lg font-semibold text-neutral-600 mb-2">You haven’t proposed anything yet.</h3>
-      <p className="text-neutral-500">
-        When you share a {type.toLowerCase()} idea with the group, it will appear here for quick access.
-      </p>
-    </div>
-  );
+    return (
+      <div className="text-center py-12">
+        <Icon className="w-16 h-16 text-neutral-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-neutral-600 mb-2">
+          {showGlobalEmpty ? "No proposals yet for this trip." : `No ${type} Proposals Yet`}
+        </h3>
+        <p className="text-neutral-500 mb-6">
+          {showGlobalEmpty
+            ? "Suggest an activity, restaurant, hotel, or flight to get started."
+            : `Group members can propose ${type.toLowerCase()} options for voting. Check the ${type} page to add proposals!`}
+        </p>
+        <Link href={`/trip/${tripId}/${type.toLowerCase()}`}>
+          <Button data-testid={`button-add-${type.toLowerCase()}-proposal`}>
+            <Icon className="w-4 h-4 mr-2" />
+            Browse {type}
+          </Button>
+        </Link>
+      </div>
+    );
+  };
+
+  const MyProposalsEmptyState = ({ type }: { type?: string }) => {
+    const testId = type
+      ? `empty-my-${type.toLowerCase()}-proposals`
+      : "empty-my-proposals";
+
+    return (
+      <div className="text-center py-12" data-testid={testId}>
+        <User className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-neutral-600 mb-2">You haven’t proposed anything yet.</h3>
+        <p className="text-neutral-500">
+          Suggest an activity, restaurant, hotel, or flight to get started.
+        </p>
+      </div>
+    );
+  };
 
   const FilteredEmptyState = ({ type }: { type: string }) => (
     <div className="text-center py-12" data-testid={`empty-filtered-${type.toLowerCase()}-proposals`}>
@@ -1110,44 +1059,36 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     [applyProposalFilters, restaurantProposals],
   );
 
-  const pendingInviteActivities = useMemo(() => {
-    if (!user?.id) {
-      return [] as ActivityWithDetails[];
-    }
-
-    return activities
-      .filter((activity) => {
-        const invite =
-          activity.currentUserInvite ??
-          activity.invites.find((item) => item.userId === user.id);
-        return invite?.status === "pending";
-      })
-      .sort(
-        (a, b) =>
-          new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-      );
-  }, [activities, user?.id]);
-
-  useEffect(() => {
-    if (hasSeededTab || activitiesLoading) {
-      return;
-    }
-
-    if (pendingInviteActivities.length > 0) {
-      setActiveTab("invites");
-    }
-
-    setHasSeededTab(true);
-  }, [activitiesLoading, hasSeededTab, pendingInviteActivities.length]);
-
-  const handleRespondToInvite = useCallback(
-    (activityId: number, status: ActivityInviteStatus) => {
-      respondToInviteMutation.mutate({ activityId, status });
-    },
-    [respondToInviteMutation],
+  const myHotelProposals = useMemo(
+    () => hotelProposals.filter((proposal) => isMyProposal(proposal)),
+    [hotelProposals, isMyProposal],
+  );
+  const myFlightProposals = useMemo(
+    () => flightProposals.filter((proposal) => isMyProposal(proposal)),
+    [flightProposals, isMyProposal],
+  );
+  const myActivityProposals = useMemo(
+    () => activityProposals.filter((proposal) => isMyProposal(proposal)),
+    [activityProposals, isMyProposal],
+  );
+  const myRestaurantProposals = useMemo(
+    () => restaurantProposals.filter((proposal) => isMyProposal(proposal)),
+    [restaurantProposals, isMyProposal],
   );
 
-  const respondingActivityId = respondToInviteMutation.variables?.activityId ?? null;
+  const totalMyProposals =
+    myHotelProposals.length +
+    myFlightProposals.length +
+    myActivityProposals.length +
+    myRestaurantProposals.length;
+
+  const totalAvailableProposals =
+    hotelProposals.length +
+    flightProposals.length +
+    activityProposals.length +
+    restaurantProposals.length;
+
+  const noProposalsAtAll = totalAvailableProposals === 0;
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -1232,9 +1173,13 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           className="space-y-6"
         >
           <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="invites" className="flex items-center gap-2" data-testid="tab-invites">
-              <Bell className="w-4 h-4" />
-              My Invites {pendingInviteActivities.length > 0 && `(${pendingInviteActivities.length})`}
+            <TabsTrigger
+              value="my-proposals"
+              className="flex items-center gap-2"
+              data-testid="tab-my-proposals"
+            >
+              <User className="w-4 h-4" />
+              My Proposals {totalMyProposals > 0 && `(${totalMyProposals})`}
             </TabsTrigger>
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
               <Hotel className="w-4 h-4" />
@@ -1254,38 +1199,75 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="invites" className="space-y-6">
-            {activitiesLoading ? (
-              <div className="flex justify-center py-8">
-                <TravelLoading text="Checking your invites..." />
-              </div>
-            ) : pendingInviteActivities.length > 0 ? (
-              <div className="space-y-4" data-testid="list-pending-invites">
-                {pendingInviteActivities.map((activity) => (
-                  <ActivityCard
-                    key={activity.id}
-                    activity={activity}
-                    currentUser={user || undefined}
-                    onAccept={() => handleRespondToInvite(activity.id, "accepted")}
-                    onDecline={() => handleRespondToInvite(activity.id, "declined")}
-                    onMaybe={() => handleRespondToInvite(activity.id, "pending")}
-                    isLoading={
-                      respondToInviteMutation.isPending &&
-                      respondingActivityId === activity.id
-                    }
-                  />
-                ))}
+          <TabsContent value="my-proposals" className="space-y-6">
+            {totalMyProposals > 0 ? (
+              <div className="space-y-8" data-testid="list-my-proposals">
+                {myHotelProposals.length > 0 && (
+                  <section className="space-y-4" data-testid="section-my-hotel-proposals">
+                    <div className="flex items-center gap-2 text-neutral-700">
+                      <Hotel className="w-4 h-4" />
+                      <h3 className="text-lg font-semibold">
+                        Hotel proposals ({myHotelProposals.length})
+                      </h3>
+                    </div>
+                    <div className="space-y-4">
+                      {myHotelProposals.map((proposal) => (
+                        <HotelProposalCard key={proposal.id} proposal={proposal} />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {myFlightProposals.length > 0 && (
+                  <section className="space-y-4" data-testid="section-my-flight-proposals">
+                    <div className="flex items-center gap-2 text-neutral-700">
+                      <Plane className="w-4 h-4" />
+                      <h3 className="text-lg font-semibold">
+                        Flight proposals ({myFlightProposals.length})
+                      </h3>
+                    </div>
+                    <div className="space-y-4">
+                      {myFlightProposals.map((proposal) => (
+                        <FlightProposalCard key={proposal.id} proposal={proposal} />
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {myActivityProposals.length > 0 && (
+                  <section className="space-y-4" data-testid="section-my-activity-proposals">
+                    <div className="flex items-center gap-2 text-neutral-700">
+                      <MapPin className="w-4 h-4" />
+                      <h3 className="text-lg font-semibold">
+                        Activity proposals ({myActivityProposals.length})
+                      </h3>
+                    </div>
+                    <div className="space-y-4">
+                      <p className="text-center text-neutral-500 py-8">
+                        Activity proposals coming soon!
+                      </p>
+                    </div>
+                  </section>
+                )}
+
+                {myRestaurantProposals.length > 0 && (
+                  <section className="space-y-4" data-testid="section-my-restaurant-proposals">
+                    <div className="flex items-center gap-2 text-neutral-700">
+                      <Utensils className="w-4 h-4" />
+                      <h3 className="text-lg font-semibold">
+                        Restaurant proposals ({myRestaurantProposals.length})
+                      </h3>
+                    </div>
+                    <div className="space-y-4">
+                      {myRestaurantProposals.map((proposal) => (
+                        <RestaurantProposalCard key={proposal.id} proposal={proposal} />
+                      ))}
+                    </div>
+                  </section>
+                )}
               </div>
             ) : (
-              <Card className="border border-dashed border-neutral-200 bg-neutral-50">
-                <CardContent className="py-10 text-center space-y-3">
-                  <Bell className="w-10 h-10 mx-auto text-neutral-400" />
-                  <h3 className="text-lg font-semibold text-neutral-900">No pending invites</h3>
-                  <p className="text-sm text-neutral-600">
-                    You're all caught up! We'll list new activity invites here when your group adds you.
-                  </p>
-                </CardContent>
-              </Card>
+              <MyProposalsEmptyState />
             )}
           </TabsContent>
 

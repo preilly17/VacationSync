@@ -119,6 +119,11 @@ export function ActivityCard({
   const currentStatus: ActivityInviteStatus | undefined = currentInvite?.status
     ?? (activity.isAccepted ? "accepted" : undefined);
 
+  const isCreator = Boolean(
+    currentUser?.id &&
+      (currentUser.id === activity.poster.id || currentUser.id === activity.postedBy),
+  );
+
   const renderParticipants = (
     participants: typeof acceptedInvites,
     emptyLabel?: string,
@@ -246,47 +251,59 @@ export function ActivityCard({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onDecline}
-                  disabled={isLoading}
-                  className={cn(
-                    "border-neutral-300",
-                    currentStatus === "declined" &&
-                      "bg-rose-100 text-rose-700 border-rose-200 hover:bg-rose-200",
-                  )}
-                >
-                  Decline
-                </Button>
-                {onMaybe && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onMaybe}
-                    disabled={isLoading || !onMaybe}
-                    className={cn(
-                      "border-neutral-300",
-                      currentStatus === "pending" &&
-                        "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200",
-                    )}
+                {isCreator ? (
+                  <Badge
+                    variant="secondary"
+                    className="bg-neutral-100 text-neutral-700 border border-neutral-200"
+                    data-testid="badge-created-by-you"
                   >
-                    Maybe
-                  </Button>
+                    You created this
+                  </Badge>
+                ) : (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onDecline}
+                      disabled={isLoading}
+                      className={cn(
+                        "border-neutral-300",
+                        currentStatus === "declined" &&
+                          "bg-rose-100 text-rose-700 border-rose-200 hover:bg-rose-200",
+                      )}
+                    >
+                      Decline
+                    </Button>
+                    {onMaybe && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onMaybe}
+                        disabled={isLoading || !onMaybe}
+                        className={cn(
+                          "border-neutral-300",
+                          currentStatus === "pending" &&
+                            "bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-200",
+                        )}
+                      >
+                        Maybe
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onAccept}
+                      disabled={isLoading}
+                      className={cn(
+                        "border-neutral-300",
+                        currentStatus === "accepted" &&
+                          "bg-primary text-white border-primary hover:bg-primary/90",
+                      )}
+                    >
+                      Accept
+                    </Button>
+                  </>
                 )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onAccept}
-                  disabled={isLoading}
-                  className={cn(
-                    "border-neutral-300",
-                    currentStatus === "accepted" &&
-                      "bg-primary text-white border-primary hover:bg-primary/90",
-                  )}
-                >
-                  Accept
-                </Button>
               </div>
             </div>
 
