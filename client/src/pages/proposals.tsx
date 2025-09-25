@@ -1393,21 +1393,38 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     [getActivityProposalStatus, rawActivityProposals],
   );
 
+  const otherHotelProposals = useMemo(
+    () => hotelProposals.filter((proposal) => !isMyProposal(proposal)),
+    [hotelProposals, isMyProposal],
+  );
+  const otherFlightProposals = useMemo(
+    () => flightProposals.filter((proposal) => !isMyProposal(proposal)),
+    [flightProposals, isMyProposal],
+  );
+  const otherActivityProposals = useMemo(
+    () => activityProposals.filter((proposal) => !isMyProposal(proposal)),
+    [activityProposals, isMyProposal],
+  );
+  const otherRestaurantProposals = useMemo(
+    () => restaurantProposals.filter((proposal) => !isMyProposal(proposal)),
+    [restaurantProposals, isMyProposal],
+  );
+
   const filteredHotelProposals = useMemo(
-    () => applyProposalFilters(hotelProposals),
-    [applyProposalFilters, hotelProposals],
+    () => applyProposalFilters(otherHotelProposals),
+    [applyProposalFilters, otherHotelProposals],
   );
   const filteredFlightProposals = useMemo(
-    () => applyProposalFilters(flightProposals),
-    [applyProposalFilters, flightProposals],
+    () => applyProposalFilters(otherFlightProposals),
+    [applyProposalFilters, otherFlightProposals],
   );
   const filteredActivityProposals = useMemo(
-    () => applyProposalFilters(activityProposals),
-    [applyProposalFilters, activityProposals],
+    () => applyProposalFilters(otherActivityProposals),
+    [applyProposalFilters, otherActivityProposals],
   );
   const filteredRestaurantProposals = useMemo(
-    () => applyProposalFilters(restaurantProposals),
-    [applyProposalFilters, restaurantProposals],
+    () => applyProposalFilters(otherRestaurantProposals),
+    [applyProposalFilters, otherRestaurantProposals],
   );
 
   const myHotelProposals = useMemo(
@@ -1458,10 +1475,10 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     0;
 
   const totalAvailableProposals =
-    hotelProposals.length +
-    flightProposals.length +
-    activityProposals.length +
-    restaurantProposals.length;
+    otherHotelProposals.length +
+    otherFlightProposals.length +
+    otherActivityProposals.length +
+    otherRestaurantProposals.length;
 
   const noProposalsAtAll = totalAvailableProposals === 0;
 
@@ -1532,19 +1549,19 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
             </TabsTrigger>
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
               <Hotel className="w-4 h-4" />
-              Hotels {hotelProposals.length > 0 && `(${hotelProposals.length})`}
+              Hotels {otherHotelProposals.length > 0 && `(${otherHotelProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="flights" className="flex items-center gap-2" data-testid="tab-flights">
               <Plane className="w-4 h-4" />
-              Flights {flightProposals.length > 0 && `(${flightProposals.length})`}
+              Flights {otherFlightProposals.length > 0 && `(${otherFlightProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
               <MapPin className="w-4 h-4" />
-              Activities {activityProposals.length > 0 && `(${activityProposals.length})`}
+              Activities {otherActivityProposals.length > 0 && `(${otherActivityProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
               <Utensils className="w-4 h-4" />
-              Restaurants {restaurantProposals.length > 0 && `(${restaurantProposals.length})`}
+              Restaurants {otherRestaurantProposals.length > 0 && `(${otherRestaurantProposals.length})`}
             </TabsTrigger>
           </TabsList>
 
