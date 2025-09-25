@@ -295,12 +295,15 @@ export const insertExpenseSchema = z.object({
 
 export type InsertExpense = z.infer<typeof insertExpenseSchema>;
 
+export type ExpenseParticipantStatus = "pending" | "paid";
+
 export interface ExpenseShare {
   id: number;
   expenseId: number;
   userId: string;
   amount: number;
   isPaid: boolean;
+  status: ExpenseParticipantStatus;
   paidAt: IsoDate | null;
   createdAt: IsoDate | null;
 }

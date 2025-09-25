@@ -88,6 +88,31 @@ const activitiesDiscoverSchema = z.object({
   }).optional(),
 });
 
+const logSharedExpenseSchema = z.object({
+  amountCents: z.number().int().positive("Amount must be greater than zero"),
+  currency: z
+    .string()
+    .min(1, "Currency is required")
+    .transform((value) => value.trim()),
+  description: z
+    .string()
+    .min(1, "Description is required")
+    .transform((value) => value.trim()),
+  category: z
+    .string()
+    .min(1, "Category is required")
+    .transform((value) => value.trim()),
+  participantUserIds: z
+    .array(z.string())
+    .min(1, "Choose at least one person to split with."),
+  payerUserId: z.string().optional(),
+  receiptUrl: z
+    .string()
+    .trim()
+    .url("Enter a valid receipt URL")
+    .optional(),
+});
+
 const weatherSearchSchema = z.object({
   location: z.string().min(1, "Location is required").max(100, "Location must be less than 100 characters"),
   units: z.enum(["C", "F"]).optional(),
@@ -2004,10 +2029,50 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
+      const parsed = logSharedExpenseSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const message = parsed.error.issues[0]?.message ?? "Invalid expense payload";
+        return res.status(400).json({ message });
+      }
+
+      const {
+        amountCents,
+        currency,
+        description,
+        category,
+        participantUserIds,
+        receiptUrl,
+      } = parsed.data;
+
+      const normalizedParticipants = Array.from(new Set(participantUserIds))
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0 && id !== userId);
+
+      if (normalizedParticipants.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "Choose at least one person to split with." });
+      }
+
+      const totalAmount = Number((amountCents / 100).toFixed(2));
+
       const expenseData = {
-        ...req.body,
         tripId,
-        paidBy: userId
+        paidBy: userId,
+        amount: totalAmount,
+        amountCents,
+        currency,
+        description,
+        category,
+        splitType: "equal" as const,
+        splitData: {
+          members: normalizedParticipants,
+          totalAmountCents: amountCents,
+          algorithm: "equal_payer_included",
+        },
+        participantUserIds: normalizedParticipants,
+        selectedMembers: normalizedParticipants,
+        ...(receiptUrl ? { receiptUrl } : {}),
       };
 
       const expense = await storage.createExpense(expenseData, userId);
