@@ -54,6 +54,10 @@ export default function HotelsPage() {
     minRating: 'any',
     sortBy: 'price'
   });
+  const [checkInDate, setCheckInDate] = useState('');
+  const [checkOutDate, setCheckOutDate] = useState('');
+  const [adultCount, setAdultCount] = useState('2');
+  const [childCount, setChildCount] = useState('0');
 
   // Currency conversion state
   const [currencyAmount, setCurrencyAmount] = useState('100');
@@ -80,6 +84,16 @@ export default function HotelsPage() {
     queryKey: [`/api/trips/${tripId}/hotel-proposals`],
     enabled: !!tripId,
   });
+
+  useEffect(() => {
+    if (trip?.startDate) {
+      setCheckInDate((prev) => prev || format(new Date(trip.startDate), 'yyyy-MM-dd'));
+    }
+
+    if (trip?.endDate) {
+      setCheckOutDate((prev) => prev || format(new Date(trip.endDate), 'yyyy-MM-dd'));
+    }
+  }, [trip?.startDate, trip?.endDate]);
 
   // Auto-search hotels and auto-populate when trip or user data is loaded
   useEffect(() => {
@@ -173,6 +187,154 @@ export default function HotelsPage() {
       }
     }
     return 'NYC'; // Default fallback
+  };
+
+  const getExternalDestination = () => {
+    const locationName = searchLocation?.displayName || searchLocation?.name;
+    if (locationName && locationName.trim()) {
+      return locationName.trim();
+    }
+
+    if (trip?.destination?.trim()) {
+      return trip.destination.trim();
+    }
+
+    return '';
+  };
+
+  const normalizeForAirbnb = (destination: string) => {
+    if (!destination) return '';
+
+    const cleaned = destination
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    const segments = cleaned
+      .split(',')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .map((segment) =>
+        segment
+          .replace(/[^a-zA-Z0-9\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '')
+      );
+
+    if (segments.length === 0) {
+      return cleaned
+        .replace(/[^a-zA-Z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    }
+
+    return segments.join('--');
+  };
+
+  const normalizeForVrbo = (destination: string) => {
+    if (!destination) return '';
+
+    return destination
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .trim()
+      .replace(/\s+/g, '-');
+  };
+
+  const handleExternalSearch = (provider: 'airbnb' | 'vrbo' | 'expedia') => {
+    const destination = getExternalDestination();
+    const adults = parseInt(adultCount, 10);
+    const children = childCount ? parseInt(childCount, 10) : 0;
+
+    if (!destination) {
+      toast({
+        title: "Missing destination",
+        description: "Please select or enter a destination before searching external sites.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!checkInDate || !checkOutDate) {
+      toast({
+        title: "Missing dates",
+        description: "Please provide both check-in and check-out dates to search.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (Number.isNaN(adults) || adults <= 0) {
+      toast({
+        title: "Invalid number of adults",
+        description: "Please enter at least one adult traveler.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (Number.isNaN(children) || children < 0) {
+      toast({
+        title: "Invalid number of children",
+        description: "Children count cannot be negative.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (new Date(checkOutDate) < new Date(checkInDate)) {
+      toast({
+        title: "Date mismatch",
+        description: "Check-out date must be after the check-in date.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const trimmedDestination = destination.trim();
+    const childrenValue = Math.max(children, 0);
+    let url = '';
+
+    if (provider === 'airbnb') {
+      const airbnbSlug = normalizeForAirbnb(trimmedDestination);
+      const params = new URLSearchParams({
+        checkin: checkInDate,
+        checkout: checkOutDate,
+        adults: adults.toString(),
+        children: childrenValue.toString(),
+      });
+      const slug = airbnbSlug || normalizeForAirbnb(trimmedDestination.replace(/,/g, ' '));
+      url = `https://www.airbnb.com/s/${slug || encodeURIComponent(trimmedDestination)}/homes?${params.toString()}`;
+    }
+
+    if (provider === 'vrbo') {
+      const vrboSlug = normalizeForVrbo(trimmedDestination) || normalizeForVrbo(trimmedDestination.replace(/,/g, ' '));
+      const params = new URLSearchParams({
+        checkin: checkInDate,
+        checkout: checkOutDate,
+        adults: adults.toString(),
+        children: childrenValue.toString(),
+      });
+      url = `https://www.vrbo.com/search/keywords:${vrboSlug || encodeURIComponent(trimmedDestination)}?${params.toString()}`;
+    }
+
+    if (provider === 'expedia') {
+      const params = new URLSearchParams({
+        destination: trimmedDestination,
+        startDate: checkInDate,
+        endDate: checkOutDate,
+        adults: adults.toString(),
+        children: childrenValue.toString(),
+      });
+      url = `https://www.expedia.com/Hotel-Search?${params.toString()}`;
+    }
+
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   // Hotel search function with location search integration
@@ -921,8 +1083,9 @@ export default function HotelsPage() {
         <TabsContent value="search" className="space-y-6 mt-6">
           {/* Hotel Search Interface */}
           <Card>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Search Location</Label>
                   <SmartLocationSearch
@@ -941,13 +1104,59 @@ export default function HotelsPage() {
                     </p>
                   )}
                 </div>
-                
-                <div className="space-y-2">
-                  <Label>Search Filters</Label>
-                  <div className="grid grid-cols-3 gap-2">
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="hotel-check-in">Check-in</Label>
                     <Input
-                      placeholder="Max price"
+                      id="hotel-check-in"
+                      type="date"
+                      value={checkInDate}
+                      onChange={(event) => setCheckInDate(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="hotel-check-out">Check-out</Label>
+                    <Input
+                      id="hotel-check-out"
+                      type="date"
+                      value={checkOutDate}
+                      onChange={(event) => setCheckOutDate(event.target.value)}
+                      min={checkInDate || undefined}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="hotel-adults">Adults</Label>
+                    <Input
+                      id="hotel-adults"
                       type="number"
+                      min={1}
+                      value={adultCount}
+                      onChange={(event) => setAdultCount(event.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="hotel-children">Children</Label>
+                    <Input
+                      id="hotel-children"
+                      type="number"
+                      min={0}
+                      value={childCount}
+                      onChange={(event) => setChildCount(event.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Search Filters</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Input
+                    placeholder="Max price"
+                    type="number"
                       value={searchFilters.maxPrice}
                       onChange={(e) => setSearchFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
                     />
@@ -981,34 +1190,54 @@ export default function HotelsPage() {
                 </div>
               </div>
               
-              <div className="flex justify-between items-center">
-                <Button 
-                  onClick={() => searchHotels()} 
-                  disabled={isSearching}
-                  className="flex items-center gap-2"
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  onClick={() => handleExternalSearch('airbnb')}
+                  className="bg-[#FF5A5F] hover:bg-[#e24e52] text-white flex items-center gap-2 shadow-sm"
                 >
-                  <Search className="h-4 w-4" />
-                  {isSearching ? (
-                    <div className="flex items-center gap-2">
-                      <TravelLoading variant="luggage" size="sm" />
-                      Searching...
-                    </div>
-                  ) : (
-                    <span className="flex items-center gap-2">
-                      <Building className="h-4 w-4" />
-                      Search Hotels
-                    </span>
-                  )}
+                  <img
+                    src="https://upload.wikimedia.org/wikipedia/commons/6/69/Airbnb_Logo_B%C3%A9lo.svg"
+                    alt="Airbnb logo"
+                    className="h-4 w-4"
+                  />
+                  Search Airbnb
                 </Button>
-                
-                {searchResults.length > 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    Found {searchResults.length} hotels
-                  </div>
-                )}
+                <Button
+                  type="button"
+                  onClick={() => handleExternalSearch('vrbo')}
+                  className="bg-[#0A4385] hover:bg-[#08376b] text-white flex items-center gap-2 shadow-sm"
+                >
+                  <img
+                    src="https://upload.wikimedia.org/wikipedia/commons/1/12/VRBO_logo.svg"
+                    alt="VRBO logo"
+                    className="h-4 w-auto"
+                  />
+                  Search VRBO
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => handleExternalSearch('expedia')}
+                  className="bg-[#FEC601] hover:bg-[#e0b000] text-gray-900 flex items-center gap-2 shadow-sm"
+                >
+                  <img
+                    src="https://upload.wikimedia.org/wikipedia/commons/6/6b/Expedia_Logo.svg"
+                    alt="Expedia logo"
+                    className="h-4 w-auto"
+                  />
+                  Search Expedia
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+
+              {searchResults.length > 0 && (
+                <div className="text-sm text-muted-foreground">
+                  Found {searchResults.length} hotels
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
       {/* Add Hotel Dialog */}
       <Dialog
