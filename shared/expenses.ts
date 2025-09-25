@@ -34,15 +34,34 @@ export function splitIncludePayer(
   return out;
 }
 
-function parseFxRate(rate: string): number {
+function pow10BigInt(exp: number): bigint {
+  if (exp < 0 || !Number.isInteger(exp)) {
+    throw new Error("Exponent must be a non-negative integer");
+  }
+  let result = 1n;
+  for (let i = 0; i < exp; i++) {
+    result *= 10n;
+  }
+  return result;
+}
+
+function parseFxRate(rate: string, scale: number): bigint {
   if (!rate || typeof rate !== "string") {
     throw new Error("FX rate required");
   }
-  const parsed = Number(rate);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error("FX rate must be a positive number string");
+  const trimmed = rate.trim();
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(trimmed)) {
+    throw new Error("FX rate must be a positive decimal string");
   }
-  return parsed;
+
+  const [intPart, fracPart = ""] = trimmed.split(".");
+  const paddedFrac = (fracPart + "0".repeat(scale)).slice(0, scale);
+  const combined = `${intPart}${paddedFrac}`.replace(/^0+(?=\d)/, "");
+  const scaled = BigInt(combined || "0");
+  if (scaled <= 0n) {
+    throw new Error("FX rate must be greater than zero");
+  }
+  return scaled;
 }
 
 // fxRate: decimal string = target per 1 src (e.g., "0.006674")
@@ -56,15 +75,14 @@ export function convertMinor(
   if (!Number.isInteger(srcMinor)) {
     throw new Error("Source minor units must be integers");
   }
-  const rate = parseFxRate(fxRate);
+  const SCALE = 12;
+  const scaleFactor = pow10BigInt(SCALE);
+  const rateScaled = parseFxRate(fxRate, SCALE);
 
-  const SCALE = 1_000_000;
-  const rateScaled = Math.round(rate * SCALE);
-
-  const srcFactor = BigInt(10 ** srcExp);
-  const tgtFactor = BigInt(10 ** tgtExp);
-  const num = BigInt(srcMinor) * BigInt(rateScaled) * tgtFactor;
-  const den = BigInt(SCALE) * srcFactor;
+  const srcFactor = pow10BigInt(srcExp);
+  const tgtFactor = pow10BigInt(tgtExp);
+  const num = BigInt(srcMinor) * rateScaled * tgtFactor;
+  const den = scaleFactor * srcFactor;
 
   const quotient = num / den;
   const remainder = num % den;
@@ -115,10 +133,18 @@ export function computeCurrencyAwareSplits(
     rows[i].shareTgtMinor += 1;
     diff -= 1;
   }
-  for (let i = rows.length - 1; diff < 0 && i >= 0; i--) {
-    if (rows[i].shareTgtMinor > 0) {
-      rows[i].shareTgtMinor -= 1;
-      diff += 1;
+
+  if (diff < 0) {
+    // In extremely rare cases round-half-up on individual shares can push the
+    // debtor sum above the converted total. Roll the excess off the last
+    // debtors to keep the math balanced while preserving stable ordering for
+    // positive adjustments above.
+    for (let i = rows.length - 1; diff < 0 && i >= 0; i--) {
+      const available = Math.min(rows[i].shareTgtMinor, -diff);
+      if (available > 0) {
+        rows[i].shareTgtMinor -= available;
+        diff += available;
+      }
     }
   }
 
