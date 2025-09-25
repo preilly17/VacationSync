@@ -669,8 +669,8 @@ export default function HotelsPage() {
         description: `${hotel.name} has been proposed to your group for ranking and voting.`,
       });
       
-      // Refresh hotel proposals
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "hotel-proposals"] });
+      // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -696,7 +696,8 @@ export default function HotelsPage() {
   // Hotel ranking functionality
   const submitRanking = async (proposalId: number, ranking: number, notes?: string) => {
     try {
-      await apiRequest(`/api/hotel-proposals/${proposalId}/rankings`, {
+      // PROPOSALS FEATURE: reuse the shared ranking endpoint for proposal votes.
+      await apiRequest(`/api/hotel-proposals/${proposalId}/rank`, {
         method: "POST",
         body: JSON.stringify({ ranking, notes }),
       });
@@ -706,8 +707,8 @@ export default function HotelsPage() {
         description: "Your hotel preference has been recorded.",
       });
       
-      // Refresh proposals
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "hotel-proposals"] });
+      // PROPOSALS FEATURE: keep rankings consistent across tabs.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -766,7 +767,9 @@ export default function HotelsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "hotels"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      // PROPOSALS FEATURE: sync manual hotel saves with the proposals tab.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Hotel added successfully",
         description: "Your hotel booking has been saved to the trip.",
@@ -801,7 +804,9 @@ export default function HotelsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "hotels"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      // PROPOSALS FEATURE: ensure proposal details reflect the latest hotel edits.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Hotel updated successfully",
         description: "Your hotel booking has been updated.",
@@ -835,7 +840,9 @@ export default function HotelsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "hotels"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      // PROPOSALS FEATURE: remove deleted hotels from the proposals list immediately.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Hotel deleted successfully",
         description: "Your hotel booking has been removed.",
@@ -1851,7 +1858,9 @@ export default function HotelsPage() {
         tripId={tripId}
         onSuccess={() => {
           // Refetch hotels data
-          queryClient.invalidateQueries({ queryKey: ['/api/trips', tripId, 'hotels'] });
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+          // PROPOSALS FEATURE: reflect scheduled hotels in the proposals tab immediately.
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
         }}
       />
     </div>

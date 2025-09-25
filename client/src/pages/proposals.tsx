@@ -189,7 +189,8 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       if (!tripId) {
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "hotel-proposals"] });
+      // PROPOSALS FEATURE: refresh hotel proposals so saved-hotel votes appear immediately.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Vote Recorded",
         description: "Your hotel preference has been saved.",

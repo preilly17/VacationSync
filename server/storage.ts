@@ -5810,7 +5810,230 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to create hotel");
     }
 
+    // PROPOSALS FEATURE: ensure this saved hotel appears in the proposals list.
+    await this.syncHotelProposalFromHotelRow(row);
+
     return mapHotel(row);
+  }
+
+  // PROPOSALS FEATURE: create or update a linked hotel proposal for a manually saved hotel.
+  private async syncHotelProposalFromHotelRow(hotel: HotelRow): Promise<void> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows: existingLinks } = await query<{
+      id: number;
+      proposal_id: number;
+    }>(
+      `
+      SELECT id, proposal_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = 'hotel'
+        AND scheduled_table = 'hotels'
+        AND scheduled_id = $1
+      LIMIT 1
+      `,
+      [hotel.id],
+    );
+
+    const locationSegments = [hotel.city, hotel.country]
+      .map((segment) => (segment ?? "").trim())
+      .filter((segment) => segment.length > 0);
+    const location =
+      locationSegments.length > 0
+        ? locationSegments.join(", ")
+        : toOptionalString(hotel.address) ?? "Unknown location";
+
+    const priceString =
+      toOptionalString(hotel.total_price) ??
+      toOptionalString(hotel.price_per_night) ??
+      "0";
+    const pricePerNightString = toOptionalString(hotel.price_per_night);
+    const ratingValue = safeNumberOrNull(
+      hotel.hotel_rating as string | number | null | undefined,
+    );
+    const amenitiesText =
+      hotel.amenities == null
+        ? null
+        : typeof hotel.amenities === "string"
+          ? hotel.amenities
+          : JSON.stringify(hotel.amenities);
+    const platform = toOptionalString(hotel.booking_platform) ?? "Manual Save";
+    const bookingUrl =
+      toOptionalString(hotel.booking_url) ??
+      toOptionalString(hotel.purchase_url) ??
+      "";
+
+    const normalizedHotelStatus = (toOptionalString(hotel.status) || "").toLowerCase();
+    let proposalStatus = "proposed";
+    if (normalizedHotelStatus.includes("cancel")) {
+      proposalStatus = "canceled";
+    } else if (
+      ["selected", "booked", "scheduled", "active", "proposed"].includes(
+        normalizedHotelStatus,
+      )
+    ) {
+      proposalStatus = normalizedHotelStatus;
+    }
+
+    if (existingLinks.length > 0) {
+      const proposalId = existingLinks[0].proposal_id;
+      await query(
+        `
+        UPDATE hotel_proposals
+        SET
+          trip_id = $1,
+          proposed_by = $2,
+          hotel_name = $3,
+          location = $4,
+          price = $5,
+          price_per_night = $6,
+          rating = $7,
+          amenities = $8,
+          platform = $9,
+          booking_url = $10,
+          status = $11,
+          updated_at = NOW()
+        WHERE id = $12
+        `,
+        [
+          hotel.trip_id,
+          hotel.user_id,
+          hotel.hotel_name,
+          location,
+          priceString,
+          pricePerNightString,
+          ratingValue,
+          amenitiesText,
+          platform,
+          bookingUrl,
+          proposalStatus,
+          proposalId,
+        ],
+      );
+      return;
+    }
+
+    const { rows: proposalRows } = await query<HotelProposalRow>(
+      `
+      INSERT INTO hotel_proposals (
+        trip_id,
+        proposed_by,
+        hotel_name,
+        location,
+        price,
+        price_per_night,
+        rating,
+        amenities,
+        platform,
+        booking_url,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING id
+      `,
+      [
+        hotel.trip_id,
+        hotel.user_id,
+        hotel.hotel_name,
+        location,
+        priceString,
+        pricePerNightString,
+        ratingValue,
+        amenitiesText,
+        platform,
+        bookingUrl,
+        proposalStatus,
+      ],
+    );
+
+    const insertedProposal = proposalRows[0];
+    if (!insertedProposal) {
+      return;
+    }
+
+    await query(
+      `
+      INSERT INTO proposal_schedule_links (
+        proposal_type,
+        proposal_id,
+        scheduled_table,
+        scheduled_id,
+        trip_id
+      )
+      VALUES ('hotel', $1, 'hotels', $2, $3)
+      ON CONFLICT DO NOTHING
+      `,
+      [insertedProposal.id, hotel.id, hotel.trip_id],
+    );
+  }
+
+  // PROPOSALS FEATURE: backfill proposals for any saved hotels missing a proposal link.
+  private async ensureManualHotelsHaveProposals(tripId: number): Promise<void> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows: unsyncedHotels } = await query<HotelRow>(
+      `
+      SELECT h.*
+      FROM hotels h
+      LEFT JOIN proposal_schedule_links psl
+        ON psl.proposal_type = 'hotel'
+       AND psl.scheduled_table = 'hotels'
+       AND psl.scheduled_id = h.id
+      WHERE h.trip_id = $1
+        AND psl.id IS NULL
+      `,
+      [tripId],
+    );
+
+    if (unsyncedHotels.length === 0) {
+      return;
+    }
+
+    for (const hotel of unsyncedHotels) {
+      await this.syncHotelProposalFromHotelRow(hotel);
+    }
+  }
+
+  // PROPOSALS FEATURE: remove linked proposals when a saved hotel is deleted.
+  private async removeHotelProposalLinks(hotelId: number): Promise<void> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows } = await query<{
+      id: number;
+      proposal_id: number;
+    }>(
+      `
+      SELECT id, proposal_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = 'hotel'
+        AND scheduled_table = 'hotels'
+        AND scheduled_id = $1
+      `,
+      [hotelId],
+    );
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const linkIds = rows.map((row) => row.id);
+    const proposalIds = rows.map((row) => row.proposal_id);
+
+    await query(
+      `DELETE FROM proposal_schedule_links WHERE id = ANY($1::int[])`,
+      [linkIds],
+    );
+
+    if (proposalIds.length > 0) {
+      await query(
+        `DELETE FROM hotel_rankings WHERE proposal_id = ANY($1::int[])`,
+        [proposalIds],
+      );
+      await query(
+        `DELETE FROM hotel_proposals WHERE id = ANY($1::int[])`,
+        [proposalIds],
+      );
+    }
   }
 
   async getTripHotels(tripId: number): Promise<HotelWithDetails[]> {
@@ -6114,6 +6337,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to update hotel");
     }
 
+    // PROPOSALS FEATURE: keep the linked proposal in sync with manual hotel edits.
+    await this.syncHotelProposalFromHotelRow(updatedRow);
+
     return mapHotel(updatedRow);
   }
 
@@ -6135,6 +6361,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (existing.user_id !== userId) {
       throw new Error("Only the creator can delete this hotel");
     }
+
+    // PROPOSALS FEATURE: clean up any linked proposals tied to this saved hotel.
+    await this.removeHotelProposalLinks(hotelId);
 
     await query(
       `
@@ -7177,6 +7406,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
     tripId: number,
     currentUserId: string,
   ): Promise<HotelProposalWithDetails[]> {
+    // PROPOSALS FEATURE: ensure manually saved hotels are represented as proposals.
+    await this.ensureManualHotelsHaveProposals(tripId);
     return this.fetchHotelProposals({ tripId, currentUserId });
   }
 
