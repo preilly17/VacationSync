@@ -36,7 +36,6 @@ import {
   CheckCircle,
   Settings,
   Search,
-  NotebookPen,
   Loader2,
   type LucideIcon
 } from "lucide-react";
@@ -3393,18 +3392,6 @@ function RestaurantBooking({
   const [, setLocation] = useLocation();
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
 
-  const focusSearchPanel = useCallback(() => {
-    if (!searchPanelRef.current) {
-      return;
-    }
-
-    searchPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    const firstFocusable = searchPanelRef.current.querySelector<HTMLElement>(
-      "input, button, select, textarea, [tabindex]:not([tabindex='-1'])"
-    );
-    firstFocusable?.focus();
-  }, []);
-
   const handleBookingLinkClick = useCallback(
     (_restaurant: any, link: { text: string; url: string }) => {
       if (!link?.url) {
@@ -3436,28 +3423,6 @@ function RestaurantBooking({
           <p className="text-gray-600">
             Make dining plans for your group and keep everything in one place.
           </p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-          <Button
-            onClick={focusSearchPanel}
-            className="bg-primary hover:bg-red-600 text-white w-full sm:w-auto"
-          >
-            <Search className="w-4 h-4 mr-2" />
-            Search Restaurants
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full sm:w-auto"
-            onClick={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
-          >
-            <NotebookPen className="w-4 h-4 mr-2" />
-            Log Restaurant Manually
-          </Button>
-          <Link href={`/trip/${tripId}/restaurants`}>
-            <Button variant="outline" className="w-full sm:w-auto">
-              Open Full Planner
-            </Button>
-          </Link>
         </div>
       </div>
 
