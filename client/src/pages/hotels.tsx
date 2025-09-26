@@ -500,43 +500,41 @@ export default function HotelsPage() {
         </TabsList>
 
         <TabsContent value="search" className="space-y-6 mt-6">
+          {/* Add Hotel Dialog */}
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              if (open) {
+                setIsDialogOpen(true);
+              } else {
+                handleDialogClose();
+              }
+            }}
+          >
+            <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingHotel ? "Edit Hotel" : "Add Hotel"}
+                </DialogTitle>
+                <DialogDescription>
+                  Provide the hotel details exactly as defined in the booking schema. Fields marked with an asterisk (*) are required.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                  <HotelFormFields
+                    form={form}
+                    isSubmitting={createHotelMutation.isPending || updateHotelMutation.isPending}
+                    submitLabel={editingHotel ? "Save Changes" : "Add Hotel"}
+                    onCancel={handleDialogClose}
+                    showCancelButton
+                  />
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
 
-      {/* Add Hotel Dialog */}
-      <Dialog
-        open={isDialogOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setIsDialogOpen(true);
-          } else {
-            handleDialogClose();
-          }
-        }}
-      >
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingHotel ? "Edit Hotel" : "Add Hotel"}
-            </DialogTitle>
-            <DialogDescription>
-              Provide the hotel details exactly as defined in the booking schema. Fields marked with an asterisk (*) are required.
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <HotelFormFields
-                form={form}
-                isSubmitting={createHotelMutation.isPending || updateHotelMutation.isPending}
-                submitLabel={editingHotel ? "Save Changes" : "Add Hotel"}
-                onCancel={handleDialogClose}
-                showCancelButton
-              />
-            </form>
-          </Form>
-          </DialogContent>
-        </Dialog>
-
-        <TabsContent value="search" className="space-y-6 mt-6">
-          {/* Intentionally left empty to keep focus on the hotel search form */}
+          {/* Search tab intentionally has no snapshot card to keep the focus on the search form */}
         </TabsContent>
 
         <TabsContent value="voting" className="space-y-6 mt-6">
