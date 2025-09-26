@@ -53,18 +53,20 @@ const dietaryOptions = [
 ];
 
 export interface RestaurantSearchPanelProps {
-  tripId?: string;
+  tripId?: string | number;
   trip?: TripWithDetails;
   user?: { defaultCity?: string | null; defaultLocation?: string | null } | null;
-  onLogRestaurantManually: () => void;
-  onProposeRestaurant: (restaurant: any) => void;
-  onBookingLinkClick: (restaurant: any, link: { text: string; url: string; type: string }) => void;
+  onLogRestaurantManually?: () => void;
+  onProposeRestaurant?: (restaurant: any) => void;
+  onBookingLinkClick?: (restaurant: any, link: { text: string; url: string; type: string }) => void;
 }
 
 export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearchPanelProps>(
   ({ tripId, trip, user, onLogRestaurantManually, onProposeRestaurant, onBookingLinkClick }, ref) => {
     const { toast } = useToast();
     const queryClient = useQueryClient();
+
+    const normalizedTripId = typeof tripId === "string" ? parseInt(tripId, 10) : tripId;
 
     const [searchLocation, setSearchLocation] = useState("");
     const [searchCuisine, setSearchCuisine] = useState("all");
@@ -178,7 +180,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
     useEffect(() => {
       if (trip && !searchLocation) {
         setSearchLocation((trip as any).destination);
-      } else if (!tripId && !searchLocation) {
+      } else if (!normalizedTripId && !searchLocation) {
         if (user?.defaultCity) {
           setSearchLocation(user.defaultCity);
         } else if (user?.defaultLocation) {
@@ -226,7 +228,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
 
     const addRestaurantFromSearchMutation = useMutation({
       mutationFn: async (restaurant: any) => {
-        if (!tripId) {
+        if (!normalizedTripId) {
           throw new Error("Trip context missing");
         }
 
@@ -241,7 +243,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
         });
 
         const payload = {
-          tripId: Number(tripId),
+          tripId: Number(normalizedTripId),
           name: restaurant.name,
           address: addressValue,
           city,
@@ -264,7 +266,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
           notes: searchDietaryTags.length > 0 ? searchDietaryTags.join(", ") : null,
         };
 
-        return apiRequest(`/api/trips/${tripId}/restaurants`, {
+        return apiRequest(`/api/trips/${normalizedTripId}/restaurants`, {
           method: "POST",
           body: payload,
         });
@@ -274,8 +276,9 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
           title: "Restaurant Added",
           description: "This restaurant was added to your group reservations.",
         });
-        if (tripId) {
-          queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurants"] });
+        if (normalizedTripId) {
+          const queryKeyId = typeof tripId === "undefined" ? normalizedTripId : tripId;
+          queryClient.invalidateQueries({ queryKey: ["/api/trips", queryKeyId, "restaurants"] });
         }
       },
       onError: (error) => {
@@ -319,7 +322,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
     };
 
     const handleAddFromSearch = (restaurant: any) => {
-      if (!tripId) {
+      if (!normalizedTripId) {
         toast({
           title: "Trip Required",
           description: "Open a trip to add restaurants to your group list.",
@@ -587,15 +590,17 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
                       "Search Restaurants"
                     )}
                   </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={onLogRestaurantManually}
-                  >
-                    <NotebookPen className="h-4 w-4 mr-2" />
-                    Log Restaurant Manually
-                  </Button>
+                  {onLogRestaurantManually && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={onLogRestaurantManually}
+                    >
+                      <NotebookPen className="h-4 w-4 mr-2" />
+                      Log Restaurant Manually
+                    </Button>
+                  )}
                 </div>
               </div>
             </form>
@@ -672,25 +677,27 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
                       </div>
                     )}
 
-                    <div className="flex flex-wrap gap-1 pt-2">
-                      {restaurant.bookingLinks.map((link: any, index: number) => (
-                        <Button
-                          key={index}
-                          variant={link.type === "direct" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => onBookingLinkClick(restaurant, link)}
-                          data-testid={`button-booking-link-${link.type}-${index}`}
-                          className="text-xs"
-                        >
-                          {link.type === "phone" ? (
-                            <Phone className="h-3 w-3 mr-1" />
-                          ) : (
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                          )}
-                          {link.text}
-                        </Button>
-                      ))}
-                    </div>
+                    {restaurant.bookingLinks && restaurant.bookingLinks.length > 0 && onBookingLinkClick && (
+                      <div className="flex flex-wrap gap-1 pt-2">
+                        {restaurant.bookingLinks.map((link: any, index: number) => (
+                          <Button
+                            key={index}
+                            variant={link.type === "direct" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => onBookingLinkClick?.(restaurant, link)}
+                            data-testid={`button-booking-link-${link.type}-${index}`}
+                            className="text-xs"
+                          >
+                            {link.type === "phone" ? (
+                              <Phone className="h-3 w-3 mr-1" />
+                            ) : (
+                              <ExternalLink className="h-3 w-3 mr-1" />
+                            )}
+                            {link.text}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
 
                     <div className="pt-2 border-t space-y-2">
                       <Button
@@ -703,9 +710,9 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
                         {addRestaurantFromSearchMutation.isPending ? "Adding..." : "Add to Group Restaurants"}
                       </Button>
 
-                      {tripId && (
+                      {normalizedTripId && onProposeRestaurant && (
                         <Button
-                          onClick={() => onProposeRestaurant(restaurant)}
+                          onClick={() => onProposeRestaurant?.(restaurant)}
                           variant="outline"
                           size="sm"
                           className="w-full"
