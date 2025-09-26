@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, type KeyboardEvent, type FormEvent } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,8 @@ import {
   Sparkles,
   CheckCircle,
   Settings,
+  Search,
+  Building,
   type LucideIcon
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -64,6 +66,7 @@ import type {
   User,
   InsertHotel,
   ActivityInviteStatus,
+  HotelSearchResult,
 } from "@shared/schema";
 import {
   format,
@@ -93,7 +96,6 @@ import {
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -101,6 +103,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import SmartLocationSearch from "@/components/SmartLocationSearch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 
 const TRIP_TAB_KEYS = [
@@ -2308,7 +2314,6 @@ function FlightCoordination({ tripId, user }: { tripId: number; user: any }) {
 
 // Hotel Booking Component
 function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?: TripWithDetails | null }) {
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: hotels, isLoading } = useQuery({
@@ -2316,9 +2321,18 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
     enabled: !!tripId,
   });
 
-
-  const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
-
+  const [searchLocation, setSearchLocation] = useState<any>(null);
+  const [checkInDate, setCheckInDate] = useState("");
+  const [checkOutDate, setCheckOutDate] = useState("");
+  const [adultCount, setAdultCount] = useState("2");
+  const [childCount, setChildCount] = useState("0");
+  const [roomCount, setRoomCount] = useState("1");
+  const [priceRange, setPriceRange] = useState("any");
+  const [minRating, setMinRating] = useState("any");
+  const [freeCancellationOnly, setFreeCancellationOnly] = useState(false);
+  const [searchResults, setSearchResults] = useState<HotelSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showManualHotelDialog, setShowManualHotelDialog] = useState(false);
 
   const formDefaults = useCallback(
     () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
@@ -2334,6 +2348,141 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
     form.reset(formDefaults());
   }, [form, formDefaults]);
 
+  useEffect(() => {
+    if (trip?.startDate) {
+      setCheckInDate((previous) => previous || format(new Date(trip.startDate), "yyyy-MM-dd"));
+    }
+
+    if (trip?.endDate) {
+      setCheckOutDate((previous) => previous || format(new Date(trip.endDate), "yyyy-MM-dd"));
+    }
+  }, [trip?.startDate, trip?.endDate]);
+
+  const searchHotels = useCallback(async () => {
+    const destination = searchLocation?.displayName || searchLocation?.name || trip?.destination || "";
+
+    const resolvedCheckIn =
+      checkInDate || (trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd") : "");
+    const resolvedCheckOut =
+      checkOutDate || (trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : "");
+
+    if (!destination) {
+      toast({
+        title: "Search Error",
+        description: "Please choose a destination before searching for hotels.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!resolvedCheckIn || !resolvedCheckOut) {
+      toast({
+        title: "Search Error",
+        description: "Check-in and check-out dates are required for hotel search.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const adultsValue = Math.max(parseInt(adultCount, 10) || 1, 1);
+    const childrenValue = Math.max(parseInt(childCount, 10) || 0, 0);
+    const roomsValue = Math.max(parseInt(roomCount, 10) || 1, 1);
+
+    const priceParams: Record<string, number> = {};
+    if (priceRange !== "any") {
+      if (priceRange === "300+") {
+        priceParams.minPrice = 300;
+      } else {
+        const [min, max] = priceRange.split("-").map((value) => Number(value));
+        if (Number.isFinite(min)) {
+          priceParams.minPrice = Number(min);
+        }
+        if (Number.isFinite(max)) {
+          priceParams.maxPrice = Number(max);
+        }
+      }
+    }
+
+    const ratingValue = minRating !== "any" ? Number(minRating) : undefined;
+
+    setIsSearching(true);
+    try {
+      const searchParams: Record<string, unknown> = {
+        location: destination,
+        adults: adultsValue,
+        children: childrenValue,
+        rooms: roomsValue,
+        radius: 20,
+        checkInDate: resolvedCheckIn,
+        checkOutDate: resolvedCheckOut,
+        ...priceParams,
+      };
+
+      if (ratingValue && !Number.isNaN(ratingValue)) {
+        searchParams.minRating = ratingValue;
+      }
+
+      if (freeCancellationOnly) {
+        searchParams.freeCancellation = true;
+      }
+
+      const response = await apiFetch("/api/hotels/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(searchParams),
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Hotel search API error:", response.status, errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const results: unknown = await response.json();
+      if (!Array.isArray(results)) {
+        setSearchResults([]);
+        toast({
+          title: "No results",
+          description: "We couldn't find hotels that match your filters. Try adjusting the search.",
+        });
+        return;
+      }
+
+      setSearchResults(results as HotelSearchResult[]);
+    } catch (error) {
+      console.error("Hotel search failed", error);
+      toast({
+        title: "Search failed",
+        description: "We couldn't complete the hotel search. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  }, [
+    adultCount,
+    checkInDate,
+    checkOutDate,
+    childCount,
+    freeCancellationOnly,
+    minRating,
+    priceRange,
+    roomCount,
+    searchLocation,
+    toast,
+    trip?.destination,
+    trip?.endDate,
+    trip?.startDate,
+  ]);
+
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void searchHotels();
+  };
+
   const createHotelMutation = useMutation({
     mutationFn: async (payload: InsertHotel) => {
       return await apiRequest(`/api/trips/${tripId}/hotels`, {
@@ -2348,9 +2497,7 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
         description: "Your hotel booking has been saved to the trip.",
       });
       form.reset(formDefaults());
-
-      setIsManualHotelFormOpen(false);
-
+      setShowManualHotelDialog(false);
     },
     onError: (error) => {
       if (isUnauthorizedError(error as Error)) {
@@ -2386,32 +2533,12 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">Hotel Booking</h2>
-          <p className="text-gray-600">Find and book accommodations</p>
-        </div>
-        <Button
-          onClick={() => {
-            setLocation(`/trip/${tripId}/hotels`);
-          }}
-          className="bg-primary hover:bg-red-600 text-white"
-        >
-          <Hotel className="w-4 h-4 mr-2" />
-          Manage Hotels
-        </Button>
+      <div>
+        <h2 className="text-xl font-semibold">Hotels</h2>
+        <p className="text-gray-600">Search stays together and log confirmed reservations</p>
       </div>
 
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Plus className="h-5 w-5 text-primary" />
-            Add a Hotel Booking
-          </CardTitle>
-          <CardDescription>
-            Save a custom stay or confirmed reservation directly to this trip so everyone can view the details.
-          </CardDescription>
-        </CardHeader>
+      <Card>
         <CardContent className="space-y-6">
           <div className="rounded-lg bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
             <p className="font-medium text-neutral-800">Trip snapshot</p>
@@ -2419,49 +2546,209 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               Destination: <span className="font-semibold text-neutral-900">{trip?.destination ?? "TBD"}</span>
             </p>
             <p>
-              Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), 'MMM d, yyyy')} – ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
+              Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), "MMM d, yyyy")} – ${format(new Date(trip.endDate), "MMM d, yyyy")}` : "Choose trip dates to prefill the form"}</span>
             </p>
           </div>
-          <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-neutral-900">Manual entry</p>
-                <p className="text-sm text-muted-foreground">
-                  Record a stay that isn't imported from the hotel search results.
-                </p>
-              </div>
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto justify-between sm:justify-center"
-                >
-                  <span>{isManualHotelFormOpen ? "Close" : "Add a Hotel"}</span>
-                  <ChevronDown
-                    className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
-                  />
-                </Button>
-              </CollapsibleTrigger>
-            </div>
-            <CollapsibleContent className="space-y-6 pt-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)}>
-                  <HotelFormFields
-                    form={form}
-                    isSubmitting={createHotelMutation.isPending}
-                    submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
-                    showCancelButton
-                    onCancel={() => {
-                      form.reset(formDefaults());
-                      setIsManualHotelFormOpen(false);
-                    }}
-                  />
-                </form>
-              </Form>
-            </CollapsibleContent>
-          </Collapsible>
 
+          <form onSubmit={handleSearchSubmit} className="space-y-6" data-testid="trip-hotels-search-form">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <div className="space-y-2 md:col-span-2 xl:col-span-2">
+                <Label htmlFor="trip-hotel-destination">Destination</Label>
+                <SmartLocationSearch
+                  id="trip-hotel-destination"
+                  placeholder="Search destination city..."
+                  value={searchLocation?.displayName || searchLocation?.name || ""}
+                  onLocationSelect={(location) => {
+                    setSearchLocation(location);
+                  }}
+                />
+                {trip?.destination && !searchLocation && (
+                  <p className="text-xs text-muted-foreground mt-1">Trip destination: {trip.destination}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="trip-hotel-check-in">Check-in</Label>
+                <Input
+                  id="trip-hotel-check-in"
+                  type="date"
+                  value={checkInDate}
+                  onChange={(event) => setCheckInDate(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="trip-hotel-check-out">Check-out</Label>
+                <Input
+                  id="trip-hotel-check-out"
+                  type="date"
+                  value={checkOutDate}
+                  onChange={(event) => setCheckOutDate(event.target.value)}
+                  min={checkInDate || undefined}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="trip-hotel-adults">Adults</Label>
+                <Input
+                  id="trip-hotel-adults"
+                  type="number"
+                  min={1}
+                  value={adultCount}
+                  onChange={(event) => setAdultCount(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="trip-hotel-children">Children</Label>
+                <Input
+                  id="trip-hotel-children"
+                  type="number"
+                  min={0}
+                  value={childCount}
+                  onChange={(event) => setChildCount(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="trip-hotel-rooms">Rooms</Label>
+                <Input
+                  id="trip-hotel-rooms"
+                  type="number"
+                  min={1}
+                  value={roomCount}
+                  onChange={(event) => setRoomCount(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="trip-hotel-price-range">Price range</Label>
+                <Select value={priceRange} onValueChange={setPriceRange}>
+                  <SelectTrigger id="trip-hotel-price-range">
+                    <SelectValue placeholder="Choose price range" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any price</SelectItem>
+                    <SelectItem value="0-150">$0 - $150</SelectItem>
+                    <SelectItem value="150-300">$150 - $300</SelectItem>
+                    <SelectItem value="300+">$300+</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="trip-hotel-min-rating">Minimum rating</Label>
+                <Select value={minRating} onValueChange={setMinRating}>
+                  <SelectTrigger id="trip-hotel-min-rating">
+                    <SelectValue placeholder="Select rating" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any rating</SelectItem>
+                    <SelectItem value="3">3 stars & up</SelectItem>
+                    <SelectItem value="4">4 stars & up</SelectItem>
+                    <SelectItem value="4.5">4.5 stars & up</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border px-4 py-3">
+                <div className="space-y-1">
+                  <Label htmlFor="trip-hotel-free-cancel" className="text-sm font-medium">
+                    Free cancellation
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Only show stays that can be cancelled without penalty
+                  </p>
+                </div>
+                <Switch
+                  id="trip-hotel-free-cancel"
+                  checked={freeCancellationOnly}
+                  onCheckedChange={(checked) => setFreeCancellationOnly(checked)}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <Button type="submit" disabled={isSearching} className="w-full sm:w-auto">
+                <Search className="h-4 w-4 mr-2" />
+                {isSearching ? (
+                  <div className="flex items-center gap-2">
+                    <TravelLoading variant="globe" size="sm" />
+                    Searching...
+                  </div>
+                ) : (
+                  "Search Hotels"
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => setShowManualHotelDialog(true)}
+              >
+                <Building className="h-4 w-4 mr-2" />
+                Log Hotel Manually
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
+
+      {searchResults.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Hotel className="h-5 w-5" />
+              Available Hotels ({searchResults.length})
+            </CardTitle>
+            <CardDescription>
+              Results for {searchLocation?.displayName || searchLocation?.name || trip?.destination}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {searchResults.map((hotel) => (
+              <Card key={hotel.id} className="border border-neutral-200 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold flex items-center justify-between">
+                    <span>{hotel.name}</span>
+                    <Badge variant="outline" className="text-xs">
+                      {hotel.platform}
+                    </Badge>
+                  </CardTitle>
+                  <CardDescription className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    {hotel.location}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Estimated total</span>
+                    <span className="text-base font-semibold text-green-600">{hotel.price}</span>
+                  </div>
+                  {hotel.pricePerNight && hotel.pricePerNight !== hotel.price && (
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span>Per night</span>
+                      <span className="font-medium text-green-600">{hotel.pricePerNight}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                      <span>{hotel.rating}</span>
+                    </div>
+                    <Button asChild size="sm" variant="outline">
+                      <a href={hotel.bookingUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2">
+                        Book
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-6">
@@ -2475,14 +2762,12 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
                       <p className="font-semibold">{hotel.hotelName}</p>
                       <p className="text-sm text-gray-600">{hotel.address}</p>
                       <p className="text-sm text-gray-500">
-                        {format(new Date(hotel.checkInDate), 'MMM dd')} - {format(new Date(hotel.checkOutDate), 'MMM dd')}
+                        {format(new Date(hotel.checkInDate), "MMM dd")} - {format(new Date(hotel.checkOutDate), "MMM dd")}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    {hotel.totalPrice && (
-                      <p className="font-semibold">${hotel.totalPrice}</p>
-                    )}
+                    {hotel.totalPrice && <p className="font-semibold">${hotel.totalPrice}</p>}
                     {hotel.hotelRating && (
                       <div className="flex items-center">
                         {Array.from({ length: hotel.hotelRating }).map((_, i) => (
@@ -2506,17 +2791,50 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               <p className="text-gray-600 mb-4">
                 Search and book accommodations for your trip
               </p>
-              <Button 
-                onClick={() => setLocation(`/trip/${tripId}/hotels`)}
-                className="bg-primary hover:bg-red-600 text-white"
+              <Button
+                onClick={() => setShowManualHotelDialog(true)}
+                variant="outline"
               >
-                <Hotel className="w-4 h-4 mr-2" />
-                Search Hotels
+                <Plus className="w-4 h-4 mr-2" />
+                Log Hotel Manually
               </Button>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={showManualHotelDialog}
+        onOpenChange={(open) => {
+          setShowManualHotelDialog(open);
+          if (!open) {
+            form.reset(formDefaults());
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Log Hotel Manually</DialogTitle>
+            <DialogDescription>
+              Save a confirmed stay so everyone in the trip can see the details.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <HotelFormFields
+                form={form}
+                isSubmitting={createHotelMutation.isPending}
+                submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+                showCancelButton
+                onCancel={() => {
+                  form.reset(formDefaults());
+                  setShowManualHotelDialog(false);
+                }}
+              />
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
