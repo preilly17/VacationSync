@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueries } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import {
   ArrowUpRight,
   Calendar,
   Clock,
+  Hourglass,
   Compass,
   Heart,
   Lightbulb,
@@ -49,7 +50,7 @@ import { ManualRefreshButton } from "@/components/manual-refresh-button";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { TripWithDetails } from "@shared/schema";
+import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import { Progress } from "@/components/ui/progress";
 import {
   DropdownMenu,
@@ -323,6 +324,51 @@ const getCountdownLabel = (startDate: string | Date) => {
   return "In progress";
 };
 
+const findNextUpcomingActivity = (
+  activities: ActivityWithDetails[],
+): ActivityWithDetails | null => {
+  if (activities.length === 0) {
+    return null;
+  }
+
+  const now = new Date().getTime();
+  const sorted = [...activities].sort(
+    (a, b) =>
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+  );
+
+  for (const activity of sorted) {
+    const start = new Date(activity.startTime).getTime();
+    const end = activity.endTime
+      ? new Date(activity.endTime).getTime()
+      : null;
+
+    if (end !== null) {
+      if (end >= now) {
+        return activity;
+      }
+      continue;
+    }
+
+    if (start >= now) {
+      return activity;
+    }
+  }
+
+  return null;
+};
+
+const formatActivityDateTime = (activity: ActivityWithDetails) => {
+  const start = new Date(activity.startTime);
+  return start.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 const getMemberInitial = (firstName?: string | null, email?: string | null) => {
   if (firstName && firstName.trim().length > 0) {
     return firstName[0]?.toUpperCase();
@@ -469,6 +515,12 @@ export default function Home() {
   const highlightDestinationName = highlightTrip?.destination
     ? highlightTrip.destination.split(",")[0]?.trim() || highlightTrip.destination
     : undefined;
+  const highlightDaysUntil = highlightTrip
+    ? getDaysUntilTrip(highlightTrip.startDate)
+    : null;
+  const countdownDestinationLabel =
+    highlightDestinationName ??
+    (highlightTrip?.name?.trim() || "your adventure");
   const teamLabel = getTeamLabel(highlightTrip);
   const heroGreeting = `Welcome back, ${user?.firstName || "Traveler"} 👋`;
   const heroHeadline = highlightTrip
@@ -479,13 +531,18 @@ export default function Home() {
           : highlightTrip.name)
       } is almost ready!`
     : "Your next adventure is waiting.";
-  const heroSubtitle = highlightTrip
-    ? highlightCountdown === "Happening today"
-      ? `It's go day for ${highlightDestinationName}! Check off your final details below.`
-      : highlightCountdown === "In progress"
-        ? `You're already exploring ${highlightDestinationName}. Keep everyone aligned with live updates.`
-        : `${highlightCountdown} until ${highlightDestinationName}. Let's make sure everything is locked in.`
-    : "Plan something unforgettable—start by creating your next itinerary.";
+  const heroCountdownCallout =
+    highlightTrip && highlightCountdown
+      ? highlightDaysUntil !== null && highlightDaysUntil > 1
+        ? `⏳ ${highlightDaysUntil} days until ${countdownDestinationLabel} begins`
+        : highlightDaysUntil === 1
+          ? `⏳ 1 day until ${countdownDestinationLabel} begins`
+          : highlightCountdown === "Happening today"
+            ? `🎉 It's go day for ${countdownDestinationLabel}`
+            : highlightCountdown === "In progress"
+              ? `🌍 ${countdownDestinationLabel} is underway`
+              : null
+      : null;
   const funFacts = useMemo(
     () => getFunFactsForDestination(highlightTrip?.destination),
     [highlightTrip?.destination],
@@ -581,6 +638,72 @@ export default function Home() {
       ]
     : [];
 
+  const nextActivityQueries = useQueries({
+    queries: sortedUpcomingTrips.map((trip) => ({
+      queryKey: ["/api/trips", trip.id, "activities", "next"],
+      queryFn: async () => {
+        const response = await apiRequest(`/api/trips/${trip.id}/activities`);
+        const activities = Array.isArray(response)
+          ? (response as ActivityWithDetails[])
+          : [];
+        return findNextUpcomingActivity(activities);
+      },
+      enabled: !!user,
+      staleTime: 1000 * 60 * 5,
+    })),
+  });
+
+  const nextActivityStates = new Map<
+    number,
+    {
+      activity: ActivityWithDetails | null;
+      isLoading: boolean;
+      isError: boolean;
+    }
+  >();
+
+  sortedUpcomingTrips.forEach((trip, index) => {
+    const query = nextActivityQueries[index];
+    if (!query) {
+      return;
+    }
+
+    nextActivityStates.set(trip.id, {
+      activity: query.data ?? null,
+      isLoading: query.isLoading,
+      isError: query.isError,
+    });
+  });
+
+  const highlightNextActivityState = highlightTrip
+    ? nextActivityStates.get(highlightTrip.id)
+    : undefined;
+  const highlightNextActivity = highlightNextActivityState?.activity ?? null;
+  const highlightNextActivityLoading =
+    highlightNextActivityState?.isLoading ?? false;
+  const highlightNextActivityError =
+    highlightNextActivityState?.isError ?? false;
+  const countdownText = highlightCountdown ?? "Soon";
+  const heroSubtitle = highlightTrip
+    ? highlightCountdown === "Happening today"
+      ? highlightNextActivity
+        ? `It's go day for ${countdownDestinationLabel}! Meet up for ${highlightNextActivity.name} next.`
+        : `It's go day for ${countdownDestinationLabel}! Check off your final details below.`
+      : highlightCountdown === "In progress"
+        ? highlightNextActivity
+          ? `You're already exploring ${countdownDestinationLabel}. Share updates from ${highlightNextActivity.name} as it unfolds.`
+          : `You're already exploring ${countdownDestinationLabel}. Keep everyone aligned with live updates.`
+        : highlightNextActivity
+          ? `${countdownText} until ${countdownDestinationLabel}. Next on deck: ${highlightNextActivity.name}.`
+          : `${countdownText} until ${countdownDestinationLabel}. Let's make sure everything is locked in.`
+    : "Plan something unforgettable—start by creating your next itinerary.";
+  const highlightNextActivityTime = highlightNextActivity
+    ? formatActivityDateTime(highlightNextActivity)
+    : "";
+  const highlightNextActivityLocation = highlightNextActivity?.location
+    ? highlightNextActivity.location.trim()
+    : null;
+
   const companionMap = new Map<string, CompanionDetail>();
   (trips ?? []).forEach((trip) => {
     const tripName = trip.name?.trim() || "Unnamed trip";
@@ -667,6 +790,22 @@ export default function Home() {
 
   const insightCards: InsightCard[] = highlightTrip
     ? [
+        ...(highlightNextActivity
+          ? [
+              {
+                title: `Next: ${highlightNextActivity.name}`,
+                description: `${highlightNextActivityTime}${
+                  highlightNextActivityLocation
+                    ? ` • ${highlightNextActivityLocation}`
+                    : ""
+                }. Drop a fresh idea while the crew's excited.`,
+                icon: Sparkles,
+                accent: "bg-rose-100 text-rose-500",
+                actionLabel: "Open itinerary",
+                href: `/trip/${highlightTrip.id}?view=activities`,
+              },
+            ]
+          : []),
         {
           title: "Add one more standout",
           description:
@@ -680,7 +819,8 @@ export default function Home() {
         },
         {
           title: "Split an expense early",
-          description: "Capture shared costs now to keep budgets aligned for the trip.",
+          description:
+            "Capture shared costs now to keep budgets aligned for the trip.",
           icon: DollarSign,
           accent: "bg-amber-100 text-amber-600",
           actionLabel: "Log expense",
@@ -956,8 +1096,8 @@ export default function Home() {
                   </Badge>
                   {highlightCountdown && (
                     <div className="flex items-center gap-2 rounded-full bg-white/80 px-4 py-1 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur">
-                      <Clock className="h-4 w-4 text-slate-500" />
-                      {highlightCountdown}
+                      <Hourglass className="h-4 w-4 text-amber-500" />
+                      {heroCountdownCallout ?? highlightCountdown}
                     </div>
                   )}
                 </div>
@@ -978,6 +1118,56 @@ export default function Home() {
                         Trip tidbit
                       </p>
                       <p>{currentFunFact}</p>
+                    </div>
+                  </div>
+                )}
+                {highlightTrip && (
+                  <div className="flex items-start gap-3 rounded-3xl bg-white/80 p-4 text-sm text-slate-700 shadow-sm backdrop-blur">
+                    <Sparkles className="mt-0.5 h-4 w-4 text-violet-500" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        {highlightNextActivity
+                          ? "Next on the itinerary"
+                          : highlightNextActivityLoading
+                            ? "Syncing your plans"
+                            : highlightNextActivityError
+                              ? "Itinerary unavailable"
+                              : "Add a memorable moment"}
+                      </p>
+                      {highlightNextActivity ? (
+                        <>
+                          <p className="font-semibold text-slate-900">
+                            {highlightNextActivity.name}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            {highlightNextActivityTime}
+                            {highlightNextActivityLocation
+                              ? ` • ${highlightNextActivityLocation}`
+                              : ""}
+                          </p>
+                        </>
+                      ) : highlightNextActivityLoading ? (
+                        <p className="text-xs text-slate-500">
+                          Gathering your latest activities...
+                        </p>
+                      ) : highlightNextActivityError ? (
+                        <p className="text-xs text-slate-500">
+                          We couldn't load the itinerary. Try refreshing soon.
+                        </p>
+                      ) : (
+                        <div className="space-y-1 text-xs text-slate-500">
+                          <p>
+                            Add an activity so {teamLabel ?? "your crew"} knows what's next.
+                          </p>
+                          <Link
+                            href={`/trip/${highlightTrip.id}?view=activities`}
+                            className="inline-flex items-center gap-1 font-semibold text-sky-600 hover:text-sky-700"
+                          >
+                            + Plan it now
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1146,11 +1336,23 @@ export default function Home() {
                           <span className="text-slate-400">• {highlightCountdown}</span>
                         )}
                       </div>
-                      {highlightNextStep && (
+                      {highlightNextActivity ? (
                         <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                          <Clock className="h-3 w-3" />
-                          <span>{highlightNextStep}</span>
+                          <Sparkles className="h-3 w-3 text-violet-500" />
+                          <span>
+                            {highlightNextActivity.name}
+                            {highlightNextActivityTime
+                              ? ` • ${highlightNextActivityTime}`
+                              : ""}
+                          </span>
                         </div>
+                      ) : (
+                        highlightNextStep && (
+                          <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                            <Clock className="h-3 w-3" />
+                            <span>{highlightNextStep}</span>
+                          </div>
+                        )
                       )}
                     </div>
                   ) : (
@@ -1305,6 +1507,20 @@ export default function Home() {
                 const progress = calculatePlanningProgress(trip);
                 const tags = getTripTags(trip);
                 const nextStep = getTripNextStep(trip);
+                const tripNextActivityState = nextActivityStates.get(trip.id);
+                const tripNextActivity =
+                  tripNextActivityState?.activity ?? null;
+                const tripNextActivityLoading =
+                  tripNextActivityState?.isLoading ?? false;
+                const tripNextActivityError =
+                  tripNextActivityState?.isError ?? false;
+                const tripNextActivityTime = tripNextActivity
+                  ? formatActivityDateTime(tripNextActivity)
+                  : "";
+                const tripNextActivityLocation = tripNextActivity?.location
+                  ? tripNextActivity.location.trim()
+                  : "";
+                const primaryTag = tags[0] ?? "Explorer";
 
                 return (
                   <Link
@@ -1325,7 +1541,7 @@ export default function Home() {
                       <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
                         <div>
                           <p className="text-xs uppercase tracking-widest text-white/80">
-                            Adventure
+                            {primaryTag}
                           </p>
                           <h3 className="text-lg font-semibold leading-tight">
                             {trip.name}
@@ -1385,9 +1601,38 @@ export default function Home() {
                             className="mt-1 h-2 rounded-full bg-slate-100"
                           />
                         </div>
-                        <div className="flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          <ListChecks className="h-4 w-4 text-emerald-500" />
-                          <span>Next up: {nextStep}</span>
+                        <div className="rounded-2xl bg-slate-50 px-3 py-2">
+                          {tripNextActivity ? (
+                            <div className="flex items-start gap-2 text-xs text-slate-600">
+                              <Sparkles className="mt-0.5 h-4 w-4 text-violet-500" />
+                              <div>
+                                <p className="text-[13px] font-semibold text-slate-900">
+                                  {tripNextActivity.name}
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  {tripNextActivityTime}
+                                  {tripNextActivityLocation
+                                    ? ` • ${tripNextActivityLocation}`
+                                    : ""}
+                                </p>
+                              </div>
+                            </div>
+                          ) : tripNextActivityLoading ? (
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                              <Clock className="h-4 w-4 text-slate-400" />
+                              Syncing your itinerary...
+                            </div>
+                          ) : tripNextActivityError ? (
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                              <Clock className="h-4 w-4 text-slate-400" />
+                              Couldn't load the next activity.
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-xs text-slate-600">
+                              <ListChecks className="h-4 w-4 text-emerald-500" />
+                              <span>Next up: {nextStep}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-4 pt-2">
