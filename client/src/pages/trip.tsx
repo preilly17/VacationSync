@@ -54,6 +54,7 @@ import { Sidebar } from "@/components/sidebar";
 import { PackingList } from "@/components/packing-list";
 import { ExpenseTracker } from "@/components/expense-tracker";
 import { GroceryList } from "@/components/grocery-list";
+import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -73,6 +74,7 @@ import type {
   InsertHotel,
   ActivityInviteStatus,
   InsertFlight,
+  RestaurantWithDetails,
 } from "@shared/schema";
 import {
   format,
@@ -1779,7 +1781,7 @@ export default function Trip() {
                 )}
                 
                 {activeTab === "restaurants" && (
-                  <RestaurantBooking tripId={parseInt(id || "0")} user={user} />
+                  <RestaurantBooking tripId={parseInt(id || "0")} user={user} trip={trip as TripWithDetails | undefined} />
                 )}
 
 
@@ -3361,84 +3363,152 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
 }
 
 // Restaurant Booking Component
-function RestaurantBooking({ tripId, user }: { tripId: number; user: any }) {
-  const [, setLocation] = useLocation();
-  const { data: restaurants, isLoading } = useQuery({
-    queryKey: [`/api/trips/${tripId}/restaurants`],
+function RestaurantBooking({
+  tripId,
+  user,
+  trip,
+}: {
+  tripId: number;
+  user: any;
+  trip?: TripWithDetails;
+}) {
+  const { data: restaurants = [], isLoading } = useQuery<RestaurantWithDetails[]>({
+    queryKey: ["/api/trips", tripId, "restaurants"],
     enabled: !!tripId,
   });
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+
+  const handleBookingLinkClick = useCallback(
+    (_restaurant: any, link: { text: string; url: string }) => {
+      if (!link?.url) {
+        return;
+      }
+
+      if (typeof window !== "undefined") {
+        window.open(link.url, "_blank", "noopener,noreferrer");
+      }
+    },
+    []
+  );
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
 
+  const hasRestaurants = Array.isArray(restaurants) && restaurants.length > 0;
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Restaurant Reservations</h2>
-          <p className="text-gray-600">Make dining reservations for your group</p>
+          <p className="text-gray-600">
+            Make dining plans for your group and keep everything in one place.
+          </p>
         </div>
-        <Button 
-          onClick={() => {
-            setLocation(`/trip/${tripId}/restaurants`);
-          }}
-          className="bg-primary hover:bg-red-600 text-white"
-        >
-          <Utensils className="w-4 h-4 mr-2" />
-          Manage Restaurants
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+          <Button
+            onClick={() => setShowSearchPanel((prev) => !prev)}
+            className="bg-primary hover:bg-red-600 text-white w-full sm:w-auto"
+          >
+            {showSearchPanel ? (
+              <>
+                <Utensils className="w-4 h-4 mr-2" />
+                Hide Restaurant Search
+              </>
+            ) : (
+              <>
+                <Search className="w-4 h-4 mr-2" />
+                Search Restaurants
+              </>
+            )}
+          </Button>
+          <Link href={`/trip/${tripId}/restaurants`}>
+            <Button variant="outline" className="w-full sm:w-auto">
+              Open Full Planner
+            </Button>
+          </Link>
+        </div>
       </div>
+
+      {showSearchPanel && (
+        <RestaurantSearchPanel
+          tripId={tripId}
+          trip={trip}
+          user={user}
+          onBookingLinkClick={handleBookingLinkClick}
+        />
+      )}
 
       <Card>
         <CardContent className="p-6">
-          {(restaurants as any) && (restaurants as any).length > 0 ? (
+          {hasRestaurants ? (
             <div className="space-y-4">
-              {(restaurants as any).slice(0, 3).map((restaurant: any) => (
-                <div key={restaurant.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <Utensils className="w-5 h-5 text-orange-600" />
-                    <div>
-                      <p className="font-semibold">{restaurant.restaurantName}</p>
-                      <p className="text-sm text-gray-600">{restaurant.address}</p>
-                      {restaurant.reservationDate && (
-                        <p className="text-sm text-gray-500">
-                          {format(new Date(restaurant.reservationDate), 'MMM dd')} at {restaurant.reservationTime}
-                        </p>
+              {restaurants.slice(0, 3).map((restaurant) => {
+                const displayName = (restaurant as any).restaurantName ?? restaurant.name ?? "Restaurant";
+                const displayAddress = restaurant.address ?? (restaurant as any).location ?? "";
+                const reservationStatus = restaurant.reservationStatus ?? "planned";
+                const reservationDate = restaurant.reservationDate
+                  ? format(new Date(restaurant.reservationDate), "MMM dd")
+                  : null;
+                const reservationTime = restaurant.reservationTime ?? (restaurant as any).reservation_start_time ?? "";
+
+                return (
+                  <div
+                    key={restaurant.id}
+                    className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                        <Utensils className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-neutral-900">{displayName}</p>
+                        {displayAddress && (
+                          <p className="text-sm text-gray-600">{displayAddress}</p>
+                        )}
+                        {reservationDate && (
+                          <p className="text-sm text-gray-500">
+                            {reservationDate}
+                            {reservationTime ? ` at ${reservationTime}` : ""}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <Badge variant="outline" className="uppercase tracking-wide">
+                        {reservationStatus}
+                      </Badge>
+                      {restaurant.partySize && (
+                        <p className="mt-1 text-sm text-gray-500">{restaurant.partySize} people</p>
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <Badge variant="outline">{restaurant.reservationStatus || 'pending'}</Badge>
-                    {restaurant.partySize && (
-                      <p className="text-sm text-gray-500 mt-1">{restaurant.partySize} people</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {(restaurants as any).length > 3 && (
+                );
+              })}
+              {restaurants.length > 3 && (
                 <p className="text-sm text-gray-500 text-center">
-                  +{(restaurants as any).length - 3} more restaurants
+                  +{restaurants.length - 3} more restaurants
                 </p>
               )}
             </div>
           ) : (
-            <div className="text-center py-8">
-              <Utensils className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No restaurants added yet</h3>
-              <p className="text-gray-600 mb-4">
-                Find and make reservations at great restaurants
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Utensils className="mb-4 h-12 w-12 text-gray-400" />
+              <h3 className="mb-2 text-lg font-medium text-gray-900">No restaurants added yet</h3>
+              <p className="mb-4 max-w-md text-gray-600">
+                Start planning meals for your trip. Search for restaurants and add them directly to your itinerary.
               </p>
-              <Button 
-                onClick={() => setLocation(`/trip/${tripId}/restaurants`)}
+              <Button
+                onClick={() => setShowSearchPanel(true)}
                 className="bg-primary hover:bg-red-600 text-white"
               >
-                <Utensils className="w-4 h-4 mr-2" />
-                Find Restaurants
+                <Search className="w-4 h-4 mr-2" />
+                Search Restaurants
               </Button>
             </div>
           )}
