@@ -191,7 +191,12 @@ const toIsoString = (value: Date | string | null | undefined): string => {
 };
 
 const toInviteStatus = (value: unknown): ActivityInviteStatus => {
-  if (value === "accepted" || value === "declined" || value === "pending") {
+  if (
+    value === "accepted" ||
+    value === "declined" ||
+    value === "pending" ||
+    value === "waitlisted"
+  ) {
     return value;
   }
 
@@ -1193,6 +1198,7 @@ const mapActivityWithDetails = (
   acceptedCount: row.acceptances.length,
   pendingCount: row.invites.filter((invite) => invite.status === "pending").length,
   declinedCount: row.invites.filter((invite) => invite.status === "declined").length,
+  waitlistedCount: row.invites.filter((invite) => invite.status === "waitlisted").length,
   currentUserInvite: row.currentUserInvite,
   isAccepted: row.isAccepted,
   hasResponded: row.hasResponded,
