@@ -30,6 +30,7 @@ import {
   Globe,
   ArrowLeft,
   Search,
+  NotebookPen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
@@ -269,6 +270,17 @@ export default function RestaurantsPage() {
             {trip ? `Find and book restaurants for ${(trip as any).destination}` : "Find and book restaurants"}
           </p>
         </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => setShowBooking(true)}
+          >
+            <NotebookPen className="h-4 w-4 mr-2" />
+            Log Restaurant Manually
+          </Button>
+        </div>
       </div>
 
       <RestaurantSearchPanel
@@ -299,10 +311,20 @@ export default function RestaurantsPage() {
               <p className="text-gray-600 dark:text-gray-400 text-center mb-4">
                 Search for restaurants or add your own reservations to start planning your dining experiences.
               </p>
-              <Button onClick={focusSearchSection}>
-                <Search className="h-4 w-4 mr-2" />
-                Search Restaurants
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <Button onClick={focusSearchSection} className="w-full sm:w-auto">
+                  <Search className="h-4 w-4 mr-2" />
+                  Search Restaurants
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => setShowBooking(true)}
+                >
+                  <NotebookPen className="h-4 w-4 mr-2" />
+                  Log Manually
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
