@@ -89,11 +89,27 @@ const activitiesDiscoverSchema = z.object({
 });
 
 const logSharedExpenseSchema = z.object({
-  amountCents: z.number().int().positive("Amount must be greater than zero"),
-  currency: z
+  sourceAmountMinorUnits: z
+    .number()
+    .int()
+    .positive("Amount must be greater than zero"),
+  sourceCurrency: z
     .string()
     .min(1, "Currency is required")
     .transform((value) => value.trim()),
+  targetCurrency: z
+    .string()
+    .min(1, "Request currency is required")
+    .transform((value) => value.trim()),
+  exchangeRate: z
+    .coerce
+    .number()
+    .positive("Conversion rate must be greater than zero"),
+  exchangeRateLockedAt: z.string().datetime().optional(),
+  exchangeRateProvider: z
+    .string()
+    .trim()
+    .optional(),
   description: z
     .string()
     .min(1, "Description is required")
@@ -2036,8 +2052,12 @@ export function setupRoutes(app: Express) {
       }
 
       const {
-        amountCents,
-        currency,
+        sourceAmountMinorUnits,
+        sourceCurrency,
+        targetCurrency,
+        exchangeRate,
+        exchangeRateLockedAt,
+        exchangeRateProvider,
         description,
         category,
         participantUserIds,
@@ -2054,24 +2074,18 @@ export function setupRoutes(app: Express) {
           .json({ message: "Choose at least one person to split with." });
       }
 
-      const totalAmount = Number((amountCents / 100).toFixed(2));
-
       const expenseData = {
         tripId,
         paidBy: userId,
-        amount: totalAmount,
-        amountCents,
-        currency,
+        sourceAmountMinorUnits,
+        sourceCurrency,
+        targetCurrency,
+        exchangeRate,
+        exchangeRateLockedAt,
+        exchangeRateProvider,
         description,
         category,
-        splitType: "equal" as const,
-        splitData: {
-          members: normalizedParticipants,
-          totalAmountCents: amountCents,
-          algorithm: "equal_payer_included",
-        },
         participantUserIds: normalizedParticipants,
-        selectedMembers: normalizedParticipants,
         ...(receiptUrl ? { receiptUrl } : {}),
       };
 

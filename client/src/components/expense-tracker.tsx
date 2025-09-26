@@ -33,6 +33,7 @@ import { AddExpenseModal } from "./add-expense-modal";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { ExpenseWithDetails, User } from "@shared/schema";
+import { minorUnitsToAmount } from "@shared/expenses";
 import {
   CheckCircle2,
   Loader2,
@@ -114,6 +115,41 @@ function formatExpenseDate(value: string | Date | null | undefined) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatRate(value: number | null | undefined) {
+  if (!value || !Number.isFinite(value)) {
+    return null;
+  }
+
+  try {
+    return new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    }).format(value);
+  } catch {
+    return value.toFixed(4);
+  }
+}
+
+function getShareTargetAmountForExpense(
+  share: ExpenseWithDetails["shares"][number],
+  expense: ExpenseWithDetails,
+) {
+  const targetCurrency = expense.targetCurrency ?? expense.currency;
+  return typeof share.amountTargetMinorUnits === "number"
+    ? minorUnitsToAmount(share.amountTargetMinorUnits, targetCurrency)
+    : share.amount;
+}
+
+function getShareSourceAmountForExpense(
+  share: ExpenseWithDetails["shares"][number],
+  expense: ExpenseWithDetails,
+) {
+  const sourceCurrency = expense.originalCurrency ?? expense.currency;
+  return typeof share.amountSourceMinorUnits === "number"
+    ? minorUnitsToAmount(share.amountSourceMinorUnits, sourceCurrency)
+    : null;
 }
 
 function ExpenseListSkeleton() {
@@ -346,7 +382,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       if (detailView === "youOwe") {
         return (
           !!shareForCurrentUser &&
-          shareForCurrentUser.amount > 0 &&
+          getShareTargetAmountForExpense(shareForCurrentUser, expense) > 0 &&
           shareForCurrentUser.status !== "paid"
         );
       }
@@ -359,7 +395,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
           (share) =>
             share.userId !== user.id &&
             share.userId !== expense.paidBy.id &&
-            share.amount > 0 &&
+            getShareTargetAmountForExpense(share, expense) > 0 &&
             share.status !== "paid",
         );
       }
@@ -553,13 +589,42 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
             const isSettling = settlingId === expense.id;
             const isCurrentUserSharePaid =
               shareForCurrentUser?.status === "paid";
+            const targetCurrency = expense.targetCurrency ?? expense.currency;
+            const sourceCurrency =
+              expense.originalCurrency ?? targetCurrency;
+            const rateLabel = formatRate(expense.exchangeRate);
+            const rateDescriptor = rateLabel
+              ? `${rateLabel} ${targetCurrency}/${sourceCurrency}`
+              : null;
+            const sourceTotalAmount =
+              typeof expense.sourceAmountMinorUnits === "number"
+                ? minorUnitsToAmount(
+                    expense.sourceAmountMinorUnits,
+                    sourceCurrency,
+                  )
+                : null;
+            const headerDetails: string[] = [];
+            if (sourceTotalAmount !== null) {
+              headerDetails.push(
+                `Paid ${formatCurrency(sourceTotalAmount, sourceCurrency)}`,
+              );
+            }
+            if (rateDescriptor && sourceCurrency !== targetCurrency) {
+              headerDetails.push(`Rate ${rateDescriptor}`);
+            }
+            const headerDetailText = headerDetails.join(" • ");
+
+            const getShareTargetAmount = (
+              share: (typeof expense.shares)[number],
+            ) => getShareTargetAmountForExpense(share, expense);
+
             const shareSummaryLabel = (() => {
               if (sharesExcludingPayer.length <= 1) {
                 return null;
               }
 
               const normalizedAmounts = sharesExcludingPayer.map((share) =>
-                share.amount.toFixed(2),
+                getShareTargetAmount(share).toFixed(2),
               );
               const distinctAmounts = Array.from(
                 new Set(normalizedAmounts),
@@ -567,20 +632,52 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
 
               if (distinctAmounts.length === 1) {
                 return `${formatCurrency(
-                  sharesExcludingPayer[0].amount,
-                  expense.currency,
+                  getShareTargetAmount(sharesExcludingPayer[0]),
+                  targetCurrency,
                 )} each`;
               }
 
               const minAmount = Math.min(
-                ...sharesExcludingPayer.map((share) => share.amount),
+                ...sharesExcludingPayer.map((share) =>
+                  getShareTargetAmount(share),
+                ),
               );
               const maxAmount = Math.max(
-                ...sharesExcludingPayer.map((share) => share.amount),
+                ...sharesExcludingPayer.map((share) =>
+                  getShareTargetAmount(share),
+                ),
               );
 
-              return `${formatCurrency(minAmount, expense.currency)} – ${formatCurrency(maxAmount, expense.currency)} each`;
+              return `${formatCurrency(minAmount, targetCurrency)} – ${formatCurrency(maxAmount, targetCurrency)} each`;
             })();
+
+            const currentUserTargetShare = shareForCurrentUser
+              ? getShareTargetAmount(shareForCurrentUser)
+              : null;
+            const currentUserTargetDisplay =
+              currentUserTargetShare !== null
+                ? formatCurrency(currentUserTargetShare, targetCurrency)
+                : null;
+            const currentUserSourceShare =
+              shareForCurrentUser
+                ? getShareSourceAmountForExpense(shareForCurrentUser, expense)
+                : null;
+            const currentUserSourceDisplay =
+              currentUserSourceShare !== null
+                ? formatCurrency(currentUserSourceShare, sourceCurrency)
+                : null;
+            const currentUserConversionDetail = (() => {
+              if (!shareForCurrentUser || sourceCurrency === targetCurrency) {
+                return null;
+              }
+              if (currentUserSourceDisplay) {
+                return rateDescriptor
+                  ? `${currentUserSourceDisplay} @ ${rateDescriptor}`
+                  : currentUserSourceDisplay;
+              }
+              return rateDescriptor ? `Rate ${rateDescriptor}` : null;
+            })();
+            const payerDisplay = getUserDisplayName(expense.paidBy);
 
             return (
               <Card
@@ -613,11 +710,16 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                     </div>
                     <div className="text-right">
                       <p className="text-xl font-semibold">
-                        {formatCurrency(expense.totalAmount, expense.currency)}
+                        {formatCurrency(expense.totalAmount, targetCurrency)}
                       </p>
                       {shareSummaryLabel ? (
                         <p className="text-xs text-muted-foreground">
                           {shareSummaryLabel}
+                        </p>
+                      ) : null}
+                      {headerDetailText ? (
+                        <p className="text-xs text-muted-foreground">
+                          {headerDetailText}
                         </p>
                       ) : null}
                     </div>
@@ -654,6 +756,27 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                   {sharesExcludingPayer.map((share) => {
                     const isCurrentUser = share.userId === user?.id;
                     const isSharePaid = share.status === "paid";
+                    const targetShareAmount = getShareTargetAmount(share);
+                    const targetShareDisplay = formatCurrency(
+                      targetShareAmount,
+                      targetCurrency,
+                    );
+                    const sourceShareAmount =
+                      getShareSourceAmountForExpense(share, expense);
+                    const sourceShareDisplay =
+                      sourceShareAmount !== null
+                        ? formatCurrency(sourceShareAmount, sourceCurrency)
+                        : null;
+                    const conversionDetail =
+                      sourceCurrency === targetCurrency
+                        ? null
+                        : sourceShareDisplay
+                        ? rateDescriptor
+                          ? `${sourceShareDisplay} @ ${rateDescriptor}`
+                          : sourceShareDisplay
+                        : rateDescriptor
+                        ? `Rate ${rateDescriptor}`
+                        : null;
                     return (
                       <div
                         key={share.id}
@@ -689,11 +812,16 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-semibold">
-                            {formatCurrency(share.amount, expense.currency)}
+                            {targetShareDisplay}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {isSharePaid ? "Paid" : "Outstanding"}
                           </p>
+                          {conversionDetail ? (
+                            <p className="text-xs text-muted-foreground">
+                              {`Based on ${conversionDetail}`}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     );
@@ -708,10 +836,21 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                       isCurrentUserSharePaid ? (
                         "You're settled for this expense."
                       ) : (
-                        `You owe ${formatCurrency(
-                          shareForCurrentUser.amount,
-                          expense.currency,
-                        )} to ${getUserDisplayName(expense.paidBy)}.`
+                        currentUserConversionDetail
+                          ? `You owe ${
+                              currentUserTargetDisplay ??
+                              formatCurrency(
+                                getShareTargetAmount(shareForCurrentUser),
+                                targetCurrency,
+                              )
+                            } to ${payerDisplay} (based on ${currentUserConversionDetail}).`
+                          : `You owe ${
+                              currentUserTargetDisplay ??
+                              formatCurrency(
+                                getShareTargetAmount(shareForCurrentUser),
+                                targetCurrency,
+                              )
+                            } to ${payerDisplay}.`
                       )
                     ) : expense.paidBy.id === user?.id ? (
                       "You covered this expense for everyone else."
@@ -851,11 +990,20 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                         (share) =>
                           share.userId !== user?.id && share.status !== "paid",
                       )
-                      .reduce((total, share) => total + share.amount, 0);
+                      .reduce(
+                        (total, share) =>
+                          total + getShareTargetAmountForExpense(share, expense),
+                        0,
+                      );
 
                     const myShareAmount =
                       detailView === "youOwe"
-                        ? shareForCurrentUser?.amount ?? 0
+                        ? shareForCurrentUser
+                          ? getShareTargetAmountForExpense(
+                              shareForCurrentUser,
+                              expense,
+                            )
+                          : 0
                         : detailView === "youAreOwed"
                           ? outstandingFromOthers
                           : 0;
@@ -899,12 +1047,18 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                         </TableCell>
                         <TableCell>{formatExpenseDate(expense.createdAt)}</TableCell>
                         <TableCell className="text-right font-medium">
-                          {formatCurrency(expense.totalAmount, expense.currency)}
+                          {formatCurrency(
+                            expense.totalAmount,
+                            expense.targetCurrency ?? expense.currency,
+                          )}
                         </TableCell>
                         <TableCell className="text-right">
                           {detailView === "youOwe" || detailView === "youAreOwed"
                             ? myShareAmount > 0
-                              ? formatCurrency(myShareAmount, expense.currency)
+                              ? formatCurrency(
+                                  myShareAmount,
+                                  expense.targetCurrency ?? expense.currency,
+                                )
                               : "—"
                             : "—"}
                         </TableCell>

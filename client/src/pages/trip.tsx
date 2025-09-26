@@ -145,12 +145,14 @@ const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
   { key: "groceries", label: "Groceries", icon: ShoppingCart },
 ];
 
-const parseTripDateToLocal = (value?: string | null): Date | null => {
+const parseTripDateToLocal = (value?: string | Date | null): Date | null => {
   if (!value) {
     return null;
   }
 
-  const [datePart] = value.split("T");
+  const dateString = value instanceof Date ? value.toISOString() : value;
+
+  const [datePart] = dateString.split("T");
 
   if (datePart) {
     const parts = datePart.split("-");
@@ -166,7 +168,7 @@ const parseTripDateToLocal = (value?: string | null): Date | null => {
     }
   }
 
-  const fallback = new Date(value);
+  const fallback = value instanceof Date ? value : new Date(value);
   return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
 

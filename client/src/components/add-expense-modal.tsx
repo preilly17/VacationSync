@@ -32,6 +32,11 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { TripWithDetails } from "@shared/schema";
+import {
+  computeSplits,
+  minorUnitsToAmount,
+  toMinorUnits,
+} from "@shared/expenses";
 import { Loader2, Users } from "lucide-react";
 import { HelperText } from "@/components/ui/helper-text";
 
@@ -73,7 +78,16 @@ const formSchema = z.object({
       const parsed = Number(value);
       return Number.isFinite(parsed) && parsed > 0;
     }, "Amount must be greater than 0"),
-  currency: z.string().min(1, "Currency is required"),
+  paidCurrency: z.string().min(1, "Currency is required"),
+  requestCurrency: z.string().min(1, "Request currency is required"),
+  exchangeRate: z
+    .string()
+    .trim()
+    .min(1, "Conversion rate is required")
+    .refine((value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) && parsed > 0;
+    }, "Conversion rate must be greater than 0"),
   category: z.string().min(1, "Category is required"),
   participants: z
     .array(z.string())
@@ -94,15 +108,21 @@ type FormValues = z.infer<typeof formSchema>;
 const defaultValues: FormValues = {
   description: "",
   amount: "",
-  currency: "USD",
+  paidCurrency: "USD",
+  requestCurrency: "USD",
+  exchangeRate: "1",
   category: "other",
   participants: [],
   receiptUrl: undefined,
 };
 
 type CreateExpensePayload = {
-  amountCents: number;
-  currency: string;
+  sourceAmountMinorUnits: number;
+  sourceCurrency: string;
+  targetCurrency: string;
+  exchangeRate: number;
+  exchangeRateLockedAt: string;
+  exchangeRateProvider?: string;
   description: string;
   category: string;
   participantUserIds: string[];
@@ -271,7 +291,9 @@ export function AddExpenseModal({
 
   const amountInput = form.watch("amount");
   const selectedParticipants = form.watch("participants");
-  const currencyCode = form.watch("currency") || "USD";
+  const paidCurrency = form.watch("paidCurrency") || "USD";
+  const requestCurrency = form.watch("requestCurrency") || paidCurrency;
+  const exchangeRateInput = form.watch("exchangeRate");
 
   const selectedDebtorIds = useMemo(
     () =>
@@ -281,14 +303,18 @@ export function AddExpenseModal({
     [currentUserId, selectedParticipants],
   );
 
-  const amountCents = useMemo(() => {
+  const amountMinorUnits = useMemo(() => {
     const parsed = Number.parseFloat(amountInput);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       return null;
     }
 
-    return Math.round(parsed * 100);
-  }, [amountInput]);
+    try {
+      return toMinorUnits(parsed, paidCurrency);
+    } catch {
+      return null;
+    }
+  }, [amountInput, paidCurrency]);
 
   const tripMembers = trip?.members ?? [];
 
@@ -305,66 +331,137 @@ export function AddExpenseModal({
     [memberLookup],
   );
 
-  const computeRequestsForForm = useCallback(
-    (totalAmountCents: number, debtorIds: string[]) => {
-      if (totalAmountCents <= 0) {
-        return { perDebtor: new Map<string, number>(), summary: "" };
+  const computeSplitPreview = useCallback(
+    (
+      totalSourceMinorUnits: number,
+      debtorIds: string[],
+      sourceCurrency: string,
+      targetCurrency: string,
+      conversionRate: number,
+    ) => {
+      if (totalSourceMinorUnits <= 0 || debtorIds.length === 0) {
+        return {
+          perDebtor: new Map<
+            string,
+            { sourceMinorUnits: number; targetMinorUnits: number }
+          >(),
+          summary: debtorIds.length
+            ? "We couldn't calculate the split. Double-check the details."
+            : "Select at least one person to split with.",
+          error: undefined,
+          result: undefined,
+        };
       }
 
-      const nTotal = debtorIds.length + 1;
-      const base = Math.floor(totalAmountCents / nTotal);
-      let remainder = totalAmountCents - base * nTotal;
+      try {
+        const computation = computeSplits({
+          totalSourceMinorUnits,
+          debtorIds,
+          sourceCurrency,
+          targetCurrency,
+          conversionRate,
+        });
 
-      const perDebtor = new Map<string, number>();
-      for (const id of debtorIds) {
-        let share = base;
-        if (remainder > 0) {
-          share += 1;
-          remainder -= 1;
+        const perDebtor = new Map<
+          string,
+          { sourceMinorUnits: number; targetMinorUnits: number }
+        >();
+        const labels: string[] = [];
+
+        for (const share of computation.shares) {
+          perDebtor.set(share.userId, {
+            sourceMinorUnits: share.sourceMinorUnits,
+            targetMinorUnits: share.targetMinorUnits,
+          });
+          const formattedAmount = formatCurrency(
+            minorUnitsToAmount(share.targetMinorUnits, targetCurrency),
+            targetCurrency,
+          );
+          labels.push(`${getName(share.userId)} ${formattedAmount}`);
         }
-        perDebtor.set(id, share);
+
+        const summary = labels.length
+          ? `Requests: ${labels.join(" • ")}`
+          : "Select at least one person to split with.";
+
+        return { perDebtor, summary, result: computation, error: undefined };
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : "We couldn't calculate the split. Double-check the details.";
+        return {
+          perDebtor: new Map<string, { sourceMinorUnits: number; targetMinorUnits: number }>(),
+          summary: message,
+          error: message,
+          result: undefined,
+        };
       }
-
-      const fmt = (cents: number) => formatCurrency(cents / 100, currencyCode);
-      const labels = debtorIds.reduce<string[]>((acc, id) => {
-        const amountForDebtor = perDebtor.get(id);
-        if (amountForDebtor === undefined) {
-          return acc;
-        }
-        acc.push(`${getName(id)} ${fmt(amountForDebtor)}`);
-        return acc;
-      }, []);
-
-      const summary = debtorIds.length
-        ? `Requests: ${labels.join(" • ")}`
-        : "Select at least one person to split with.";
-
-      return { perDebtor, summary };
     },
-    [currencyCode, getName],
+    [getName],
   );
 
+  const rateValue = Number.parseFloat(exchangeRateInput ?? "");
+  const hasValidRate = Number.isFinite(rateValue) && rateValue > 0;
+
   const requestPreview = useMemo(() => {
-    if (amountCents === null || selectedDebtorIds.length === 0) {
-      return { perDebtor: new Map<string, number>(), summary: "" };
+    if (
+      amountMinorUnits === null ||
+      selectedDebtorIds.length === 0 ||
+      !hasValidRate
+    ) {
+      return {
+        perDebtor: new Map<string, { sourceMinorUnits: number; targetMinorUnits: number }>(),
+        summary: "",
+        error: undefined,
+        result: undefined,
+      };
     }
 
-    return computeRequestsForForm(amountCents, selectedDebtorIds);
-  }, [amountCents, selectedDebtorIds, computeRequestsForForm]);
+    return computeSplitPreview(
+      amountMinorUnits,
+      selectedDebtorIds,
+      paidCurrency,
+      requestCurrency,
+      rateValue,
+    );
+  }, [
+    amountMinorUnits,
+    selectedDebtorIds,
+    hasValidRate,
+    computeSplitPreview,
+    paidCurrency,
+    requestCurrency,
+    rateValue,
+  ]);
 
   const helperSummary = useMemo(() => {
     if (selectedDebtorIds.length === 0) {
       return "Select at least one person to split with.";
     }
 
-    if (amountCents === null) {
+    if (amountMinorUnits === null) {
       return "Enter an amount to see the split.";
+    }
+
+    if (!hasValidRate) {
+      return "Enter a conversion rate to see the split.";
+    }
+
+    if (requestPreview.error) {
+      return requestPreview.error;
     }
 
     return (
       requestPreview.summary || "We couldn't calculate the split. Double-check the details."
     );
-  }, [selectedDebtorIds, amountCents, requestPreview.summary]);
+  }, [
+    selectedDebtorIds,
+    amountMinorUnits,
+    hasValidRate,
+    requestPreview.summary,
+    requestPreview.error,
+  ]);
 
   const debtors = useMemo(
     () =>
@@ -372,13 +469,33 @@ export function AddExpenseModal({
     [tripMembers, currentUserId],
   );
 
-  const canSubmit = amountCents !== null && selectedDebtorIds.length > 0;
+  const canSubmit =
+    amountMinorUnits !== null &&
+    selectedDebtorIds.length > 0 &&
+    hasValidRate &&
+    Boolean(paidCurrency) &&
+    Boolean(requestCurrency);
 
   useEffect(() => {
     if (submitError) {
       setSubmitError(null);
     }
-  }, [amountCents, selectedDebtorIds]);
+  }, [
+    amountMinorUnits,
+    selectedDebtorIds,
+    hasValidRate,
+    paidCurrency,
+    requestCurrency,
+  ]);
+
+  useEffect(() => {
+    if (paidCurrency === requestCurrency && exchangeRateInput !== "1") {
+      form.setValue("exchangeRate", "1", {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [paidCurrency, requestCurrency, exchangeRateInput, form]);
 
   const onSubmit = useCallback(async () => {
     setSubmitError(null);
@@ -414,11 +531,31 @@ export function AddExpenseModal({
       return;
     }
 
-    const amountInCents = Math.round(parsedAmount * 100);
-    const { perDebtor } = computeRequestsForForm(amountInCents, rawParticipants);
+    if (amountMinorUnits === null) {
+      setSubmitError("Enter a valid amount.");
+      return;
+    }
+
+    if (!hasValidRate) {
+      setSubmitError("Enter a conversion rate to see the split.");
+      return;
+    }
+
+    const preview = computeSplitPreview(
+      amountMinorUnits,
+      rawParticipants,
+      paidCurrency,
+      requestCurrency,
+      rateValue,
+    );
+
+    if (preview.error) {
+      setSubmitError(preview.error);
+      return;
+    }
 
     const hasMissingShare = rawParticipants.some(
-      (id) => perDebtor.get(id) === undefined,
+      (id) => preview.perDebtor.get(id) === undefined,
     );
     if (hasMissingShare) {
       setSubmitError("We couldn't calculate the split. Double-check the details.");
@@ -427,8 +564,13 @@ export function AddExpenseModal({
 
     const payload: CreateExpensePayload = {
       payerUserId: currentUserId,
-      amountCents: amountInCents,
-      currency: currencyCode,
+      sourceAmountMinorUnits: amountMinorUnits,
+      sourceCurrency: paidCurrency,
+      targetCurrency: requestCurrency,
+      exchangeRate: rateValue,
+      exchangeRateLockedAt: new Date().toISOString(),
+      exchangeRateProvider:
+        paidCurrency === requestCurrency ? "same-currency" : "manual",
       description: form.getValues("description").trim(),
       category: form.getValues("category"),
       participantUserIds: rawParticipants,
@@ -443,11 +585,15 @@ export function AddExpenseModal({
       // handled in onError
     }
   }, [
-    computeRequestsForForm,
+    amountMinorUnits,
+    computeSplitPreview,
     createExpenseMutation,
-    currencyCode,
     currentUserId,
     form,
+    hasValidRate,
+    paidCurrency,
+    requestCurrency,
+    rateValue,
     trip,
   ]);
 
@@ -500,7 +646,7 @@ export function AddExpenseModal({
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Amount</FormLabel>
+                      <FormLabel>Amount paid</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
@@ -517,10 +663,10 @@ export function AddExpenseModal({
 
                 <FormField
                   control={form.control}
-                  name="currency"
+                  name="paidCurrency"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Currency</FormLabel>
+                      <FormLabel>Paid in</FormLabel>
                       <Select
                         value={field.value}
                         onValueChange={field.onChange}
@@ -538,6 +684,64 @@ export function AddExpenseModal({
                           ))}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="requestCurrency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Request in</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose a currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {currencyOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label} ({option.value})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="exchangeRate"
+                  render={({ field }) => (
+                    <FormItem className="sm:col-span-2">
+                      <FormLabel>
+                        Conversion rate ({paidCurrency} → {requestCurrency})
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.0001"
+                          placeholder="0.0000"
+                          disabled={paidCurrency === requestCurrency}
+                          {...field}
+                        />
+                      </FormControl>
+                      <HelperText>
+                        {`1 ${paidCurrency} = ${
+                          hasValidRate
+                            ? formatCurrency(rateValue, requestCurrency)
+                            : "—"
+                        } (${requestCurrency})`}
+                      </HelperText>
                       <FormMessage />
                     </FormItem>
                   )}
