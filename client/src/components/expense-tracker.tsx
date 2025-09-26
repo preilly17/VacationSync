@@ -55,7 +55,7 @@ interface ExpenseTrackerProps {
   user?: User;
 }
 
-type SummaryView = "total" | "youPaid" | "youOwe" | "youAreOwed";
+type SummaryView = "youPaid" | "youOwe" | "youAreOwed";
 
 type SortOption = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
 
@@ -323,12 +323,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
   }[] = useMemo(
     () => [
       {
-        type: "total",
-        title: "Total recorded",
-        description: "All expenses logged for this trip.",
-        amount: summary.total,
-      },
-      {
         type: "youPaid",
         title: "You paid",
         description: "Amount you covered for everyone else.",
@@ -350,7 +344,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         amountClassName: "text-emerald-600",
       },
     ],
-    [summary.owed, summary.owes, summary.total, summary.youPaid],
+    [summary.owed, summary.owes, summary.youPaid],
   );
 
   const selectedCard = detailView
@@ -363,10 +357,6 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     }
 
     const matchesView = (expense: ExpenseWithDetails) => {
-      if (detailView === "total") {
-        return true;
-      }
-
       if (!user?.id) {
         return false;
       }
@@ -509,7 +499,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cardConfigs.map((card) => (
           <Card
             key={card.type}
