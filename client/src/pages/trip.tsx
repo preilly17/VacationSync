@@ -3470,9 +3470,9 @@ function RestaurantBooking({
         onLogRestaurantManually={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
       />
 
-      <Card>
-        <CardContent className="p-6">
-          {hasRestaurants ? (
+      {hasRestaurants && (
+        <Card>
+          <CardContent className="p-6">
             <div className="space-y-4">
               {restaurants.slice(0, 3).map((restaurant) => {
                 const displayName = (restaurant as any).restaurantName ?? restaurant.name ?? "Restaurant";
@@ -3522,32 +3522,9 @@ function RestaurantBooking({
                 </p>
               )}
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <Utensils className="mb-4 h-12 w-12 text-gray-400" />
-              <h3 className="mb-2 text-lg font-medium text-gray-900">No restaurants added yet</h3>
-              <p className="mb-4 max-w-md text-gray-600">
-                Start planning meals for your trip. Search for restaurants and add them directly to your itinerary.
-              </p>
-              <Button
-                onClick={focusSearchPanel}
-                className="bg-primary hover:bg-red-600 text-white"
-              >
-                <Search className="w-4 h-4 mr-2" />
-                Search Restaurants
-              </Button>
-              <Button
-                variant="outline"
-                className="mt-2"
-                onClick={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
-              >
-                <NotebookPen className="w-4 h-4 mr-2" />
-                Log Restaurant Manually
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
