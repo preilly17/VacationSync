@@ -53,6 +53,7 @@ import type {
   ActivityWithDetails,
   RestaurantProposalWithDetails,
   TripWithDetails,
+  ActivityInviteStatus,
 } from "@shared/schema";
 
 type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
@@ -117,6 +118,29 @@ interface ProposalsPageProps {
 }
 
 type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
+
+type ActivityRsvpAction = "ACCEPT" | "DECLINE" | "WAITLIST" | "MAYBE";
+
+const inviteStatusBadgeClasses: Record<ActivityInviteStatus, string> = {
+  accepted: "bg-green-100 text-green-800 border-green-200",
+  pending: "bg-amber-100 text-amber-800 border-amber-200",
+  declined: "bg-red-100 text-red-800 border-red-200",
+  waitlisted: "bg-blue-100 text-blue-800 border-blue-200",
+};
+
+const inviteStatusLabels: Record<ActivityInviteStatus, string> = {
+  accepted: "Going",
+  pending: "No response yet",
+  declined: "Not going",
+  waitlisted: "Waitlisted",
+};
+
+const actionToStatusMap: Record<ActivityRsvpAction, ActivityInviteStatus | null> = {
+  ACCEPT: "accepted",
+  DECLINE: "declined",
+  WAITLIST: "waitlisted",
+  MAYBE: "pending",
+};
 
 function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   const [, setLocation] = useLocation();
@@ -354,6 +378,63 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       toast({
         title,
         description,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const respondToInviteMutation = useMutation({
+    mutationFn: async ({
+      activityId,
+      action,
+    }: {
+      activityId: number;
+      action: ActivityRsvpAction;
+    }) => {
+      const response = await apiRequest(`/api/activities/${activityId}/responses`, {
+        method: "POST",
+        body: { rsvp: action },
+      });
+      return (await response.json()) as {
+        invite: unknown;
+        activity: ActivityWithDetails | null;
+        promotedUserId?: string | null;
+      };
+    },
+    onSuccess: (_data, variables) => {
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      }
+
+      const action = variables.action;
+      let title = "RSVP updated";
+      let description = "We saved your response.";
+
+      if (action === "ACCEPT") {
+        title = "You're going!";
+        description = "This activity is on your personal schedule now.";
+      } else if (action === "DECLINE") {
+        title = "You declined this activity";
+        description = "We won't show it on your personal schedule.";
+      } else if (action === "WAITLIST") {
+        title = "Joined the waitlist";
+        description = "We'll let you know if a spot opens up.";
+      } else {
+        title = "Marked as undecided";
+        description = "You can update your RSVP anytime.";
+      }
+
+      toast({ title, description });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      toast({
+        title: "Unable to update RSVP",
+        description: "Please try again.",
         variant: "destructive",
       });
     },
@@ -740,6 +821,30 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       proposal.proposer?.email?.trim() ||
       "Group member";
 
+    const currentInvite =
+      proposal.currentUserInvite
+        ?? proposal.invites?.find((invite) => invite.userId === user?.id)
+        ?? null;
+
+    const derivedStatus: ActivityInviteStatus = currentInvite?.status
+      ?? (proposal.isAccepted ? "accepted" : "pending");
+    const statusLabel = inviteStatusLabels[derivedStatus];
+    const badgeClasses = inviteStatusBadgeClasses[derivedStatus];
+    const isResponding =
+      respondToInviteMutation.isPending &&
+      respondToInviteMutation.variables?.activityId === proposal.id;
+
+    const viewerCanRespond = !isMyProposal(proposal);
+
+    const submitAction = (action: ActivityRsvpAction) => {
+      const targetStatus = actionToStatusMap[action];
+      if (targetStatus && targetStatus === derivedStatus) {
+        return;
+      }
+
+      respondToInviteMutation.mutate({ activityId: proposal.id, action });
+    };
+
     return (
       <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-activity-proposal-${proposal.id}`}>
         <CardHeader className="pb-3">
@@ -829,6 +934,44 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <ExternalLink className="w-4 h-4" /> View in trip
             </Link>
           </div>
+
+          {viewerCanRespond ? (
+            <div className="mt-4 border-t pt-4 space-y-3" data-testid={`activity-response-actions-${proposal.id}`}>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-600">
+                <Badge
+                  variant="secondary"
+                  className={`border ${badgeClasses}`}
+                  data-testid={`badge-activity-response-${proposal.id}`}
+                >
+                  {statusLabel}
+                </Badge>
+                <span>Your response</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => submitAction("ACCEPT")}
+                  disabled={isResponding}
+                  data-testid={`button-accept-activity-proposal-${proposal.id}`}
+                >
+                  {isResponding && respondToInviteMutation.variables?.action === "ACCEPT"
+                    ? "Saving..."
+                    : "Accept"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => submitAction("DECLINE")}
+                  disabled={isResponding}
+                  data-testid={`button-decline-activity-proposal-${proposal.id}`}
+                >
+                  {isResponding && respondToInviteMutation.variables?.action === "DECLINE"
+                    ? "Saving..."
+                    : "Decline"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     );
