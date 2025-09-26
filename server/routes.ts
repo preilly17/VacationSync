@@ -5,7 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
-import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema } from "@shared/schema";
+import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
 
@@ -42,6 +42,161 @@ const getUserDisplayName = (user: {
   }
 
   return user.email?.trim() ?? "Trip member";
+};
+
+const RSVP_ACTION_MAP: Record<string, ActivityInviteStatus> = {
+  ACCEPT: "accepted",
+  DECLINE: "declined",
+  WAITLIST: "waitlisted",
+  MAYBE: "pending",
+};
+
+const getWaitlistOrderingTimestamp = (invite: ActivityWithDetails["invites"][number]) => {
+  if (invite.respondedAt) {
+    return new Date(invite.respondedAt).getTime();
+  }
+  if (invite.createdAt) {
+    return new Date(invite.createdAt).getTime();
+  }
+  return invite.id ?? Number.MAX_SAFE_INTEGER;
+};
+
+const promoteWaitlistedInviteIfNeeded = async (
+  activity: ActivityWithDetails,
+): Promise<string | null> => {
+  if (!activity.maxCapacity) {
+    return null;
+  }
+
+  const acceptedInvites = activity.invites.filter((invite) => invite.status === "accepted");
+  if (acceptedInvites.length >= activity.maxCapacity) {
+    return null;
+  }
+
+  const waitlistedInvites = activity.invites
+    .filter((invite) => invite.status === "waitlisted")
+    .sort((a, b) => getWaitlistOrderingTimestamp(a) - getWaitlistOrderingTimestamp(b));
+
+  const nextInvite = waitlistedInvites[0];
+  if (!nextInvite) {
+    return null;
+  }
+
+  await storage.setActivityInviteStatus(activity.id, nextInvite.userId, "accepted");
+
+  return nextInvite.userId;
+};
+
+const applyActivityResponse = async (
+  activityId: number,
+  userId: string,
+  status: ActivityInviteStatus,
+) => {
+  const activity = await storage.getActivityById(activityId);
+  if (!activity) {
+    return { error: { status: 404, message: "Activity not found" } } as const;
+  }
+
+  const trip = await storage.getTripById(activity.tripCalendarId);
+  if (!trip) {
+    return { error: { status: 404, message: "Trip not found" } } as const;
+  }
+
+  const isMember = trip.members.some((member) => member.userId === userId);
+  if (!isMember) {
+    return {
+      error: {
+        status: 403,
+        message: "You are no longer a member of this trip",
+      },
+    } as const;
+  }
+
+  const updatedInvite = await storage.setActivityInviteStatus(
+    activityId,
+    userId,
+    status,
+  );
+
+  if (activity.postedBy !== userId && (status === "accepted" || status === "declined")) {
+    const responderMember = trip.members.find((member) => member.userId === userId);
+    const responderName = responderMember
+      ? getUserDisplayName(responderMember.user)
+      : "A trip member";
+
+    const message =
+      status === "accepted"
+        ? `${responderName} accepted ${activity.name}.`
+        : `${responderName} declined ${activity.name}.`;
+
+    await storage.createNotification({
+      userId: activity.postedBy,
+      type: "activity_rsvp",
+      title: "RSVP update",
+      message,
+      tripId: activity.tripCalendarId,
+      activityId: activity.id,
+    });
+  }
+
+  broadcastToTrip(activity.tripCalendarId, {
+    type: "activity_invite_updated",
+    activityId,
+    userId,
+    status,
+  });
+
+  const activitiesForUser = await storage.getTripActivities(
+    activity.tripCalendarId,
+    userId,
+  );
+  let updatedActivity =
+    activitiesForUser.find((item) => item.id === activityId) ?? null;
+
+  let promotedUserId: string | null = null;
+  if (updatedActivity) {
+    promotedUserId = await promoteWaitlistedInviteIfNeeded(updatedActivity);
+
+    if (promotedUserId) {
+      const promotedMember = trip.members.find(
+        (member) => member.userId === promotedUserId,
+      );
+
+      if (promotedMember) {
+        await storage.createNotification({
+          userId: promotedUserId,
+          type: "activity_waitlist",
+          title: "You're in!",
+          message: `A spot opened up for ${activity.name}.`,
+          tripId: activity.tripCalendarId,
+          activityId: activity.id,
+        });
+      }
+
+      broadcastToTrip(activity.tripCalendarId, {
+        type: "activity_invite_updated",
+        activityId,
+        userId: promotedUserId,
+        status: "accepted",
+      });
+
+      const refreshedActivities = await storage.getTripActivities(
+        activity.tripCalendarId,
+        userId,
+      );
+
+      updatedActivity =
+        refreshedActivities.find((item) => item.id === activityId) ?? updatedActivity;
+    }
+  }
+
+  return {
+    activity,
+    trip,
+    updatedInvite,
+    updatedActivity,
+    promotedUserId,
+  } as const;
 };
 
 const hotelSearchSchema = z.object({
@@ -1661,6 +1816,49 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.post('/api/activities/:activityId/responses', async (req: any, res) => {
+    try {
+      const activityId = parseInt(req.params.activityId);
+      if (isNaN(activityId)) {
+        return res.status(400).json({ message: 'Invalid activity ID' });
+      }
+
+      let userId = getRequestUserId(req);
+      if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
+        userId = 'demo-user';
+      }
+
+      if (!userId) {
+        return res.status(401).json({ message: 'User ID not found' });
+      }
+
+      const rsvpRaw =
+        typeof req.body?.rsvp === 'string'
+          ? req.body.rsvp.trim().toUpperCase()
+          : '';
+      const mappedStatus = RSVP_ACTION_MAP[rsvpRaw as keyof typeof RSVP_ACTION_MAP];
+
+      if (!mappedStatus) {
+        return res.status(400).json({ message: 'Invalid RSVP status' });
+      }
+
+      const result = await applyActivityResponse(activityId, userId, mappedStatus);
+
+      if ('error' in result) {
+        return res.status(result.error.status).json({ message: result.error.message });
+      }
+
+      res.json({
+        invite: result.updatedInvite,
+        activity: result.updatedActivity,
+        promotedUserId: result.promotedUserId,
+      });
+    } catch (error: unknown) {
+      console.error('Error responding to activity invite:', error);
+      res.status(500).json({ message: 'Failed to update activity invite' });
+    }
+  });
+
   app.post('/api/activities/:activityId/respond', async (req: any, res) => {
     try {
       const activityId = parseInt(req.params.activityId);
@@ -1683,60 +1881,17 @@ export function setupRoutes(app: Express) {
         return res.status(400).json({ message: 'Invalid RSVP status' });
       }
 
-      const activity = await storage.getActivityById(activityId);
-      if (!activity) {
-        return res.status(404).json({ message: 'Activity not found' });
+      const normalizedStatus = statusResult.data;
+      const result = await applyActivityResponse(activityId, userId, normalizedStatus);
+
+      if ('error' in result) {
+        return res.status(result.error.status).json({ message: result.error.message });
       }
-
-      const trip = await storage.getTripById(activity.tripCalendarId);
-      if (!trip) {
-        return res.status(404).json({ message: 'Trip not found' });
-      }
-
-      const isMember = trip.members.some((member) => member.userId === userId);
-      if (!isMember) {
-        return res.status(403).json({ message: 'You are no longer a member of this trip' });
-      }
-
-      const updatedInvite = await storage.setActivityInviteStatus(activityId, userId, statusResult.data);
-
-      if (
-        activity.postedBy !== userId &&
-        (statusResult.data === 'accepted' || statusResult.data === 'declined')
-      ) {
-        const responderMember = trip.members.find((member) => member.userId === userId);
-        const responderName = responderMember
-          ? getUserDisplayName(responderMember.user)
-          : 'A trip member';
-
-        const message =
-          statusResult.data === 'accepted'
-            ? `${responderName} accepted ${activity.name}.`
-            : `${responderName} declined ${activity.name}.`;
-
-        await storage.createNotification({
-          userId: activity.postedBy,
-          type: 'activity_rsvp',
-          title: 'RSVP update',
-          message,
-          tripId: activity.tripCalendarId,
-          activityId: activity.id,
-        });
-      }
-
-      broadcastToTrip(activity.tripCalendarId, {
-        type: 'activity_invite_updated',
-        activityId,
-        userId,
-        status: statusResult.data,
-      });
-
-      const activities = await storage.getTripActivities(activity.tripCalendarId, userId);
-      const updatedActivity = activities.find((item) => item.id === activityId);
 
       res.json({
-        invite: updatedInvite,
-        activity: updatedActivity ?? null,
+        invite: result.updatedInvite,
+        activity: result.updatedActivity,
+        promotedUserId: result.promotedUserId,
       });
     } catch (error: unknown) {
       console.error('Error responding to activity invite:', error);

@@ -3,7 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, MapPin, DollarSign, Users } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Calendar, MapPin, DollarSign, Users, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
 import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
 import type { User } from "@shared/schema";
@@ -22,12 +28,14 @@ const statusLabelMap: Record<ActivityInviteStatus, string> = {
   accepted: "Accepted",
   pending: "Pending",
   declined: "Declined",
+  waitlisted: "Waitlisted",
 };
 
 const statusBadgeClasses: Record<ActivityInviteStatus, string> = {
   accepted: "bg-green-100 text-green-800 border-green-200",
   pending: "bg-amber-100 text-amber-800 border-amber-200",
   declined: "bg-red-100 text-red-800 border-red-200",
+  waitlisted: "bg-blue-100 text-blue-800 border-blue-200",
 };
 
 const getUserDisplayName = (user: User | undefined): string => {
@@ -76,13 +84,188 @@ export function ActivityDetailsDialog({
 }: ActivityDetailsDialogProps) {
   const invites = activity?.invites ?? [];
   const currentInvite = invites.find((invite) => invite.userId === currentUserId);
-  const currentStatus = currentInvite?.status;
+  const derivedStatus: ActivityInviteStatus | null = currentInvite?.status
+    ?? (activity?.isAccepted ? "accepted" : null);
+  const waitlistedCount = activity
+    ? activity.waitlistedCount
+        ?? invites.filter((invite) => invite.status === "waitlisted").length
+    : 0;
+  const isCreator = Boolean(
+    activity
+      && currentUserId
+      && (currentUserId === activity.postedBy || currentUserId === activity.poster.id),
+  );
+  const now = new Date();
+  const isPastActivity = (() => {
+    if (!activity) {
+      return false;
+    }
+    const end = activity.endTime ? new Date(activity.endTime) : null;
+    const start = new Date(activity.startTime);
+    const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
+    if (Number.isNaN(comparisonTarget.getTime())) {
+      return false;
+    }
+    return comparisonTarget.getTime() < now.getTime();
+  })();
+  const rsvpCloseDate = activity?.rsvpCloseTime ? new Date(activity.rsvpCloseTime) : null;
+  const isRsvpClosed = Boolean(
+    rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
+  );
+  const activityType = (activity?.type ?? "SCHEDULED").toUpperCase();
+  const isProposal = activityType === "PROPOSE";
+  const capacityFull = Boolean(
+    !isProposal && activity?.maxCapacity != null
+      && activity.acceptedCount >= activity.maxCapacity,
+  );
 
   const handleRespond = (status: ActivityInviteStatus) => {
-    if (!activity || currentStatus === status) {
+    if (!activity || derivedStatus === status) {
       return;
     }
     onRespond(status);
+  };
+
+  const statusForDisplay: ActivityInviteStatus | null = currentInvite
+    ? derivedStatus ?? "pending"
+    : null;
+
+  const renderActionButtons = () => {
+    if (!activity || isCreator || !currentInvite) {
+      return null;
+    }
+
+    if (isPastActivity) {
+      return (
+        <Badge
+          variant="secondary"
+          className="bg-neutral-100 text-neutral-600 border border-neutral-200"
+        >
+          Past
+        </Badge>
+      );
+    }
+
+    if (isRsvpClosed) {
+      return (
+        <Badge
+          variant="secondary"
+          className="bg-neutral-100 text-neutral-600 border border-neutral-200"
+        >
+          RSVP closed
+        </Badge>
+      );
+    }
+
+    const declineLabel = isProposal ? "Not interested" : "Decline";
+    const acceptLabel = isProposal ? "Interested" : "Accept";
+
+    if (isProposal) {
+      return (
+        <>
+          <Button
+            size="sm"
+            onClick={() => handleRespond("accepted")}
+            disabled={isResponding}
+            aria-label="Accept invitation"
+          >
+            {acceptLabel}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleRespond("declined")}
+            disabled={isResponding}
+            aria-label="Decline invitation"
+          >
+            {declineLabel}
+          </Button>
+        </>
+      );
+    }
+
+    if (statusForDisplay === "accepted") {
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-neutral-300"
+              disabled={isResponding}
+            >
+              Change RSVP
+              <ChevronDown className="ml-2 h-4 w-4" aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuItem
+              onSelect={() => handleRespond("declined")}
+              disabled={isResponding}
+            >
+              Decline
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    }
+
+    if (statusForDisplay === "waitlisted") {
+      return (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => handleRespond("pending")}
+          disabled={isResponding}
+          aria-label="Leave waitlist"
+        >
+          Leave waitlist
+        </Button>
+      );
+    }
+
+    const declineButton = (
+      <Button
+        key="decline"
+        size="sm"
+        variant="outline"
+        onClick={() => handleRespond("declined")}
+        disabled={isResponding}
+        aria-label="Decline invitation"
+      >
+        {declineLabel}
+      </Button>
+    );
+
+    if (capacityFull) {
+      return (
+        <>
+          <Button
+            size="sm"
+            onClick={() => handleRespond("waitlisted")}
+            disabled={isResponding}
+            aria-label="Join waitlist"
+          >
+            Join waitlist
+          </Button>
+          {declineButton}
+        </>
+      );
+    }
+
+    return (
+      <>
+        <Button
+          size="sm"
+          onClick={() => handleRespond("accepted")}
+          disabled={isResponding}
+          aria-label="Accept invitation"
+        >
+          {acceptLabel}
+        </Button>
+        {declineButton}
+      </>
+    );
   };
 
   const endTimeLabel = activity ? formatEndTime(activity.endTime) : null;
@@ -125,6 +308,7 @@ export function ActivityDetailsDialog({
                     {activity.acceptedCount} going
                     {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
                     {activity.declinedCount > 0 && ` • ${activity.declinedCount} declined`}
+                    {waitlistedCount > 0 && ` • ${waitlistedCount} waitlist`}
                   </p>
                 </div>
               </div>
@@ -165,46 +349,32 @@ export function ActivityDetailsDialog({
 
             <div className="rounded-lg border border-neutral-200 bg-white p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
+                <div className="space-y-1">
                   <p className="text-sm font-semibold text-neutral-900">Your response</p>
-                  <p className="text-xs text-neutral-500">
-                    {currentStatus ? `Currently marked as ${statusLabelMap[currentStatus]}.` : 'You are not on the invite list for this activity.'}
-                  </p>
+                  {isCreator ? (
+                    <p className="text-xs text-neutral-500">You created this activity.</p>
+                  ) : statusForDisplay ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={`border ${statusBadgeClasses[statusForDisplay]}`}
+                      >
+                        {statusLabelMap[statusForDisplay]}
+                      </Badge>
+                      <span className="text-xs text-neutral-500">
+                        {statusForDisplay === "pending"
+                          ? "No response yet."
+                          : `Marked as ${statusLabelMap[statusForDisplay]}.`}
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-neutral-500">
+                      Ask the activity organizer to add you to the invite list if you want to join.
+                    </p>
+                  )}
                 </div>
-                {currentStatus && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant={currentStatus === 'accepted' ? 'default' : 'outline'}
-                      size="sm"
-                      disabled={isResponding}
-                      onClick={() => handleRespond('accepted')}
-                    >
-                      Going
-                    </Button>
-                    <Button
-                      variant={currentStatus === 'pending' ? 'default' : 'outline'}
-                      size="sm"
-                      disabled={isResponding}
-                      onClick={() => handleRespond('pending')}
-                    >
-                      Decide later
-                    </Button>
-                    <Button
-                      variant={currentStatus === 'declined' ? 'default' : 'outline'}
-                      size="sm"
-                      disabled={isResponding}
-                      onClick={() => handleRespond('declined')}
-                    >
-                      Can't make it
-                    </Button>
-                  </div>
-                )}
+                <div className="flex flex-wrap items-center gap-2">{renderActionButtons()}</div>
               </div>
-              {!currentStatus && (
-                <p className="mt-2 text-sm text-neutral-600">
-                  Ask the activity organizer to add you to the invite list if you want to join.
-                </p>
-              )}
             </div>
 
             <div>

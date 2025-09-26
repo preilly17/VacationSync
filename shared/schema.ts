@@ -189,6 +189,7 @@ export const activityInviteStatusSchema = z.enum([
   "pending",
   "accepted",
   "declined",
+  "waitlisted",
 ]);
 
 export type ActivityInviteStatus = z.infer<typeof activityInviteStatusSchema>;
@@ -891,6 +892,8 @@ export type RestaurantProposalWithDetails = RestaurantProposal & {
   currentUserRanking?: RestaurantRanking;
 };
 
+export type ActivityType = "SCHEDULED" | "PROPOSE";
+
 export type ActivityWithDetails = Activity & {
   poster: User;
   invites: (ActivityInvite & { user: User })[];
@@ -899,6 +902,9 @@ export type ActivityWithDetails = Activity & {
   acceptedCount: number;
   pendingCount: number;
   declinedCount: number;
+  waitlistedCount?: number;
+  type?: ActivityType;
+  rsvpCloseTime?: IsoDate | null;
   currentUserInvite?: ActivityInvite & { user: User };
   isAccepted?: boolean;
   hasResponded?: boolean;

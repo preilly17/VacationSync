@@ -95,6 +95,12 @@ import { apiRequest } from "@/lib/queryClient";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 
 const TRIP_TAB_KEYS = [
@@ -120,14 +126,25 @@ type SummaryPanel = "activities" | "rsvps" | "next";
 
 const inviteStatusLabelMap: Record<ActivityInviteStatus, string> = {
   accepted: "Accepted",
-  pending: "Maybe",
+  pending: "Pending",
   declined: "Declined",
+  waitlisted: "Waitlisted",
 };
 
 const inviteStatusBadgeClasses: Record<ActivityInviteStatus, string> = {
   accepted: "bg-green-100 text-green-800 border-green-200",
   pending: "bg-amber-100 text-amber-800 border-amber-200",
   declined: "bg-red-100 text-red-800 border-red-200",
+  waitlisted: "bg-blue-100 text-blue-800 border-blue-200",
+};
+
+type ActivityRsvpAction = "ACCEPT" | "DECLINE" | "WAITLIST" | "MAYBE";
+
+const statusToActionMap: Record<ActivityInviteStatus, ActivityRsvpAction> = {
+  accepted: "ACCEPT",
+  pending: "MAYBE",
+  declined: "DECLINE",
+  waitlisted: "WAITLIST",
 };
 
 // MOBILE-ONLY bottom navigation config
@@ -181,6 +198,9 @@ interface DayViewProps {
   canGoNext: boolean;
   emptyStateMessage?: string;
   onActivityClick?: (activity: ActivityWithDetails) => void;
+  currentUser?: User | null;
+  onSubmitRsvp?: (activity: ActivityWithDetails, action: ActivityRsvpAction) => void;
+  isRsvpPending?: boolean;
 }
 
 const getParticipantDisplayName = (user: User) => {
@@ -237,12 +257,17 @@ function DayView({
   canGoNext,
   emptyStateMessage = "No activities scheduled for this day yet.",
   onActivityClick,
+  currentUser,
+  onSubmitRsvp,
+  isRsvpPending,
 }: DayViewProps) {
   const dayActivities = activities
     .filter((activity) => isSameDay(new Date(activity.startTime), date))
     .sort(
       (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
     );
+
+  const now = new Date();
 
   return (
     <div className="space-y-6">
@@ -284,6 +309,215 @@ function DayView({
       ) : (
         <div className="space-y-4">
           {dayActivities.map((activity) => {
+            const waitlistedCount =
+              activity.waitlistedCount
+                ?? activity.invites.filter((invite) => invite.status === "waitlisted").length;
+            const isCreator =
+              currentUser?.id === activity.postedBy || currentUser?.id === activity.poster.id;
+            const currentInvite =
+              activity.currentUserInvite
+              ?? activity.invites.find((invite) => invite.userId === currentUser?.id)
+              ?? null;
+            const derivedStatus: ActivityInviteStatus = currentInvite?.status
+              ?? (activity.isAccepted ? "accepted" : "pending");
+            const statusLabel = inviteStatusLabelMap[derivedStatus];
+            const isPastActivity = (() => {
+              const end = activity.endTime ? new Date(activity.endTime) : null;
+              const start = new Date(activity.startTime);
+              const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
+              return Number.isNaN(comparisonTarget.getTime())
+                ? false
+                : comparisonTarget.getTime() < now.getTime();
+            })();
+            const rsvpCloseDate = activity.rsvpCloseTime
+              ? new Date(activity.rsvpCloseTime)
+              : null;
+            const isRsvpClosed = Boolean(
+              rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
+            );
+            const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
+            const isProposal = activityType === "PROPOSE";
+            const capacityFull = Boolean(
+              !isProposal && activity.maxCapacity != null
+                && activity.acceptedCount >= activity.maxCapacity,
+            );
+
+            const handleAction = (action: ActivityRsvpAction) => {
+              if (!onSubmitRsvp) {
+                return;
+              }
+              onSubmitRsvp(activity, action);
+            };
+
+            const renderActions = () => {
+              if (isCreator) {
+                return (
+                  <Badge
+                    variant="secondary"
+                    className="bg-neutral-100 text-neutral-600 border border-neutral-200"
+                  >
+                    Organizer
+                  </Badge>
+                );
+              }
+
+              if (!onSubmitRsvp) {
+                if (isPastActivity) {
+                  return (
+                    <Badge
+                      variant="secondary"
+                      className="bg-neutral-100 text-neutral-600 border border-neutral-200"
+                    >
+                      Past
+                    </Badge>
+                  );
+                }
+                if (isRsvpClosed) {
+                  return (
+                    <Badge
+                      variant="secondary"
+                      className="bg-neutral-100 text-neutral-600 border border-neutral-200"
+                    >
+                      RSVP closed
+                    </Badge>
+                  );
+                }
+                return null;
+              }
+
+              if (isPastActivity) {
+                return (
+                  <Badge
+                    variant="secondary"
+                    className="bg-neutral-100 text-neutral-600 border border-neutral-200"
+                  >
+                    Past
+                  </Badge>
+                );
+              }
+
+              if (isRsvpClosed) {
+                return (
+                  <Badge
+                    variant="secondary"
+                    className="bg-neutral-100 text-neutral-600 border border-neutral-200"
+                  >
+                    RSVP closed
+                  </Badge>
+                );
+              }
+
+              const declineLabel = isProposal ? "Not interested" : "Decline";
+              const acceptLabel = isProposal ? "Interested" : "Accept";
+
+              if (isProposal) {
+                return (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleAction("ACCEPT")}
+                      disabled={isRsvpPending}
+                      aria-label="Accept invitation"
+                    >
+                      {acceptLabel}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleAction("DECLINE")}
+                      disabled={isRsvpPending}
+                      aria-label="Decline invitation"
+                    >
+                      {declineLabel}
+                    </Button>
+                  </div>
+                );
+              }
+
+              if (derivedStatus === "accepted") {
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-neutral-300"
+                        disabled={isRsvpPending}
+                      >
+                        Change RSVP
+                        <ChevronDown className="ml-2 h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuItem
+                        onSelect={() => handleAction("DECLINE")}
+                        disabled={isRsvpPending}
+                      >
+                        Decline
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              }
+
+              if (derivedStatus === "waitlisted") {
+                return (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleAction("MAYBE")}
+                    disabled={isRsvpPending}
+                    aria-label="Leave waitlist"
+                  >
+                    Leave waitlist
+                  </Button>
+                );
+              }
+
+              const declineButton = (
+                <Button
+                  key="decline"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleAction("DECLINE")}
+                  disabled={isRsvpPending}
+                  aria-label="Decline invitation"
+                >
+                  {declineLabel}
+                </Button>
+              );
+
+              if (capacityFull) {
+                return (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => handleAction("WAITLIST")}
+                      disabled={isRsvpPending}
+                      aria-label="Join waitlist"
+                    >
+                      Join waitlist
+                    </Button>
+                    {declineButton}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleAction("ACCEPT")}
+                    disabled={isRsvpPending}
+                    aria-label="Accept invitation"
+                  >
+                    {acceptLabel}
+                  </Button>
+                  {declineButton}
+                </div>
+              );
+            };
+
             const acceptedParticipants = activity.invites
               .filter((invite) => invite.status === "accepted")
               .map((invite) => getParticipantDisplayName(invite.user));
@@ -304,13 +538,27 @@ function DayView({
                   <h3 className="text-lg font-semibold text-neutral-900">
                     {activity.name}
                   </h3>
-                  <div className="flex items-center text-sm font-medium text-neutral-700">
-                    <Clock className="mr-2 h-4 w-4" />
-                    {formatActivityTimeRange(activity.startTime, activity.endTime)}
-                    <Badge className="ml-3 bg-primary/10 text-primary" variant="secondary">
-                      {activity.acceptedCount} going
-                      {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
-                    </Badge>
+                  <div className="flex flex-col items-end gap-2 text-sm font-medium text-neutral-700">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <span className="inline-flex items-center">
+                        <Clock className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {formatActivityTimeRange(activity.startTime, activity.endTime)}
+                      </span>
+                      <Badge className="bg-primary/10 text-primary" variant="secondary">
+                        {activity.acceptedCount} going
+                        {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
+                        {waitlistedCount > 0 && ` • ${waitlistedCount} waitlist`}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Badge
+                        variant="outline"
+                        className={`border ${inviteStatusBadgeClasses[derivedStatus]}`}
+                      >
+                        {statusLabel}
+                      </Badge>
+                      {renderActions()}
+                    </div>
                   </div>
                 </div>
 
@@ -448,18 +696,19 @@ export default function Trip() {
   const respondToInviteMutation = useMutation({
     mutationFn: async ({
       activityId,
-      status,
+      action,
     }: {
       activityId: number;
-      status: ActivityInviteStatus;
+      action: ActivityRsvpAction;
     }) => {
-      const response = await apiRequest(`/api/activities/${activityId}/respond`, {
+      const response = await apiRequest(`/api/activities/${activityId}/responses`, {
         method: "POST",
-        body: { status },
+        body: { rsvp: action },
       });
       return (await response.json()) as {
         invite: unknown;
         activity: ActivityWithDetails | null;
+        promotedUserId?: string | null;
       };
     },
     onSuccess: (_data, variables) => {
@@ -467,16 +716,19 @@ export default function Trip() {
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/activities`] });
       }
 
-      const status = variables.status;
+      const action = variables.action;
       let title = "RSVP updated";
       let description = "We saved your response.";
 
-      if (status === "accepted") {
+      if (action === "ACCEPT") {
         title = "You're going!";
         description = "This activity is on your personal schedule now.";
-      } else if (status === "declined") {
+      } else if (action === "DECLINE") {
         title = "You declined this activity";
         description = "We won't show it on your personal schedule.";
+      } else if (action === "WAITLIST") {
+        title = "Joined the waitlist";
+        description = "We'll let you know if a spot opens up.";
       } else {
         title = "Marked as undecided";
         description = "You can update your RSVP anytime.";
@@ -503,15 +755,23 @@ export default function Trip() {
     setIsActivityDialogOpen(true);
   }, []);
 
+  const submitRsvpAction = useCallback(
+    (activityId: number, action: ActivityRsvpAction) => {
+      respondToInviteMutation.mutate({ activityId, action });
+    },
+    [respondToInviteMutation],
+  );
+
   const handleRespond = useCallback(
     (status: ActivityInviteStatus) => {
       if (!selectedActivity) {
         return;
       }
 
-      respondToInviteMutation.mutate({ activityId: selectedActivity.id, status });
+      const action = statusToActionMap[status];
+      submitRsvpAction(selectedActivity.id, action);
     },
-    [respondToInviteMutation, selectedActivity],
+    [selectedActivity, submitRsvpAction],
   );
 
   const openSummaryPanel = (panel: SummaryPanel) => {
@@ -549,11 +809,17 @@ export default function Trip() {
     status: ActivityInviteStatus,
     currentStatus?: ActivityInviteStatus,
   ) => {
+    if (status === "waitlisted" && currentStatus === "waitlisted") {
+      submitRsvpAction(activityId, statusToActionMap.pending);
+      return;
+    }
+
     if (currentStatus === status) {
       return;
     }
 
-    respondToInviteMutation.mutate({ activityId, status });
+    const action = statusToActionMap[status];
+    submitRsvpAction(activityId, action);
   };
 
   const handleViewOnCalendar = (activity: ActivityWithDetails) => {
@@ -1354,6 +1620,9 @@ export default function Trip() {
                             canGoNext={canGoToNextGroupDay}
                             emptyStateMessage="No activities scheduled for this day yet. Use the Add Activity button to plan something fun."
                             onActivityClick={handleActivityClick}
+                            currentUser={user}
+                            onSubmitRsvp={(activity, action) => submitRsvpAction(activity.id, action)}
+                            isRsvpPending={respondToInviteMutation.isPending}
                           />
                         ) : (
                           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
@@ -1443,6 +1712,9 @@ export default function Trip() {
                             canGoNext={canGoToNextScheduleDay}
                             emptyStateMessage="No activities accepted for this day yet."
                             onActivityClick={handleActivityClick}
+                            currentUser={user}
+                            onSubmitRsvp={(activity, action) => submitRsvpAction(activity.id, action)}
+                            isRsvpPending={respondToInviteMutation.isPending}
                           />
                         ) : (
                           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
@@ -1587,6 +1859,9 @@ export default function Trip() {
                           const timeLabel = format(start, "h:mm a");
                           const locationLabel = activity.location?.trim();
                           const categoryLabel = !locationLabel && activity.category ? activity.category : null;
+                          const waitlistedCount =
+                            activity.waitlistedCount
+                              ?? activity.invites.filter((invite) => invite.status === "waitlisted").length;
 
                           return (
                             <div
@@ -1623,6 +1898,7 @@ export default function Trip() {
                                   {activity.acceptedCount} going
                                   {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
                                   {activity.declinedCount > 0 && ` • ${activity.declinedCount} declined`}
+                                  {waitlistedCount > 0 && ` • ${waitlistedCount} waitlist`}
                                 </span>
                                 <button
                                   type="button"
@@ -1676,6 +1952,16 @@ export default function Trip() {
                             : format(start, "EEEE, MMM d");
                           const timeLabel = Number.isNaN(start.getTime()) ? null : format(start, "h:mm a");
                           const locationLabel = activity.location?.trim();
+                          const waitlistedCount =
+                            activity.waitlistedCount
+                              ?? activity.invites.filter((entry) => entry.status === "waitlisted").length;
+                          const capacityFull = Boolean(
+                            activity.maxCapacity != null
+                              && activity.acceptedCount >= activity.maxCapacity,
+                          );
+                          const quickOptions: ActivityInviteStatus[] = capacityFull
+                            ? ["accepted", "pending", "declined", "waitlisted"]
+                            : ["accepted", "pending", "declined"];
 
                           return (
                             <div
@@ -1715,14 +2001,18 @@ export default function Trip() {
                               </div>
 
                               <div className="mt-4 flex flex-wrap items-center gap-2">
-                                {(["accepted", "pending", "declined"] as ActivityInviteStatus[]).map((option) => {
+                                {quickOptions.map((option) => {
                                   const isActive = status === option;
                                   const label =
                                     option === "accepted"
                                       ? "Going"
                                       : option === "pending"
-                                        ? "Maybe"
-                                        : "Can't make it";
+                                        ? "Decide later"
+                                        : option === "declined"
+                                          ? "Can't make it"
+                                          : isActive
+                                            ? "Leave waitlist"
+                                            : "Join waitlist";
 
                                   return (
                                     <button
@@ -1751,6 +2041,7 @@ export default function Trip() {
                                   {activity.acceptedCount} going
                                   {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
                                   {activity.declinedCount > 0 && ` • ${activity.declinedCount} declined`}
+                                  {waitlistedCount > 0 && ` • ${waitlistedCount} waitlist`}
                                 </span>
                                 <button
                                   type="button"
