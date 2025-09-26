@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -9,28 +9,34 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Collapsible } from "@/components/ui/collapsible";
+import { Switch } from "@/components/ui/switch";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
-import { 
-  ArrowLeft, 
-  Search, 
-  Filter, 
-  Star, 
-  Clock, 
-  MapPin, 
-  DollarSign, 
+import {
+  ArrowLeft,
+  Search,
+  Star,
+  Clock,
+  MapPin,
+  DollarSign,
   ExternalLink,
   Users,
   Calendar,
-  ShoppingCart
+  ShoppingCart,
+  CalendarIcon,
+  X
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
+import type { DateRange } from "react-day-picker";
 
 interface Activity {
   id: string;
@@ -67,6 +73,25 @@ export default function Activities() {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [autoSearchTriggered, setAutoSearchTriggered] = useState(false);
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(true);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [timeWindow, setTimeWindow] = useState("any");
+  const [durationFilter, setDurationFilter] = useState("all");
+  const [ratingFilter, setRatingFilter] = useState("all");
+  const [freeCancellationOnly, setFreeCancellationOnly] = useState(false);
+  const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [shouldAutoSearch, setShouldAutoSearch] = useState(false);
+  useEffect(() => {
+    if (isSearchPanelOpen || typeof window === "undefined") {
+      return;
+    }
+
+    const raf = window.requestAnimationFrame(() => {
+      triggerButtonRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(raf);
+  }, [isSearchPanelOpen]);
 
   // Booking confirmation system
   const { showModal, bookingData, storeBookingIntent, closeModal } = useBookingConfirmation();
@@ -93,31 +118,47 @@ export default function Activities() {
     retry: false,
   });
 
-  // Set default location from trip destination and auto-search
   useEffect(() => {
-    if (trip && !autoSearchTriggered && !hasSearched) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("panel") === "discover") {
+      setIsSearchPanelOpen(true);
+      if (params.get("auto") === "1") {
+        setShouldAutoSearch(true);
+      }
+    }
+  }, []);
+
+  // Set default location from trip destination
+  useEffect(() => {
+    if (!trip || autoSearchTriggered) {
+      return;
+    }
+
+    if (!locationSearch) {
       setLocationSearch(trip.destination);
+    }
+
+    if (!selectedLocation) {
       setSelectedLocation({
         id: `trip-${trip.id}`,
         name: trip.destination,
-        type: 'CITY',
+        type: "CITY",
         detailedName: trip.destination,
         displayName: trip.destination,
         relevance: 100,
         isPopular: true,
-        alternativeNames: []
+        alternativeNames: [],
       });
-      // Auto-trigger search for trip destination
+    }
+
+    if (shouldAutoSearch && trip.destination) {
       setHasSearched(true);
       setAutoSearchTriggered(true);
     }
-  }, [trip, autoSearchTriggered, hasSearched]);
+  }, [trip, autoSearchTriggered, shouldAutoSearch, selectedLocation, locationSearch]);
 
   // Get group activities (already proposed to the trip)
-  const {
-    data: groupActivities = [],
-    isLoading: groupActivitiesLoading,
-  } = useQuery<ActivityWithDetails[]>({
+  const { data: groupActivities = [] } = useQuery<ActivityWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/activities`],
     enabled: !!tripId && isAuthenticated,
     retry: false,
@@ -125,16 +166,40 @@ export default function Activities() {
 
   // Get activities from external search
   const { data: searchActivities, isLoading: activitiesLoading } = useQuery<Activity[]>({
-    queryKey: ["/api/activities/discover", locationSearch, searchTerm, selectedCategory, priceRange, sortBy],
+    queryKey: [
+      "/api/activities/discover",
+      locationSearch,
+      searchTerm,
+      selectedCategory,
+      priceRange,
+      sortBy,
+      dateRange?.from?.toISOString?.() ?? "",
+      dateRange?.to?.toISOString?.() ?? "",
+      timeWindow,
+      durationFilter,
+      ratingFilter,
+      freeCancellationOnly,
+    ],
     queryFn: async () => {
       const params = new URLSearchParams({
         location: locationSearch,
         searchTerm,
         category: selectedCategory,
         priceRange,
-        sortBy
+        sortBy,
+        timeWindow,
+        duration: durationFilter,
+        rating: ratingFilter,
+        freeCancellation: freeCancellationOnly ? "1" : "0",
       });
-      
+
+      if (dateRange?.from) {
+        params.set("startDate", dateRange.from.toISOString());
+      }
+      if (dateRange?.to) {
+        params.set("endDate", dateRange.to.toISOString());
+      }
+
       const response = await apiFetch(`/api/activities/discover?${params}`, {
         credentials: 'include',
       });
@@ -151,7 +216,7 @@ export default function Activities() {
   });
 
   // Combine search activities with group activities for unified display
-  const combinedActivities: Activity[] = [
+  const combinedActivities: Activity[] = useMemo(() => [
     ...(searchActivities ?? []),
     ...groupActivities.map((activity) => ({
       id: `group-${activity.id}`,
@@ -159,7 +224,7 @@ export default function Activities() {
       description: activity.description,
       location: activity.location,
       category: activity.category,
-      price: "0", // Group activities don't have external pricing
+      price: "0",
       duration: "Varies",
       rating: 4,
       bookingUrl: "",
@@ -171,22 +236,40 @@ export default function Activities() {
         activity.poster.email ||
         activity.poster.username ||
         "Group member",
-    }))
-  ];
+    })),
+  ], [searchActivities, groupActivities]);
 
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     const searchLocation = selectedLocation?.name || locationSearch.trim();
-    if (searchLocation) {
-      setLocationSearch(searchLocation);
-      setHasSearched(true);
+    if (!searchLocation) {
+      return;
     }
-  };
+
+    setLocationSearch(searchLocation);
+    setHasSearched(true);
+    setAutoSearchTriggered(true);
+  }, [locationSearch, selectedLocation]);
 
   const handleLocationSelect = (location: any) => {
     setSelectedLocation(location);
     setLocationSearch(location.name);
-    setHasSearched(true);
   };
+
+  const handleClosePanel = useCallback(() => {
+    setIsSearchPanelOpen(false);
+  }, []);
+
+  const handleOpenPanel = useCallback(() => {
+    setIsSearchPanelOpen(true);
+  }, []);
+
+  const handleSearchSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      handleSearch();
+    },
+    [handleSearch],
+  );
 
   const handleProposeActivity = async (activity: Activity) => {
     try {
@@ -306,112 +389,413 @@ export default function Activities() {
         </div>
       </div>
 
-      {/* Location Search */}
+      {/* Discover panel trigger */}
       <div className="bg-white border-b border-gray-200 px-4 lg:px-8 py-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:space-x-4 space-y-4 lg:space-y-0">
-            <div className="flex-1">
-              <SmartLocationSearch
-                placeholder="Enter destination (e.g., Croatia, Zagreb, Tokyo, London...)"
-                value={locationSearch}
-                onLocationSelect={handleLocationSelect}
-              />
-            </div>
-            <Button onClick={handleSearch} className="w-full lg:w-auto">
-              <Search className="w-4 h-4 mr-2" />
-              Search Activities
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="bg-white border-b border-gray-200 px-4 lg:px-8 py-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:space-x-4 space-y-4 lg:space-y-0">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-neutral-400" />
-              <Input
-                placeholder="Search activities..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-full lg:w-48">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="sightseeing">Sightseeing</SelectItem>
-                <SelectItem value="food">Food & Dining</SelectItem>
-                <SelectItem value="adventure">Adventure</SelectItem>
-                <SelectItem value="culture">Culture</SelectItem>
-                <SelectItem value="nature">Nature</SelectItem>
-                <SelectItem value="entertainment">Entertainment</SelectItem>
-                <SelectItem value="shopping">Shopping</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={priceRange} onValueChange={setPriceRange}>
-              <SelectTrigger className="w-full lg:w-48">
-                <SelectValue placeholder="Price Range" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Prices</SelectItem>
-                <SelectItem value="0-25">$0 - $25</SelectItem>
-                <SelectItem value="25-50">$25 - $50</SelectItem>
-                <SelectItem value="50-100">$50 - $100</SelectItem>
-                <SelectItem value="100-200">$100 - $200</SelectItem>
-                <SelectItem value="200+">$200+</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-full lg:w-48">
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="popularity">Popularity</SelectItem>
-                <SelectItem value="price_low">Price: Low to High</SelectItem>
-                <SelectItem value="price_high">Price: High to Low</SelectItem>
-                <SelectItem value="rating">Rating</SelectItem>
-                <SelectItem value="duration">Duration</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
-
-      {/* Activities Grid */}
-      <div className="max-w-7xl mx-auto px-4 lg:px-8 py-8">
-        {!hasSearched ? (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4">
-              <MapPin className="text-white w-8 h-8" />
-            </div>
-            <h3 className="text-2xl font-bold text-neutral-900 mb-2">
-              Discover Amazing Activities
-            </h3>
-            <p className="text-neutral-600 mb-6 max-w-md mx-auto">
-              Enter a destination in the search box above to find authentic activities and experiences.
-              Try searching for "Croatia", "Zagreb", "Tokyo", or any city you're interested in.
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-neutral-900">Discover activities</h2>
+            <p className="text-sm text-neutral-600">
+              Use filters to search for experiences without leaving the activities hub.
             </p>
-            <Button onClick={() => handleSearch()} disabled={!locationSearch.trim()}>
-              <Search className="w-4 h-4 mr-2" />
-              Search Activities
-            </Button>
           </div>
-        ) : combinedActivities && combinedActivities.length > 0 ? (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
-              {combinedActivities.slice(0, displayCount).map((activity) => (
-              <Card 
-                key={activity.id} 
-                className={`overflow-hidden hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col ${activity.isGroupActivity ? 'border-blue-200 bg-blue-50/30' : ''}`}
-                onClick={() => {
-                  setSelectedActivity(activity);
-                  setShowDetailsDialog(true);
-                }}
+          {!isSearchPanelOpen && (
+            <Button
+              ref={triggerButtonRef}
+              onClick={handleOpenPanel}
+              variant="outline"
+              className="flex items-center"
+            >
+              <Search className="mr-2 h-4 w-4" />
+              Discover activities
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="px-4 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto">
+          <Collapsible open={isSearchPanelOpen} onOpenChange={setIsSearchPanelOpen}>
+            {isSearchPanelOpen && (
+              <Card className="border border-neutral-200 shadow-sm">
+                <CardHeader className="space-y-1 border-b border-neutral-200 bg-neutral-50/80">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
+                        <MapPin className="h-5 w-5" />
+                        Search activities
+                      </CardTitle>
+                      <p className="text-sm text-neutral-600">
+                        Enter a destination and optional filters, then run the search when you are ready.
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClosePanel}
+                      className="text-neutral-500 hover:text-neutral-900"
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      Hide search
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <form className="space-y-6" onSubmit={handleSearchSubmit}>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      <div className="space-y-2 md:col-span-2 lg:col-span-1">
+                        <Label className="text-sm font-medium text-neutral-700">Destination</Label>
+                        <SmartLocationSearch
+                          placeholder="Enter destination (e.g., Zagreb, Tokyo, London...)"
+                          value={locationSearch}
+                          onLocationSelect={handleLocationSelect}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Date range</Label>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="w-full justify-between text-left font-normal"
+                            >
+                              {dateRange?.from ? (
+                                dateRange.to ? (
+                                  <span>
+                                    {dateRange.from.toLocaleDateString()} – {dateRange.to.toLocaleDateString()}
+                                  </span>
+                                ) : (
+                                  <span>{dateRange.from.toLocaleDateString()}</span>
+                                )
+                              ) : (
+                                <span>Select dates</span>
+                              )}
+                              <CalendarIcon className="ml-2 h-4 w-4 opacity-50" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="p-0" align="start">
+                            <Calendar
+                              mode="range"
+                              numberOfMonths={2}
+                              selected={dateRange}
+                              onSelect={setDateRange}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Time window (optional)</Label>
+                        <Select value={timeWindow} onValueChange={setTimeWindow}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Any time" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="any">Any time</SelectItem>
+                            <SelectItem value="morning">Morning</SelectItem>
+                            <SelectItem value="afternoon">Afternoon</SelectItem>
+                            <SelectItem value="evening">Evening</SelectItem>
+                            <SelectItem value="night">Late night</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Category</Label>
+                        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="All categories" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Categories</SelectItem>
+                            <SelectItem value="sightseeing">Sightseeing</SelectItem>
+                            <SelectItem value="food">Food & Dining</SelectItem>
+                            <SelectItem value="adventure">Adventure</SelectItem>
+                            <SelectItem value="culture">Culture</SelectItem>
+                            <SelectItem value="nature">Nature</SelectItem>
+                            <SelectItem value="entertainment">Entertainment</SelectItem>
+                            <SelectItem value="shopping">Shopping</SelectItem>
+                            <SelectItem value="nightlife">Nightlife</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Search keyword</Label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-3 h-4 w-4 text-neutral-400" />
+                          <Input
+                            placeholder="Search activities..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Price</Label>
+                        <Select value={priceRange} onValueChange={setPriceRange}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="All prices" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Prices</SelectItem>
+                            <SelectItem value="0-25">$0 - $25</SelectItem>
+                            <SelectItem value="25-50">$25 - $50</SelectItem>
+                            <SelectItem value="50-100">$50 - $100</SelectItem>
+                            <SelectItem value="100-200">$100 - $200</SelectItem>
+                            <SelectItem value="200+">$200+</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Duration</Label>
+                        <Select value={durationFilter} onValueChange={setDurationFilter}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Any duration" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Any Duration</SelectItem>
+                            <SelectItem value="short">Up to 2 hours</SelectItem>
+                            <SelectItem value="medium">2-4 hours</SelectItem>
+                            <SelectItem value="long">4+ hours</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Rating</Label>
+                        <Select value={ratingFilter} onValueChange={setRatingFilter}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Any rating" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">Any Rating</SelectItem>
+                            <SelectItem value="4">4.0 and up</SelectItem>
+                            <SelectItem value="4.5">4.5 and up</SelectItem>
+                            <SelectItem value="5">5 stars only</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-neutral-700">Sort by</Label>
+                        <Select value={sortBy} onValueChange={setSortBy}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Sort by" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="popularity">Popularity</SelectItem>
+                            <SelectItem value="price_low">Price: Low to High</SelectItem>
+                            <SelectItem value="price_high">Price: High to Low</SelectItem>
+                            <SelectItem value="rating">Rating</SelectItem>
+                            <SelectItem value="duration">Duration</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-3 md:col-span-2 lg:col-span-1">
+                        <Switch
+                          id="free-cancellation"
+                          checked={freeCancellationOnly}
+                          onCheckedChange={setFreeCancellationOnly}
+                        />
+                        <Label htmlFor="free-cancellation" className="text-sm text-neutral-700">
+                          Free cancellation only
+                        </Label>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          setSearchTerm("");
+                          setSelectedCategory("all");
+                          setPriceRange("all");
+                          setSortBy("popularity");
+                          setDateRange(undefined);
+                          setTimeWindow("any");
+                          setDurationFilter("all");
+                          setRatingFilter("all");
+                          setFreeCancellationOnly(false);
+                        }}
+                      >
+                        Reset filters
+                      </Button>
+                      <Button type="submit" disabled={!locationSearch.trim()}>
+                        <Search className="mr-2 h-4 w-4" />
+                        Search activities
+                      </Button>
+                    </div>
+                  </form>
+
+                  <div className="border-t border-neutral-200 pt-6">
+                    {!hasSearched ? (
+                      <div className="text-center py-12">
+                        <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4">
+                          <MapPin className="text-white w-8 h-8" />
+                        </div>
+                        <h3 className="text-xl font-semibold text-neutral-900 mb-2">
+                          Ready to find something unforgettable?
+                        </h3>
+                        <p className="text-neutral-600 max-w-md mx-auto">
+                          Choose a destination, adjust any filters you need, and run the search when you’re ready.
+                        </p>
+                      </div>
+                    ) : activitiesLoading ? (
+                      <div className="py-12 text-center">
+                        <TravelLoading variant="compass" size="lg" text="Discovering amazing activities..." />
+                      </div>
+                    ) : (searchActivities ?? []).length === 0 ? (
+                      <div className="py-12 text-center">
+                        <h3 className="text-lg font-semibold text-neutral-900 mb-2">No activities found</h3>
+                        <p className="text-neutral-600">
+                          Try broadening your filters or searching a nearby city to see more options.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
+                          {(searchActivities ?? []).slice(0, displayCount).map((activity) => (
+                            <Card
+                              key={activity.id}
+                              className="overflow-hidden hover:shadow-lg transition-shadow h-full flex flex-col"
+                              onClick={() => {
+                                setSelectedActivity(activity);
+                                setShowDetailsDialog(true);
+                              }}
+                            >
+                              <CardHeader className="pb-3">
+                                <div className="space-y-3">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <CardTitle className="text-base lg:text-lg leading-tight">
+                                      {activity.name}
+                                    </CardTitle>
+                                    {activity.provider && (
+                                      <Badge variant="outline" className="text-xs">
+                                        {activity.provider}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-3 text-sm text-neutral-600">
+                                      <div className="flex items-center">
+                                        <Star className="w-4 h-4 text-yellow-400 mr-1" />
+                                        <span>{activity.rating}</span>
+                                      </div>
+                                      <div className="flex items-center">
+                                        <Clock className="w-4 h-4 mr-1" />
+                                        <span className="truncate">{activity.duration}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="flex flex-col flex-1 pt-2">
+                                <div className="flex-1 space-y-3">
+                                  <p className="text-neutral-600 text-sm line-clamp-3 leading-relaxed">
+                                    {activity.description}
+                                  </p>
+                                  <div className="flex items-center text-sm text-neutral-600">
+                                    <MapPin className="w-4 h-4 mr-2 flex-shrink-0" />
+                                    <span className="truncate">{activity.location}</span>
+                                  </div>
+                                  <div className="flex items-center text-lg lg:text-xl font-bold text-green-600">
+                                    <DollarSign className="w-5 h-5 mr-1" />
+                                    <span>{activity.price}</span>
+                                  </div>
+                                </div>
+                                <div className="space-y-2 mt-4 pt-3 border-t border-gray-100">
+                                  <Button
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleProposeActivity(activity);
+                                    }}
+                                    className="w-full bg-primary hover:bg-red-600 text-white text-xs lg:text-sm"
+                                  >
+                                    <Users className="w-4 h-4 mr-2" />
+                                    Propose
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedActivity(activity);
+                                      setShowBookingDialog(true);
+                                    }}
+                                    className="w-full text-xs lg:text-sm"
+                                  >
+                                    <ShoppingCart className="w-4 h-4 mr-2" />
+                                    Add
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+
+                        {(searchActivities ?? []).length > displayCount && (
+                          <div className="text-center">
+                            <Button
+                              onClick={() => {
+                                setIsLoadingMore(true);
+                                setTimeout(() => {
+                                  setDisplayCount((prev) => Math.min(prev + 20, (searchActivities ?? []).length));
+                                  setIsLoadingMore(false);
+                                }, 500);
+                              }}
+                              disabled={isLoadingMore}
+                              variant="outline"
+                            >
+                              {isLoadingMore ? "Loading more..." : "Load more results"}
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            {!isSearchPanelOpen && (
+              <div className="rounded-lg border border-dashed border-neutral-300 bg-white/60 p-6 text-center">
+                <p className="text-sm text-neutral-600">
+                  Use the discover panel to search for new experiences. When you’re ready, open it above.
+                </p>
+                <Button className="mt-4" ref={triggerButtonRef} onClick={handleOpenPanel} variant="secondary">
+                  <Search className="mr-2 h-4 w-4" />
+                  Discover activities
+                </Button>
+              </div>
+            )}
+          </Collapsible>
+        </div>
+      </div>
+
+      {/* Existing trip activities */}
+      <div className="max-w-7xl mx-auto px-4 lg:px-8 pb-12">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="text-xl font-semibold text-neutral-900">Activities already on this trip</h3>
+            <p className="text-sm text-neutral-600">
+              These are proposals or scheduled plans your group is already tracking.
+            </p>
+          </div>
+        </div>
+
+        {groupActivities.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-neutral-300 bg-white p-8 text-center text-neutral-600">
+            Nothing here yet. Use the discover panel above or add your own activity to get started.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
+            {groupActivities.map((activity) => (
+              <Card
+                key={activity.id}
+                className="overflow-hidden border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow h-full flex flex-col"
               >
                 <CardHeader className="pb-3">
                   <div className="space-y-3">
@@ -420,170 +804,51 @@ export default function Activities() {
                         <CardTitle className="text-base lg:text-lg leading-tight">
                           {activity.name}
                         </CardTitle>
-                        {activity.isGroupActivity && (
-                          <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
-                            <Users className="w-3 h-3 mr-1" />
-                            Group
-                          </Badge>
-                        )}
+                        <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
+                          <Users className="w-3 h-3 mr-1" />
+                          Group
+                        </Badge>
                       </div>
                     </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3 text-sm text-neutral-600">
+
+                    <div className="flex items-center justify-between text-sm text-neutral-600">
+                      <div className="flex items-center gap-3">
                         <div className="flex items-center">
-                          <Star className="w-4 h-4 text-yellow-400 mr-1" />
-                          <span>{activity.rating}</span>
+                          <Calendar className="w-4 h-4 mr-1" />
+                          <span>
+                            {activity.startTime
+                              ? new Date(activity.startTime).toLocaleDateString()
+                              : "Date TBA"}
+                          </span>
                         </div>
-                        <div className="flex items-center">
-                          <Clock className="w-4 h-4 mr-1" />
-                          <span className="truncate">{activity.duration}</span>
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-1">
-                        <Badge 
-                          variant="secondary" 
-                          className="capitalize text-xs"
-                        >
-                          {activity.category}
-                        </Badge>
-                        {activity.provider === 'Amadeus' && (
-                          <Badge variant="outline" className="text-xs">
-                            Amadeus
-                          </Badge>
+                        {activity.location && (
+                          <div className="flex items-center">
+                            <MapPin className="w-4 h-4 mr-1" />
+                            <span className="truncate">{activity.location}</span>
+                          </div>
                         )}
                       </div>
+                      <Badge variant="secondary" className="capitalize text-xs">
+                        {activity.category}
+                      </Badge>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-col flex-1 pt-2">
-                  <div className="flex-1 space-y-3">
-                    <p className="text-neutral-600 text-sm line-clamp-3 leading-relaxed">
-                      {activity.description}
+                  <p className="text-neutral-600 text-sm line-clamp-4 leading-relaxed">
+                    {activity.description || "Group activity"}
+                  </p>
+                  <div className="mt-4 pt-3 border-t border-neutral-200 text-xs text-neutral-500">
+                    <p>
+                      Proposed by {activity.poster.firstName || activity.poster.email || "Group member"}
                     </p>
-                    <div className="flex items-center text-sm text-neutral-600">
-                      <MapPin className="w-4 h-4 mr-2 flex-shrink-0" />
-                      <span className="truncate">{activity.location}</span>
-                    </div>
-                    
-                    {/* Price Section */}
-                    <div className="flex items-center text-lg lg:text-xl font-bold text-green-600">
-                      <DollarSign className="w-5 h-5 mr-1" />
-                      <span>{activity.price}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Action Buttons - Always at bottom */}
-                  <div className="space-y-2 mt-4 pt-3 border-t border-gray-100">
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleProposeActivity(activity);
-                      }}
-                      className="w-full bg-primary hover:bg-red-600 text-white text-xs lg:text-sm"
-                    >
-                      <Users className="w-4 h-4 mr-2" />
-                      Propose to Group
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedActivity(activity);
-                        setShowBookingDialog(true);
-                      }}
-                      className="w-full text-xs lg:text-sm"
-                    >
-                      <ShoppingCart className="w-4 h-4 mr-2" />
-                      Book Now
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
-              ))}
-            </div>
-            
-            {/* Load More Button */}
-            {combinedActivities.length > displayCount && (
-              <div className="text-center mt-8">
-                <Button
-                  onClick={() => {
-                    setIsLoadingMore(true);
-                    // Simulate loading delay for better UX
-                    setTimeout(() => {
-                      setDisplayCount(prev => Math.min(prev + 20, combinedActivities.length));
-                      setIsLoadingMore(false);
-                    }, 500);
-                  }}
-                  disabled={isLoadingMore}
-                  variant="outline"
-                  size="lg"
-                >
-                  {isLoadingMore ? (
-                    <div className="flex items-center gap-2">
-                      <TravelLoading variant="globe" size="sm" />
-                      Loading more activities...
-                    </div>
-                  ) : (
-                    <>
-                      Load More Activities ({Math.min(20, combinedActivities.length - displayCount)} of {combinedActivities.length - displayCount} remaining)
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-            
-            {/* Activities Counter */}
-            <div className="text-center mt-4 text-sm text-neutral-600">
-              Showing {Math.min(displayCount, combinedActivities.length)} of {combinedActivities.length} activities (external search + group activities)
-            </div>
-          </>
-        ) : activitiesLoading ? (
-          <div className="text-center py-16">
-            <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4 animate-pulse">
-              <Search className="text-white w-6 h-6" />
-            </div>
-            <p className="text-neutral-600">Searching for activities in {locationSearch}...</p>
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <MapPin className="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-neutral-900 mb-2">
-              No activities found in {locationSearch}
-            </h3>
-            <p className="text-neutral-600 mb-4">
-              Try searching for a different destination or clear the filters below.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchTerm("");
-                  setSelectedCategory("all");
-                  setPriceRange("all");
-                  setSortBy("popularity");
-                }}
-              >
-                Clear Filters
-              </Button>
-              <Button
-                onClick={() => {
-                  setLocationSearch("");
-                  setHasSearched(false);
-                }}
-              >
-                Try Different Destination
-              </Button>
-            </div>
+            ))}
           </div>
         )}
       </div>
-
       {/* Activity Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
         <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
