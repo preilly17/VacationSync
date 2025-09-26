@@ -29,7 +29,6 @@ import {
   PlaneLanding,
   Hotel,
   Utensils,
-  Star,
   Trash2,
   ExternalLink,
   Cloud,
@@ -3157,7 +3156,7 @@ function getAirlineName(code: string): string {
 function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?: TripWithDetails | null }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: hotels, isLoading } = useQuery({
+  const { isLoading } = useQuery<HotelWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotels`],
     enabled: !!tripId,
   });
@@ -3373,60 +3372,6 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
           toast={toast}
         />
 
-        <Card>
-          <CardContent className="p-6">
-            {(hotels as any) && (hotels as any).length > 0 ? (
-              <div className="space-y-4">
-                {(hotels as any).slice(0, 3).map((hotel: any) => (
-                  <div key={hotel.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
-                      <Hotel className="w-5 h-5 text-green-600" />
-                      <div>
-                        <p className="font-semibold">{hotel.hotelName}</p>
-                        <p className="text-sm text-gray-600">{hotel.address}</p>
-                        <p className="text-sm text-gray-500">
-                          {format(new Date(hotel.checkInDate), 'MMM dd')} - {format(new Date(hotel.checkOutDate), 'MMM dd')}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {hotel.totalPrice && (
-                        <p className="font-semibold">${hotel.totalPrice}</p>
-                      )}
-                      {hotel.hotelRating && (
-                        <div className="flex items-center">
-                          {Array.from({ length: hotel.hotelRating }).map((_, i) => (
-                            <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {(hotels as any).length > 3 && (
-                  <p className="text-sm text-gray-500 text-center">
-                    +{(hotels as any).length - 3} more hotels
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <Hotel className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No hotels added yet</h3>
-                <p className="text-gray-600 mb-4">
-                  Search and book accommodations for your trip
-                </p>
-                <Button
-                  onClick={focusSearchPanel}
-                  className="bg-primary hover:bg-red-600 text-white"
-                >
-                  <Search className="w-4 h-4 mr-2" />
-                  Search Hotels
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       <BookingConfirmationModal
