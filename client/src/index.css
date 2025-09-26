@@ -96,7 +96,8 @@
     min-height: 100vh;
     width: 100%;
     isolation: isolate;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
     color: var(--foreground);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(241, 245, 249, 0.94) 100%);
   }

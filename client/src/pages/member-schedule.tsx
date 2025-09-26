@@ -220,23 +220,24 @@ export default function MemberSchedule() {
   }, [activities, selectedMemberId]);
 
   return (
-    <div className="min-h-screen bg-neutral-100">
+    <div className="min-h-dvh lg:min-h-screen bg-neutral-100">
       {/* Mobile Navigation */}
       <MobileNav
         trip={trip}
         user={currentUser}
       />
 
-      {/* Desktop Sidebar */}
-      <Sidebar 
-        trip={trip}
-        user={currentUser}
-        activeTab="members"
-        onTabChange={() => {}}
-      />
+      <div className="lg:flex lg:h-screen">
+        {/* Desktop Sidebar */}
+        <Sidebar
+          trip={trip}
+          user={currentUser}
+          activeTab="members"
+          onTabChange={() => {}}
+        />
 
-      {/* Main Content */}
-      <div className="lg:pl-64">
+        {/* Main Content */}
+        <main className="flex-1 min-w-0 lg:h-screen lg:overflow-x-auto lg:overflow-y-auto">
         {/* Header */}
         <div className="bg-white border-b border-gray-200 px-4 lg:px-8 py-6">
           <div className="max-w-7xl mx-auto">
@@ -482,7 +483,8 @@ export default function MemberSchedule() {
             )}
           </div>
         </div>
-      </div>
+      </main>
     </div>
+  </div>
   );
 }
