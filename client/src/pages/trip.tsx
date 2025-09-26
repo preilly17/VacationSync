@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,7 @@ import {
   CheckCircle,
   Settings,
   Search,
+  NotebookPen,
   Loader2,
   type LucideIcon
 } from "lucide-react";
@@ -3376,7 +3377,20 @@ function RestaurantBooking({
     queryKey: ["/api/trips", tripId, "restaurants"],
     enabled: !!tripId,
   });
-  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [, setLocation] = useLocation();
+  const searchPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const focusSearchPanel = useCallback(() => {
+    if (!searchPanelRef.current) {
+      return;
+    }
+
+    searchPanelRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    const firstFocusable = searchPanelRef.current.querySelector<HTMLElement>(
+      "input, button, select, textarea, [tabindex]:not([tabindex='-1'])"
+    );
+    firstFocusable?.focus();
+  }, []);
 
   const handleBookingLinkClick = useCallback(
     (_restaurant: any, link: { text: string; url: string }) => {
@@ -3412,20 +3426,19 @@ function RestaurantBooking({
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           <Button
-            onClick={() => setShowSearchPanel((prev) => !prev)}
+            onClick={focusSearchPanel}
             className="bg-primary hover:bg-red-600 text-white w-full sm:w-auto"
           >
-            {showSearchPanel ? (
-              <>
-                <Utensils className="w-4 h-4 mr-2" />
-                Hide Restaurant Search
-              </>
-            ) : (
-              <>
-                <Search className="w-4 h-4 mr-2" />
-                Search Restaurants
-              </>
-            )}
+            <Search className="w-4 h-4 mr-2" />
+            Search Restaurants
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full sm:w-auto"
+            onClick={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
+          >
+            <NotebookPen className="w-4 h-4 mr-2" />
+            Log Restaurant Manually
           </Button>
           <Link href={`/trip/${tripId}/restaurants`}>
             <Button variant="outline" className="w-full sm:w-auto">
@@ -3435,14 +3448,14 @@ function RestaurantBooking({
         </div>
       </div>
 
-      {showSearchPanel && (
-        <RestaurantSearchPanel
-          tripId={tripId}
-          trip={trip}
-          user={user}
-          onBookingLinkClick={handleBookingLinkClick}
-        />
-      )}
+      <RestaurantSearchPanel
+        ref={searchPanelRef}
+        tripId={tripId}
+        trip={trip}
+        user={user}
+        onBookingLinkClick={handleBookingLinkClick}
+        onLogRestaurantManually={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
+      />
 
       <Card>
         <CardContent className="p-6">
@@ -3504,11 +3517,19 @@ function RestaurantBooking({
                 Start planning meals for your trip. Search for restaurants and add them directly to your itinerary.
               </p>
               <Button
-                onClick={() => setShowSearchPanel(true)}
+                onClick={focusSearchPanel}
                 className="bg-primary hover:bg-red-600 text-white"
               >
                 <Search className="w-4 h-4 mr-2" />
                 Search Restaurants
+              </Button>
+              <Button
+                variant="outline"
+                className="mt-2"
+                onClick={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
+              >
+                <NotebookPen className="w-4 h-4 mr-2" />
+                Log Restaurant Manually
               </Button>
             </div>
           )}
