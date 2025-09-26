@@ -3321,15 +3321,6 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="rounded-lg bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
-              <p className="font-medium text-neutral-800">Trip snapshot</p>
-              <p>
-                Destination: <span className="font-semibold text-neutral-900">{trip?.destination ?? "TBD"}</span>
-              </p>
-              <p>
-                Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), 'MMM d, yyyy')} – ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
-              </p>
-            </div>
             <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
