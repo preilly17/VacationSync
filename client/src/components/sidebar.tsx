@@ -12,8 +12,8 @@ interface SidebarProps {
 
 export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
   return (
-    <div className="hidden lg:flex lg:w-64 lg:flex-col lg:fixed lg:inset-y-0 lg:bg-white lg:border-r lg:border-gray-200">
-      <div className="flex flex-col h-full">
+    <aside className="hidden lg:flex w-[240px] shrink-0 flex-col bg-white border-r border-gray-200 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:overflow-x-hidden lg:z-20">
+      <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex items-center px-6 py-4 border-b border-gray-200">
           <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
@@ -195,6 +195,6 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
           </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }

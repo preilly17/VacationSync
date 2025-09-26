@@ -875,9 +875,12 @@ export default function Trip() {
         {/* Main Content Container */}
         {/* // MOBILE-ONLY: Provide breathing room for bottom nav & safe area. */}
         <div className="relative pb-[calc(env(safe-area-inset-bottom)+6rem)] md:pb-0">
-          <div className="md:flex">
+          <div className="md:flex md:h-screen">
             {/* Vertical Tab Navigation */}
-            <div className="hidden md:flex md:w-64 md:flex-col bg-white border-r border-gray-200 min-h-dvh md:fixed md:left-0 md:top-0 md:z-40" data-tutorial="trip-navigation">
+            <aside
+              className="hidden md:flex w-[240px] shrink-0 flex-col border-r border-gray-200 bg-white md:sticky md:top-0 md:h-screen md:overflow-y-auto md:overflow-x-hidden md:self-start md:z-20"
+              data-tutorial="trip-navigation"
+            >
               <div className="p-6">
                 <h2 className="text-lg font-semibold text-neutral-900 mb-4">Trip Sections</h2>
                 <nav className="space-y-2">
@@ -1022,10 +1025,10 @@ export default function Trip() {
                   </button>
                 </nav>
               </div>
-            </div>
+            </aside>
 
             {/* Main Content */}
-            <div className="flex-1 md:ml-64">
+            <main className="flex-1 min-w-0 md:h-screen md:overflow-x-auto md:overflow-y-auto">
               <div className="p-4 lg:p-8">
                 {/* Back to Dashboard Button */}
                 <Link href="/">
@@ -1516,7 +1519,7 @@ export default function Trip() {
                   </div>
                 )}
               </div>
-            </div>
+            </main>
           </div>
 
           {/* // MOBILE-ONLY floating action button */}
