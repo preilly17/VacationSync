@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +66,7 @@ import ActivitySearch from "@/components/activity-search";
 import { WishListBoard } from "@/components/wish-list-board";
 import Proposals from "@/pages/proposals";
 import { ActivityDetailsDialog } from "@/components/activity-details-dialog";
+import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 import type {
   TripWithDetails,
   ActivityWithDetails,
@@ -73,6 +74,10 @@ import type {
   InsertHotel,
   ActivityInviteStatus,
   InsertFlight,
+  HotelWithDetails,
+  HotelProposalWithDetails,
+  HotelSearchResult,
+  TripWithDates,
 } from "@shared/schema";
 import {
   format,
@@ -94,6 +99,7 @@ import { Form } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
+import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/hotel-search-panel";
 import {
   createHotelFormDefaults,
   hotelFormSchema,
@@ -102,6 +108,7 @@ import {
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
+import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -3147,17 +3154,38 @@ function getAirlineName(code: string): string {
 
 // Hotel Booking Component
 function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?: TripWithDetails | null }) {
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: hotels, isLoading } = useQuery({
+  const { data: hotels = [], isLoading } = useQuery<HotelWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotels`],
     enabled: !!tripId,
   });
-
+  const { data: hotelProposals = [] } = useQuery<HotelProposalWithDetails[]>({
+    queryKey: [`/api/trips/${tripId}/hotel-proposals`],
+    enabled: !!tripId,
+  });
 
   const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [hasSearchResults, setHasSearchResults] = useState(false);
+  const [searchResultCount, setSearchResultCount] = useState(0);
+  const searchPanelRef = useRef<HotelSearchPanelRef>(null);
 
+  const { showModal, bookingData, storeBookingIntent, closeModal } = useBookingConfirmation();
+
+  const tripDates = useMemo<TripWithDates | null>(() => {
+    if (!trip) return null;
+    return {
+      id: trip.id,
+      name: trip.name,
+      destination: trip.destination,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      shareCode: trip.shareCode,
+      createdBy: trip.createdBy,
+      createdAt: trip.createdAt ?? undefined,
+    };
+  }, [trip]);
 
   const formDefaults = useCallback(
     () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
@@ -3173,6 +3201,77 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
     form.reset(formDefaults());
   }, [form, formDefaults]);
 
+  useEffect(() => {
+    if (!isLoading && hotels.length === 0 && !showSearchPanel) {
+      setShowSearchPanel(true);
+    }
+  }, [hotels.length, isLoading, showSearchPanel]);
+
+  useEffect(() => {
+    if (showSearchPanel) {
+      searchPanelRef.current?.focusForm();
+    }
+  }, [showSearchPanel]);
+
+  const handleToggleSearchPanel = useCallback(() => {
+    setShowSearchPanel((previous) => !previous);
+  }, []);
+
+  const handleOpenSearchPanel = useCallback(() => {
+    setShowSearchPanel(true);
+  }, []);
+
+  const handleSearchResultsChange = useCallback((results: HotelSearchResult[]) => {
+    setSearchResultCount(results.length);
+    setHasSearchResults(results.length > 0);
+  }, []);
+
+  const shareHotelWithGroup = useCallback(
+    async (hotel: HotelSearchResult) => {
+      try {
+        await apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
+          method: "POST",
+          body: JSON.stringify({
+            hotelName: hotel.name,
+            location: hotel.location,
+            price: hotel.price,
+            pricePerNight: hotel.pricePerNight || hotel.price,
+            rating: hotel.rating || 4,
+            amenities: hotel.amenities || "WiFi, Breakfast",
+            platform: hotel.platform,
+            bookingUrl: hotel.bookingUrl,
+          }),
+        });
+
+        toast({
+          title: "Added to Group Hotels!",
+          description: `${hotel.name} is now ready for everyone to review and rank.`,
+        });
+
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      } catch (error) {
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        if (isUnauthorizedError(errorObj)) {
+          toast({
+            title: "Unauthorized",
+            description: "You need to be logged in to propose hotels.",
+            variant: "destructive",
+          });
+          setTimeout(() => {
+            window.location.href = "/login";
+          }, 500);
+          return;
+        }
+        toast({
+          title: "Error",
+          description: "Failed to propose hotel. Please try again.",
+          variant: "destructive",
+        });
+      }
+    },
+    [queryClient, toast, tripId],
+  );
+
   const createHotelMutation = useMutation({
     mutationFn: async (payload: InsertHotel) => {
       return await apiRequest(`/api/trips/${tripId}/hotels`, {
@@ -3182,14 +3281,13 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Hotel added",
         description: "Your hotel booking has been saved to the trip.",
       });
       form.reset(formDefaults());
-
       setIsManualHotelFormOpen(false);
-
     },
     onError: (error) => {
       if (isUnauthorizedError(error as Error)) {
@@ -3225,21 +3323,47 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Hotel Booking</h2>
           <p className="text-gray-600">Find and book accommodations</p>
         </div>
         <Button
-          onClick={() => {
-            setLocation(`/trip/${tripId}/hotels`);
-          }}
-          className="bg-primary hover:bg-red-600 text-white"
+          onClick={handleToggleSearchPanel}
+          className={`${
+            showSearchPanel
+              ? "bg-neutral-700 hover:bg-neutral-800"
+              : "bg-primary hover:bg-red-600"
+          } text-white`}
         >
-          <Hotel className="w-4 h-4 mr-2" />
-          Manage Hotels
+          <Search className="w-4 h-4 mr-2" />
+          {showSearchPanel ? "Hide Search" : "Search Hotels"}
         </Button>
       </div>
+
+      {showSearchPanel && (
+        <HotelSearchPanel
+          ref={searchPanelRef}
+          tripId={tripId}
+          trip={tripDates}
+          toast={toast}
+          hotelProposalsCount={hotelProposals.length}
+          storeBookingIntent={storeBookingIntent}
+          onShareHotelWithGroup={shareHotelWithGroup}
+          onLogHotelManually={() => {
+            setIsManualHotelFormOpen(true);
+          }}
+          onResultsChange={handleSearchResultsChange}
+        />
+      )}
+
+      {showSearchPanel && hasSearchResults && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          {searchResultCount === 1
+            ? "1 hotel result ready. Add it to your itinerary or share with the group."
+            : `${searchResultCount} hotel results ready. Add favorites to your trip or share with the group.`}
+        </div>
+      )}
 
       <Card className="border-dashed">
         <CardHeader>
@@ -3304,9 +3428,9 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
 
       <Card>
         <CardContent className="p-6">
-          {(hotels as any) && (hotels as any).length > 0 ? (
+          {hotels.length > 0 ? (
             <div className="space-y-4">
-              {(hotels as any).slice(0, 3).map((hotel: any) => (
+              {hotels.slice(0, 3).map((hotel) => (
                 <div key={hotel.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div className="flex items-center space-x-4">
                     <Hotel className="w-5 h-5 text-green-600" />
@@ -3324,17 +3448,17 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
                     )}
                     {hotel.hotelRating && (
                       <div className="flex items-center">
-                        {Array.from({ length: hotel.hotelRating }).map((_, i) => (
-                          <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                        {Array.from({ length: hotel.hotelRating }).map((_, index) => (
+                          <Star key={index} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
                         ))}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
-              {(hotels as any).length > 3 && (
+              {hotels.length > 3 && (
                 <p className="text-sm text-gray-500 text-center">
-                  +{(hotels as any).length - 3} more hotels
+                  +{hotels.length - 3} more hotels
                 </p>
               )}
             </div>
@@ -3345,8 +3469,8 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
               <p className="text-gray-600 mb-4">
                 Search and book accommodations for your trip
               </p>
-              <Button 
-                onClick={() => setLocation(`/trip/${tripId}/hotels`)}
+              <Button
+                onClick={handleOpenSearchPanel}
                 className="bg-primary hover:bg-red-600 text-white"
               >
                 <Hotel className="w-4 h-4 mr-2" />
@@ -3356,6 +3480,18 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
           )}
         </CardContent>
       </Card>
+
+      <BookingConfirmationModal
+        isOpen={showModal}
+        onClose={closeModal}
+        bookingType={bookingData?.type || "hotel"}
+        bookingData={bookingData?.data}
+        tripId={tripId}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+        }}
+      />
     </div>
   );
 }
