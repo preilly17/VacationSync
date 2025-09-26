@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef, type FormEvent } from "react";
-import { useParams, useLocation, Link } from "wouter";
+import { useState, useEffect, useCallback, type FormEvent } from "react";
+import { useParams, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Plus, Bed, Search, Filter, ArrowLeft, Building, ChevronRight, DollarSign, Calculator, ArrowUpDown } from "lucide-react";
+import { MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Bed, Search, Filter, ArrowLeft, Building, ChevronRight, DollarSign, Calculator, ArrowUpDown } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -40,12 +40,10 @@ import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
 
 export default function HotelsPage() {
   const params = useParams();
-  const [currentLocation, setLocation] = useLocation();
   const tripId = parseInt(params.tripId as string);
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const addHotelButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
   const [searchResults, setSearchResults] = useState<HotelSearchResult[]>([]);
@@ -59,9 +57,6 @@ export default function HotelsPage() {
   const [priceRange, setPriceRange] = useState('any');
   const [minRating, setMinRating] = useState('any');
   const [freeCancellationOnly, setFreeCancellationOnly] = useState(false);
-  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
-  const [pendingAutoSearch, setPendingAutoSearch] = useState(false);
-  const [hasAutoSearched, setHasAutoSearched] = useState(false);
 
   // Currency conversion state
   const [currencyAmount, setCurrencyAmount] = useState('100');
@@ -600,94 +595,6 @@ export default function HotelsPage() {
     },
     [searchHotels],
   );
-
-  const updatePanelQuery = useCallback(
-    (panel: 'search' | null, options?: { auto?: boolean }) => {
-      const [pathOnly, queryString = ''] = currentLocation.split('?');
-      const params = new URLSearchParams(queryString);
-
-      if (panel) {
-        params.set('panel', panel);
-      } else {
-        params.delete('panel');
-      }
-
-      if (options?.auto) {
-        params.set('auto', '1');
-      } else {
-        params.delete('auto');
-      }
-
-      const nextQuery = params.toString();
-      const nextLocation = nextQuery ? `${pathOnly}?${nextQuery}` : pathOnly;
-
-      if (nextLocation !== currentLocation) {
-        setLocation(nextLocation, { replace: true });
-      }
-    },
-    [currentLocation, setLocation],
-  );
-
-  const handleOpenSearchPanel = useCallback(() => {
-    setIsSearchPanelOpen(true);
-    setHasAutoSearched(false);
-    updatePanelQuery('search');
-  }, [updatePanelQuery]);
-
-  const handleCloseSearchPanel = useCallback(() => {
-    setIsSearchPanelOpen(false);
-    setPendingAutoSearch(false);
-    setHasAutoSearched(false);
-    updatePanelQuery(null);
-    window.setTimeout(() => {
-      addHotelButtonRef.current?.focus();
-    }, 0);
-  }, [updatePanelQuery]);
-
-  useEffect(() => {
-    const [, queryString = ''] = currentLocation.split('?');
-    const params = new URLSearchParams(queryString);
-    const panelParam = params.get('panel');
-    const shouldOpenSearch = panelParam === 'search';
-
-    setIsSearchPanelOpen(shouldOpenSearch);
-
-    if (shouldOpenSearch) {
-      const shouldAutoSearch = params.get('auto') === '1';
-      setPendingAutoSearch(shouldAutoSearch);
-      if (!shouldAutoSearch) {
-        setHasAutoSearched(false);
-      }
-    } else {
-      setPendingAutoSearch(false);
-      setHasAutoSearched(false);
-    }
-  }, [currentLocation]);
-
-  useEffect(() => {
-    if (
-      isSearchPanelOpen &&
-      pendingAutoSearch &&
-      !hasAutoSearched &&
-      checkInDate &&
-      checkOutDate
-    ) {
-      (async () => {
-        await searchHotels();
-        setHasAutoSearched(true);
-        setPendingAutoSearch(false);
-        updatePanelQuery('search');
-      })();
-    }
-  }, [
-    checkInDate,
-    checkOutDate,
-    hasAutoSearched,
-    isSearchPanelOpen,
-    pendingAutoSearch,
-    searchHotels,
-    updatePanelQuery,
-  ]);
 
   // Generate sample hotels for testing
   const generateSampleHotels = (destination: string) => {
@@ -1263,46 +1170,20 @@ export default function HotelsPage() {
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            ref={addHotelButtonRef}
-            onClick={handleOpenSearchPanel}
-            aria-expanded={isSearchPanelOpen}
-            aria-controls="hotel-search-panel"
-            className="shadow-sm"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Hotel
-          </Button>
-          <Button variant="outline" onClick={openCreateDialog} className="shadow-sm">
-            <Building className="h-4 w-4 mr-2" />
-            Log Hotel Manually
-          </Button>
-          <Button onClick={() => searchHotels()} disabled={isSearching} variant="secondary" className="shadow-sm">
-            <Search className="h-4 w-4 mr-2" />
-            {isSearching ? (
-              <div className="flex items-center gap-2">
-                <TravelLoading variant="globe" size="sm" />
-                Searching...
-              </div>
-            ) : (
-              'Refresh Hotels'
-            )}
-          </Button>
-        </div>
       </div>
 
-      {isSearchPanelOpen && (
-        <Card id="hotel-search-panel" className="border-primary/40 shadow-sm">
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-primary" />
-              <CardTitle className="text-lg">Find a Hotel for this Trip</CardTitle>
+      <Card id="hotel-search-panel" className="border-primary/40 shadow-sm">
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-primary" />
+            <CardTitle className="text-lg">Search Hotels for this Trip</CardTitle>
+          </div>
+          {searchResults.length > 0 && (
+            <div className="text-sm text-muted-foreground">
+              Found {searchResults.length} hotels
             </div>
-            <Button variant="ghost" size="sm" onClick={handleCloseSearchPanel}>
-              Hide search
-            </Button>
-          </CardHeader>
+          )}
+        </CardHeader>
           <CardContent>
             <form onSubmit={handleSearchSubmit} className="space-y-6">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -1442,16 +1323,19 @@ export default function HotelsPage() {
                     Search Expedia
                   </Button>
                 </div>
-
-                {searchResults.length > 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    Found {searchResults.length} hotels
-                  </div>
-                )}
               </div>
 
-              <div className="flex justify-end">
-                <Button type="submit" disabled={isSearching} className="min-w-[160px]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={openCreateDialog}
+                  className="w-full sm:w-auto"
+                >
+                  <Building className="h-4 w-4 mr-2" />
+                  Log Hotel Manually
+                </Button>
+                <Button type="submit" disabled={isSearching} className="min-w-[160px] w-full sm:w-auto">
                   <Search className="h-4 w-4 mr-2" />
                   {isSearching ? (
                     <div className="flex items-center gap-2">
@@ -1465,8 +1349,7 @@ export default function HotelsPage() {
               </div>
             </form>
           </CardContent>
-        </Card>
-      )}
+      </Card>
 
       {/* Tabs for Search vs Group Voting vs Currency Converter */}
       <Tabs defaultValue="search" className="w-full">
