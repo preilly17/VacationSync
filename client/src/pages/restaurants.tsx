@@ -172,6 +172,11 @@ export default function RestaurantsPage() {
     if (params.get("panel") === "search") {
       focusSearchSection();
     }
+
+    const manualParam = params.get("manual");
+    if (manualParam === "1" || manualParam === "true") {
+      setShowBooking(true);
+    }
   }, [focusSearchSection]);
 
   // Handle booking link clicks with tracking
