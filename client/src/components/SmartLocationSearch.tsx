@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,19 +24,28 @@ interface SmartLocationSearchProps {
   className?: string;
 }
 
-export default function SmartLocationSearch({ 
-  placeholder = "Enter city, airport, or state...", 
-  value = "", 
+const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProps>(function SmartLocationSearch({
+  placeholder = "Enter city, airport, or state...",
+  value = "",
   onLocationSelect,
   className = ""
-}: SmartLocationSearchProps) {
+}, ref) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<LocationResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationResult | null>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const internalInputRef = useRef<HTMLInputElement | null>(null);
+
+  const setInputRef = (node: HTMLInputElement | null) => {
+    internalInputRef.current = node;
+    if (typeof ref === "function") {
+      ref(node);
+    } else if (ref) {
+      (ref as MutableRefObject<HTMLInputElement | null>).current = node;
+    }
+  };
 
   // ROOT CAUSE 1 FIX: Sync value prop changes to internal query state
   useEffect(() => {
@@ -122,7 +132,7 @@ export default function SmartLocationSearch({
     <div className={`relative ${className}`}>
       <div className="relative">
         <Input
-          ref={inputRef}
+          ref={setInputRef}
           type="text"
           placeholder={placeholder}
           value={query}
@@ -213,4 +223,6 @@ export default function SmartLocationSearch({
       )}
     </div>
   );
-}
+});
+
+export default SmartLocationSearch;

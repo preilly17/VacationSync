@@ -1955,9 +1955,9 @@ function FlightCoordination({ tripId, user }: { tripId: number; user: any }) {
           <h2 className="text-xl font-semibold">Flight Coordination</h2>
           <p className="text-gray-600">Coordinate flights with your group</p>
         </div>
-        <Button 
+        <Button
           onClick={() => {
-            setLocation(`/trip/${tripId}/flights`);
+            setLocation(`/trip/${tripId}/flights?panel=search`);
           }}
           className="bg-primary hover:bg-red-600 text-white"
         >
@@ -2000,8 +2000,8 @@ function FlightCoordination({ tripId, user }: { tripId: number; user: any }) {
               <p className="text-gray-600 mb-4">
                 Add and coordinate flights with your travel group
               </p>
-              <Button 
-                onClick={() => setLocation(`/trip/${tripId}/flights`)}
+              <Button
+                onClick={() => setLocation(`/trip/${tripId}/flights?panel=search`)}
                 className="bg-primary hover:bg-red-600 text-white"
               >
                 <Plane className="w-4 h-4 mr-2" />
