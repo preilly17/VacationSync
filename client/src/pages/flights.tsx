@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, ChevronDown, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink } from "lucide-react";
+import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, ChevronDown, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
@@ -91,6 +91,92 @@ function getFlightStatusColor(status: string): string {
     default: return "bg-gray-100 text-gray-800";
   }
 }
+
+const extractAirportCode = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 3) {
+    return trimmed.toUpperCase();
+  }
+
+  const match = trimmed.match(/\(([A-Z]{3})\)/i);
+  if (match) {
+    return match[1].toUpperCase();
+  }
+
+  return null;
+};
+
+const extractAirportName = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/^(.*)\s+\([A-Z]{3}\)$/i);
+  if (match) {
+    return match[1].trim();
+  }
+
+  return value;
+};
+
+const ensureIsoString = (value?: string | Date | null): string => {
+  if (!value) {
+    return new Date().toISOString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  const maybeDate = new Date(value);
+  if (!Number.isNaN(maybeDate.getTime())) {
+    return maybeDate.toISOString();
+  }
+
+  return value;
+};
+
+const parseDurationToMinutes = (duration?: string | null): number | null => {
+  if (!duration) {
+    return null;
+  }
+
+  const isoMatch = duration.match(/^PT(?:(\d+)H)?(?:(\d+)M)?$/i);
+  if (isoMatch) {
+    const hours = isoMatch[1] ? parseInt(isoMatch[1], 10) : 0;
+    const minutes = isoMatch[2] ? parseInt(isoMatch[2], 10) : 0;
+    return hours * 60 + minutes;
+  }
+
+  const parts = duration.match(/(\d+)\s*h(?:ours?)?\s*(\d+)?\s*m?/i);
+  if (parts) {
+    const hours = parts[1] ? parseInt(parts[1], 10) : 0;
+    const minutes = parts[2] ? parseInt(parts[2], 10) : 0;
+    return hours * 60 + minutes;
+  }
+
+  const numeric = parseInt(duration, 10);
+  return Number.isNaN(numeric) ? null : numeric;
+};
+
+const getSearchFlightKey = (flight: any): string => {
+  const identifierParts = [
+    flight?.id,
+    flight?.flightNumber,
+    flight?.departure?.time || flight?.departureTime,
+    flight?.arrival?.time || flight?.arrivalTime,
+  ].filter(Boolean);
+
+  if (identifierParts.length === 0) {
+    return JSON.stringify(flight);
+  }
+
+  return identifierParts.join("-");
+};
 
 // Helper function to get airline name from code
 function getAirlineName(airlineCode: string): string {
@@ -228,7 +314,7 @@ interface FlightSearchPanelProps {
   onFilterChange: (filter: FlightFilterKey) => void;
   cachedSearchParams: CachedFlightSearchParams | null;
   onShareFlight: (flight: any) => Promise<void>;
-  onPrefillFlight: (flightData: Partial<FlightFormState>) => void;
+  onQuickAddFlight: (flight: any) => Promise<void>;
   onOpenManualFlight: () => void;
   flights: FlightWithDetails[];
   onEditFlight: (flight: FlightWithDetails) => void;
@@ -239,6 +325,8 @@ interface FlightSearchPanelProps {
   trip?: TripWithDetails | null;
   autoSearch?: boolean;
   onSubmitRanking: (proposalId: number, ranking: number) => void;
+  isAddingFlight: boolean;
+  addingFlightKey: string | null;
 }
 
 function FlightSearchPanel({
@@ -254,7 +342,7 @@ function FlightSearchPanel({
   onFilterChange,
   cachedSearchParams,
   onShareFlight,
-  onPrefillFlight,
+  onQuickAddFlight,
   onOpenManualFlight,
   flights,
   onEditFlight,
@@ -265,9 +353,15 @@ function FlightSearchPanel({
   trip,
   autoSearch = false,
   onSubmitRanking,
+  isAddingFlight,
+  addingFlightKey,
 }: FlightSearchPanelProps) {
   const fromInputRef = useRef<HTMLInputElement>(null);
   const hasAutoSearchedRef = useRef(false);
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void onSearch("manual");
+  };
 
   useEffect(() => {
     fromInputRef.current?.focus();
@@ -297,7 +391,7 @@ function FlightSearchPanel({
         </div>
         <Button variant="ghost" size="sm" onClick={onClose} className="self-start">
           <X className="mr-2 h-4 w-4" />
-          Close search
+          Hide search
         </Button>
       </div>
 
@@ -325,7 +419,8 @@ function FlightSearchPanel({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <form onSubmit={handleSearchSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <div>
                     <Label htmlFor="departure">From</Label>
                     <SmartLocationSearch
@@ -371,7 +466,7 @@ function FlightSearchPanel({
                     />
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap items-end gap-4">
+                <div className="flex flex-wrap items-end gap-4">
                   <div>
                     <Label htmlFor="passengers">Passengers</Label>
                     <Select
@@ -431,7 +526,7 @@ function FlightSearchPanel({
                     </Select>
                   </div>
                   <Button
-                    onClick={() => onSearch("manual")}
+                    type="submit"
                     disabled={isSearching}
                     className="px-8"
                   >
@@ -448,6 +543,7 @@ function FlightSearchPanel({
                     )}
                   </Button>
                 </div>
+                </form>
               </CardContent>
             </Card>
 
@@ -592,6 +688,7 @@ function FlightSearchPanel({
                           const normalizedPriceSource = flight.price ?? flight.totalPrice;
                           const priceLabel = formatPriceDisplay(normalizedPriceSource, flight.currency);
                           const hasNumericPrice = parseNumericAmount(normalizedPriceSource) !== null;
+                          const flightKey = getSearchFlightKey(flight);
 
                           return (
                             <div key={index} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
@@ -721,30 +818,22 @@ function FlightSearchPanel({
                                     size="sm"
                                     variant="outline"
                                     onClick={() => {
-                                      onPrefillFlight({
-                                        flightNumber: flight.flightNumber || "",
-                                        airline: getFlightAirlineName(flight),
-                                        airlineCode: flight.airlineCode || "",
-                                        departureAirport:
-                                          flight.departure?.airport || flight.departureAirport || searchFormData.departure,
-                                        departureCode: flight.departure?.iataCode || flight.departureCode || "",
-                                        departureTime: flight.departure?.time || flight.departureTime || "",
-                                        arrivalAirport:
-                                          flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival,
-                                        arrivalCode: flight.arrival?.iataCode || flight.arrivalCode || "",
-                                        arrivalTime: flight.arrival?.time || flight.arrivalTime || "",
-                                        price: flight.price?.toString() || flight.totalPrice?.toString() || "",
-                                        seatClass: flight.class || "economy",
-                                        flightType: "outbound",
-                                        bookingReference: "",
-                                        aircraft: flight.aircraft || "",
-                                        status: "confirmed",
-                                      });
+                                      void onQuickAddFlight(flight);
                                     }}
                                     data-testid={`button-add-to-trip-${index}`}
+                                    disabled={isAddingFlight}
                                   >
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add to Trip
+                                    {isAddingFlight && addingFlightKey === flightKey ? (
+                                      <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Adding...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add to Trip
+                                      </>
+                                    )}
                                   </Button>
                                 </div>
                               </div>
@@ -1061,7 +1150,7 @@ function FlightSearchPanel({
 function getFlightAirlineName(flight: any): string {
   // Handle different possible formats of airline data from API
   let airlineCode: string = '';
-  
+
   // Try to get the primary airline code from various sources
   if (flight.airlines && Array.isArray(flight.airlines) && flight.airlines.length > 0) {
     // Use the first airline from the airlines array
@@ -1089,9 +1178,27 @@ function getFlightAirlineName(flight: any): string {
   if (airlineCode && airlineCode.length > 3) {
     return airlineCode;
   }
-  
+
   // Fallback to 'Various Airlines' if we can't determine the airline
   return 'Various Airlines';
+}
+
+function getFlightAirlineCode(flight: any): string {
+  const potentialCodes = [
+    flight?.airlineCode,
+    flight?.carrierCode,
+    Array.isArray(flight?.airlines) ? flight.airlines[0] : undefined,
+    Array.isArray(flight?.segments) ? flight.segments[0]?.airline || flight.segments[0]?.carrierCode : undefined,
+    typeof flight?.airline === "string" && flight.airline.trim().length <= 3 ? flight.airline : undefined,
+  ];
+
+  for (const code of potentialCodes) {
+    if (typeof code === "string" && code.trim().length > 0) {
+      return code.trim().toUpperCase();
+    }
+  }
+
+  return "UNK";
 }
 
 export default function FlightsPage() {
@@ -1122,6 +1229,7 @@ export default function FlightsPage() {
     originCode?: string;
     destinationCode?: string;
   } | null>(null);
+  const [addingFlightKey, setAddingFlightKey] = useState<string | null>(null);
   
   // Server-side filter state with caching
   const [activeFilter, setActiveFilter] = useState<'best' | 'cheapest' | 'fastest'>('best');
@@ -1738,11 +1846,169 @@ export default function FlightsPage() {
     setIsAddFlightOpen(true);
   };
 
-  const prefillManualFlight = (flightData: Partial<FlightFormState>) => {
-    setFlightFormData((prev) => ({ ...prev, ...flightData }));
-    setEditingFlight(null);
-    setIsAddFlightOpen(true);
-  };
+  const handleQuickAddFlight = useCallback(
+    async (flight: any) => {
+      if (!tripId) {
+        toast({
+          title: "Unable to add flight",
+          description: "A trip must be selected before saving flights.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const flightIdentifier = getSearchFlightKey(flight);
+      setAddingFlightKey(flightIdentifier);
+
+      const fallbackDeparture = searchFormData.departureDate
+        ? `${searchFormData.departureDate}T00:00:00`
+        : undefined;
+      const fallbackArrival = searchFormData.returnDate
+        ? `${searchFormData.returnDate}T00:00:00`
+        : searchFormData.departureDate
+          ? `${searchFormData.departureDate}T00:00:00`
+          : undefined;
+
+      const airlineName = getFlightAirlineName(flight);
+      const airlineCode = getFlightAirlineCode(flight);
+      const normalizedPriceSource = flight.price ?? flight.totalPrice;
+      const departureAirportName =
+        flight.departure?.airport ||
+        flight.departureAirport ||
+        extractAirportName(searchFormData.departure) ||
+        searchFormData.departure ||
+        "Departure TBD";
+      const arrivalAirportName =
+        flight.arrival?.airport ||
+        flight.arrivalAirport ||
+        extractAirportName(searchFormData.arrival) ||
+        searchFormData.arrival ||
+        "Arrival TBD";
+      const departureCode = (
+        flight.departure?.iataCode ||
+        flight.departureCode ||
+        cachedSearchParams?.originCode ||
+        extractAirportCode(cachedSearchParams?.origin) ||
+        extractAirportCode(searchFormData.departure) ||
+        "UNK"
+      ).toString().toUpperCase();
+      const arrivalCode = (
+        flight.arrival?.iataCode ||
+        flight.arrivalCode ||
+        cachedSearchParams?.destinationCode ||
+        extractAirportCode(cachedSearchParams?.destination) ||
+        extractAirportCode(searchFormData.arrival) ||
+        "UNK"
+      ).toString().toUpperCase();
+
+      const seatClassSource = flight.class ?? flight.cabin ?? null;
+      const seatClassValue =
+        typeof seatClassSource === "string"
+          ? seatClassSource.toLowerCase()
+          : seatClassSource
+            ? seatClassSource.toString().toLowerCase()
+            : null;
+      const bookingSourceRaw = flight.provider ?? flight.source ?? null;
+      const bookingSourceValue = bookingSourceRaw ? bookingSourceRaw.toString() : "search";
+      const purchaseUrlValue =
+        [flight.bookingUrls?.kayak, flight.bookingUrls?.expedia, flight.bookingUrl].find(
+          (url) => typeof url === "string" && url.length > 0,
+        ) ?? null;
+      const aircraftSource = flight.aircraft ?? flight.segments?.[0]?.aircraft ?? null;
+      let aircraftValue: string | null = null;
+      if (typeof aircraftSource === "string") {
+        aircraftValue = aircraftSource;
+      } else if (aircraftSource && typeof aircraftSource === "object") {
+        aircraftValue =
+          aircraftSource.code ||
+          aircraftSource.model ||
+          aircraftSource.name ||
+          (typeof aircraftSource.toString === "function" && aircraftSource.toString() !== "[object Object]"
+            ? aircraftSource.toString()
+            : JSON.stringify(aircraftSource));
+      }
+      const currencyValue =
+        typeof flight.currency === "string" && flight.currency.trim().length > 0
+          ? flight.currency
+          : "USD";
+
+      const flightPayload: InsertFlight = {
+        tripId: parseInt(tripId, 10),
+        flightNumber: (flight.flightNumber || flight.number || flight.id || `Flight-${Date.now()}`).toString(),
+        airline: airlineName,
+        airlineCode,
+        departureAirport: departureAirportName,
+        departureCode,
+        departureTime: ensureIsoString(flight.departure?.time || flight.departureTime || fallbackDeparture),
+        arrivalAirport: arrivalAirportName,
+        arrivalCode,
+        arrivalTime: ensureIsoString(flight.arrival?.time || flight.arrivalTime || fallbackArrival),
+        flightType: "outbound",
+        status: "confirmed",
+        currency: currencyValue,
+        bookingReference: null,
+        departureTerminal: flight.departure?.terminal ?? null,
+        departureGate: flight.departure?.gate ?? null,
+        arrivalTerminal: flight.arrival?.terminal ?? null,
+        arrivalGate: flight.arrival?.gate ?? null,
+        seatNumber: null,
+        seatClass: seatClassValue,
+        price: parseNumericAmount(normalizedPriceSource),
+        layovers: flight.layovers ?? flight.segments ?? null,
+        bookingSource: bookingSourceValue,
+        purchaseUrl: purchaseUrlValue,
+        aircraft: aircraftValue,
+        flightDuration: parseDurationToMinutes(flight.duration),
+        baggage: flight.baggage ?? flight.includedBags ?? null,
+      };
+
+      try {
+        await apiRequest(`/api/trips/${tripId}/flights`, {
+          method: "POST",
+          body: flightPayload,
+        });
+
+        await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+
+        toast({
+          title: "Flight added to Group Flights",
+          description: `${airlineName} ${flightPayload.flightNumber} is now in your trip plan.`,
+        });
+      } catch (error) {
+        if (error instanceof Error && isUnauthorizedError(error)) {
+          toast({
+            title: "Sign in required",
+            description: "Log in to save flights to your trip.",
+            variant: "destructive",
+          });
+          setTimeout(() => {
+            window.location.href = "/login";
+          }, 500);
+        } else {
+          toast({
+            title: "Unable to add flight",
+            description:
+              error instanceof Error
+                ? error.message
+                : "Failed to add this flight to your trip. Please try again.",
+            variant: "destructive",
+          });
+        }
+      } finally {
+        setAddingFlightKey(null);
+      }
+    },
+    [
+      cachedSearchParams,
+      queryClient,
+      searchFormData.arrival,
+      searchFormData.departure,
+      searchFormData.departureDate,
+      searchFormData.returnDate,
+      toast,
+      tripId,
+    ],
+  );
 
   const populateFlightForm = (flight: any) => {
     setFlightFormData({
@@ -2018,7 +2284,7 @@ export default function FlightsPage() {
           onFilterChange={handleFilterChange}
           cachedSearchParams={cachedSearchParams}
           onShareFlight={shareFlightWithGroup}
-          onPrefillFlight={prefillManualFlight}
+          onQuickAddFlight={handleQuickAddFlight}
           onOpenManualFlight={openManualFlightDialog}
           flights={flightsArray}
           onEditFlight={handleEditFlight}
@@ -2029,6 +2295,8 @@ export default function FlightsPage() {
           trip={trip as TripWithDetails | null}
           autoSearch={autoSearchRequested}
           onSubmitRanking={(proposalId, ranking) => submitFlightRanking(proposalId, ranking)}
+          isAddingFlight={addingFlightKey !== null}
+          addingFlightKey={addingFlightKey}
         />
       )}
 
