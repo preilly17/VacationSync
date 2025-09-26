@@ -37,8 +37,14 @@ import {
   minorUnitsToAmount,
   toMinorUnits,
 } from "@shared/expenses";
-import { Loader2, Users } from "lucide-react";
+import { Loader2, RefreshCw, Users } from "lucide-react";
 import { HelperText } from "@/components/ui/helper-text";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { getLiveFxRate } from "@/lib/fx";
+import { cn } from "@/lib/utils";
+import { getCurrencyMinorUnitDigits } from "@shared/expenses";
 
 interface AddExpenseModalProps {
   open: boolean;
@@ -126,6 +132,12 @@ type CreateExpensePayload = {
   description: string;
   category: string;
   participantUserIds: string[];
+  participants?: {
+    user_id: string;
+    share_src_minor: number;
+    share_tgt_minor: number;
+    status: "pending";
+  }[];
   payerUserId: string;
   receiptUrl?: string;
 };
@@ -202,6 +214,11 @@ export function AddExpenseModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [rateMode, setRateMode] = useState<"live" | "custom">("live");
+  const [rateProvider, setRateProvider] = useState<string | null>(null);
+  const [rateTimestamp, setRateTimestamp] = useState<string | null>(null);
+  const [isFetchingRate, setIsFetchingRate] = useState(false);
+  const [rateError, setRateError] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -248,6 +265,11 @@ export function AddExpenseModal({
     onOpenChange(false);
     form.reset(defaultValues);
     setSubmitError(null);
+    setRateMode("live");
+    setRateProvider(null);
+    setRateTimestamp(null);
+    setRateError(null);
+    setIsFetchingRate(false);
   };
 
   const createExpenseMutation = useMutation({
@@ -294,6 +316,124 @@ export function AddExpenseModal({
   const paidCurrency = form.watch("paidCurrency") || "USD";
   const requestCurrency = form.watch("requestCurrency") || paidCurrency;
   const exchangeRateInput = form.watch("exchangeRate");
+
+  const refreshRate = useCallback(async () => {
+    if (!paidCurrency || !requestCurrency) {
+      return;
+    }
+
+    if (paidCurrency === requestCurrency) {
+      const iso = new Date().toISOString();
+      form.setValue("exchangeRate", "1", {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      setRateMode("live");
+      setRateProvider("same-currency");
+      setRateTimestamp(iso);
+      setRateError(null);
+      setIsFetchingRate(false);
+      return;
+    }
+
+    if (isFetchingRate) {
+      return;
+    }
+
+    setIsFetchingRate(true);
+    setRateError(null);
+
+    try {
+      const { rate, provider, timestamp } = await getLiveFxRate({
+        src: paidCurrency,
+        tgt: requestCurrency,
+      });
+
+      const parsedRate = Number(rate);
+      if (!Number.isFinite(parsedRate) || parsedRate <= 0) {
+        throw new Error("Invalid rate");
+      }
+
+      form.setValue("exchangeRate", parsedRate.toString(), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      setRateProvider(provider ?? "live");
+      setRateTimestamp(timestamp ?? new Date().toISOString());
+      setRateMode("live");
+    } catch (error) {
+      console.error("Failed to refresh FX rate", error);
+      setRateError("Unable to fetch the latest rate. Try again.");
+    } finally {
+      setIsFetchingRate(false);
+    }
+  }, [
+    form,
+    isFetchingRate,
+    paidCurrency,
+    requestCurrency,
+  ]);
+
+  const handleCustomRateToggle = useCallback(
+    (checked: boolean) => {
+      if (checked) {
+        setRateMode("custom");
+        setRateProvider("custom");
+        setRateTimestamp(new Date().toISOString());
+        setRateError(null);
+        setIsFetchingRate(false);
+        return;
+      }
+
+      setRateMode("live");
+      setRateProvider(null);
+      setRateTimestamp(null);
+      setRateError(null);
+      setIsFetchingRate(false);
+      void refreshRate();
+    },
+    [refreshRate],
+  );
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (!paidCurrency || !requestCurrency) {
+      return;
+    }
+
+    if (paidCurrency === requestCurrency) {
+      void refreshRate();
+      return;
+    }
+
+    if (rateMode !== "live") {
+      return;
+    }
+
+    void refreshRate();
+  }, [open, paidCurrency, refreshRate, requestCurrency, rateMode]);
+
+  useEffect(() => {
+    if (rateMode !== "custom") {
+      return;
+    }
+
+    const parsed = Number.parseFloat(exchangeRateInput ?? "");
+    if (Number.isFinite(parsed) && parsed > 0) {
+      setRateTimestamp(new Date().toISOString());
+    } else {
+      setRateTimestamp(null);
+    }
+    setRateProvider("custom");
+    setRateError(null);
+  }, [exchangeRateInput, rateMode]);
+
+  useEffect(() => {
+    setRateError(null);
+  }, [paidCurrency]);
 
   const selectedDebtorIds = useMemo(
     () =>
@@ -435,6 +575,71 @@ export function AddExpenseModal({
     rateValue,
   ]);
 
+  const previewResult = requestPreview.result;
+
+  const convertedTotal = useMemo(() => {
+    if (amountMinorUnits === null || !hasValidRate) {
+      return null;
+    }
+
+    if (previewResult) {
+      return minorUnitsToAmount(
+        previewResult.totalTargetMinorUnits,
+        requestCurrency,
+      );
+    }
+
+    const digits = getCurrencyMinorUnitDigits(requestCurrency);
+    const factor = Math.pow(10, digits);
+    const sourceAmount = minorUnitsToAmount(amountMinorUnits, paidCurrency);
+    const converted = Math.round(sourceAmount * rateValue * factor) / factor;
+
+    return Number.isFinite(converted) ? converted : null;
+  }, [
+    amountMinorUnits,
+    hasValidRate,
+    paidCurrency,
+    previewResult,
+    rateValue,
+    requestCurrency,
+  ]);
+
+  const formattedRateValue = useMemo(() => {
+    if (!hasValidRate) {
+      return "—";
+    }
+
+    const digits = getCurrencyMinorUnitDigits(requestCurrency);
+    const formatter = new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: Math.max(4, digits + 2),
+    });
+
+    return formatter.format(rateValue);
+  }, [hasValidRate, rateValue, requestCurrency]);
+
+  const formattedRateTimestamp = useMemo(() => {
+    if (!rateTimestamp) {
+      return "—";
+    }
+
+    const timestampDate = new Date(rateTimestamp);
+    if (Number.isNaN(timestampDate.getTime())) {
+      return "—";
+    }
+
+    const now = new Date();
+    const sameDay = timestampDate.toDateString() === now.toDateString();
+    const formatter = new Intl.DateTimeFormat(
+      undefined,
+      sameDay
+        ? { hour: "numeric", minute: "2-digit" }
+        : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" },
+    );
+
+    return formatter.format(timestampDate);
+  }, [rateTimestamp]);
+
   const helperSummary = useMemo(() => {
     if (selectedDebtorIds.length === 0) {
       return "Select at least one person to split with.";
@@ -562,18 +767,34 @@ export function AddExpenseModal({
       return;
     }
 
+    const lockedAtTimestamp = rateTimestamp ?? new Date().toISOString();
+    const effectiveProvider =
+      paidCurrency === requestCurrency
+        ? "same-currency"
+        : rateMode === "custom"
+          ? "custom"
+          : rateProvider ?? "live";
+
+    const participants =
+      preview.result?.shares.map((share) => ({
+        user_id: share.userId,
+        share_src_minor: share.sourceMinorUnits,
+        share_tgt_minor: share.targetMinorUnits,
+        status: "pending" as const,
+      })) ?? [];
+
     const payload: CreateExpensePayload = {
       payerUserId: currentUserId,
       sourceAmountMinorUnits: amountMinorUnits,
       sourceCurrency: paidCurrency,
       targetCurrency: requestCurrency,
       exchangeRate: rateValue,
-      exchangeRateLockedAt: new Date().toISOString(),
-      exchangeRateProvider:
-        paidCurrency === requestCurrency ? "same-currency" : "manual",
+      exchangeRateLockedAt: lockedAtTimestamp,
+      exchangeRateProvider: effectiveProvider,
       description: form.getValues("description").trim(),
       category: form.getValues("category"),
       participantUserIds: rawParticipants,
+      participants,
       ...(form.getValues("receiptUrl")
         ? { receiptUrl: form.getValues("receiptUrl")!.trim() }
         : {}),
@@ -689,63 +910,183 @@ export function AddExpenseModal({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="requestCurrency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Request in</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={field.onChange}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Choose a currency" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {currencyOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>
-                              {option.label} ({option.value})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="exchangeRate"
-                  render={({ field }) => (
-                    <FormItem className="sm:col-span-2">
-                      <FormLabel>
-                        Conversion rate ({paidCurrency} → {requestCurrency})
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.0001"
-                          placeholder="0.0000"
-                          disabled={paidCurrency === requestCurrency}
-                          {...field}
+                <div className="sm:col-span-2">
+                  <div className="rounded-xl border bg-background shadow-sm">
+                    <div className="flex flex-col gap-3 border-b px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold">Currency Conversion</p>
+                        <p className="text-xs text-muted-foreground">
+                          {paidCurrency === requestCurrency
+                            ? `Requests will be sent in ${paidCurrency}.`
+                            : `Requests will be sent in ${requestCurrency}.`}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <FormField
+                          control={form.control}
+                          name="requestCurrency"
+                          render={({ field }) => (
+                            <FormItem className="w-full min-w-[160px] space-y-1 sm:w-auto">
+                              <FormLabel className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                Request in
+                              </FormLabel>
+                              <Select
+                                value={field.value}
+                                onValueChange={(value) => {
+                                  field.onChange(value);
+                                  setRateError(null);
+                                }}
+                              >
+                                <FormControl>
+                                  <SelectTrigger
+                                    aria-label="Request in currency"
+                                    className="w-full sm:w-[160px]"
+                                  >
+                                    <SelectValue placeholder="Choose a currency" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {currencyOptions.map((option) => (
+                                    <SelectItem
+                                      key={option.value}
+                                      value={option.value}
+                                    >
+                                      {option.label} ({option.value})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
-                      </FormControl>
-                      <HelperText>
-                        {`1 ${paidCurrency} = ${
-                          hasValidRate
-                            ? formatCurrency(rateValue, requestCurrency)
-                            : "—"
-                        } (${requestCurrency})`}
-                      </HelperText>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void refreshRate();
+                          }}
+                          disabled={
+                            paidCurrency === requestCurrency ||
+                            rateMode === "custom" ||
+                            isFetchingRate
+                          }
+                          aria-label="Refresh conversion rate"
+                          className="flex items-center gap-1"
+                        >
+                          {isFetchingRate ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4" />
+                          )}
+                          <span>Refresh</span>
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 px-4 py-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-3xl font-semibold">
+                          {convertedTotal !== null
+                            ? formatCurrency(convertedTotal, requestCurrency)
+                            : "—"}
+                        </p>
+                        <Badge
+                          variant={rateMode === "custom" ? "outline" : "secondary"}
+                          className={cn(
+                            "text-xs",
+                            rateMode === "custom"
+                              ? "border-amber-500/40 bg-amber-50 text-amber-700"
+                              : "border-emerald-500/40 bg-emerald-50 text-emerald-700",
+                          )}
+                        >
+                          {rateMode === "custom" ? "Custom Rate" : "Live Rate (auto)"}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {`1 ${paidCurrency} = ${formattedRateValue} ${requestCurrency}`}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>Last updated: {formattedRateTimestamp}</span>
+                        {rateProvider && rateProvider !== "custom" && rateProvider !== "same-currency" ? (
+                          <>
+                            <span aria-hidden="true">•</span>
+                            <span>{rateProvider}</span>
+                          </>
+                        ) : null}
+                      </div>
+                      {rateError ? (
+                        <p className="text-xs font-medium text-destructive">{rateError}</p>
+                      ) : null}
+                      {paidCurrency !== requestCurrency ? (
+                        <div className="flex flex-col gap-3 rounded-lg border bg-muted/50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-3">
+                            <Switch
+                              id="custom-rate-toggle"
+                              checked={rateMode === "custom"}
+                              onCheckedChange={handleCustomRateToggle}
+                              aria-label="Use custom conversion rate"
+                            />
+                            <div>
+                              <Label htmlFor="custom-rate-toggle" className="text-sm font-medium">
+                                Set custom rate
+                              </Label>
+                              <p className="text-xs text-muted-foreground">
+                                Pause live updates and enter your own conversion rate.
+                              </p>
+                            </div>
+                          </div>
+                          <div className="w-full sm:w-auto">
+                            <FormField
+                              control={form.control}
+                              name="exchangeRate"
+                              render={({ field }) =>
+                                rateMode === "custom" ? (
+                                  <FormItem className="space-y-1 sm:w-[200px]">
+                                    <FormLabel className="text-xs font-medium text-muted-foreground">
+                                      Conversion rate ({paidCurrency} → {requestCurrency})
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.0001"
+                                        placeholder="0.0000"
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                ) : (
+                                  <input
+                                    type="hidden"
+                                    value={field.value ?? ""}
+                                    onChange={field.onChange}
+                                    ref={field.ref}
+                                  />
+                                )
+                              }
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <FormField
+                          control={form.control}
+                          name="exchangeRate"
+                          render={({ field }) => (
+                            <input
+                              type="hidden"
+                              value={field.value ?? ""}
+                              onChange={field.onChange}
+                              ref={field.ref}
+                            />
+                          )}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 <FormField
                   control={form.control}
@@ -797,6 +1138,19 @@ export function AddExpenseModal({
                             debtors.map((member) => {
                               const memberId = member.user.id;
                               const isChecked = selected.has(memberId);
+                              const share = requestPreview.perDebtor.get(memberId);
+                              const targetShare = share
+                                ? minorUnitsToAmount(
+                                    share.targetMinorUnits,
+                                    requestCurrency,
+                                  )
+                                : null;
+                              const sourceShare = share
+                                ? minorUnitsToAmount(
+                                    share.sourceMinorUnits,
+                                    paidCurrency,
+                                  )
+                                : null;
 
                               return (
                                 <div
@@ -835,6 +1189,16 @@ export function AddExpenseModal({
                                       {member.user.email}
                                     </p>
                                   </div>
+                                  {targetShare !== null ? (
+                                    <div className="ml-auto text-right text-sm font-medium">
+                                      <div>{formatCurrency(targetShare, requestCurrency)}</div>
+                                      {paidCurrency !== requestCurrency && sourceShare !== null ? (
+                                        <div className="text-xs font-normal text-muted-foreground">
+                                          {formatCurrency(sourceShare, paidCurrency)} in base
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                 </div>
                               );
                             })
