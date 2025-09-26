@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import type { KeyboardEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Plane, Globe, Building } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
-interface LocationResult {
+export interface LocationResult {
   type: 'airport' | 'city' | 'metro' | 'state' | 'country';
   name: string;
   code: string;
@@ -21,14 +21,22 @@ interface SmartLocationSearchProps {
   value?: string;
   onLocationSelect: (location: LocationResult) => void;
   className?: string;
+  onQueryChange?: (value: string) => void;
+  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
 }
 
-export default function SmartLocationSearch({ 
-  placeholder = "Enter city, airport, or state...", 
-  value = "", 
+export interface SmartLocationSearchHandle {
+  focus: () => void;
+}
+
+const SmartLocationSearch = forwardRef<SmartLocationSearchHandle, SmartLocationSearchProps>(function SmartLocationSearch({
+  placeholder = "Enter city, airport, or state...",
+  value = "",
   onLocationSelect,
-  className = ""
-}: SmartLocationSearchProps) {
+  className = "",
+  onQueryChange,
+  onKeyDown,
+}, ref) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<LocationResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -37,12 +45,19 @@ export default function SmartLocationSearch({
   const debounceRef = useRef<NodeJS.Timeout>();
   const inputRef = useRef<HTMLInputElement>(null);
 
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+    },
+  }));
+
   // ROOT CAUSE 1 FIX: Sync value prop changes to internal query state
   useEffect(() => {
     if (value !== query) {
       setQuery(value || '');
+      onQueryChange?.(value || '');
     }
-  }, [value]);
+  }, [onQueryChange, query, value]);
 
   useEffect(() => {
     // FIXED: Add null/undefined safety check for query
@@ -94,6 +109,7 @@ export default function SmartLocationSearch({
     setShowResults(false);
     setResults([]); // Clear results to prevent "No locations found" message
     onLocationSelect(location);
+    onQueryChange?.(location.displayName);
   };
 
   const getLocationIcon = (type: string) => {
@@ -126,7 +142,11 @@ export default function SmartLocationSearch({
           type="text"
           placeholder={placeholder}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+            setQuery(nextValue);
+            onQueryChange?.(nextValue);
+          }}
           onFocus={() => {
             // Only show results if we have actual search results
             // Don't show dropdown for pre-filled values without search results
@@ -134,6 +154,7 @@ export default function SmartLocationSearch({
               setShowResults(true);
             }
           }}
+          onKeyDown={onKeyDown}
           className="w-full"
         />
         {isLoading && (
@@ -213,4 +234,6 @@ export default function SmartLocationSearch({
       )}
     </div>
   );
-}
+});
+
+export default SmartLocationSearch;

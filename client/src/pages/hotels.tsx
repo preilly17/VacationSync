@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { apiFetch } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
@@ -18,14 +17,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Plus, Bed, Search, Filter, ArrowLeft, Building, ChevronRight, DollarSign, Calculator, ArrowUpDown } from "lucide-react";
+import { MapPin, Users, Star, Edit, Trash2, ExternalLink, Hotel, Plus, Bed, Search, ArrowLeft, Building, ChevronRight, Calculator, ArrowUpDown } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
+import HotelSearchPanel, { type HotelSearchContext } from "@/components/hotels/hotel-search-panel";
 import {
   createHotelFormDefaults,
   hotelFormSchema,
@@ -39,21 +37,12 @@ import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
 
 export default function HotelsPage() {
   const params = useParams();
-  const [, setLocation] = useLocation();
   const tripId = parseInt(params.tripId as string);
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
-  const [searchResults, setSearchResults] = useState<HotelSearchResult[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchLocation, setSearchLocation] = useState<any>(null);
-  const [checkInDate, setCheckInDate] = useState('');
-  const [checkOutDate, setCheckOutDate] = useState('');
-  const [adultCount, setAdultCount] = useState('2');
-  const [childCount, setChildCount] = useState('0');
-
   // Currency conversion state
   const [currencyAmount, setCurrencyAmount] = useState('100');
   const [fromCurrency, setFromCurrency] = useState('USD');
@@ -80,631 +69,68 @@ export default function HotelsPage() {
     enabled: !!tripId,
   });
 
+  const addHotelButtonRef = useRef<HTMLButtonElement>(null);
+
+  const [currentPath, setLocation] = useLocation();
+
+  const { pathname: hotelsPathname, searchParams } = useMemo(() => {
+    const [path = currentPath, search = ""] = currentPath.split("?");
+    return {
+      pathname: path,
+      searchParams: new URLSearchParams(search),
+    };
+  }, [currentPath]);
+
+  const isSearchPanelOpen = searchParams.get("panel") === "search";
+  const shouldAutoSearch = isSearchPanelOpen && searchParams.get("auto") === "1";
+
+  const updatePanelQuery = useCallback(
+    (open: boolean, options?: { auto?: boolean }) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (open) {
+        nextParams.set("panel", "search");
+        if (options?.auto) {
+          nextParams.set("auto", "1");
+        } else {
+          nextParams.delete("auto");
+        }
+      } else {
+        nextParams.delete("panel");
+        nextParams.delete("auto");
+      }
+
+      const query = nextParams.toString();
+      setLocation(`${hotelsPathname}${query ? `?${query}` : ""}`, { replace: true });
+    },
+    [hotelsPathname, searchParams, setLocation],
+  );
+
+  const openSearchPanel = useCallback(() => updatePanelQuery(true), [updatePanelQuery]);
+  const closeSearchPanel = useCallback(() => updatePanelQuery(false), [updatePanelQuery]);
+  const toggleSearchPanel = useCallback(() => {
+    if (isSearchPanelOpen) {
+      updatePanelQuery(false);
+    } else {
+      updatePanelQuery(true);
+    }
+  }, [isSearchPanelOpen, updatePanelQuery]);
+
+  const previousSearchOpen = useRef(isSearchPanelOpen);
   useEffect(() => {
-    if (trip?.startDate) {
-      setCheckInDate((prev) => prev || format(new Date(trip.startDate), 'yyyy-MM-dd'));
+    if (previousSearchOpen.current && !isSearchPanelOpen) {
+      addHotelButtonRef.current?.focus();
     }
-
-    if (trip?.endDate) {
-      setCheckOutDate((prev) => prev || format(new Date(trip.endDate), 'yyyy-MM-dd'));
-    }
-  }, [trip?.startDate, trip?.endDate]);
-
-
-  // Function to get location data for hotel search
-  const getLocationForSearch = (location: any): { coordinates?: [number, number]; cityName?: string; countryCode?: string } => {
-    if (!location) return {};
-    
-    const result: { coordinates?: [number, number]; cityName?: string; countryCode?: string } = {};
-    
-    if (location.latitude && location.longitude) {
-      result.coordinates = [location.latitude, location.longitude];
-    }
-    
-    if (location.name) {
-      result.cityName = location.name;
-    }
-    
-    if (location.countryCode) {
-      result.countryCode = location.countryCode;
-    }
-    
-    return result;
-  };
-
-  // Function to get IATA city code from destination name (fallback)
-  const getCityCode = (destination: string): string => {
-    const cityMap: { [key: string]: string } = {
-      'tokyo': 'TYO',
-      'japan': 'TYO',
-      'new york': 'NYC',
-      'nyc': 'NYC',
-      'london': 'LON',
-      'paris': 'PAR',
-      'los angeles': 'LAX',
-      'las vegas': 'LAS',
-      'miami': 'MIA',
-      'chicago': 'CHI',
-      'san francisco': 'SFO',
-      'barcelona': 'BCN',
-      'rome': 'ROM',
-      'amsterdam': 'AMS',
-      'berlin': 'BER',
-      'dubai': 'DXB',
-      'singapore': 'SIN',
-      'hong kong': 'HKG',
-      'sydney': 'SYD',
-      'bangkok': 'BKK',
-      'madrid': 'MAD',
-      'lisbon': 'LIS',
-      'vienna': 'VIE',
-      'zagreb': 'ZAG',
-      'croatia': 'ZAG',
-      'split': 'SPU',
-      'dubrovnik': 'DBV'
-    };
-    
-    const key = destination.toLowerCase();
-    for (const [city, code] of Object.entries(cityMap)) {
-      if (key.includes(city)) {
-        return code;
-      }
-    }
-    return 'NYC'; // Default fallback
-  };
-
-  const getExternalDestination = () => {
-    const locationName = searchLocation?.displayName || searchLocation?.name;
-    if (locationName && locationName.trim()) {
-      return locationName.trim();
-    }
-
-    if (trip?.destination?.trim()) {
-      return trip.destination.trim();
-    }
-
-    return '';
-  };
-
-  const normalizeForAirbnb = (destination: string) => {
-    if (!destination) return '';
-
-    const cleaned = destination
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '');
-
-    const segments = cleaned
-      .split(',')
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .map((segment) =>
-        segment
-          .replace(/[^a-zA-Z0-9\s-]/g, '')
-          .replace(/\s+/g, '-')
-          .replace(/-+/g, '-')
-          .replace(/^-|-$/g, '')
-      );
-
-    if (segments.length === 0) {
-      return cleaned
-        .replace(/[^a-zA-Z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-    }
-
-    return segments.join('--');
-  };
-
-  const getNumericString = (value: unknown): string | null => {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return Math.trunc(value).toString();
-    }
-
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      if (/^\d+$/.test(trimmed)) {
-        return trimmed;
-      }
-    }
-
-    return null;
-  };
-
-  const getRegionIdForVrbo = (location: any): string | null => {
-    if (!location) return null;
-
-    const candidates = [
-      location.regionId,
-      location.regionID,
-      location.region_id,
-      location.RegionId,
-      location.RegionID,
-    ];
-
-    for (const candidate of candidates) {
-      const numeric = getNumericString(candidate);
-      if (numeric) {
-        return numeric;
-      }
-    }
-
-    return null;
-  };
-
-  const getCoordinatesForVrbo = (location: any): string | null => {
-    if (!location) return null;
-
-    const latCandidates = [
-      location.latitude,
-      location.lat,
-      location.latLong?.lat,
-      location.latLng?.lat,
-      location.location?.lat,
-      Array.isArray(location.coordinates) ? location.coordinates[0] : undefined,
-    ];
-
-    const lngCandidates = [
-      location.longitude,
-      location.lon,
-      location.lng,
-      location.latLong?.lng,
-      location.latLng?.lng,
-      location.location?.lng,
-      Array.isArray(location.coordinates) ? location.coordinates[1] : undefined,
-    ];
-
-    const parseCoordinate = (value: unknown): number | null => {
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-      }
-
-      if (typeof value === 'string') {
-        const numeric = Number.parseFloat(value);
-        if (Number.isFinite(numeric)) {
-          return numeric;
-        }
-      }
-
-      return null;
-    };
-
-    const latitude = latCandidates.map(parseCoordinate).find((value) => value !== null);
-    const longitude = lngCandidates.map(parseCoordinate).find((value) => value !== null);
-
-    if (latitude === null || latitude === undefined || longitude === null || longitude === undefined) {
-      return null;
-    }
-
-    return `${latitude},${longitude}`;
-  };
-
-  const getTypeaheadCollationId = (location: any): string | null => {
-    if (!location) return null;
-
-    const candidates = [
-      location.typeaheadCollationId,
-      location.typeaheadCollationID,
-      location.collationId,
-      location.collationID,
-      location.typeaheadId,
-    ];
-
-    for (const candidate of candidates) {
-      if (typeof candidate === 'string' && candidate.trim()) {
-        return candidate.trim();
-      }
-    }
-
-    return null;
-  };
-
-  const handleExternalSearch = (provider: 'airbnb' | 'vrbo' | 'expedia') => {
-    const destination = getExternalDestination();
-    const adults = parseInt(adultCount, 10);
-    const children = childCount ? parseInt(childCount, 10) : 0;
-
-    if (!destination) {
-      toast({
-        title: "Missing destination",
-        description: "Please select or enter a destination before searching external sites.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!checkInDate || !checkOutDate) {
-      toast({
-        title: "Missing dates",
-        description: "Please provide both check-in and check-out dates to search.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (Number.isNaN(adults) || adults <= 0) {
-      toast({
-        title: "Invalid number of adults",
-        description: "Please enter at least one adult traveler.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (Number.isNaN(children) || children < 0) {
-      toast({
-        title: "Invalid number of children",
-        description: "Children count cannot be negative.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (new Date(checkOutDate) < new Date(checkInDate)) {
-      toast({
-        title: "Date mismatch",
-        description: "Check-out date must be after the check-in date.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const trimmedDestination = destination.trim();
-    const childrenValue = Math.max(children, 0);
-    let url = '';
-
-    if (provider === 'airbnb') {
-      const airbnbSlug = normalizeForAirbnb(trimmedDestination);
-      const params = new URLSearchParams({
-        checkin: checkInDate,
-        checkout: checkOutDate,
-        adults: adults.toString(),
-        children: childrenValue.toString(),
-      });
-      const slug = airbnbSlug || normalizeForAirbnb(trimmedDestination.replace(/,/g, ' '));
-      url = `https://www.airbnb.com/s/${slug || encodeURIComponent(trimmedDestination)}/homes?${params.toString()}`;
-    }
-
-    if (provider === 'vrbo') {
-      const vrboDestination = (searchLocation?.displayName || trimmedDestination).trim();
-      const params = new URLSearchParams();
-      params.set('destination', vrboDestination);
-
-      const regionId = getRegionIdForVrbo(searchLocation);
-      if (regionId) {
-        params.set('regionId', regionId);
-      }
-
-      const latLong = getCoordinatesForVrbo(searchLocation);
-      if (latLong) {
-        params.set('latLong', latLong);
-      }
-
-      params.set('flexibility', '0_DAY');
-      params.set('d1', checkInDate);
-      params.set('startDate', checkInDate);
-      params.set('d2', checkOutDate);
-      params.set('endDate', checkOutDate);
-      params.set('adults', adults.toString());
-
-      if (childCount !== '') {
-        params.set('children', childrenValue.toString());
-      }
-
-      const typeaheadId = getTypeaheadCollationId(searchLocation);
-      if (typeaheadId) {
-        params.set('typeaheadCollationId', typeaheadId);
-      }
-
-      // FIXED VRBO LINK BUILDER
-      url = `https://www.vrbo.com/search?${params.toString()}`;
-    }
-
-    if (provider === 'expedia') {
-      const params = new URLSearchParams({
-        destination: trimmedDestination,
-        startDate: checkInDate,
-        endDate: checkOutDate,
-        adults: adults.toString(),
-        children: childrenValue.toString(),
-      });
-      url = `https://www.expedia.com/Hotel-Search?${params.toString()}`;
-    }
-
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  // Hotel search function with location search integration
-  const searchHotels = async (customLocation?: any) => {
-    const locationToUse = customLocation || searchLocation;
-    
-    if (!locationToUse && (!trip || !trip.destination || !trip.startDate || !trip.endDate)) {
-      toast({
-        title: "Search Error",
-        description: "Please select a location or ensure trip information is available.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSearching(true);
-    try {
-      const destination = locationToUse?.name || trip?.destination || '';
-      
-      console.log(`Searching hotels for destination: ${destination}`);
-
-      const searchParams: any = {
-        location: destination,
-        adults: 2,
-        radius: 20
-      };
-
-      // Use trip dates - required by backend
-      if (trip?.startDate && trip?.endDate) {
-        searchParams.checkInDate = format(new Date(trip.startDate), 'yyyy-MM-dd');
-        searchParams.checkOutDate = format(new Date(trip.endDate), 'yyyy-MM-dd');
-      } else {
-        toast({
-          title: "Search Error",
-          description: "Trip dates are required for hotel search. Please set trip dates first.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const response = await apiFetch("/api/hotels/search", {
-        method: "POST",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(searchParams),
-        credentials: "include",
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Hotel search API error:", response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      let results = await response.json();
-      console.log("Hotel search response:", results);
-
-      // Check if results is valid array
-      if (!Array.isArray(results)) {
-        console.error("Invalid results format:", results);
-        throw new Error("Invalid response format from hotel search API");
-      }
-
-      const source = "Amadeus API";
-
-      const parsePriceValue = (hotel: any) => {
-        if (hotel.pricePerNightValue != null) {
-          const value = Number(hotel.pricePerNightValue);
-          return Number.isFinite(value) ? value : 0;
-        }
-
-        const rawPrice = String(hotel.price ?? "");
-        const numericPrice = parseFloat(rawPrice.replace(/[^0-9.]/g, ""));
-        return Number.isFinite(numericPrice) ? numericPrice : 0;
-      };
-
-      const processedResults = [...results].sort((a: any, b: any) => {
-        try {
-          return parsePriceValue(a) - parsePriceValue(b);
-        } catch (error) {
-          return 0;
-        }
-      });
-
-      setSearchResults(processedResults);
-
-      // Show appropriate toast based on data source
-      if (source === "Amadeus API") {
-        toast({
-          title: "Live Hotel Data",
-          description: `Found ${processedResults.length} hotels with real-time pricing via Amadeus API`,
-        });
-      } else {
-        toast({
-          title: "Enhanced Database Hotels",
-          description: `Found ${processedResults.length} authentic hotels with market-based pricing`,
-          variant: "default",
-        });
-      }
-    } catch (error) {
-      console.error("Hotel search error:", error);
-      if (isUnauthorizedError(error as Error)) {
-        toast({
-          title: "Authentication Required",
-          description: "Please refresh the page to continue searching hotels.",
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      toast({
-        title: "Search Error",
-        description: "Unable to search hotels. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  // Generate sample hotels for testing
-  const generateSampleHotels = (destination: string) => {
-    const destLower = destination.toLowerCase();
-    
-    if (destLower.includes('tokyo') || destLower.includes('japan')) {
-      const baseDate = trip?.startDate ? new Date(trip.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-      const endDate = trip?.endDate ? new Date(trip.endDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
-      
-      return [
-        {
-          id: 'sample-1',
-          name: 'Park Hyatt Tokyo',
-          rating: 4.8,
-          price: '$450',
-          pricePerNight: '$450',
-          location: 'Shinjuku, Tokyo',
-          amenities: 'Spa, Pool, Fine Dining, City Views',
-          platform: 'Amadeus',
-          bookingUrl: `https://www.booking.com/searchresults.html?ss=tokyo&checkin=${baseDate}&checkout=${endDate}`
-        },
-        {
-          id: 'sample-2', 
-          name: 'The Ritz-Carlton Tokyo',
-          rating: 4.7,
-          price: '$380',
-          pricePerNight: '$380',
-          location: 'Roppongi, Tokyo',
-          amenities: 'Spa, Multiple Restaurants, Club Access',
-          platform: 'Booking.com',
-          bookingUrl: `https://www.booking.com/searchresults.html?ss=tokyo&checkin=${baseDate}&checkout=${endDate}`
-        },
-        {
-          id: 'sample-3',
-          name: 'Aman Tokyo',
-          rating: 4.9,
-          price: '$520',
-          pricePerNight: '$520',
-          location: 'Otemachi, Tokyo',
-          amenities: 'Spa, Traditional Design, Gardens',
-          platform: 'Amadeus',
-          bookingUrl: `https://www.booking.com/searchresults.html?ss=tokyo&checkin=${baseDate}&checkout=${endDate}`
-        },
-        {
-          id: 'sample-4',
-          name: 'Andaz Tokyo Toranomon Hills',
-          rating: 4.6,
-          price: '$290',
-          pricePerNight: '$290',
-          location: 'Toranomon, Tokyo',
-          amenities: 'Modern Design, Rooftop Bar, City Views',
-          platform: 'Hotels.com',
-          bookingUrl: `https://www.hotels.com/search.do?q-destination=tokyo&q-check-in=${baseDate}&q-check-out=${endDate}`
-        },
-        {
-          id: 'sample-5',
-          name: 'Conrad Tokyo',
-          rating: 4.5,
-          price: '$310',
-          pricePerNight: '$310',
-          location: 'Shiodome, Tokyo',
-          amenities: 'Bay Views, Spa, Modern Luxury',
-          platform: 'Expedia',
-          bookingUrl: `https://www.expedia.com/Hotel-Search?destination=Tokyo&startDate=${baseDate}&endDate=${endDate}`
-        },
-        {
-          id: 'sample-6',
-          name: 'Grand Hyatt Tokyo',
-          rating: 4.4,
-          price: '$270',
-          pricePerNight: '$270',
-          location: 'Roppongi Hills, Tokyo',
-          amenities: 'Multiple Restaurants, Spa, Shopping Access',
-          platform: 'Hyatt',
-          bookingUrl: `https://www.hyatt.com/en-US/hotel/japan/grand-hyatt-tokyo/tyogh`
-        },
-        {
-          id: 'sample-7',
-          name: 'Hotel Okura Tokyo',
-          rating: 4.7,
-          price: '$340',
-          pricePerNight: '$340',
-          location: 'Toranomon, Tokyo',
-          amenities: 'Traditional Japanese, Gardens, Fine Dining',
-          platform: 'Booking.com',
-          bookingUrl: `https://www.booking.com/searchresults.html?ss=tokyo&checkin=${baseDate}&checkout=${endDate}`
-        },
-        {
-          id: 'sample-8',
-          name: 'The Peninsula Tokyo',
-          rating: 4.8,
-          price: '$390',
-          pricePerNight: '$390',
-          location: 'Marunouchi, Tokyo',
-          amenities: 'Luxury, Ginza Views, Premium Service',
-          platform: 'Peninsula',
-          bookingUrl: `https://www.peninsula.com/en/tokyo/5-star-luxury-hotel-ginza`
-        },
-        {
-          id: 'sample-9',
-          name: 'Hotel Gracery Shinjuku',
-          rating: 4.2,
-          price: '$140',
-          pricePerNight: '$140',
-          location: 'Shinjuku, Tokyo',
-          amenities: 'Godzilla Theme, Entertainment District, Modern',
-          platform: 'Booking.com',
-          bookingUrl: `https://www.booking.com/searchresults.html?ss=tokyo&checkin=${baseDate}&checkout=${endDate}`
-        },
-        {
-          id: 'sample-10',
-          name: 'Cerulean Tower Tokyu Hotel',
-          rating: 4.1,
-          price: '$180',
-          pricePerNight: '$180',
-          location: 'Shibuya, Tokyo',
-          amenities: 'High Floors, City Views, Shopping Access',
-          platform: 'Hotels.com',
-          bookingUrl: `https://www.hotels.com/search.do?q-destination=tokyo&q-check-in=${baseDate}&q-check-out=${endDate}`
-        },
-        {
-          id: 'sample-11',
-          name: 'Richmond Hotel Tokyo Suidobashi',
-          rating: 4.0,
-          price: '$90',
-          pricePerNight: '$90',
-          location: 'Tokyo Dome Area',
-          amenities: 'Budget-Friendly, Clean Rooms, Convenient Location',
-          platform: 'Agoda',
-          bookingUrl: `https://www.agoda.com/city/tokyo-jp.html?cid=-218`
-        },
-        {
-          id: 'sample-12',
-          name: 'Keio Plaza Hotel Tokyo',
-          rating: 4.0,
-          price: '$150',
-          pricePerNight: '$150',
-          location: 'Shinjuku, Tokyo',
-          amenities: 'Large Hotel, Multiple Facilities, Central Location',
-          platform: 'Booking.com',
-          bookingUrl: `https://www.booking.com/searchresults.html?ss=tokyo&checkin=${baseDate}&checkout=${endDate}`
-        }
-      ];
-    }
-    
-    return [
-      {
-        id: 'sample-generic-1',
-        name: `Grand Hotel ${destination}`,
-        rating: 4.2,
-        price: '$220',
-        pricePerNight: '$220',
-        location: destination,
-        amenities: 'WiFi, Restaurant, Fitness Center',
-        platform: 'Amadeus',
-        bookingUrl: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(destination)}`
-      },
-      {
-        id: 'sample-generic-2',
-        name: `City Inn ${destination}`,
-        rating: 4.0,
-        price: '$150',
-        pricePerNight: '$150',
-        location: destination,
-        amenities: 'WiFi, Breakfast, Central Location',
-        platform: 'Booking.com',
-        bookingUrl: `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(destination)}`
-      }
-    ];
-  };
+    previousSearchOpen.current = isSearchPanelOpen;
+  }, [isSearchPanelOpen]);
+
+  const initialCheckInDate = useMemo(
+    () => (trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd") : undefined),
+    [trip?.startDate],
+  );
+  const initialCheckOutDate = useMemo(
+    () => (trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : undefined),
+    [trip?.endDate],
+  );
 
   // Currency conversion function
   const convertCurrency = async () => {
@@ -1062,6 +488,135 @@ export default function HotelsPage() {
     return `${format(checkInDate, "MMM d")} - ${format(checkOutDate, "MMM d")} (${nights} nights)`;
   };
 
+  const parsePriceValue = (price?: string | null) => {
+    if (!price) return null;
+    const numeric = Number.parseFloat(price.replace(/[^0-9.]/g, ""));
+    return Number.isFinite(numeric) ? numeric : null;
+  };
+
+  const detectCurrency = (price?: string | null) => {
+    if (!price) return "USD";
+    if (price.includes("€")) return "EUR";
+    if (price.includes("£")) return "GBP";
+    if (price.includes("¥") || price.includes("円")) return "JPY";
+    if (price.includes("₩")) return "KRW";
+    if (price.includes("A$")) return "AUD";
+    if (price.includes("C$")) return "CAD";
+    if (price.includes("₽")) return "RUB";
+    if (price.includes("₹")) return "INR";
+    if (price.includes("₺")) return "TRY";
+    if (price.includes("₱")) return "PHP";
+    if (price.includes("₫")) return "VND";
+    if (price.includes("฿")) return "THB";
+    if (price.includes("CHF")) return "CHF";
+    if (price.includes("HK$")) return "HKD";
+    if (price.includes("S$")) return "SGD";
+    if (price.trim().startsWith("$")) return "USD";
+    return "USD";
+  };
+
+  const deriveCityCountry = (value: string, fallback: string) => {
+    const source = value || fallback;
+    const segments = source
+      .split(",")
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    if (segments.length === 0) {
+      return { city: fallback, country: fallback };
+    }
+
+    if (segments.length === 1) {
+      return { city: segments[0], country: segments[0] };
+    }
+
+    return {
+      city: segments[0],
+      country: segments[segments.length - 1],
+    };
+  };
+
+  const handleSelectHotelFromSearch = useCallback(
+    async (hotel: HotelSearchResult, context: HotelSearchContext) => {
+      const fallbackDestination = context.destinationText || trip?.destination || hotel.location || hotel.name;
+      const combinedLocation = hotel.location || fallbackDestination;
+      const { city, country } = deriveCityCountry(combinedLocation, fallbackDestination);
+      const totalGuests = context.adults + context.children;
+
+      const payload: InsertHotel = {
+        tripId,
+        hotelName: hotel.name,
+        hotelChain: null,
+        hotelRating: typeof hotel.rating === "number" ? hotel.rating : null,
+        address: hotel.address && hotel.address.trim() ? hotel.address.trim() : combinedLocation,
+        city: city || fallbackDestination,
+        country: country || fallbackDestination,
+        zipCode: null,
+        latitude: null,
+        longitude: null,
+        checkInDate: context.checkInDate,
+        checkOutDate: context.checkOutDate,
+        roomType: null,
+        roomCount: context.rooms > 0 ? context.rooms : null,
+        guestCount: totalGuests > 0 ? totalGuests : null,
+        bookingReference: null,
+        totalPrice: parsePriceValue(hotel.price),
+        pricePerNight: parsePriceValue(hotel.pricePerNight ?? null),
+        currency: detectCurrency(hotel.price ?? hotel.pricePerNight ?? null),
+        status: "interested",
+        bookingSource: hotel.platform,
+        purchaseUrl: hotel.bookingUrl,
+        amenities: hotel.amenities ?? null,
+        images: null,
+        policies: null,
+        contactInfo: null,
+        bookingPlatform: hotel.platform,
+        bookingUrl: hotel.bookingUrl,
+        cancellationPolicy: context.filters.freeCancellation ? "Free cancellation" : null,
+        notes: hotel.description ?? null,
+      };
+
+      try {
+        await apiRequest(`/api/trips/${tripId}/hotels`, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+
+        toast({
+          title: "Added to trip.",
+          description: `${hotel.name} was saved to your itinerary.`,
+        });
+      } catch (error) {
+        if (isUnauthorizedError(error as Error)) {
+          toast({
+            title: "Unauthorized",
+            description: "You need to be logged in to add hotels.",
+            variant: "destructive",
+          });
+          setTimeout(() => {
+            window.location.href = "/login";
+          }, 500);
+          const handled = new Error("auth-required");
+          (handled as any).handled = true;
+          throw handled;
+        }
+
+        toast({
+          title: "Error",
+          description: "Failed to add hotel. Please try again.",
+          variant: "destructive",
+        });
+        const handled = error instanceof Error ? error : new Error("selection-failed");
+        (handled as any).handled = true;
+        throw handled;
+      }
+    },
+    [queryClient, toast, trip?.destination, tripId],
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-4 min-h-screen flex items-center justify-center">
@@ -1087,336 +642,62 @@ export default function HotelsPage() {
         </Link>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="search-header-gradient rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="airplane-animate">
-                <Building className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                  Accommodations Search
-                </h1>
-                <p className="text-gray-700">
-                  Search hotels to propose to your group and vote on group proposals
-                </p>
-              </div>
-              <div className="flex gap-2 ml-auto">
-                <Hotel className="h-5 w-5 text-blue-500" />
-                <ChevronRight className="h-5 w-5 text-gray-400" />
-                <Bed className="h-5 w-5 text-green-500" />
-              </div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="search-header-gradient rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <div className="airplane-animate">
+              <Building className="h-6 w-6 text-blue-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+                Accommodations Search
+              </h1>
+              <p className="text-gray-700">
+                Search hotels to propose to your group and vote on group proposals
+              </p>
+            </div>
+            <div className="flex gap-2 ml-auto">
+              <Hotel className="h-5 w-5 text-blue-500" />
+              <ChevronRight className="h-5 w-5 text-gray-400" />
+              <Bed className="h-5 w-5 text-green-500" />
             </div>
           </div>
         </div>
         <div className="flex gap-2">
-          <Button 
-            onClick={searchHotels} 
-            disabled={isSearching}
+          <Button
+            ref={addHotelButtonRef}
+            onClick={toggleSearchPanel}
           >
             <Search className="h-4 w-4 mr-2" />
-            {isSearching ? (
-              <div className="flex items-center gap-2">
-                <TravelLoading variant="globe" size="sm" />
-                Searching...
-              </div>
-            ) : (
-              'Refresh Hotels'
-            )}
+            {isSearchPanelOpen ? 'Hide search' : 'Add Hotel'}
+          </Button>
+          <Button variant="outline" onClick={openCreateDialog}>
+            <Plus className="h-4 w-4 mr-2" />
+            Manual entry
           </Button>
         </div>
       </div>
 
-      {/* Tabs for Search vs Group Voting vs Currency Converter */}
-      <Tabs defaultValue="search" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="search">Search & Propose Hotels</TabsTrigger>
-          <TabsTrigger value="voting" className="relative">
-            Group Voting
-            {hotelProposals.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">
-                {hotelProposals.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="currency">Currency Converter</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="search" className="space-y-6 mt-6">
-          {/* Hotel Search Interface */}
-          <Card>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
-                <div className="space-y-2 md:col-span-2 xl:col-span-2">
-                  <Label>Destination</Label>
-                  <SmartLocationSearch
-                    placeholder="Search destination city..."
-                    value={searchLocation?.displayName || searchLocation?.name || ''}
-                    onLocationSelect={(location) => {
-                      setSearchLocation(location);
-                    }}
-                  />
-                  {trip?.destination && !searchLocation && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Trip destination: {trip.destination}
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="hotel-check-in">Check-in</Label>
-                  <Input
-                    id="hotel-check-in"
-                    type="date"
-                    value={checkInDate}
-                    onChange={(event) => setCheckInDate(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="hotel-check-out">Check-out</Label>
-                  <Input
-                    id="hotel-check-out"
-                    type="date"
-                    value={checkOutDate}
-                    onChange={(event) => setCheckOutDate(event.target.value)}
-                    min={checkInDate || undefined}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="hotel-adults">Adults</Label>
-                  <Input
-                    id="hotel-adults"
-                    type="number"
-                    min={1}
-                    value={adultCount}
-                    onChange={(event) => setAdultCount(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="hotel-children">Children</Label>
-                  <Input
-                    id="hotel-children"
-                    type="number"
-                    min={0}
-                    value={childCount}
-                    onChange={(event) => setChildCount(event.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  type="button"
-                  onClick={() => handleExternalSearch('airbnb')}
-                  className="bg-[#FF5A5F] hover:bg-[#e24e52] text-white shadow-sm"
-                >
-                  Search Airbnb
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => handleExternalSearch('vrbo')}
-                  className="bg-[#0A4385] hover:bg-[#08376b] text-white shadow-sm"
-                >
-                  Search VRBO
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => handleExternalSearch('expedia')}
-                  className="bg-[#FEC601] hover:bg-[#e0b000] text-gray-900 shadow-sm"
-                >
-                  Search Expedia
-                </Button>
-              </div>
-
-              {searchResults.length > 0 && (
-                <div className="text-sm text-muted-foreground">
-                  Found {searchResults.length} hotels
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-      {/* Add Hotel Dialog */}
-      <Dialog
-        open={isDialogOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setIsDialogOpen(true);
-          } else {
-            handleDialogClose();
-          }
-        }}
-      >
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingHotel ? "Edit Hotel" : "Add Hotel"}
-            </DialogTitle>
-            <DialogDescription>
-              Provide the hotel details exactly as defined in the booking schema. Fields marked with an asterisk (*) are required.
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <HotelFormFields
-                form={form}
-                isSubmitting={createHotelMutation.isPending || updateHotelMutation.isPending}
-                submitLabel={editingHotel ? "Save Changes" : "Add Hotel"}
-                onCancel={handleDialogClose}
-                showCancelButton
-              />
-            </form>
-          </Form>
-          </DialogContent>
-        </Dialog>
-
-      {/* Search Results */}
-      {searchResults.length > 0 && (
-        <Card className="mt-6 sky-pattern">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Hotel className="h-5 w-5" />
-                  Available Hotels ({searchResults.length})
-                  {searchResults.length > 0 && hotelProposals.length > 0 && (
-                    <span className="text-sm font-normal text-muted-foreground">
-                      ({searchResults.length} found + {hotelProposals.length} group)
-                    </span>
-                  )}
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Hotels for {trip?.destination} • {trip && format(new Date(trip.startDate), 'MMM d')} - {trip && format(new Date(trip.endDate), 'MMM d')}
-                </p>
-              </div>
-              <Button onClick={openCreateDialog}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Hotel
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-6 md:grid-cols-2">
-              {searchResults.map((hotel, index) => (
-                <Card key={hotel.id || index} className={`relative overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 ${hotel.isGroupProposal ? 'border-blue-200 bg-blue-50/30' : 'hotel-card-gradient border-0'} airplane-pattern`}>
-                  <CardHeader className="pb-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <div className="flex items-center gap-2">
-                            <Building className="h-4 w-4 text-blue-600 airplane-animate" />
-                            <CardTitle className="text-xl font-semibold text-gray-800">{hotel.name}</CardTitle>
-                          </div>
-                          {hotel.isGroupProposal && (
-                            <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
-                              <Users className="w-3 h-3 mr-1" />
-                              Group
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-2">
-                          <MapPin className="h-4 w-4" />
-                          {hotel.location}
-                        </p>
-                        {hotel.isGroupProposal && hotel.proposedBy && (
-                          <p className="text-xs text-blue-600 mt-1">
-                            Proposed by {hotel.proposedBy.firstName}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-md">
-                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        <span className="text-sm font-medium">{hotel.rating}</span>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="bg-gradient-to-r from-green-50 to-blue-50 p-3 rounded-lg border border-green-100">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="h-4 w-4 text-green-600" />
-                          <span className="text-sm text-muted-foreground">Estimated Total:</span>
-                        </div>
-                        <span className="text-lg font-bold text-green-600">{hotel.price}</span>
-                      </div>
-                      {hotel.pricePerNight && hotel.pricePerNight !== hotel.price && (
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-xs text-muted-foreground ml-6">Est. Per Night:</span>
-                          <span className="text-sm font-medium text-green-600">{hotel.pricePerNight}</span>
-                        </div>
-                      )}
-                      <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-200 mt-2">
-                        ⚠️ Estimates only - actual prices may differ significantly on booking sites
-                      </div>
-                    </div>
-                    
-                    {hotel.amenities && (
-                      <div className="space-y-2">
-                        <span className="text-sm font-medium text-muted-foreground">Amenities:</span>
-                        <p className="text-sm text-gray-600 leading-relaxed">{hotel.amenities}</p>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between pt-2">
-                      <Badge 
-                        variant="outline" 
-                        className={`text-xs ${
-                          hotel.platform === 'Amadeus' 
-                            ? 'bg-green-50 border-green-200 text-green-700' 
-                            : 'bg-blue-50 border-blue-200 text-blue-700'
-                        }`}
-                      >
-                        {hotel.platform === 'Amadeus' ? '🔴 Live API Data' : '📊 Enhanced Database'}
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex gap-3 pt-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          storeBookingIntent('hotel', {
-                            name: hotel.name,
-                            location: hotel.location,
-                            price: hotel.price,
-                            rating: hotel.rating,
-                            description: hotel.description,
-                            startDate: trip?.startDate,
-                            endDate: trip?.endDate,
-                          }, tripId);
-                          // Use the first available booking link, or fallback to a search
-                          const bookingUrl =
-                            hotel.bookingUrl ||
-                            `https://www.booking.com/search.html?ss=${encodeURIComponent(hotel.name)}`;
-                          window.open(bookingUrl, '_blank', 'noopener,noreferrer');
-                        }}
-                        className="flex-1 hover:bg-blue-50"
-                      >
-                        <Bed className="h-4 w-4 mr-2" />
-                        Book Now
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => shareHotelWithGroup(hotel)}
-                        className="flex-1"
-                      >
-                        <Users className="h-4 w-4 mr-2" />
-                        Propose to Group
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {isSearchPanelOpen && (
+        <HotelSearchPanel
+          trip={trip}
+          isOpen={isSearchPanelOpen}
+          autoSearch={shouldAutoSearch}
+          initialDestination={trip?.destination}
+          initialCheckIn={initialCheckInDate}
+          initialCheckOut={initialCheckOutDate}
+          onClose={closeSearchPanel}
+          onSelectHotel={handleSelectHotelFromSearch}
+          onProposeHotel={(hotel) => shareHotelWithGroup(hotel)}
+        />
       )}
 
-      {/* Group Hotel Proposals */}
-      {hotelProposals.length > 0 && (
+      {proposalsLoading ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Skeleton className="h-64 rounded-xl" />
+          <Skeleton className="h-64 rounded-xl hidden md:block" />
+        </div>
+      ) : hotelProposals.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1463,14 +744,14 @@ export default function HotelsPage() {
                         </div>
                       )}
                     </div>
-                    
+
                     {proposal.amenities && (
                       <div className="space-y-2">
                         <span className="text-sm font-medium text-muted-foreground">Amenities:</span>
                         <p className="text-sm text-gray-600 leading-relaxed">{proposal.amenities}</p>
                       </div>
                     )}
-                    
+
                     <div className="flex items-center justify-between pt-2">
                       <Badge variant="outline" className="text-xs">
                         {proposal.platform}
@@ -1481,8 +762,7 @@ export default function HotelsPage() {
                         </Badge>
                       )}
                     </div>
-                    
-                    {/* Ranking Interface */}
+
                     <div className="space-y-3 border-t pt-3">
                       <span className="text-sm font-medium">Rank this hotel:</span>
                       <div className="flex gap-2">
@@ -1490,7 +770,7 @@ export default function HotelsPage() {
                           <Button
                             key={rank}
                             size="sm"
-                            variant={proposal.currentUserRanking?.ranking === rank ? "default" : "outline"}
+                            variant={proposal.currentUserRanking?.ranking === rank ? 'default' : 'outline'}
                             onClick={() => submitRanking(proposal.id, rank)}
                             className="text-xs px-3"
                           >
@@ -1498,7 +778,7 @@ export default function HotelsPage() {
                           </Button>
                         ))}
                       </div>
-                      
+
                       <div className="flex gap-2">
                         <Button
                           size="sm"
@@ -1511,8 +791,7 @@ export default function HotelsPage() {
                         </Button>
                       </div>
                     </div>
-                    
-                    {/* Show other members' rankings */}
+
                     {proposal.rankings.length > 0 && (
                       <div className="space-y-2 border-t pt-3">
                         <span className="text-sm font-medium">Group Rankings:</span>
@@ -1534,313 +813,193 @@ export default function HotelsPage() {
             </div>
           </CardContent>
         </Card>
+      ) : (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Users className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No hotel proposals yet</h3>
+            <p className="text-muted-foreground text-center mb-4">
+              Use the hotel search to add or propose new stays for your group.
+            </p>
+            <Button onClick={openSearchPanel} variant="outline">
+              <Search className="h-4 w-4 mr-2" />
+              Open search panel
+            </Button>
+          </CardContent>
+        </Card>
       )}
-        </TabsContent>
 
-        <TabsContent value="voting" className="space-y-6 mt-6">
-          {/* Group Hotel Proposals */}
-          {hotelProposals.length > 0 ? (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Group Hotel Proposals ({hotelProposals.length})
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Rank these hotels from 1 (most preferred) to help your group decide
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-2">
-                  {hotelProposals.map((proposal) => (
-                    <Card key={proposal.id} className="relative">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg font-semibold">{proposal.hotelName}</CardTitle>
-                            <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                              <MapPin className="h-4 w-4" />
-                              {proposal.location}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Proposed by {proposal.proposer.firstName || 'Group Member'}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <div className="flex items-center gap-1">
-                              {getStarRating(Number(proposal.rating))}
-                            </div>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="bg-blue-50 p-3 rounded-lg">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Price:</span>
-                            <span className="text-lg font-bold text-blue-600">{proposal.price}</span>
-                          </div>
-                          {proposal.averageRanking != null && (
-                            <div className="flex items-center justify-between mt-1">
-                              <span className="text-xs text-muted-foreground">Group Average:</span>
-                              <span className="text-sm font-medium text-blue-600">#{proposal.averageRanking}</span>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {proposal.amenities && (
-                          <div className="space-y-2">
-                            <span className="text-sm font-medium text-muted-foreground">Amenities:</span>
-                            <p className="text-sm text-gray-600 leading-relaxed">{proposal.amenities}</p>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center justify-between pt-2">
-                          <Badge variant="outline" className="text-xs">
-                            {proposal.platform}
-                          </Badge>
-                          {proposal.currentUserRanking && (
-                            <Badge variant="secondary" className="text-xs">
-                              Your Rank: #{proposal.currentUserRanking.ranking}
-                            </Badge>
-                          )}
-                        </div>
-                        
-                        {/* Ranking Interface */}
-                        <div className="space-y-3 border-t pt-3">
-                          <span className="text-sm font-medium">Rank this hotel:</span>
-                          <div className="flex gap-2">
-                            {[1, 2, 3, 4, 5].map((rank) => (
-                              <Button
-                                key={rank}
-                                size="sm"
-                                variant={proposal.currentUserRanking?.ranking === rank ? "default" : "outline"}
-                                onClick={() => submitRanking(proposal.id, rank)}
-                                className="text-xs px-3"
-                              >
-                                #{rank}
-                              </Button>
-                            ))}
-                          </div>
-                          
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => window.open(proposal.bookingUrl, '_blank')}
-                              className="flex-1"
-                            >
-                              <ExternalLink className="h-4 w-4 mr-2" />
-                              View Hotel
-                            </Button>
-                          </div>
-                        </div>
-                        
-                        {/* Show other members' rankings */}
-                        {proposal.rankings.length > 0 && (
-                          <div className="space-y-2 border-t pt-3">
-                            <span className="text-sm font-medium">Group Rankings:</span>
-                            <div className="space-y-1">
-                              {proposal.rankings.map((ranking) => (
-                                <div key={ranking.id} className="flex items-center justify-between text-sm">
-                                  <span>{ranking.user.firstName || 'Group Member'}</span>
-                                  <Badge variant="outline" className="text-xs">
-                                    #{ranking.ranking}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Calculator className="h-5 w-5" />
+            Currency Converter
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Convert currencies for your travel budget planning with live exchange rates
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Amount</Label>
+              <Input
+                type="number"
+                min="0"
+                value={currencyAmount}
+                onChange={(event) => setCurrencyAmount(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>From Currency</Label>
+              <Select value={fromCurrency} onValueChange={setFromCurrency}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
+                  <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
+                  <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
+                  <SelectItem value="JPY">🇯🇵 JPY - Japanese Yen</SelectItem>
+                  <SelectItem value="AUD">🇦🇺 AUD - Australian Dollar</SelectItem>
+                  <SelectItem value="CAD">🇨🇦 CAD - Canadian Dollar</SelectItem>
+                  <SelectItem value="CHF">🇨🇭 CHF - Swiss Franc</SelectItem>
+                  <SelectItem value="CNY">🇨🇳 CNY - Chinese Yuan</SelectItem>
+                  <SelectItem value="SEK">🇸🇪 SEK - Swedish Krona</SelectItem>
+                  <SelectItem value="NZD">🇳🇿 NZD - New Zealand Dollar</SelectItem>
+                  <SelectItem value="MXN">🇲🇽 MXN - Mexican Peso</SelectItem>
+                  <SelectItem value="SGD">🇸🇬 SGD - Singapore Dollar</SelectItem>
+                  <SelectItem value="HKD">🇭🇰 HKD - Hong Kong Dollar</SelectItem>
+                  <SelectItem value="NOK">🇳🇴 NOK - Norwegian Krone</SelectItem>
+                  <SelectItem value="KRW">🇰🇷 KRW - South Korean Won</SelectItem>
+                  <SelectItem value="TRY">🇹🇷 TRY - Turkish Lira</SelectItem>
+                  <SelectItem value="RUB">🇷🇺 RUB - Russian Ruble</SelectItem>
+                  <SelectItem value="INR">🇮🇳 INR - Indian Rupee</SelectItem>
+                  <SelectItem value="BRL">🇧🇷 BRL - Brazilian Real</SelectItem>
+                  <SelectItem value="ZAR">🇿🇦 ZAR - South African Rand</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>To Currency</Label>
+              <Select value={toCurrency} onValueChange={setToCurrency}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select currency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
+                  <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
+                  <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
+                  <SelectItem value="JPY">🇯🇵 JPY - Japanese Yen</SelectItem>
+                  <SelectItem value="AUD">🇦🇺 AUD - Australian Dollar</SelectItem>
+                  <SelectItem value="CAD">🇨🇦 CAD - Canadian Dollar</SelectItem>
+                  <SelectItem value="CHF">🇨🇭 CHF - Swiss Franc</SelectItem>
+                  <SelectItem value="CNY">🇨🇳 CNY - Chinese Yuan</SelectItem>
+                  <SelectItem value="SEK">🇸🇪 SEK - Swedish Krona</SelectItem>
+                  <SelectItem value="NZD">🇳🇿 NZD - New Zealand Dollar</SelectItem>
+                  <SelectItem value="MXN">🇲🇽 MXN - Mexican Peso</SelectItem>
+                  <SelectItem value="SGD">🇸🇬 SGD - Singapore Dollar</SelectItem>
+                  <SelectItem value="HKD">🇭🇰 HKD - Hong Kong Dollar</SelectItem>
+                  <SelectItem value="NOK">🇳🇴 NOK - Norwegian Krone</SelectItem>
+                  <SelectItem value="KRW">🇰🇷 KRW - South Korean Won</SelectItem>
+                  <SelectItem value="TRY">🇹🇷 TRY - Turkish Lira</SelectItem>
+                  <SelectItem value="RUB">🇷🇺 RUB - Russian Ruble</SelectItem>
+                  <SelectItem value="INR">🇮🇳 INR - Indian Rupee</SelectItem>
+                  <SelectItem value="BRL">🇧🇷 BRL - Brazilian Real</SelectItem>
+                  <SelectItem value="ZAR">🇿🇦 ZAR - South African Rand</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center">
+            <Button
+              onClick={() => {
+                const temp = fromCurrency;
+                setFromCurrency(toCurrency);
+                setToCurrency(temp);
+              }}
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+            >
+              <ArrowUpDown className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex justify-center">
+            <Button
+              onClick={convertCurrency}
+              disabled={isConverting}
+              className="w-full md:w-auto"
+              size="lg"
+            >
+              {isConverting ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Converting...
                 </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No hotel proposals yet</h3>
-                <p className="text-muted-foreground text-center mb-4">
-                  Search for hotels and propose them to your group to start the voting process.
-                </p>
-                <Button onClick={searchHotels} variant="outline" disabled={isSearching}>
-                  <Search className="h-4 w-4 mr-2" />
-                  {isSearching ? "Searching..." : "Search Hotels"}
-                </Button>
+              ) : (
+                <>
+                  <Calculator className="h-4 w-4 mr-2" />
+                  Convert Currency
+                </>
+              )}
+            </Button>
+          </div>
+
+          {conversionResult && (
+            <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+              <CardContent className="pt-6">
+                <div className="text-center space-y-2">
+                  <div className="text-sm text-muted-foreground">Conversion Result</div>
+                  <div className="text-2xl font-bold text-green-600">
+                    {currencyAmount} {fromCurrency} = {conversionResult}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Exchange rates provided by @fawazahmed0/currency-api
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}
-        </TabsContent>
 
-        <TabsContent value="currency" className="space-y-6 mt-6">
-          {/* Currency Converter */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                Currency Converter
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Convert currencies for your travel budget planning with live exchange rates
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Amount</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    placeholder="100"
-                    value={currencyAmount}
-                    onChange={(e) => setCurrencyAmount(e.target.value)}
-                    className="text-lg"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>From Currency</Label>
-                  <Select value={fromCurrency} onValueChange={setFromCurrency}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
-                      <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
-                      <SelectItem value="JPY">🇯🇵 JPY - Japanese Yen</SelectItem>
-                      <SelectItem value="AUD">🇦🇺 AUD - Australian Dollar</SelectItem>
-                      <SelectItem value="CAD">🇨🇦 CAD - Canadian Dollar</SelectItem>
-                      <SelectItem value="CHF">🇨🇭 CHF - Swiss Franc</SelectItem>
-                      <SelectItem value="CNY">🇨🇳 CNY - Chinese Yuan</SelectItem>
-                      <SelectItem value="SEK">🇸🇪 SEK - Swedish Krona</SelectItem>
-                      <SelectItem value="NZD">🇳🇿 NZD - New Zealand Dollar</SelectItem>
-                      <SelectItem value="MXN">🇲🇽 MXN - Mexican Peso</SelectItem>
-                      <SelectItem value="SGD">🇸🇬 SGD - Singapore Dollar</SelectItem>
-                      <SelectItem value="HKD">🇭🇰 HKD - Hong Kong Dollar</SelectItem>
-                      <SelectItem value="NOK">🇳🇴 NOK - Norwegian Krone</SelectItem>
-                      <SelectItem value="KRW">🇰🇷 KRW - South Korean Won</SelectItem>
-                      <SelectItem value="TRY">🇹🇷 TRY - Turkish Lira</SelectItem>
-                      <SelectItem value="RUB">🇷🇺 RUB - Russian Ruble</SelectItem>
-                      <SelectItem value="INR">🇮🇳 INR - Indian Rupee</SelectItem>
-                      <SelectItem value="BRL">🇧🇷 BRL - Brazilian Real</SelectItem>
-                      <SelectItem value="ZAR">🇿🇦 ZAR - South African Rand</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label>To Currency</Label>
-                  <Select value={toCurrency} onValueChange={setToCurrency}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select currency" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="USD">🇺🇸 USD - US Dollar</SelectItem>
-                      <SelectItem value="EUR">🇪🇺 EUR - Euro</SelectItem>
-                      <SelectItem value="GBP">🇬🇧 GBP - British Pound</SelectItem>
-                      <SelectItem value="JPY">🇯🇵 JPY - Japanese Yen</SelectItem>
-                      <SelectItem value="AUD">🇦🇺 AUD - Australian Dollar</SelectItem>
-                      <SelectItem value="CAD">🇨🇦 CAD - Canadian Dollar</SelectItem>
-                      <SelectItem value="CHF">🇨🇭 CHF - Swiss Franc</SelectItem>
-                      <SelectItem value="CNY">🇨🇳 CNY - Chinese Yuan</SelectItem>
-                      <SelectItem value="SEK">🇸🇪 SEK - Swedish Krona</SelectItem>
-                      <SelectItem value="NZD">🇳🇿 NZD - New Zealand Dollar</SelectItem>
-                      <SelectItem value="MXN">🇲🇽 MXN - Mexican Peso</SelectItem>
-                      <SelectItem value="SGD">🇸🇬 SGD - Singapore Dollar</SelectItem>
-                      <SelectItem value="HKD">🇭🇰 HKD - Hong Kong Dollar</SelectItem>
-                      <SelectItem value="NOK">🇳🇴 NOK - Norwegian Krone</SelectItem>
-                      <SelectItem value="KRW">🇰🇷 KRW - South Korean Won</SelectItem>
-                      <SelectItem value="TRY">🇹🇷 TRY - Turkish Lira</SelectItem>
-                      <SelectItem value="RUB">🇷🇺 RUB - Russian Ruble</SelectItem>
-                      <SelectItem value="INR">🇮🇳 INR - Indian Rupee</SelectItem>
-                      <SelectItem value="BRL">🇧🇷 BRL - Brazilian Real</SelectItem>
-                      <SelectItem value="ZAR">🇿🇦 ZAR - South African Rand</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center">
-                <Button
-                  onClick={() => {
-                    const temp = fromCurrency;
-                    setFromCurrency(toCurrency);
-                    setToCurrency(temp);
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-full"
-                >
-                  <ArrowUpDown className="h-4 w-4" />
-                </Button>
-              </div>
-
-              <div className="flex justify-center">
-                <Button 
-                  onClick={convertCurrency}
-                  disabled={isConverting}
-                  className="w-full md:w-auto"
-                  size="lg"
-                >
-                  {isConverting ? (
-                    <div className="flex items-center gap-2">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      Converting...
-                    </div>
-                  ) : (
-                    <>
-                      <Calculator className="h-4 w-4 mr-2" />
-                      Convert Currency
-                    </>
-                  )}
-                </Button>
-              </div>
-
-              {conversionResult && (
-                <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
-                  <CardContent className="pt-6">
-                    <div className="text-center space-y-2">
-                      <div className="text-sm text-muted-foreground">Conversion Result</div>
-                      <div className="text-2xl font-bold text-green-600">
-                        {currencyAmount} {fromCurrency} = {conversionResult}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Exchange rates provided by @fawazahmed0/currency-api
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h4 className="font-medium text-blue-900 mb-2">💡 Travel Budget Tips</h4>
-                <ul className="text-sm text-blue-800 space-y-1">
-                  <li>• Exchange rates fluctuate daily - check before your trip</li>
-                  <li>• Consider using cards with no foreign transaction fees</li>
-                  <li>• Keep some local currency for small vendors and tips</li>
-                  <li>• Airport exchanges often have higher fees than banks</li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
+          <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+            <h4 className="font-medium text-blue-900 mb-2">💡 Travel Budget Tips</h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Exchange rates fluctuate daily - check before your trip</li>
+              <li>• Consider using cards with no foreign transaction fees</li>
+              <li>• Keep some local currency for small vendors and tips</li>
+              <li>• Airport exchanges often have higher fees than banks</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
       {/* User's Personal Hotels (Existing Bookings) */}
-      {hotels.length === 0 && searchResults.length === 0 ? (
+      {hotels.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Bed className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No hotels yet</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              Search for hotels to share with your group or add your own bookings to track accommodations for your trip.
-            </p>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+            <Bed className="h-12 w-12 text-muted-foreground mx-auto" />
+            <div>
+              <h3 className="text-lg font-semibold">No hotels saved yet</h3>
+              <p className="text-muted-foreground">
+                Use the Add Hotel button to search for accommodations or record a confirmed stay manually.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button onClick={openSearchPanel}>
+                <Search className="h-4 w-4 mr-2" />
+                Open search
+              </Button>
+              <Button variant="outline" onClick={openCreateDialog}>
+                <Plus className="h-4 w-4 mr-2" />
+                Manual entry
+              </Button>
+            </div>
           </CardContent>
         </Card>
-      ) : hotels.length > 0 && (
+      ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {hotels.map((hotel) => (
             <Card key={hotel.id} className="relative">
@@ -1964,6 +1123,39 @@ export default function HotelsPage() {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsDialogOpen(true);
+          } else {
+            handleDialogClose();
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingHotel ? "Edit Hotel" : "Add Hotel"}
+            </DialogTitle>
+            <DialogDescription>
+              Provide the hotel details exactly as defined in the booking schema. Fields marked with an asterisk (*) are required.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              <HotelFormFields
+                form={form}
+                isSubmitting={createHotelMutation.isPending || updateHotelMutation.isPending}
+                submitLabel={editingHotel ? "Save Changes" : "Add Hotel"}
+                onCancel={handleDialogClose}
+                showCancelButton
+              />
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {/* Booking Confirmation Modal */}
       <BookingConfirmationModal
