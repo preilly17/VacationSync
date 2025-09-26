@@ -827,15 +827,6 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onLogHotelManually}
-                  className="w-full sm:w-auto"
-                >
-                  <Building className="h-4 w-4 mr-2" />
-                  Log Hotel Manually
-                </Button>
                 <Button type="submit" disabled={isSearching} className="min-w-[160px] w-full sm:w-auto">
                   <Search className="h-4 w-4 mr-2" />
                   {isSearching ? (
