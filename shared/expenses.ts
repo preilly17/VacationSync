@@ -1,9 +1,75 @@
-export type Split = { userId: string; amountCents: number };
+export type SplitShare = {
+  userId: string;
+  sourceMinorUnits: number;
+  targetMinorUnits: number;
+};
 
-function ensureIntegerCents(value: number): void {
+export type ComputeSplitInput = {
+  totalSourceMinorUnits: number;
+  debtorIds: string[];
+  sourceCurrency: string;
+  targetCurrency: string;
+  conversionRate: number | string;
+};
+
+export type ComputeSplitResult = {
+  shares: SplitShare[];
+  totalSourceMinorUnits: number;
+  totalTargetMinorUnits: number;
+};
+
+const currencyMinorUnitOverrides: Record<string, number> = {
+  JPY: 0,
+};
+
+function ensureIntegerMinorUnits(value: number): void {
   if (!Number.isInteger(value)) {
-    throw new Error("Amount must be provided in whole cents");
+    throw new Error("Amount must be provided in whole minor units");
   }
+}
+
+export function getCurrencyMinorUnitDigits(currency: string): number {
+  const trimmed = currency?.trim().toUpperCase();
+  if (!trimmed) {
+    return 2;
+  }
+  if (currencyMinorUnitOverrides[trimmed] !== undefined) {
+    return currencyMinorUnitOverrides[trimmed];
+  }
+  try {
+    const formatter = new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: trimmed,
+      minimumFractionDigits: 0,
+    });
+    const parts = formatter.formatToParts(1);
+    const fractionPart = parts.find((part) => part.type === "fraction");
+    return fractionPart ? fractionPart.value.length : 0;
+  } catch {
+    return 2;
+  }
+}
+
+export function getCurrencyMinorUnitFactor(currency: string): number {
+  const digits = getCurrencyMinorUnitDigits(currency);
+  return Math.pow(10, digits);
+}
+
+export function toMinorUnits(amount: number, currency: string): number {
+  if (!Number.isFinite(amount)) {
+    throw new Error("Amount must be a finite number");
+  }
+  const factor = getCurrencyMinorUnitFactor(currency);
+  return Math.round(amount * factor);
+}
+
+export function minorUnitsToAmount(minorUnits: number, currency: string): number {
+  ensureIntegerMinorUnits(minorUnits);
+  const factor = getCurrencyMinorUnitFactor(currency);
+  if (factor === 0) {
+    throw new Error("Invalid currency minor unit factor");
+  }
+  return Number((minorUnits / factor).toFixed(Math.log10(factor)));
 }
 
 function normalizeDebtorIds(debtorIds: string[]): string[] {
@@ -22,12 +88,56 @@ function normalizeDebtorIds(debtorIds: string[]): string[] {
   return ordered;
 }
 
-export function computeSplits(amountCents: number, debtorIds: string[]): Split[] {
-  if (!Number.isFinite(amountCents)) {
+function convertMinorUnits(
+  sourceMinorUnits: number,
+  sourceFactor: number,
+  targetFactor: number,
+  rate: number,
+): number {
+  const denominator = sourceFactor;
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new Error("Conversion rate must be greater than zero");
+  }
+
+  const converted = (sourceMinorUnits * rate * targetFactor) / denominator;
+  return Math.round(converted);
+}
+
+function ensurePositiveRate(rate: number | string): number {
+  if (typeof rate === "number") {
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new Error("Conversion rate must be greater than zero");
+    }
+    return rate;
+  }
+
+  const trimmed = rate.trim();
+  if (!trimmed) {
+    throw new Error("Conversion rate is required");
+  }
+
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error("Conversion rate must be greater than zero");
+  }
+
+  return parsed;
+}
+
+export function computeSplits({
+  totalSourceMinorUnits,
+  debtorIds,
+  sourceCurrency,
+  targetCurrency,
+  conversionRate,
+}: ComputeSplitInput): ComputeSplitResult {
+  if (!Number.isFinite(totalSourceMinorUnits)) {
     throw new Error("Amount must be > 0");
   }
-  ensureIntegerCents(amountCents);
-  if (amountCents <= 0) {
+
+  ensureIntegerMinorUnits(totalSourceMinorUnits);
+
+  if (totalSourceMinorUnits <= 0) {
     throw new Error("Amount must be > 0");
   }
 
@@ -36,20 +146,68 @@ export function computeSplits(amountCents: number, debtorIds: string[]): Split[]
     throw new Error("Choose at least one person to split with");
   }
 
-  const nTotal = normalizedDebtors.length + 1;
-  const base = Math.floor(amountCents / nTotal);
-  let remainder = amountCents - base * nTotal;
+  const sourceFactor = getCurrencyMinorUnitFactor(sourceCurrency);
+  const targetFactor = getCurrencyMinorUnitFactor(targetCurrency);
+  const rateValue = ensurePositiveRate(conversionRate);
 
-  return normalizedDebtors.map((userId) => {
-    const extra = remainder > 0 ? 1 : 0;
+  const nTotal = normalizedDebtors.length + 1;
+  const base = Math.floor(totalSourceMinorUnits / nTotal);
+  let remainder = totalSourceMinorUnits - base * nTotal;
+
+  const shares: SplitShare[] = normalizedDebtors.map((userId) => {
+    let shareSource = base;
     if (remainder > 0) {
+      shareSource += 1;
       remainder -= 1;
     }
-    return { userId, amountCents: base + extra };
-  });
-}
 
-export function centsToAmount(amountCents: number): number {
-  ensureIntegerCents(amountCents);
-  return Number((amountCents / 100).toFixed(2));
+    const targetMinorUnits = convertMinorUnits(
+      shareSource,
+      sourceFactor,
+      targetFactor,
+      rateValue,
+    );
+
+    return {
+      userId,
+      sourceMinorUnits: shareSource,
+      targetMinorUnits,
+    };
+  });
+
+  const totalTargetMinorUnits = convertMinorUnits(
+    totalSourceMinorUnits,
+    sourceFactor,
+    targetFactor,
+    rateValue,
+  );
+
+  const currentSum = shares.reduce(
+    (sum, share) => sum + share.targetMinorUnits,
+    0,
+  );
+
+  let difference = totalTargetMinorUnits - currentSum;
+  if (difference !== 0) {
+    const direction = Math.sign(difference);
+    difference = Math.abs(difference);
+    for (let index = 0; index < normalizedDebtors.length && difference > 0; index += 1) {
+      const share = shares[index];
+      const updated = share.targetMinorUnits + direction;
+      if (updated < 0) {
+        continue;
+      }
+      shares[index] = {
+        ...share,
+        targetMinorUnits: updated,
+      };
+      difference -= 1;
+    }
+  }
+
+  return {
+    shares,
+    totalSourceMinorUnits,
+    totalTargetMinorUnits,
+  };
 }

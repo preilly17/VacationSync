@@ -1,5 +1,8 @@
 import { query } from "./db";
-import { computeSplits, centsToAmount } from "@shared/expenses";
+import {
+  computeSplits,
+  minorUnitsToAmount,
+} from "@shared/expenses";
 import {
   type User,
   type UpsertUser,
@@ -73,10 +76,19 @@ import {
   type WishListProposalDraftWithDetails,
 } from "@shared/schema";
 
-type CreateExpensePayload = InsertExpense & {
-  selectedMembers?: string[];
+type CreateExpensePayload = {
+  tripId: number;
+  paidBy?: string;
+  description: string;
+  category: string;
+  sourceAmountMinorUnits: number;
+  sourceCurrency: string;
+  targetCurrency: string;
+  exchangeRate: number;
+  exchangeRateLockedAt?: string | Date | null;
+  exchangeRateProvider?: string | null;
   participantUserIds?: string[];
-  amountCents?: number;
+  receiptUrl?: string | null;
 };
 
 const toNumber = (value: string | number): number => {
@@ -417,6 +429,25 @@ type ExpenseShareWithUserRow = {
   paid_at: Date | null;
   created_at: Date | null;
 } & PrefixedUserRow<"share_user_">;
+
+type ExpenseShareWithContextRow = ExpenseShareWithUserRow & {
+  original_currency: string | null;
+  currency: string;
+  converted_amounts: Record<string, unknown> | null;
+  split_data: Record<string, unknown> | null;
+};
+
+type ExpenseShareBreakdown = {
+  userId: string;
+  sourceMinorUnits?: number | null;
+  targetMinorUnits?: number | null;
+};
+
+type ExpenseConversionMetadata = {
+  source?: { currency?: string | null; minorUnits?: number | null };
+  target?: { currency?: string | null; minorUnits?: number | null };
+  rate?: { value?: number | null; lockedAt?: string | null; provider?: string | null };
+};
 
 type NotificationRow = {
   id: number;
@@ -1187,26 +1218,56 @@ const mapPackingItem = (row: PackingItemRow): PackingItem => ({
   createdAt: row.created_at,
 });
 
-const mapExpense = (row: ExpenseRow): Expense => ({
-  id: row.id,
-  tripId: row.trip_id,
-  paidBy: row.paid_by,
-  amount: toNumber(row.amount),
-  currency: row.currency,
-  exchangeRate: toNumberOrNull(row.exchange_rate),
-  originalCurrency: row.original_currency,
-  convertedAmounts: (row.converted_amounts ?? null) as any,
-  description: row.description,
-  category: row.category,
-  activityId: row.activity_id,
-  splitType: row.split_type,
-  splitData: (row.split_data ?? null) as any,
-  receiptUrl: row.receipt_url,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+const mapExpense = (row: ExpenseRow): Expense => {
+  const conversionMetadata = (row.converted_amounts ?? null) as
+    | ExpenseConversionMetadata
+    | null;
 
-const mapExpenseShare = (row: ExpenseShareRow): ExpenseShare => ({
+  const sourceMinorUnits = conversionMetadata?.source?.minorUnits ?? null;
+  const targetMinorUnits = conversionMetadata?.target?.minorUnits ?? null;
+  const sourceCurrency =
+    conversionMetadata?.source?.currency ?? row.original_currency ?? null;
+  const targetCurrency =
+    conversionMetadata?.target?.currency ?? row.currency ?? null;
+  const exchangeRateLockedAt = conversionMetadata?.rate?.lockedAt ?? null;
+  const exchangeRateProvider = conversionMetadata?.rate?.provider ?? null;
+  const exchangeRateValue =
+    conversionMetadata?.rate?.value != null
+      ? Number(conversionMetadata.rate.value)
+      : toNumberOrNull(row.exchange_rate);
+
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    paidBy: row.paid_by,
+    amount: toNumber(row.amount),
+    currency: targetCurrency ?? row.currency,
+    exchangeRate: exchangeRateValue,
+    originalCurrency: sourceCurrency,
+    convertedAmounts: conversionMetadata as any,
+    targetCurrency,
+    sourceAmountMinorUnits:
+      typeof sourceMinorUnits === "number" ? sourceMinorUnits : null,
+    targetAmountMinorUnits:
+      typeof targetMinorUnits === "number" ? targetMinorUnits : null,
+    exchangeRateLockedAt,
+    exchangeRateProvider,
+    description: row.description,
+    category: row.category,
+    activityId: row.activity_id,
+    splitType: row.split_type,
+    splitData: (row.split_data ?? null) as any,
+    receiptUrl: row.receipt_url,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
+const mapExpenseShare = (
+  row: ExpenseShareRow,
+  breakdown?: ExpenseShareBreakdown,
+  currencies?: { source?: string | null; target?: string | null },
+): ExpenseShare => ({
   id: row.id,
   expenseId: row.expense_id,
   userId: row.user_id,
@@ -1215,20 +1276,56 @@ const mapExpenseShare = (row: ExpenseShareRow): ExpenseShare => ({
   status: row.is_paid ? "paid" : "pending",
   paidAt: row.paid_at,
   createdAt: row.created_at,
+  amountSourceMinorUnits:
+    breakdown && typeof breakdown.sourceMinorUnits === "number"
+      ? breakdown.sourceMinorUnits
+      : null,
+  amountTargetMinorUnits:
+    breakdown && typeof breakdown.targetMinorUnits === "number"
+      ? breakdown.targetMinorUnits
+      : null,
+  sourceCurrency: currencies?.source ?? null,
+  targetCurrency: currencies?.target ?? null,
 });
 
 const mapExpenseWithDetails = (
   row: ExpenseWithPaidByRow & {
-    shares: (ExpenseShare & { user: User })[];
+    shares: { row: ExpenseShareRow; user: User }[];
     activity?: Activity;
   },
 ): ExpenseWithDetails => {
   const baseExpense = mapExpense(row);
+  const shareBreakdowns = new Map<string, ExpenseShareBreakdown>();
+
+  const rawSplitData = baseExpense.splitData as
+    | { shares?: ExpenseShareBreakdown[] }
+    | null;
+  if (rawSplitData?.shares && Array.isArray(rawSplitData.shares)) {
+    for (const share of rawSplitData.shares) {
+      if (!share || typeof share.userId !== "string") {
+        continue;
+      }
+      shareBreakdowns.set(share.userId, share);
+    }
+  }
+
+  const shares = row.shares.map(({ row: shareRow, user }) => {
+    const mappedShare = mapExpenseShare(
+      shareRow,
+      shareBreakdowns.get(shareRow.user_id) ?? undefined,
+      {
+        source: baseExpense.originalCurrency,
+        target: baseExpense.targetCurrency ?? baseExpense.currency,
+      },
+    );
+    return { ...mappedShare, user };
+  });
+
   return {
     ...baseExpense,
     paidBy: mapUserFromPrefix(row, "paid_by_"),
     activity: row.activity,
-    shares: row.shares,
+    shares,
     totalAmount: baseExpense.amount,
   } as unknown as ExpenseWithDetails;
 };
@@ -3504,26 +3601,13 @@ export class DatabaseStorage implements IStorage {
     let createdExpenseRow: ExpenseRow | null = null;
     try {
       const payerId = expense.paidBy ?? userId;
-      const splitDataInput = (expense.splitData ?? null) as
-        | Record<string, unknown>
-        | null;
-      const membersFromSplitData = Array.isArray(
-        (splitDataInput as Record<string, unknown>)?.members as unknown[],
-      )
-        ? ((splitDataInput as { members: string[] }).members ?? [])
-        : undefined;
-      const selectedMembers = Array.isArray(expense.selectedMembers)
-        ? expense.selectedMembers
-        : undefined;
       const participantUserIds = Array.isArray(expense.participantUserIds)
         ? expense.participantUserIds
-        : undefined;
+        : [];
 
-      const rawParticipantIds =
-        participantUserIds ?? membersFromSplitData ?? selectedMembers ?? [];
       const dedupedParticipants: string[] = [];
       const seenParticipants = new Set<string>();
-      for (const rawId of rawParticipantIds) {
+      for (const rawId of participantUserIds) {
         if (typeof rawId !== "string") {
           continue;
         }
@@ -3539,22 +3623,64 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Choose at least one person to split with.");
       }
 
-      const amountCents =
-        typeof expense.amountCents === "number"
-          ? expense.amountCents
-          : Math.round(Number(expense.amount) * 100);
-
-      if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      if (
+        !Number.isInteger(expense.sourceAmountMinorUnits) ||
+        expense.sourceAmountMinorUnits <= 0
+      ) {
         throw new Error("Amount must be greater than zero");
       }
 
-      const splits = computeSplits(amountCents, dedupedParticipants);
-      const totalAmount = centsToAmount(amountCents);
+      const splitResult = computeSplits({
+        totalSourceMinorUnits: expense.sourceAmountMinorUnits,
+        debtorIds: dedupedParticipants,
+        sourceCurrency: expense.sourceCurrency,
+        targetCurrency: expense.targetCurrency,
+        conversionRate: expense.exchangeRate,
+      });
+
+      const targetTotalMinorUnits = splitResult.totalTargetMinorUnits;
+      const sourceTotalMinorUnits = splitResult.totalSourceMinorUnits;
+      const targetTotalAmount = minorUnitsToAmount(
+        targetTotalMinorUnits,
+        expense.targetCurrency,
+      );
+      const sourceTotalAmount = minorUnitsToAmount(
+        sourceTotalMinorUnits,
+        expense.sourceCurrency,
+      );
+
+      const lockedAtDate = expense.exchangeRateLockedAt
+        ? new Date(expense.exchangeRateLockedAt)
+        : new Date();
+      const safeLockedAt = Number.isNaN(lockedAtDate.getTime())
+        ? new Date().toISOString()
+        : lockedAtDate.toISOString();
+
+      const conversionDetails = {
+        source: {
+          currency: expense.sourceCurrency,
+          minorUnits: sourceTotalMinorUnits,
+        },
+        target: {
+          currency: expense.targetCurrency,
+          minorUnits: targetTotalMinorUnits,
+        },
+        rate: {
+          value: expense.exchangeRate,
+          lockedAt: safeLockedAt,
+          provider: expense.exchangeRateProvider ?? null,
+        },
+      } as Record<string, unknown>;
+
       const splitDataToStore: Record<string, unknown> = {
         algorithm: "equal_payer_included",
         members: dedupedParticipants,
-        totalAmountCents: amountCents,
-        splits,
+        totalSourceMinorUnits: sourceTotalMinorUnits,
+        totalTargetMinorUnits: targetTotalMinorUnits,
+        sourceCurrency: expense.sourceCurrency,
+        targetCurrency: expense.targetCurrency,
+        conversionRate: expense.exchangeRate,
+        shares: splitResult.shares,
       };
 
       const { rows } = await query<ExpenseRow>(
@@ -3610,14 +3736,14 @@ export class DatabaseStorage implements IStorage {
         [
           expense.tripId,
           payerId,
-          totalAmount,
-          expense.currency,
-          expense.exchangeRate ?? null,
-          expense.originalCurrency ?? null,
-          expense.convertedAmounts ?? null,
+          targetTotalAmount,
+          expense.targetCurrency,
+          expense.exchangeRate,
+          expense.sourceCurrency,
+          conversionDetails,
           expense.description,
           expense.category,
-          expense.activityId ?? null,
+          null,
           "equal",
           splitDataToStore,
           expense.receiptUrl ?? null,
@@ -3631,7 +3757,7 @@ export class DatabaseStorage implements IStorage {
 
       participantIds = dedupedParticipants;
 
-      for (const split of splits) {
+      for (const share of splitResult.shares) {
         await query(
           `
           INSERT INTO expense_shares (
@@ -3642,12 +3768,80 @@ export class DatabaseStorage implements IStorage {
           )
           VALUES ($1, $2, $3, FALSE)
           `,
-          [row.id, split.userId, centsToAmount(split.amountCents)],
+          [
+            row.id,
+            share.userId,
+            minorUnitsToAmount(share.targetMinorUnits, expense.targetCurrency),
+          ],
         );
       }
 
       createdExpenseRow = row;
       await query("COMMIT");
+
+      const participantsToNotify = Array.from(new Set(participantIds)).filter(
+        (participantId) =>
+          Boolean(participantId) && participantId !== createdExpenseRow?.paid_by,
+      );
+
+      if (participantsToNotify.length > 0) {
+        try {
+          const payerUser = await this.getUser(payerId);
+          const payerName =
+            (payerUser?.firstName && payerUser.firstName.trim()) ||
+            (payerUser?.username && payerUser.username.trim()) ||
+            (payerUser?.email && payerUser.email.trim()) ||
+            "A trip member";
+
+          const formattedTarget = (() => {
+            try {
+              return new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: expense.targetCurrency,
+              }).format(targetTotalAmount);
+            } catch {
+              return `${expense.targetCurrency} ${targetTotalAmount.toFixed(2)}`;
+            }
+          })();
+
+          const formattedSource = (() => {
+            try {
+              return new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: expense.sourceCurrency,
+              }).format(sourceTotalAmount);
+            } catch {
+              return `${expense.sourceCurrency} ${sourceTotalAmount.toFixed(2)}`;
+            }
+          })();
+
+          const trimmedDescription = expense.description.trim();
+          const expenseDescription = trimmedDescription
+            ? trimmedDescription
+            : "an expense";
+          const notificationTitle = `${payerName} added a new expense`;
+          const notificationMessage =
+            `${payerName} recorded ${formattedSource} (${formattedTarget} requested) for ${expenseDescription}. You're tagged to split it at a rate of ${expense.exchangeRate}.`;
+
+          await Promise.all(
+            participantsToNotify.map((participantId) =>
+              this.createNotification({
+                userId: participantId,
+                type: "expense",
+                title: notificationTitle,
+                message: notificationMessage,
+                tripId: expense.tripId,
+                expenseId: row.id,
+              }),
+            ),
+          );
+        } catch (notificationError) {
+          console.error(
+            "Failed to create expense notifications:",
+            notificationError,
+          );
+        }
+      }
     } catch (error) {
       await query("ROLLBACK");
       throw error;
@@ -3657,67 +3851,7 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Failed to create expense");
     }
 
-    const createdExpense = mapExpense(createdExpenseRow);
-    const participantsToNotify = Array.from(new Set(participantIds)).filter(
-      (participantId) =>
-        Boolean(participantId) && participantId !== createdExpense.paidBy,
-    );
-
-    if (participantsToNotify.length > 0) {
-      try {
-        const payerUser = await this.getUser(createdExpense.paidBy);
-        const payerName =
-          (payerUser?.firstName && payerUser.firstName.trim()) ||
-          (payerUser?.username && payerUser.username.trim()) ||
-          (payerUser?.email && payerUser.email.trim()) ||
-          "A trip member";
-
-        const currency = expense.currency ?? "USD";
-        const amountNumber = Number(expense.amount);
-        const hasValidAmount = Number.isFinite(amountNumber);
-        let formattedAmount = hasValidAmount
-          ? `${currency} ${amountNumber.toFixed(2)}`
-          : `${currency} ${expense.amount}`;
-
-        if (hasValidAmount) {
-          try {
-            formattedAmount = new Intl.NumberFormat("en-US", {
-              style: "currency",
-              currency,
-            }).format(amountNumber);
-          } catch {
-            formattedAmount = `${currency} ${amountNumber.toFixed(2)}`;
-          }
-        }
-
-        const trimmedDescription = expense.description.trim();
-        const expenseDescription = trimmedDescription
-          ? trimmedDescription
-          : "an expense";
-        const notificationTitle = `${payerName} added a new expense`;
-        const notificationMessage = `${payerName} recorded ${formattedAmount} for ${expenseDescription}. You're tagged to split it.`;
-
-        await Promise.all(
-          participantsToNotify.map((participantId) =>
-            this.createNotification({
-              userId: participantId,
-              type: "expense",
-              title: notificationTitle,
-              message: notificationMessage,
-              tripId: createdExpense.tripId,
-              expenseId: createdExpense.id,
-            }),
-          ),
-        );
-      } catch (notificationError) {
-        console.error(
-          "Failed to create expense notifications:",
-          notificationError,
-        );
-      }
-    }
-
-    return createdExpense;
+    return mapExpense(createdExpenseRow);
   }
 
   async getTripExpenses(tripId: number): Promise<ExpenseWithDetails[]> {
@@ -3824,11 +3958,11 @@ export class DatabaseStorage implements IStorage {
 
     const sharesByExpenseId = new Map<
       number,
-      (ExpenseShare & { user: User })[]
+      { row: ExpenseShareRow; user: User }[]
     >();
 
     for (const row of shareRows) {
-      const share = mapExpenseShare({
+      const shareRow: ExpenseShareRow = {
         id: row.id,
         expense_id: row.expense_id,
         user_id: row.share_participant_id,
@@ -3836,10 +3970,10 @@ export class DatabaseStorage implements IStorage {
         is_paid: row.is_paid,
         paid_at: row.paid_at,
         created_at: row.created_at,
-      });
+      };
       const user = mapUserFromPrefix(row, "share_user_");
       const existingShares = sharesByExpenseId.get(row.expense_id) ?? [];
-      existingShares.push({ ...share, user });
+      existingShares.push({ row: shareRow, user });
       sharesByExpenseId.set(row.expense_id, existingShares);
     }
 
@@ -4091,14 +4225,71 @@ export class DatabaseStorage implements IStorage {
           }
 
           if (dedupedParticipants.length > 0) {
-            const totalAmount =
-              updates.amount !== undefined
-                ? Number(updates.amount)
-                : Number(updatedExpense.amount);
-            const amountCents = Math.round(totalAmount * 100);
-            const splits = computeSplits(amountCents, dedupedParticipants);
+            const conversionMetadata =
+              (updatedExpense.converted_amounts ?? null) as
+                | ExpenseConversionMetadata
+                | null;
+            const splitData = updatedExpense.split_data as
+              | { totalSourceMinorUnits?: number; conversionRate?: number; sourceCurrency?: string; targetCurrency?: string }
+              | null;
 
-            for (const split of splits) {
+            const sourceMinorUnits =
+              (typeof conversionMetadata?.source?.minorUnits === "number"
+                ? conversionMetadata.source?.minorUnits
+                : undefined) ??
+              (typeof splitData?.totalSourceMinorUnits === "number"
+                ? splitData.totalSourceMinorUnits
+                : undefined);
+
+            if (typeof sourceMinorUnits !== "number" || sourceMinorUnits <= 0) {
+              throw new Error("Existing expense is missing source amount information");
+            }
+
+            const sourceCurrency =
+              (typeof updates.originalCurrency === "string"
+                ? updates.originalCurrency
+                : undefined) ??
+              (typeof splitData?.sourceCurrency === "string"
+                ? splitData.sourceCurrency
+                : undefined) ??
+              (typeof conversionMetadata?.source?.currency === "string"
+                ? conversionMetadata.source.currency
+                : undefined) ??
+              updatedExpense.original_currency ??
+              updatedExpense.currency;
+
+            const targetCurrency =
+              (typeof updates.currency === "string"
+                ? updates.currency
+                : undefined) ??
+              (typeof splitData?.targetCurrency === "string"
+                ? splitData.targetCurrency
+                : undefined) ??
+              (typeof conversionMetadata?.target?.currency === "string"
+                ? conversionMetadata.target.currency
+                : undefined) ??
+              updatedExpense.currency;
+
+            const conversionRate =
+              typeof updates.exchangeRate === "number"
+                ? updates.exchangeRate
+                : typeof splitData?.conversionRate === "number"
+                ? splitData.conversionRate
+                : typeof conversionMetadata?.rate?.value === "number"
+                ? conversionMetadata.rate.value
+                : updatedExpense.exchange_rate
+                ? Number(updatedExpense.exchange_rate)
+                : 1;
+
+            const splitComputation = computeSplits({
+              totalSourceMinorUnits: sourceMinorUnits,
+              debtorIds: dedupedParticipants,
+              sourceCurrency,
+              targetCurrency,
+              conversionRate,
+            });
+
+            for (const split of splitComputation.shares) {
               await query(
                 `
                 INSERT INTO expense_shares (
@@ -4109,7 +4300,11 @@ export class DatabaseStorage implements IStorage {
                 )
                 VALUES ($1, $2, $3, FALSE)
                 `,
-                [expenseId, split.userId, centsToAmount(split.amountCents)],
+                [
+                  expenseId,
+                  split.userId,
+                  minorUnitsToAmount(split.targetMinorUnits, targetCurrency),
+                ],
               );
             }
           }
@@ -4193,7 +4388,7 @@ export class DatabaseStorage implements IStorage {
   async getExpenseShares(
     expenseId: number,
   ): Promise<(ExpenseShare & { user: User })[]> {
-    const { rows } = await query<ExpenseShareWithUserRow>(
+    const { rows } = await query<ExpenseShareWithContextRow>(
       `
       SELECT
         es.id,
@@ -4203,6 +4398,10 @@ export class DatabaseStorage implements IStorage {
         es.is_paid,
         es.paid_at,
         es.created_at,
+        e.original_currency,
+        e.currency,
+        e.converted_amounts,
+        e.split_data,
         su.id AS share_user_id,
         su.email AS share_user_email,
         su.username AS share_user_username,
@@ -4230,14 +4429,42 @@ export class DatabaseStorage implements IStorage {
         su.updated_at AS share_user_updated_at
       FROM expense_shares es
       JOIN users su ON su.id = es.user_id
+      JOIN expenses e ON e.id = es.expense_id
       WHERE es.expense_id = $1
       ORDER BY es.created_at ASC NULLS LAST, es.id ASC
       `,
       [expenseId],
     );
 
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const conversionMetadata = (rows[0].converted_amounts ?? null) as
+      | ExpenseConversionMetadata
+      | null;
+    const shareBreakdowns = new Map<string, ExpenseShareBreakdown>();
+    const splitData = rows[0].split_data as
+      | { shares?: ExpenseShareBreakdown[] }
+      | null;
+    if (splitData?.shares && Array.isArray(splitData.shares)) {
+      for (const share of splitData.shares) {
+        if (!share || typeof share.userId !== "string") {
+          continue;
+        }
+        shareBreakdowns.set(share.userId, share);
+      }
+    }
+
+    const currencies = {
+      source:
+        conversionMetadata?.source?.currency ?? rows[0].original_currency ?? null,
+      target:
+        conversionMetadata?.target?.currency ?? rows[0].currency ?? null,
+    };
+
     return rows.map((row) => {
-      const share = mapExpenseShare({
+      const shareRow: ExpenseShareRow = {
         id: row.id,
         expense_id: row.expense_id,
         user_id: row.share_participant_id,
@@ -4245,7 +4472,12 @@ export class DatabaseStorage implements IStorage {
         is_paid: row.is_paid,
         paid_at: row.paid_at,
         created_at: row.created_at,
-      });
+      };
+      const share = mapExpenseShare(
+        shareRow,
+        shareBreakdowns.get(row.share_participant_id) ?? undefined,
+        currencies,
+      );
 
       return {
         ...share,

@@ -264,6 +264,11 @@ export interface Expense {
   exchangeRate: number | null;
   originalCurrency: string | null;
   convertedAmounts: Record<string, JsonValue> | null;
+  targetCurrency?: string | null;
+  sourceAmountMinorUnits?: number | null;
+  targetAmountMinorUnits?: number | null;
+  exchangeRateLockedAt?: IsoDate | null;
+  exchangeRateProvider?: string | null;
   description: string;
   category: string;
   activityId: number | null;
@@ -306,6 +311,10 @@ export interface ExpenseShare {
   status: ExpenseParticipantStatus;
   paidAt: IsoDate | null;
   createdAt: IsoDate | null;
+  amountSourceMinorUnits?: number | null;
+  amountTargetMinorUnits?: number | null;
+  targetCurrency?: string | null;
+  sourceCurrency?: string | null;
 }
 
 export const insertExpenseShareSchema = z.object({
