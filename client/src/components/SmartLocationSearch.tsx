@@ -18,6 +18,7 @@ interface LocationResult {
 }
 
 interface SmartLocationSearchProps {
+  id?: string;
   placeholder?: string;
   value?: string;
   onLocationSelect: (location: LocationResult) => void;
@@ -25,6 +26,7 @@ interface SmartLocationSearchProps {
 }
 
 const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProps>(function SmartLocationSearch({
+  id,
   placeholder = "Enter city, airport, or state...",
   value = "",
   onLocationSelect,
@@ -132,6 +134,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     <div className={`relative ${className}`}>
       <div className="relative">
         <Input
+          id={id}
           ref={setInputRef}
           type="text"
           placeholder={placeholder}

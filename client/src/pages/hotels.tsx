@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, type FormEvent } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { Form } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
@@ -39,11 +40,12 @@ import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
 
 export default function HotelsPage() {
   const params = useParams();
-  const [, setLocation] = useLocation();
+  const [currentLocation, setLocation] = useLocation();
   const tripId = parseInt(params.tripId as string);
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const addHotelButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
   const [searchResults, setSearchResults] = useState<HotelSearchResult[]>([]);
@@ -53,6 +55,13 @@ export default function HotelsPage() {
   const [checkOutDate, setCheckOutDate] = useState('');
   const [adultCount, setAdultCount] = useState('2');
   const [childCount, setChildCount] = useState('0');
+  const [roomCount, setRoomCount] = useState('1');
+  const [priceRange, setPriceRange] = useState('any');
+  const [minRating, setMinRating] = useState('any');
+  const [freeCancellationOnly, setFreeCancellationOnly] = useState(false);
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
+  const [pendingAutoSearch, setPendingAutoSearch] = useState(false);
+  const [hasAutoSearched, setHasAutoSearched] = useState(false);
 
   // Currency conversion state
   const [currencyAmount, setCurrencyAmount] = useState('100');
@@ -418,41 +427,75 @@ export default function HotelsPage() {
   };
 
   // Hotel search function with location search integration
-  const searchHotels = async (customLocation?: any) => {
+  const searchHotels = useCallback(async (customLocation?: any) => {
     const locationToUse = customLocation || searchLocation;
-    
-    if (!locationToUse && (!trip || !trip.destination || !trip.startDate || !trip.endDate)) {
+    const destination = locationToUse?.displayName || locationToUse?.name || trip?.destination || '';
+
+    const resolvedCheckIn =
+      checkInDate || (trip?.startDate ? format(new Date(trip.startDate), 'yyyy-MM-dd') : '');
+    const resolvedCheckOut =
+      checkOutDate || (trip?.endDate ? format(new Date(trip.endDate), 'yyyy-MM-dd') : '');
+
+    if (!destination) {
       toast({
         title: "Search Error",
-        description: "Please select a location or ensure trip information is available.",
+        description: "Please choose a destination before searching for hotels.",
         variant: "destructive",
       });
       return;
     }
 
+    if (!resolvedCheckIn || !resolvedCheckOut) {
+      toast({
+        title: "Search Error",
+        description: "Check-in and check-out dates are required for hotel search.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const adultsValue = Math.max(parseInt(adultCount, 10) || 1, 1);
+    const childrenValue = Math.max(parseInt(childCount, 10) || 0, 0);
+    const roomsValue = Math.max(parseInt(roomCount, 10) || 1, 1);
+
+    const priceParams: Record<string, number> = {};
+    if (priceRange !== 'any') {
+      if (priceRange === '300+') {
+        priceParams.minPrice = 300;
+      } else {
+        const [min, max] = priceRange.split('-').map((value) => Number(value));
+        if (Number.isFinite(min)) {
+          priceParams.minPrice = Number(min);
+        }
+        if (Number.isFinite(max)) {
+          priceParams.maxPrice = Number(max);
+        }
+      }
+    }
+
+    const ratingValue = minRating !== 'any' ? Number(minRating) : undefined;
+
     setIsSearching(true);
     try {
-      const destination = locationToUse?.name || trip?.destination || '';
-      
       console.log(`Searching hotels for destination: ${destination}`);
 
-      const searchParams: any = {
+      const searchParams: Record<string, unknown> = {
         location: destination,
-        adults: 2,
-        radius: 20
+        adults: adultsValue,
+        children: childrenValue,
+        rooms: roomsValue,
+        radius: 20,
+        checkInDate: resolvedCheckIn,
+        checkOutDate: resolvedCheckOut,
+        ...priceParams,
       };
 
-      // Use trip dates - required by backend
-      if (trip?.startDate && trip?.endDate) {
-        searchParams.checkInDate = format(new Date(trip.startDate), 'yyyy-MM-dd');
-        searchParams.checkOutDate = format(new Date(trip.endDate), 'yyyy-MM-dd');
-      } else {
-        toast({
-          title: "Search Error",
-          description: "Trip dates are required for hotel search. Please set trip dates first.",
-          variant: "destructive",
-        });
-        return;
+      if (ratingValue && !Number.isNaN(ratingValue)) {
+        searchParams.minRating = ratingValue;
+      }
+
+      if (freeCancellationOnly) {
+        searchParams.freeCancellation = true;
       }
 
       const response = await apiFetch("/api/hotels/search", {
@@ -534,7 +577,117 @@ export default function HotelsPage() {
     } finally {
       setIsSearching(false);
     }
-  };
+  }, [
+    searchLocation,
+    trip?.destination,
+    trip?.startDate,
+    trip?.endDate,
+    toast,
+    checkInDate,
+    checkOutDate,
+    adultCount,
+    childCount,
+    roomCount,
+    priceRange,
+    minRating,
+    freeCancellationOnly,
+  ]);
+
+  const handleSearchSubmit = useCallback(
+    (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+      void searchHotels();
+    },
+    [searchHotels],
+  );
+
+  const updatePanelQuery = useCallback(
+    (panel: 'search' | null, options?: { auto?: boolean }) => {
+      const [pathOnly, queryString = ''] = currentLocation.split('?');
+      const params = new URLSearchParams(queryString);
+
+      if (panel) {
+        params.set('panel', panel);
+      } else {
+        params.delete('panel');
+      }
+
+      if (options?.auto) {
+        params.set('auto', '1');
+      } else {
+        params.delete('auto');
+      }
+
+      const nextQuery = params.toString();
+      const nextLocation = nextQuery ? `${pathOnly}?${nextQuery}` : pathOnly;
+
+      if (nextLocation !== currentLocation) {
+        setLocation(nextLocation, { replace: true });
+      }
+    },
+    [currentLocation, setLocation],
+  );
+
+  const handleOpenSearchPanel = useCallback(() => {
+    setIsSearchPanelOpen(true);
+    setHasAutoSearched(false);
+    updatePanelQuery('search');
+  }, [updatePanelQuery]);
+
+  const handleCloseSearchPanel = useCallback(() => {
+    setIsSearchPanelOpen(false);
+    setPendingAutoSearch(false);
+    setHasAutoSearched(false);
+    updatePanelQuery(null);
+    window.setTimeout(() => {
+      addHotelButtonRef.current?.focus();
+    }, 0);
+  }, [updatePanelQuery]);
+
+  useEffect(() => {
+    const [, queryString = ''] = currentLocation.split('?');
+    const params = new URLSearchParams(queryString);
+    const panelParam = params.get('panel');
+    const shouldOpenSearch = panelParam === 'search';
+
+    setIsSearchPanelOpen(shouldOpenSearch);
+
+    if (shouldOpenSearch) {
+      const shouldAutoSearch = params.get('auto') === '1';
+      setPendingAutoSearch(shouldAutoSearch);
+      if (!shouldAutoSearch) {
+        setHasAutoSearched(false);
+      }
+    } else {
+      setPendingAutoSearch(false);
+      setHasAutoSearched(false);
+    }
+  }, [currentLocation]);
+
+  useEffect(() => {
+    if (
+      isSearchPanelOpen &&
+      pendingAutoSearch &&
+      !hasAutoSearched &&
+      checkInDate &&
+      checkOutDate
+    ) {
+      (async () => {
+        await searchHotels();
+        setHasAutoSearched(true);
+        setPendingAutoSearch(false);
+        updatePanelQuery('search');
+      })();
+    }
+  }, [
+    checkInDate,
+    checkOutDate,
+    hasAutoSearched,
+    isSearchPanelOpen,
+    pendingAutoSearch,
+    searchHotels,
+    updatePanelQuery,
+  ]);
 
   // Generate sample hotels for testing
   const generateSampleHotels = (destination: string) => {
@@ -781,8 +934,8 @@ export default function HotelsPage() {
       });
       
       toast({
-        title: "Hotel Proposed to Group!",
-        description: `${hotel.name} has been proposed to your group for ranking and voting.`,
+        title: "Added to Group Hotels!",
+        description: `${hotel.name} is now ready for everyone to review and rank.`,
       });
       
       // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
@@ -1087,14 +1240,14 @@ export default function HotelsPage() {
         </Link>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="min-w-[260px] flex-1">
           <div className="search-header-gradient rounded-lg p-4">
             <div className="flex items-center gap-3">
               <div className="airplane-animate">
                 <Building className="h-6 w-6 text-blue-600" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
                   Accommodations Search
                 </h1>
@@ -1110,11 +1263,22 @@ export default function HotelsPage() {
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={searchHotels} 
-            disabled={isSearching}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            ref={addHotelButtonRef}
+            onClick={handleOpenSearchPanel}
+            aria-expanded={isSearchPanelOpen}
+            aria-controls="hotel-search-panel"
+            className="shadow-sm"
           >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Hotel
+          </Button>
+          <Button variant="outline" onClick={openCreateDialog} className="shadow-sm">
+            <Building className="h-4 w-4 mr-2" />
+            Log Hotel Manually
+          </Button>
+          <Button onClick={() => searchHotels()} disabled={isSearching} variant="secondary" className="shadow-sm">
             <Search className="h-4 w-4 mr-2" />
             {isSearching ? (
               <div className="flex items-center gap-2">
@@ -1128,29 +1292,24 @@ export default function HotelsPage() {
         </div>
       </div>
 
-      {/* Tabs for Search vs Group Voting vs Currency Converter */}
-      <Tabs defaultValue="search" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="search">Search & Propose Hotels</TabsTrigger>
-          <TabsTrigger value="voting" className="relative">
-            Group Voting
-            {hotelProposals.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">
-                {hotelProposals.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="currency">Currency Converter</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="search" className="space-y-6 mt-6">
-          {/* Hotel Search Interface */}
-          <Card>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+      {isSearchPanelOpen && (
+        <Card id="hotel-search-panel" className="border-primary/40 shadow-sm">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-primary" />
+              <CardTitle className="text-lg">Find a Hotel for this Trip</CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" onClick={handleCloseSearchPanel}>
+              Hide search
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSearchSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <div className="space-y-2 md:col-span-2 xl:col-span-2">
-                  <Label>Destination</Label>
+                  <Label htmlFor="hotel-destination">Destination</Label>
                   <SmartLocationSearch
+                    id="hotel-destination"
                     placeholder="Search destination city..."
                     value={searchLocation?.displayName || searchLocation?.name || ''}
                     onLocationSelect={(location) => {
@@ -1158,9 +1317,7 @@ export default function HotelsPage() {
                     }}
                   />
                   {trip?.destination && !searchLocation && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Trip destination: {trip.destination}
-                    </p>
+                    <p className="text-xs text-gray-500 mt-1">Trip destination: {trip.destination}</p>
                   )}
                 </div>
 
@@ -1203,41 +1360,130 @@ export default function HotelsPage() {
                     onChange={(event) => setChildCount(event.target.value)}
                   />
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  type="button"
-                  onClick={() => handleExternalSearch('airbnb')}
-                  className="bg-[#FF5A5F] hover:bg-[#e24e52] text-white shadow-sm"
-                >
-                  Search Airbnb
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => handleExternalSearch('vrbo')}
-                  className="bg-[#0A4385] hover:bg-[#08376b] text-white shadow-sm"
-                >
-                  Search VRBO
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => handleExternalSearch('expedia')}
-                  className="bg-[#FEC601] hover:bg-[#e0b000] text-gray-900 shadow-sm"
-                >
-                  Search Expedia
-                </Button>
-              </div>
-
-              {searchResults.length > 0 && (
-                <div className="text-sm text-muted-foreground">
-                  Found {searchResults.length} hotels
+                <div className="space-y-2">
+                  <Label htmlFor="hotel-rooms">Rooms</Label>
+                  <Input
+                    id="hotel-rooms"
+                    type="number"
+                    min={1}
+                    value={roomCount}
+                    onChange={(event) => setRoomCount(event.target.value)}
+                  />
                 </div>
-              )}
-            </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="hotel-price-range">Price range</Label>
+                  <Select value={priceRange} onValueChange={setPriceRange}>
+                    <SelectTrigger id="hotel-price-range">
+                      <SelectValue placeholder="Choose price range" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any price</SelectItem>
+                      <SelectItem value="0-150">$0 - $150</SelectItem>
+                      <SelectItem value="150-300">$150 - $300</SelectItem>
+                      <SelectItem value="300+">$300+</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hotel-min-rating">Minimum rating</Label>
+                  <Select value={minRating} onValueChange={setMinRating}>
+                    <SelectTrigger id="hotel-min-rating">
+                      <SelectValue placeholder="Select rating" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">Any rating</SelectItem>
+                      <SelectItem value="3">3 stars & up</SelectItem>
+                      <SelectItem value="4">4 stars & up</SelectItem>
+                      <SelectItem value="4.5">4.5 stars & up</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center justify-between rounded-md border px-4 py-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="hotel-free-cancel" className="text-sm font-medium">
+                      Free cancellation
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Only show stays that can be cancelled without penalty
+                    </p>
+                  </div>
+                  <Switch
+                    id="hotel-free-cancel"
+                    checked={freeCancellationOnly}
+                    onCheckedChange={(checked) => setFreeCancellationOnly(checked)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    onClick={() => handleExternalSearch('airbnb')}
+                    className="bg-[#FF5A5F] hover:bg-[#e24e52] text-white shadow-sm"
+                  >
+                    Search Airbnb
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleExternalSearch('vrbo')}
+                    className="bg-[#0A4385] hover:bg-[#08376b] text-white shadow-sm"
+                  >
+                    Search VRBO
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => handleExternalSearch('expedia')}
+                    className="bg-[#FEC601] hover:bg-[#e0b000] text-gray-900 shadow-sm"
+                  >
+                    Search Expedia
+                  </Button>
+                </div>
+
+                {searchResults.length > 0 && (
+                  <div className="text-sm text-muted-foreground">
+                    Found {searchResults.length} hotels
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end">
+                <Button type="submit" disabled={isSearching} className="min-w-[160px]">
+                  <Search className="h-4 w-4 mr-2" />
+                  {isSearching ? (
+                    <div className="flex items-center gap-2">
+                      <TravelLoading variant="globe" size="sm" />
+                      Searching...
+                    </div>
+                  ) : (
+                    'Search Hotels'
+                  )}
+                </Button>
+              </div>
+            </form>
           </CardContent>
         </Card>
+      )}
+
+      {/* Tabs for Search vs Group Voting vs Currency Converter */}
+      <Tabs defaultValue="search" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="search">Search & Propose Hotels</TabsTrigger>
+          <TabsTrigger value="voting" className="relative">
+            Group Voting
+            {hotelProposals.length > 0 && (
+              <Badge variant="secondary" className="ml-2 text-xs">
+                {hotelProposals.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="currency">Currency Converter</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="search" className="space-y-6 mt-6">
 
       {/* Add Hotel Dialog */}
       <Dialog
@@ -1292,9 +1538,9 @@ export default function HotelsPage() {
                   Hotels for {trip?.destination} • {trip && format(new Date(trip.startDate), 'MMM d')} - {trip && format(new Date(trip.endDate), 'MMM d')}
                 </p>
               </div>
-              <Button onClick={openCreateDialog}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Hotel
+              <Button onClick={openCreateDialog} variant="outline">
+                <Building className="h-4 w-4 mr-2" />
+                Log Hotel Manually
               </Button>
             </div>
           </CardHeader>
@@ -1404,7 +1650,7 @@ export default function HotelsPage() {
                         className="flex-1"
                       >
                         <Users className="h-4 w-4 mr-2" />
-                        Propose to Group
+                        Add to Group Hotels
                       </Button>
                     </div>
                   </CardContent>
@@ -1665,7 +1911,7 @@ export default function HotelsPage() {
                 <p className="text-muted-foreground text-center mb-4">
                   Search for hotels and propose them to your group to start the voting process.
                 </p>
-                <Button onClick={searchHotels} variant="outline" disabled={isSearching}>
+                <Button onClick={() => searchHotels()} variant="outline" disabled={isSearching}>
                   <Search className="h-4 w-4 mr-2" />
                   {isSearching ? "Searching..." : "Search Hotels"}
                 </Button>
