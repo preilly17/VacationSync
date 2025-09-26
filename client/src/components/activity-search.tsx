@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,16 +9,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
-import { 
-  Search, 
-  Star, 
-  Clock, 
-  MapPin, 
-  DollarSign, 
-  ExternalLink,
-  Users
+import {
+  Search,
+  Star,
+  Clock,
+  MapPin,
+  DollarSign,
+  ExternalLink
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
 import type { TripWithDetails } from "@shared/schema";
 
@@ -47,49 +45,89 @@ interface ActivitySearchProps {
 }
 
 export default function ActivitySearch({ tripId, trip, user }: ActivitySearchProps) {
-  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [priceRange, setPriceRange] = useState("all");
   const [sortBy, setSortBy] = useState("popularity");
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
-  const [locationSearch, setLocationSearch] = useState(trip?.destination || "");
+  const [locationSearch, setLocationSearch] = useState("");
+  const [submittedLocation, setSubmittedLocation] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
+  const [shouldAutoSearch, setShouldAutoSearch] = useState(false);
+  const locationInputRef = useRef<HTMLInputElement | null>(null);
+
+  const focusLocationInput = useCallback(() => {
+    if (typeof window === "undefined") {
+      locationInputRef.current?.focus();
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      locationInputRef.current?.focus();
+    });
+  }, []);
 
   const handleLocationSelect = (location: any) => {
     setSelectedLocation(location);
     const locationName = location?.city || location?.name || location?.code || location;
     setLocationSearch(locationName);
-    if (locationName) {
-      setHasSearched(true);
-    }
+    focusLocationInput();
   };
 
-  // Pre-set the location when the component loads with trip destination
+  // Prefill destination from query params if provided
   useEffect(() => {
-    if (trip?.destination && !selectedLocation) {
-      setLocationSearch(trip.destination);
-      setSelectedLocation({ 
-        name: trip.destination,
-        displayName: trip.destination,
-        city: trip.destination
-      });
+    if (typeof window === "undefined") {
+      return;
     }
-  }, [trip?.destination, selectedLocation]);
+
+    const params = new URLSearchParams(window.location.search);
+    const queryDestination = params.get("q");
+    const autoParam = params.get("auto");
+
+    if (queryDestination) {
+      setLocationSearch(queryDestination);
+      setSelectedLocation((prev: any) =>
+        prev ?? {
+          name: queryDestination,
+          displayName: queryDestination,
+          city: queryDestination
+        }
+      );
+
+      if (autoParam === "1") {
+        setShouldAutoSearch(true);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (shouldAutoSearch && locationSearch.trim()) {
+      setSubmittedLocation(locationSearch.trim());
+      setHasSearched(true);
+      setShouldAutoSearch(false);
+    }
+  }, [shouldAutoSearch, locationSearch]);
 
   const handleSearch = () => {
-    if (locationSearch.trim()) {
-      setHasSearched(true);
+    if (!locationSearch.trim()) {
+      setHasSearched(false);
+      setSubmittedLocation("");
+      return;
     }
+
+    setSubmittedLocation(locationSearch.trim());
+    setHasSearched(true);
   };
 
+  const trimmedLocation = useMemo(() => submittedLocation.trim(), [submittedLocation]);
+
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
-    queryKey: ["/api/activities/discover", locationSearch, searchTerm, selectedCategory, priceRange, sortBy],
+    queryKey: ["/api/activities/discover", trimmedLocation, searchTerm, selectedCategory, priceRange, sortBy],
     queryFn: async () => {
       const params = new URLSearchParams({
-        location: locationSearch || trip?.destination || "",
+        location: trimmedLocation || trip?.destination || "",
         searchTerm,
         category: selectedCategory,
         priceRange,
@@ -111,7 +149,7 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
       const data = await response.json();
       return data;
     },
-    enabled: !!locationSearch && hasSearched,
+    enabled: !!trimmedLocation && hasSearched,
     retry: 1,
   });
 
@@ -124,6 +162,10 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
             Discover Activities
           </CardTitle>
           <p className="text-sm text-muted-foreground">
+            Find tours and experiences for your trip. Use the filters to narrow by category, price,
+            duration, rating, or free cancellation. Results appear below without leaving the page.
+          </p>
+          <p className="text-sm text-muted-foreground">
             Search for activities and experiences at your destination
           </p>
         </CardHeader>
@@ -131,26 +173,35 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
           {/* Location Search */}
           <div className="space-y-2">
             <Label>Search Destination</Label>
-            <div className="flex gap-2">
+            <form
+              className="flex gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSearch();
+              }}
+            >
               <div className="flex-1">
                 <SmartLocationSearch
+                  id="discover-activities-destination"
                   placeholder={`Search activities in ${trip?.destination || 'any destination'}`}
                   value={locationSearch}
                   onLocationSelect={handleLocationSelect}
+                  ref={locationInputRef}
                 />
               </div>
-              <Button onClick={handleSearch} disabled={!locationSearch.trim()}>
+              <Button type="submit" disabled={!locationSearch.trim()}>
                 <Search className="w-4 h-4 mr-2" />
                 Search Activities
               </Button>
-            </div>
+            </form>
             {trip?.destination && !hasSearched && (
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setLocationSearch(trip.destination);
-                  setHasSearched(true);
+                  setHasSearched(false);
+                  focusLocationInput();
                 }}
                 className="mt-2"
               >
@@ -227,10 +278,6 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
               Enter a destination in the search box above to find authentic activities and experiences.
               Try searching for your trip destination: "{trip?.destination}" or any other city you're interested in.
             </p>
-            <Button onClick={() => handleSearch()} disabled={!locationSearch.trim()}>
-              <Search className="w-4 h-4 mr-2" />
-              Search Activities
-            </Button>
           </CardContent>
         </Card>
       ) : activitiesLoading ? (
@@ -295,7 +342,7 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
           <CardContent className="text-center py-12">
             <h3 className="text-xl font-bold text-neutral-900 mb-2">No Activities Found</h3>
             <p className="text-neutral-600 mb-4">
-              No activities were found for "{locationSearch}". Try a different destination or broader search terms.
+              No activities were found for "{submittedLocation || locationSearch}". Try a different destination or broader search terms.
             </p>
             <Button variant="outline" onClick={() => setHasSearched(false)}>
               Try Different Location
