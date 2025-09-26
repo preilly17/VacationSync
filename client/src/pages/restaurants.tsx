@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useParams } from "wouter";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,18 +18,52 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, MapPin, Phone, Clock, Star, Users, ExternalLink, Search, Filter, ChefHat, DollarSign, SortAsc, Utensils, Globe, ArrowLeft } from "lucide-react";
+import {
+  CalendarIcon,
+  MapPin,
+  Phone,
+  Clock,
+  Star,
+  Users,
+  ExternalLink,
+  Search,
+  Filter,
+  ChefHat,
+  Utensils,
+  Globe,
+  ArrowLeft,
+  X,
+  NotebookPen,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
 import { apiFetch } from "@/lib/api";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { TripWithDetails, RestaurantWithDetails } from "@shared/schema";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
-import { Link } from "wouter";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 import { RestaurantProposalModal } from "@/components/restaurant-proposal-modal";
+import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+
+const distanceRadiusMap: Record<string, number> = {
+  "0.5": 800,
+  "1": 1600,
+  "5": 8000,
+  "10": 16000,
+  "25": 40000,
+};
+
+const dietaryOptions = [
+  { value: "vegetarian", label: "Vegetarian" },
+  { value: "vegan", label: "Vegan" },
+  { value: "gluten-free", label: "Gluten-Free" },
+  { value: "halal", label: "Halal" },
+  { value: "kosher", label: "Kosher" },
+  { value: "dairy-free", label: "Dairy-Free" },
+];
 
 const restaurantFormSchema = z.object({
   name: z.string().min(1, "Restaurant name is required"),
@@ -50,10 +84,19 @@ type RestaurantFormData = z.infer<typeof restaurantFormSchema>;
 
 export default function RestaurantsPage() {
   const { tripId } = useParams<{ tripId: string }>();
+  const [currentLocation, setRouteLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
+  const queryParams = useMemo(() => {
+    const queryIndex = currentLocation.indexOf("?");
+    const search = queryIndex >= 0 ? currentLocation.slice(queryIndex + 1) : "";
+    return new URLSearchParams(search);
+  }, [currentLocation]);
+
+  const addRestaurantButtonRef = useRef<HTMLButtonElement | null>(null);
+
   // Booking confirmation system
   const {
     showModal: showBookingModal,
@@ -63,17 +106,87 @@ export default function RestaurantsPage() {
     confirmBooking,
     markBookingAsAsked
   } = useBookingConfirmation();
-  
+
   // Search state
   const [searchLocation, setSearchLocation] = useState("");
   const [searchCuisine, setSearchCuisine] = useState("all");
   const [searchPriceRange, setSearchPriceRange] = useState("all");
   const [sortBy, setSortBy] = useState("rating");
-  const [showSearch, setShowSearch] = useState(!tripId); // Show search by default when not in trip context
-  const [selectedRestaurant, setSelectedRestaurant] = useState<any>(null);
+  const [searchDate, setSearchDate] = useState<Date | undefined>(new Date());
+  const [searchTime, setSearchTime] = useState("7:00 PM");
+  const [searchPartySize, setSearchPartySize] = useState(2);
+  const [searchRating, setSearchRating] = useState("all");
+  const [searchDistance, setSearchDistance] = useState("all");
+  const [searchOpenNow, setSearchOpenNow] = useState(false);
+  const [searchDietaryTags, setSearchDietaryTags] = useState<string[]>([]);
+  const [showSearch, setShowSearch] = useState(() => queryParams.get("panel") === "search");
+  const [shouldAutoSearch, setShouldAutoSearch] = useState(
+    () => queryParams.get("panel") === "search" && queryParams.get("auto") === "1"
+  );
+  const [hasSearched, setHasSearched] = useState(false);
   const [showBooking, setShowBooking] = useState(false);
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [restaurantToPropose, setRestaurantToPropose] = useState<any>(null);
+
+  useEffect(() => {
+    const panelIsSearch = queryParams.get("panel") === "search";
+    if (panelIsSearch !== showSearch) {
+      setShowSearch(panelIsSearch);
+      if (!panelIsSearch) {
+        setHasSearched(false);
+      }
+    }
+    const wantsAuto = panelIsSearch && queryParams.get("auto") === "1";
+    if (wantsAuto !== shouldAutoSearch) {
+      setShouldAutoSearch(wantsAuto);
+    }
+  }, [queryParams, showSearch, shouldAutoSearch, setHasSearched]);
+
+  const updateLocationQuery = useCallback(
+    (updates: Record<string, string | null | undefined>) => {
+      const queryIndex = currentLocation.indexOf("?");
+      const path = queryIndex >= 0 ? currentLocation.slice(0, queryIndex) : currentLocation;
+      const params = new URLSearchParams(queryIndex >= 0 ? currentLocation.slice(queryIndex + 1) : "");
+
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value === null || value === undefined) {
+          params.delete(key);
+        } else {
+          params.set(key, value);
+        }
+      });
+
+      const nextQuery = params.toString();
+      setRouteLocation(`${path}${nextQuery ? `?${nextQuery}` : ""}`);
+    },
+    [currentLocation, setRouteLocation]
+  );
+
+  const handleOpenSearchPanel = useCallback(() => {
+    if (!showSearch) {
+      setShowSearch(true);
+      updateLocationQuery({ panel: "search" });
+    }
+
+    if (typeof window !== "undefined") {
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById("restaurant-search-panel")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [showSearch, updateLocationQuery]);
+
+  const handleHideSearchPanel = useCallback(() => {
+    if (showSearch) {
+      setShowSearch(false);
+      updateLocationQuery({ panel: null, auto: null });
+      setHasSearched(false);
+      window.setTimeout(() => {
+        addRestaurantButtonRef.current?.focus();
+      }, 0);
+    }
+  }, [showSearch, updateLocationQuery, setHasSearched]);
 
   // Get trip details (only if tripId exists)
   const { data: trip } = useQuery({
@@ -89,22 +202,35 @@ export default function RestaurantsPage() {
 
   // Search restaurants
   const { data: searchResults = [], isLoading: searchLoading, refetch: searchRestaurants } = useQuery({
-    queryKey: ["/api/restaurants/search", searchLocation, searchCuisine, searchPriceRange, sortBy],
+    queryKey: ["/api/restaurants/search", searchLocation, searchCuisine, searchPriceRange, sortBy, searchDistance, searchOpenNow],
     queryFn: async () => {
+      const radiusValue =
+        searchDistance !== "all" && distanceRadiusMap[searchDistance]
+          ? distanceRadiusMap[searchDistance]
+          : 5000;
+
       const params = new URLSearchParams({
         location: searchLocation,
         limit: "20",
-        radius: "5000"
+        radius: radiusValue.toString(),
       });
-      
+
       if (searchCuisine && searchCuisine !== "all") {
         params.append("cuisine", searchCuisine);
       }
-      
+
       if (searchPriceRange && searchPriceRange !== "all") {
         params.append("priceRange", searchPriceRange);
       }
-      
+
+      if (sortBy) {
+        params.append("sortBy", sortBy);
+      }
+
+      if (searchOpenNow) {
+        params.append("openNow", "true");
+      }
+
       const response = await apiFetch(`/api/restaurants/search?${params}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -113,6 +239,56 @@ export default function RestaurantsPage() {
     },
     enabled: false,
   });
+
+  const filteredSearchResults = useMemo(() => {
+    return (searchResults as any[]).filter((restaurant: any) => {
+      if (searchRating !== "all") {
+        const minRating = Number(searchRating);
+        const ratingValue = Number(restaurant.rating ?? restaurant.ratingScore ?? 0);
+        if (!Number.isNaN(minRating) && (Number.isNaN(ratingValue) || ratingValue < minRating)) {
+          return false;
+        }
+      }
+
+      if (searchDistance !== "all" && distanceRadiusMap[searchDistance] && restaurant.distance) {
+        if (restaurant.distance > distanceRadiusMap[searchDistance]) {
+          return false;
+        }
+      }
+
+      if (searchOpenNow && restaurant.isOpen === false) {
+        return false;
+      }
+
+      if (searchDietaryTags.length > 0) {
+        const tags = Array.isArray(restaurant.dietaryTags)
+          ? restaurant.dietaryTags
+          : Array.isArray(restaurant.tags)
+            ? restaurant.tags
+            : [];
+
+        const normalizedTags = tags.map((tag: string) => tag.toLowerCase());
+        const matches = searchDietaryTags.every((tag) => normalizedTags.includes(tag));
+        if (!matches) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [searchResults, searchRating, searchDistance, searchOpenNow, searchDietaryTags]);
+
+  const sortedSearchResults = useMemo(() => {
+    const results = [...filteredSearchResults];
+    if (sortBy === "rating") {
+      return results.sort((a, b) => (Number(b.rating ?? 0) || 0) - (Number(a.rating ?? 0) || 0));
+    }
+    if (sortBy === "price") {
+      const getPriceValue = (priceRange?: string) => (priceRange ? priceRange.length : 0);
+      return results.sort((a, b) => getPriceValue(a.priceRange) - getPriceValue(b.priceRange));
+    }
+    return results;
+  }, [filteredSearchResults, sortBy]);
 
   // Set default search location from trip, user default location, or fallback to Paris
   useEffect(() => {
@@ -147,6 +323,79 @@ export default function RestaurantsPage() {
       specialRequests: "",
       website: "",
       openTableUrl: "",
+    },
+  });
+
+  const addRestaurantFromSearchMutation = useMutation({
+    mutationFn: async (restaurant: any) => {
+      if (!tripId) {
+        throw new Error("Trip context missing");
+      }
+
+      const addressValue = restaurant.address || searchLocation || "";
+      const { city, country } = parseAddressForTrip(addressValue);
+      const reservationDateValue = searchDate ?? new Date();
+      const ratingValue = Number(restaurant.rating);
+      const openTableLink = restaurant.bookingLinks?.find((link: any) => {
+        const text = (link.text || "").toLowerCase();
+        const url = (link.url || "").toLowerCase();
+        return text.includes("opentable") || url.includes("opentable");
+      });
+
+      const payload = {
+        tripId: Number(tripId),
+        name: restaurant.name,
+        address: addressValue,
+        city,
+        country,
+        reservationDate: format(reservationDateValue, "yyyy-MM-dd"),
+        reservationTime: searchTime,
+        partySize: Number.isNaN(Number(searchPartySize)) ? 2 : Number(searchPartySize),
+        cuisineType: restaurant.cuisineType || restaurant.cuisine || null,
+        zipCode: null,
+        latitude: restaurant.latitude ?? null,
+        longitude: restaurant.longitude ?? null,
+        phoneNumber: restaurant.phone || restaurant.phoneNumber || null,
+        website: restaurant.website || null,
+        openTableUrl: openTableLink?.url || null,
+        priceRange: restaurant.priceRange || "$$",
+        rating: Number.isFinite(ratingValue) ? ratingValue : null,
+        confirmationNumber: null,
+        reservationStatus: "planned",
+        specialRequests: null,
+        notes: searchDietaryTags.length > 0 ? searchDietaryTags.join(", ") : null,
+      };
+
+      return apiRequest(`/api/trips/${tripId}/restaurants`, {
+        method: "POST",
+        body: payload,
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Restaurant Added",
+        description: "This restaurant was added to your group reservations.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurants"] });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+
+      toast({
+        title: "Unable to Add Restaurant",
+        description: "We couldn't save this restaurant. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -191,7 +440,7 @@ export default function RestaurantsPage() {
   });
 
   // Handle search
-  const handleSearch = () => {
+  const handleSearch = useCallback(() => {
     if (!searchLocation.trim()) {
       toast({
         title: "Location Required",
@@ -200,8 +449,17 @@ export default function RestaurantsPage() {
       });
       return;
     }
+    setHasSearched(true);
     searchRestaurants();
-  };
+  }, [searchLocation, toast, searchRestaurants, setHasSearched]);
+
+  useEffect(() => {
+    if (showSearch && shouldAutoSearch) {
+      setShouldAutoSearch(false);
+      handleSearch();
+      updateLocationQuery({ auto: null });
+    }
+  }, [showSearch, shouldAutoSearch, handleSearch, updateLocationQuery]);
 
   // Handle location selection from smart search
   const handleLocationSelect = (location: any) => {
@@ -209,6 +467,41 @@ export default function RestaurantsPage() {
     const cityName = location.name || location.displayName.split(',')[0];
     setSearchLocation(cityName);
   };
+
+  const parseAddressForTrip = useCallback(
+    (address: string) => {
+      const parts = address.split(',').map((part) => part.trim()).filter(Boolean);
+
+      let city = "";
+      let country = "";
+
+      if (parts.length >= 2) {
+        country = parts[parts.length - 1];
+        city = parts[parts.length - 2];
+      } else if (parts.length === 1) {
+        city = parts[0];
+      }
+
+      if (!city && searchLocation) {
+        city = searchLocation;
+      }
+
+      if (!country && searchLocation) {
+        country = searchLocation;
+      }
+
+      if (!city) {
+        city = "Unknown City";
+      }
+
+      if (!country) {
+        country = "Unknown Country";
+      }
+
+      return { city, country };
+    },
+    [searchLocation]
+  );
 
   // Handle booking link clicks with tracking
   const handleBookingLinkClick = (restaurant: any, link: { text: string; url: string; type: string }) => {
@@ -240,22 +533,34 @@ export default function RestaurantsPage() {
   
   // Handle add restaurant from search
   const handleAddFromSearch = (restaurant: any) => {
-    form.setValue("name", restaurant.name);
-    form.setValue("cuisine", restaurant.cuisine);
-    form.setValue("address", restaurant.address);
-    form.setValue("phone", restaurant.phone || "");
-    form.setValue("priceRange", restaurant.priceRange);
-    form.setValue("rating", restaurant.rating);
-    form.setValue("website", restaurant.website || "");
-    
-    // Find OpenTable URL from booking links
-    const openTableLink = restaurant.bookingLinks?.find((link: any) => 
-      link.text.includes('OpenTable') || link.url.includes('opentable')
-    );
-    form.setValue("openTableUrl", openTableLink?.url || "");
-    
-    setSelectedRestaurant(restaurant);
-    setShowBooking(true);
+    if (!tripId) {
+      toast({
+        title: "Trip Required",
+        description: "Open a trip to add restaurants to your group list.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!searchDate) {
+      toast({
+        title: "Select a Date",
+        description: "Choose a reservation date before adding the restaurant.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!searchTime) {
+      toast({
+        title: "Select a Time",
+        description: "Choose a reservation time before adding the restaurant.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    addRestaurantFromSearchMutation.mutate(restaurant);
   };
 
   // Handle propose restaurant to group
@@ -327,21 +632,23 @@ export default function RestaurantsPage() {
           </p>
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Button
-            onClick={() => setShowSearch(!showSearch)}
-            variant="outline"
+            ref={addRestaurantButtonRef}
+            onClick={handleOpenSearchPanel}
             className="flex items-center gap-2"
+            aria-expanded={showSearch}
+            aria-controls="restaurant-search-panel"
           >
             <Search className="h-4 w-4" />
-            Search Restaurants
+            Add Restaurant
           </Button>
-          
+
           <Dialog open={showBooking} onOpenChange={setShowBooking}>
             <DialogTrigger asChild>
-              <Button>
-                <Utensils className="h-4 w-4 mr-2" />
-                Add Restaurant
+              <Button variant="outline" className="flex items-center gap-2">
+                <NotebookPen className="h-4 w-4" />
+                Log Restaurant Manually
               </Button>
             </DialogTrigger>
           </Dialog>
@@ -350,17 +657,28 @@ export default function RestaurantsPage() {
 
       {/* Search Section */}
       {showSearch && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Search Restaurants
-            </CardTitle>
-            <CardDescription>
-              Find restaurants in {(trip as any)?.destination || "your destination"} and add them to your trip
-            </CardDescription>
+        <Card id="restaurant-search-panel" aria-live="polite">
+          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                Search Restaurants
+              </CardTitle>
+              <CardDescription>
+                Plan a reservation without leaving the page.
+              </CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleHideSearchPanel}
+              className="self-start"
+            >
+              <X className="h-4 w-4 mr-1" />
+              Hide search
+            </Button>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <Label htmlFor="location">Location</Label>
@@ -371,9 +689,74 @@ export default function RestaurantsPage() {
                   className="w-full"
                 />
               </div>
-              
+
               <div>
-                <Label htmlFor="cuisine">Cuisine Type</Label>
+                <Label htmlFor="reservationDate">Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !searchDate && "text-muted-foreground"
+                      )}
+                    >
+                      {searchDate ? format(searchDate, "PPP") : "Pick a date"}
+                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={searchDate}
+                      onSelect={setSearchDate}
+                      disabled={(date) => date < new Date()}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div>
+                <Label htmlFor="reservationTime">Time</Label>
+                <Select value={searchTime} onValueChange={setSearchTime}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select time" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5:00 PM">5:00 PM</SelectItem>
+                    <SelectItem value="5:30 PM">5:30 PM</SelectItem>
+                    <SelectItem value="6:00 PM">6:00 PM</SelectItem>
+                    <SelectItem value="6:30 PM">6:30 PM</SelectItem>
+                    <SelectItem value="7:00 PM">7:00 PM</SelectItem>
+                    <SelectItem value="7:30 PM">7:30 PM</SelectItem>
+                    <SelectItem value="8:00 PM">8:00 PM</SelectItem>
+                    <SelectItem value="8:30 PM">8:30 PM</SelectItem>
+                    <SelectItem value="9:00 PM">9:00 PM</SelectItem>
+                    <SelectItem value="9:30 PM">9:30 PM</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="partySize">Party Size</Label>
+                <Input
+                  id="partySize"
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={searchPartySize}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    setSearchPartySize(Number.isNaN(value) ? 1 : value);
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <Label htmlFor="cuisine">Cuisine</Label>
                 <Select value={searchCuisine} onValueChange={setSearchCuisine}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select cuisine" />
@@ -394,7 +777,7 @@ export default function RestaurantsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div>
                 <Label htmlFor="priceRange">Price Range</Label>
                 <Select value={searchPriceRange} onValueChange={setSearchPriceRange}>
@@ -410,7 +793,41 @@ export default function RestaurantsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
+              <div>
+                <Label htmlFor="rating">Minimum Rating</Label>
+                <Select value={searchRating} onValueChange={setSearchRating}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Any rating" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All ratings</SelectItem>
+                    <SelectItem value="7">7+/10</SelectItem>
+                    <SelectItem value="8">8+/10</SelectItem>
+                    <SelectItem value="9">9+/10</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label htmlFor="distance">Distance</Label>
+                <Select value={searchDistance} onValueChange={setSearchDistance}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Any distance" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Any distance</SelectItem>
+                    <SelectItem value="0.5">Within 0.5 km</SelectItem>
+                    <SelectItem value="1">Within 1 km</SelectItem>
+                    <SelectItem value="5">Within 5 km</SelectItem>
+                    <SelectItem value="10">Within 10 km</SelectItem>
+                    <SelectItem value="25">Within 25 km</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="sortBy">Sort By</Label>
                 <Select value={sortBy} onValueChange={setSortBy}>
@@ -423,34 +840,88 @@ export default function RestaurantsPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            
-            <Button 
-              onClick={handleSearch} 
-              disabled={searchLoading}
-              className="w-full sm:w-auto"
-            >
-              {searchLoading ? (
-                <div className="flex items-center gap-2">
-                  <TravelLoading variant="compass" size="sm" />
-                  Searching...
+
+              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                <div>
+                  <Label htmlFor="openNow" className="text-sm font-medium">
+                    Open Now
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Show restaurants accepting guests right now.
+                  </p>
                 </div>
-              ) : (
-                "Search Restaurants"
-              )}
-            </Button>
+                <Switch id="openNow" checked={searchOpenNow} onCheckedChange={setSearchOpenNow} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Dietary Tags</Label>
+              <ToggleGroup
+                type="multiple"
+                value={searchDietaryTags}
+                onValueChange={setSearchDietaryTags}
+                className="flex flex-wrap gap-2"
+              >
+                {dietaryOptions.map((option) => (
+                  <ToggleGroupItem
+                    key={option.value}
+                    value={option.value}
+                    aria-label={option.label}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-sm capitalize transition",
+                      "data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                    )}
+                  >
+                    {option.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Filter className="h-4 w-4" />
+                Adjust filters, then search when you're ready.
+              </div>
+              <Button
+                onClick={handleSearch}
+                disabled={searchLoading}
+                className="w-full sm:w-auto"
+              >
+                {searchLoading ? (
+                  <div className="flex items-center gap-2">
+                    <TravelLoading variant="compass" size="sm" />
+                    Searching...
+                  </div>
+                ) : (
+                  "Search Restaurants"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {hasSearched && !searchLoading && sortedSearchResults.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center space-y-3 py-12 text-center">
+            <Search className="h-8 w-8 text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">No restaurants found</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Try adjusting your filters or changing the location to discover more options.
+            </p>
           </CardContent>
         </Card>
       )}
 
       {/* Search Results */}
-      {searchResults.length > 0 && (
+      {sortedSearchResults.length > 0 && (
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">
-            Search Results from Foursquare ({searchResults.length} restaurants)
+            Search Results ({sortedSearchResults.length} restaurants)
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {searchResults.map((restaurant: any) => (
+            {sortedSearchResults.map((restaurant: any) => (
               <Card key={restaurant.id} className="hover:shadow-lg transition-shadow">
                 <CardHeader>
                   <div className="flex items-start justify-between">
@@ -460,7 +931,7 @@ export default function RestaurantsPage() {
                         {restaurant.name}
                       </CardTitle>
                       <CardDescription className="flex items-center gap-2">
-                        <Badge variant="secondary">{restaurant.cuisineType || 'Restaurant'}</Badge>
+                        <Badge variant="secondary">{restaurant.cuisine || restaurant.cuisineType || 'Restaurant'}</Badge>
                         <span className="text-sm text-gray-600 dark:text-gray-400">
                           {restaurant.priceRange}
                         </span>
@@ -478,10 +949,10 @@ export default function RestaurantsPage() {
                     {restaurant.address}
                   </div>
                   
-                  {restaurant.phoneNumber && (
+                  {(restaurant.phoneNumber || restaurant.phone) && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                       <Phone className="h-4 w-4" />
-                      {restaurant.phoneNumber}
+                      {restaurant.phoneNumber || restaurant.phone}
                     </div>
                   )}
                   
@@ -528,8 +999,9 @@ export default function RestaurantsPage() {
                       size="sm"
                       className="w-full"
                       data-testid={`button-add-restaurant-${restaurant.id}`}
+                      disabled={addRestaurantFromSearchMutation.isPending}
                     >
-                      Add to Trip
+                      {addRestaurantFromSearchMutation.isPending ? "Adding..." : "Add to Group Restaurants"}
                     </Button>
                     
                     {/* Only show Propose to Group button when in trip context */}
@@ -589,7 +1061,7 @@ export default function RestaurantsPage() {
                         {restaurant.name}
                       </CardTitle>
                       <CardDescription className="flex items-center gap-2">
-                        <Badge variant="secondary">{restaurant.cuisineType || 'Restaurant'}</Badge>
+                        <Badge variant="secondary">{restaurant.cuisineType || (restaurant as any).cuisine || 'Restaurant'}</Badge>
                         <span className="text-sm text-gray-600 dark:text-gray-400">
                           {restaurant.priceRange}
                         </span>
