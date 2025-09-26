@@ -162,10 +162,6 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
             Discover Activities
           </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Find tours and experiences for your trip. Use the filters to narrow by category, price,
-            duration, rating, or free cancellation. Results appear below without leaving the page.
-          </p>
-          <p className="text-sm text-muted-foreground">
             Search for activities and experiences at your destination
           </p>
         </CardHeader>
@@ -265,91 +261,78 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
       </Card>
 
       {/* Activities Results */}
-      {!hasSearched ? (
-        <Card className="mt-6">
-          <CardContent className="text-center py-12">
-            <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center mx-auto mb-4">
-              <MapPin className="text-white w-8 h-8" />
-            </div>
-            <h3 className="text-2xl font-bold text-neutral-900 mb-2">
-              Discover Amazing Activities
-            </h3>
-            <p className="text-neutral-600 mb-6 max-w-md mx-auto">
-              Enter a destination in the search box above to find authentic activities and experiences.
-              Try searching for your trip destination: "{trip?.destination}" or any other city you're interested in.
-            </p>
-          </CardContent>
-        </Card>
-      ) : activitiesLoading ? (
-        <Card className="mt-6">
-          <CardContent className="text-center py-12">
-            <TravelLoading variant="compass" size="lg" text="Discovering amazing activities..." />
-          </CardContent>
-        </Card>
-      ) : activities && activities.length > 0 ? (
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {activities.map((activity) => (
-            <Card 
-              key={activity.id} 
-              className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col"
-              onClick={() => {
-                setSelectedActivity(activity);
-                setShowDetailsDialog(true);
-              }}
-            >
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base lg:text-lg leading-tight">
-                  {activity.name}
-                </CardTitle>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3 text-sm text-neutral-600">
-                    <div className="flex items-center">
-                      <Star className="w-4 h-4 text-yellow-400 mr-1" />
-                      <span>{activity.rating}</span>
+      {hasSearched ? (
+        activitiesLoading ? (
+          <Card className="mt-4">
+            <CardContent className="text-center py-12">
+              <TravelLoading variant="compass" size="lg" text="Discovering amazing activities..." />
+            </CardContent>
+          </Card>
+        ) : activities && activities.length > 0 ? (
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {activities.map((activity) => (
+              <Card
+                key={activity.id}
+                className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col"
+                onClick={() => {
+                  setSelectedActivity(activity);
+                  setShowDetailsDialog(true);
+                }}
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base lg:text-lg leading-tight">
+                    {activity.name}
+                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3 text-sm text-neutral-600">
+                      <div className="flex items-center">
+                        <Star className="w-4 h-4 text-yellow-400 mr-1" />
+                        <span>{activity.rating}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <Clock className="w-4 h-4 mr-1" />
+                        <span className="truncate">{activity.duration}</span>
+                      </div>
                     </div>
-                    <div className="flex items-center">
-                      <Clock className="w-4 h-4 mr-1" />
-                      <span className="truncate">{activity.duration}</span>
+                    {activity.provider && (
+                      <Badge variant="outline" className="text-xs">
+                        {activity.provider}
+                      </Badge>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 flex-1 flex flex-col">
+                  <p className="text-sm text-neutral-600 mb-4 line-clamp-3 flex-1">
+                    {activity.description}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center text-lg font-semibold text-green-600">
+                      <DollarSign className="w-4 h-4" />
+                      <span>{activity.currency || '$'}{activity.price}</span>
                     </div>
+                    <Button size="sm" variant="outline">
+                      <ExternalLink className="w-4 h-4 mr-1" />
+                      View Details
+                    </Button>
                   </div>
-                  {activity.provider && (
-                    <Badge variant="outline" className="text-xs">
-                      {activity.provider}
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0 flex-1 flex flex-col">
-                <p className="text-sm text-neutral-600 mb-4 line-clamp-3 flex-1">
-                  {activity.description}
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center text-lg font-semibold text-green-600">
-                    <DollarSign className="w-4 h-4" />
-                    <span>{activity.currency || '$'}{activity.price}</span>
-                  </div>
-                  <Button size="sm" variant="outline">
-                    <ExternalLink className="w-4 h-4 mr-1" />
-                    View Details
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card className="mt-6">
-          <CardContent className="text-center py-12">
-            <h3 className="text-xl font-bold text-neutral-900 mb-2">No Activities Found</h3>
-            <p className="text-neutral-600 mb-4">
-              No activities were found for "{submittedLocation || locationSearch}". Try a different destination or broader search terms.
-            </p>
-            <Button variant="outline" onClick={() => setHasSearched(false)}>
-              Try Different Location
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card className="mt-4">
+            <CardContent className="text-center py-12">
+              <h3 className="text-xl font-bold text-neutral-900 mb-2">No Activities Found</h3>
+              <p className="text-neutral-600 mb-4">
+                No activities were found for "{submittedLocation || locationSearch}". Try a different destination or broader search terms.
+              </p>
+              <Button variant="outline" onClick={() => setHasSearched(false)}>
+                Try Different Location
+              </Button>
+            </CardContent>
+          </Card>
+        )
+      ) : null}
 
       {/* Activity Details Dialog */}
       {selectedActivity && (
