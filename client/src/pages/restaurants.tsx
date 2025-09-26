@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -113,6 +113,7 @@ export default function RestaurantsPage() {
   const [showBooking, setShowBooking] = useState(false);
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [restaurantToPropose, setRestaurantToPropose] = useState<any>(null);
+  const searchSectionRef = useRef<HTMLDivElement | null>(null);
 
   // Get trip details (only if tripId exists)
   const { data: trip } = useQuery({
@@ -379,6 +380,18 @@ export default function RestaurantsPage() {
     searchRestaurants();
   }, [searchLocation, toast, searchRestaurants, setHasSearched]);
 
+  const focusSearchSection = useCallback(() => {
+    if (!searchSectionRef.current) {
+      return;
+    }
+
+    searchSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    const firstFocusable = searchSectionRef.current.querySelector<HTMLElement>(
+      "input, button, select, textarea, [tabindex]:not([tabindex='-1'])"
+    );
+    firstFocusable?.focus();
+  }, []);
+
   // Handle location selection from smart search
   const handleLocationSelect = (location: any) => {
     // Extract just the city name for the search
@@ -552,98 +565,99 @@ export default function RestaurantsPage() {
       </div>
 
       {/* Search Section */}
-      <Card id="restaurant-search-panel" aria-live="polite">
-        <CardHeader className="space-y-1">
-          <CardTitle className="flex items-center gap-2">
-            <Search className="h-5 w-5" />
-            Search Restaurants
-          </CardTitle>
-          <CardDescription>
-            Plan a reservation without leaving the page.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              handleSearch();
-            }}
-            className="space-y-6"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <Label htmlFor="location">Location</Label>
-                <SmartLocationSearch
-                  placeholder="Enter city, airport, or region..."
-                  value={searchLocation}
-                  onLocationSelect={handleLocationSelect}
-                  className="w-full"
-                />
-              </div>
+      <section ref={searchSectionRef} aria-labelledby="restaurant-search-heading">
+        <Card id="restaurant-search-panel" aria-live="polite">
+          <CardHeader className="space-y-1">
+            <CardTitle id="restaurant-search-heading" className="flex items-center gap-2">
+              <Search className="h-5 w-5" />
+              Search Restaurants
+            </CardTitle>
+            <CardDescription>
+              Plan a reservation without leaving the page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSearch();
+              }}
+              className="space-y-6"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <Label htmlFor="location">Location</Label>
+                  <SmartLocationSearch
+                    placeholder="Enter city, airport, or region..."
+                    value={searchLocation}
+                    onLocationSelect={handleLocationSelect}
+                    className="w-full"
+                  />
+                </div>
 
-              <div>
-                <Label htmlFor="reservationDate">Date</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "w-full justify-start text-left font-normal",
-                        !searchDate && "text-muted-foreground"
-                      )}
-                    >
-                      {searchDate ? format(searchDate, "PPP") : "Pick a date"}
-                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={searchDate}
-                      onSelect={setSearchDate}
-                      disabled={(date) => date < new Date()}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
+                <div>
+                  <Label htmlFor="reservationDate">Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          "w-full justify-start text-left font-normal",
+                          !searchDate && "text-muted-foreground"
+                        )}
+                      >
+                        {searchDate ? format(searchDate, "PPP") : "Pick a date"}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={searchDate}
+                        onSelect={setSearchDate}
+                        disabled={(date) => date < new Date()}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
 
-              <div>
-                <Label htmlFor="reservationTime">Time</Label>
-                <Select value={searchTime} onValueChange={setSearchTime}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="5:00 PM">5:00 PM</SelectItem>
-                    <SelectItem value="5:30 PM">5:30 PM</SelectItem>
-                    <SelectItem value="6:00 PM">6:00 PM</SelectItem>
-                    <SelectItem value="6:30 PM">6:30 PM</SelectItem>
-                    <SelectItem value="7:00 PM">7:00 PM</SelectItem>
-                    <SelectItem value="7:30 PM">7:30 PM</SelectItem>
-                    <SelectItem value="8:00 PM">8:00 PM</SelectItem>
-                    <SelectItem value="8:30 PM">8:30 PM</SelectItem>
-                    <SelectItem value="9:00 PM">9:00 PM</SelectItem>
-                    <SelectItem value="9:30 PM">9:30 PM</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div>
+                  <Label htmlFor="reservationTime">Time</Label>
+                  <Select value={searchTime} onValueChange={setSearchTime}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5:00 PM">5:00 PM</SelectItem>
+                      <SelectItem value="5:30 PM">5:30 PM</SelectItem>
+                      <SelectItem value="6:00 PM">6:00 PM</SelectItem>
+                      <SelectItem value="6:30 PM">6:30 PM</SelectItem>
+                      <SelectItem value="7:00 PM">7:00 PM</SelectItem>
+                      <SelectItem value="7:30 PM">7:30 PM</SelectItem>
+                      <SelectItem value="8:00 PM">8:00 PM</SelectItem>
+                      <SelectItem value="8:30 PM">8:30 PM</SelectItem>
+                      <SelectItem value="9:00 PM">9:00 PM</SelectItem>
+                      <SelectItem value="9:30 PM">9:30 PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div>
-                <Label htmlFor="partySize">Party Size</Label>
-                <Input
-                  id="partySize"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={searchPartySize}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    setSearchPartySize(Number.isNaN(value) ? 1 : value);
-                  }}
-                />
+                <div>
+                  <Label htmlFor="partySize">Party Size</Label>
+                  <Input
+                    id="partySize"
+                    type="number"
+                    min={1}
+                    max={20}
+                    value={searchPartySize}
+                    onChange={(event) => {
+                      const value = Number(event.target.value);
+                      setSearchPartySize(Number.isNaN(value) ? 1 : value);
+                    }}
+                  />
+                </div>
               </div>
-            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
@@ -798,7 +812,8 @@ export default function RestaurantsPage() {
             </div>
           </form>
         </CardContent>
-      </Card>
+        </Card>
+      </section>
 
       {hasSearched && !searchLoading && sortedSearchResults.length === 0 && (
         <Card>
@@ -941,7 +956,7 @@ export default function RestaurantsPage() {
               <p className="text-gray-600 dark:text-gray-400 text-center mb-4">
                 Search for restaurants or add your own reservations to start planning your dining experiences.
               </p>
-              <Button onClick={() => setShowSearch(true)}>
+              <Button onClick={focusSearchSection}>
                 <Search className="h-4 w-4 mr-2" />
                 Search Restaurants
               </Button>
