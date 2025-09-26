@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, type MutableRefObject } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,13 +21,21 @@ interface SmartLocationSearchProps {
   value?: string;
   onLocationSelect: (location: LocationResult) => void;
   className?: string;
+  onQueryChange?: (query: string) => void;
+  inputRef?: MutableRefObject<HTMLInputElement | null> | null;
+  autoFocus?: boolean;
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
 }
 
-export default function SmartLocationSearch({ 
-  placeholder = "Enter city, airport, or state...", 
-  value = "", 
+export default function SmartLocationSearch({
+  placeholder = "Enter city, airport, or state...",
+  value = "",
   onLocationSelect,
-  className = ""
+  className = "",
+  onQueryChange,
+  inputRef: externalInputRef,
+  autoFocus = false,
+  onKeyDown,
 }: SmartLocationSearchProps) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<LocationResult[]>([]);
@@ -35,7 +43,14 @@ export default function SmartLocationSearch({
   const [showResults, setShowResults] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationResult | null>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const internalInputRef = useRef<HTMLInputElement | null>(null);
+
+  const assignRefs = useCallback((node: HTMLInputElement | null) => {
+    internalInputRef.current = node;
+    if (externalInputRef) {
+      externalInputRef.current = node;
+    }
+  }, [externalInputRef]);
 
   // ROOT CAUSE 1 FIX: Sync value prop changes to internal query state
   useEffect(() => {
@@ -43,6 +58,12 @@ export default function SmartLocationSearch({
       setQuery(value || '');
     }
   }, [value]);
+
+  useEffect(() => {
+    if (autoFocus && internalInputRef.current) {
+      internalInputRef.current.focus();
+    }
+  }, [autoFocus]);
 
   useEffect(() => {
     // FIXED: Add null/undefined safety check for query
@@ -91,6 +112,7 @@ export default function SmartLocationSearch({
   const handleLocationClick = (location: LocationResult) => {
     setSelectedLocation(location);
     setQuery(location.displayName);
+    onQueryChange?.(location.displayName);
     setShowResults(false);
     setResults([]); // Clear results to prevent "No locations found" message
     onLocationSelect(location);
@@ -122,11 +144,15 @@ export default function SmartLocationSearch({
     <div className={`relative ${className}`}>
       <div className="relative">
         <Input
-          ref={inputRef}
+          ref={assignRefs}
           type="text"
           placeholder={placeholder}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const nextValue = e.target.value;
+            setQuery(nextValue);
+            onQueryChange?.(nextValue);
+          }}
           onFocus={() => {
             // Only show results if we have actual search results
             // Don't show dropdown for pre-filled values without search results
@@ -135,6 +161,8 @@ export default function SmartLocationSearch({
             }
           }}
           className="w-full"
+          autoFocus={autoFocus}
+          onKeyDown={onKeyDown}
         />
         {isLoading && (
           <div className="absolute right-3 top-3">
