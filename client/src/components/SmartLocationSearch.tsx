@@ -1,10 +1,10 @@
-import { forwardRef, useEffect, useRef, useState } from "react";
-import type { MutableRefObject } from "react";
+import { forwardRef, useEffect, useId, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MutableRefObject } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { MapPin, Plane, Globe, Building } from "lucide-react";
+import { MapPin, Plane, Globe, Building, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
 interface LocationResult {
@@ -35,10 +35,14 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<LocationResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [showResults, setShowResults] = useState(false);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<LocationResult | null>(null);
+  const [activeIndex, setActiveIndex] = useState<number>(-1);
   const debounceRef = useRef<NodeJS.Timeout>();
   const internalInputRef = useRef<HTMLInputElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const listboxId = useId();
+  const hintId = useId();
 
   const setInputRef = (node: HTMLInputElement | null) => {
     internalInputRef.current = node;
@@ -60,8 +64,8 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     // FIXED: Add null/undefined safety check for query
     if (!query || query.length < 2) {
       setResults([]);
-      setShowResults(false);
       setSelectedLocation(null);
+      setActiveIndex(-1);
       return;
     }
 
@@ -86,10 +90,10 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         const response = await apiFetch(`/api/locations/search?q=${encodeURIComponent(query)}`);
         if (response.ok) {
           const data = await response.json();
-          // ROOT CAUSE 2 FIX: Ensure results is always an array
-          const safeResults = Array.isArray(data) ? data : [];
+          // ROOT CAUSE 2 FIX: Ensure results is always an array and limit suggestions
+          const safeResults = Array.isArray(data) ? data.slice(0, 7) : [];
           setResults(safeResults);
-          setShowResults(true);
+          // Keep dropdown state controlled by user intent
         }
       } catch (error) {
         console.error('Location search error:', error);
@@ -103,8 +107,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   const handleLocationClick = (location: LocationResult) => {
     setSelectedLocation(location);
     setQuery(location.displayName);
-    setShowResults(false);
+    setIsDropdownOpen(false);
     setResults([]); // Clear results to prevent "No locations found" message
+    setActiveIndex(-1);
     onLocationSelect(location);
   };
 
@@ -130,8 +135,96 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
   };
 
+  const closeDropdown = () => {
+    setIsDropdownOpen(false);
+    setActiveIndex(-1);
+  };
+
+  const openDropdown = () => {
+    setIsDropdownOpen(true);
+  };
+
+  useEffect(() => {
+    if (!isDropdownOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        closeDropdown();
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
+  useEffect(() => {
+    if (activeIndex >= results.length) {
+      setActiveIndex(results.length > 0 ? results.length - 1 : -1);
+    }
+  }, [activeIndex, results.length]);
+
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [query]);
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      if (!isDropdownOpen) {
+        openDropdown();
+        setActiveIndex(results.length > 0 ? 0 : -1);
+        return;
+      }
+
+      setActiveIndex((prev) => {
+        const nextIndex = results.length === 0 ? -1 : (prev + 1) % results.length;
+        return nextIndex;
+      });
+    } else if (event.key === "ArrowUp" && isDropdownOpen) {
+      event.preventDefault();
+      setActiveIndex((prev) => {
+        if (results.length === 0) return -1;
+        const nextIndex = prev <= 0 ? results.length - 1 : prev - 1;
+        return nextIndex;
+      });
+    } else if (event.key === "Enter") {
+      if (isDropdownOpen) {
+        if (activeIndex >= 0 && results[activeIndex]) {
+          event.preventDefault();
+          handleLocationClick(results[activeIndex]);
+          return;
+        }
+        closeDropdown();
+      }
+    } else if (event.key === "Escape" && isDropdownOpen) {
+      event.preventDefault();
+      closeDropdown();
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      if (isDropdownOpen) {
+        closeDropdown();
+      } else {
+        openDropdown();
+        setActiveIndex(results.length > 0 ? 0 : -1);
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    // Delay closing to allow click events on suggestions
+    requestAnimationFrame(() => {
+      if (containerRef.current && document.activeElement && !containerRef.current.contains(document.activeElement)) {
+        closeDropdown();
+      }
+    });
+  };
+
   return (
-    <div className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
         <Input
           id={id}
@@ -140,87 +233,129 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           placeholder={placeholder}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => {
-            // Only show results if we have actual search results
-            // Don't show dropdown for pre-filled values without search results
-            if (results.length > 0) {
-              setShowResults(true);
+          className="w-full pr-10"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isDropdownOpen}
+          aria-controls={listboxId}
+          aria-activedescendant={activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
+          aria-describedby={hintId}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute inset-y-0 right-1 my-1 h-7 w-7"
+          aria-label={isDropdownOpen ? "Hide suggestions" : "Show suggestions"}
+          onClick={() => {
+            if (isDropdownOpen) {
+              closeDropdown();
+            } else {
+              openDropdown();
+              setActiveIndex(results.length > 0 ? 0 : -1);
+              internalInputRef.current?.focus();
             }
           }}
-          className="w-full"
-        />
+        >
+          <ChevronDown className="h-4 w-4" />
+        </Button>
         {isLoading && (
-          <div className="absolute right-3 top-3">
+          <div className="pointer-events-none absolute right-10 top-3">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
           </div>
         )}
       </div>
+      <p id={hintId} className="mt-1 hidden text-xs text-muted-foreground sm:block">
+        Press ↓ to see suggestions
+      </p>
 
-      {showResults && results.length > 0 && (
-        <Card className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto">
-          <CardContent className="p-0">
-            {results.map((location, index) => {
-              // ROOT CAUSE 2 FIX: Add safety checks for all location properties
-              if (!location || typeof location !== 'object') {
-                return null;
-              }
-              
-              const safeLocation = {
-                type: location.type || 'city',
-                name: location.name || 'Unknown Location',
-                code: location.code || 'N/A',
-                displayName: location.displayName || location.name || 'Unknown Location',
-                country: location.country || 'Unknown Country',
-                state: location.state,
-                airports: Array.isArray(location.airports) ? location.airports : []
-              };
-              
-              return (
-                <div
-                  key={`${safeLocation.type}-${safeLocation.code}-${index}`}
-                  className="flex items-center gap-3 p-3 cursor-pointer hover:bg-gray-50 border-b last:border-b-0"
-                  onClick={() => handleLocationClick(safeLocation)}
-                >
-                  <div className="flex items-center gap-2">
-                    {getLocationIcon(safeLocation.type)}
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium">{safeLocation.name}</span>
-                        <Badge variant="outline" className={getTypeColor(safeLocation.type)}>
-                          {safeLocation.type === 'metro' ? 'metro area' : safeLocation.type}
-                        </Badge>
-                      </div>
-                      <div className="text-sm text-gray-600">
-                        {safeLocation.country}
-                        {safeLocation.state && safeLocation.state !== safeLocation.country && `, ${safeLocation.state}`}
-                        {safeLocation.type === 'metro' && safeLocation.airports && (
-                          <div className="text-xs text-blue-600 mt-1">
-                            Multiple airports: {safeLocation.airports.join(', ')}
-                          </div>
-                        )}
-                      </div>
-                      {safeLocation.airports && safeLocation.airports.length > 0 && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          Airports: {safeLocation.airports.slice(0, 3).join(', ')}
-                          {safeLocation.airports.length > 3 && ` +${safeLocation.airports.length - 3} more`}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-sm font-mono text-gray-600">
-                      {safeLocation.code}
-                    </div>
+      {isDropdownOpen && (
+        <Card className="absolute top-full left-0 right-0 z-50 mt-1 max-h-60 overflow-y-auto shadow-lg">
+          <CardContent className="p-0" role="listbox" id={listboxId} aria-label="Location suggestions">
+            {query.length < 2 ? (
+              <div className="p-3 text-center text-sm text-muted-foreground">
+                Type at least 2 characters to load suggestions.
+              </div>
+            ) : (
+              <>
+                {isLoading && results.length === 0 ? (
+                  <div className="flex items-center justify-center gap-2 p-3 text-sm text-muted-foreground">
+                    <div className="h-3 w-3 animate-spin rounded-full border-b-2 border-blue-600"></div>
+                    Loading suggestions...
                   </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
+                ) : null}
+                {!isLoading && results.length === 0 ? (
+                  <div className="p-3 text-center text-sm text-muted-foreground">
+                    No locations found for "{query}". Try a different search term.
+                  </div>
+                ) : null}
+                {results.map((location, index) => {
+                  if (!location || typeof location !== "object") {
+                    return null;
+                  }
 
-      {showResults && results.length === 0 && query.length >= 2 && !isLoading && !selectedLocation && (
-        <Card className="absolute top-full left-0 right-0 z-50 mt-1">
-          <CardContent className="p-3 text-center text-gray-500">
-            No locations found for "{query}". Try a different search term.
+                  const safeLocation = {
+                    type: location.type || "city",
+                    name: location.name || "Unknown Location",
+                    code: location.code || "N/A",
+                    displayName: location.displayName || location.name || "Unknown Location",
+                    country: location.country || "Unknown Country",
+                    state: location.state,
+                    airports: Array.isArray(location.airports) ? location.airports : [],
+                  };
+
+                  const isActive = index === activeIndex;
+
+                  return (
+                    <div
+                      key={`${safeLocation.type}-${safeLocation.code}-${index}`}
+                      id={`${listboxId}-option-${index}`}
+                      role="option"
+                      aria-selected={isActive}
+                      className={`flex cursor-pointer items-center gap-3 border-b p-3 last:border-b-0 transition-colors ${
+                        isActive ? "bg-blue-50" : "hover:bg-gray-50"
+                      }`}
+                      onMouseDown={(event) => {
+                        // Prevent blur before click handler executes
+                        event.preventDefault();
+                      }}
+                      onClick={() => handleLocationClick(safeLocation)}
+                      onMouseEnter={() => setActiveIndex(index)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {getLocationIcon(safeLocation.type)}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{safeLocation.name}</span>
+                            <Badge variant="outline" className={getTypeColor(safeLocation.type)}>
+                              {safeLocation.type === "metro" ? "metro area" : safeLocation.type}
+                            </Badge>
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            {safeLocation.country}
+                            {safeLocation.state && safeLocation.state !== safeLocation.country && `, ${safeLocation.state}`}
+                            {safeLocation.type === "metro" && safeLocation.airports && (
+                              <div className="mt-1 text-xs text-blue-600">
+                                Multiple airports: {safeLocation.airports.join(", ")}
+                              </div>
+                            )}
+                          </div>
+                          {safeLocation.airports && safeLocation.airports.length > 0 && (
+                            <div className="mt-1 text-xs text-gray-500">
+                              Airports: {safeLocation.airports.slice(0, 3).join(", ")}
+                              {safeLocation.airports.length > 3 && ` +${safeLocation.airports.length - 3} more`}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-sm font-mono text-gray-600">{safeLocation.code}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </CardContent>
         </Card>
       )}
