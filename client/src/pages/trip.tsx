@@ -3309,58 +3309,6 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
           </Button>
         </div>
 
-        <Card className="border-dashed">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Plus className="h-5 w-5 text-primary" />
-              Add a Hotel Booking
-            </CardTitle>
-            <CardDescription>
-              Save a custom stay or confirmed reservation directly to this trip so everyone can view the details.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-neutral-900">Manual entry</p>
-                  <p className="text-sm text-muted-foreground">
-                    Record a stay that isn't imported from the hotel search results.
-                  </p>
-                </div>
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto justify-between sm:justify-center"
-                  >
-                    <span>{isManualHotelFormOpen ? "Close" : "Add a Hotel"}</span>
-                    <ChevronDown
-                      className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
-                    />
-                  </Button>
-                </CollapsibleTrigger>
-              </div>
-              <CollapsibleContent className="space-y-6 pt-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)}>
-                    <HotelFormFields
-                      form={form}
-                      isSubmitting={createHotelMutation.isPending}
-                      submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
-                      showCancelButton
-                      onCancel={() => {
-                        form.reset(formDefaults());
-                        setIsManualHotelFormOpen(false);
-                      }}
-                    />
-                  </form>
-                </Form>
-              </CollapsibleContent>
-            </Collapsible>
-
-          </CardContent>
-        </Card>
-
         <HotelSearchPanel
           ref={searchPanelRef}
           tripId={tripId}
@@ -3371,6 +3319,46 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
           hotelProposalsCount={hotelProposals.length}
           toast={toast}
         />
+
+        <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
+          <div className="rounded-lg border border-dashed bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-neutral-900">Manual entry</p>
+                <p className="text-sm text-muted-foreground">
+                  Record a stay that isn't imported from the hotel search results.
+                </p>
+              </div>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto justify-between sm:justify-center"
+                >
+                  <span>{isManualHotelFormOpen ? "Close" : "Add a Hotel"}</span>
+                  <ChevronDown
+                    className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
+                  />
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+            <CollapsibleContent className="space-y-6 p-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                  <HotelFormFields
+                    form={form}
+                    isSubmitting={createHotelMutation.isPending}
+                    submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+                    showCancelButton
+                    onCancel={() => {
+                      form.reset(formDefaults());
+                      setIsManualHotelFormOpen(false);
+                    }}
+                  />
+                </form>
+              </Form>
+            </CollapsibleContent>
+          </div>
+        </Collapsible>
 
       </div>
 

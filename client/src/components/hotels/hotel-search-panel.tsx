@@ -665,13 +665,23 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
         </div>
 
         <Card className="border-primary/40 shadow-sm">
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-primary" />
-              <CardTitle className="text-lg">Search Hotels for this Trip</CardTitle>
+          <CardHeader className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-primary" />
+                <CardTitle className="text-lg">Search Hotels for this Trip</CardTitle>
+              </div>
+              {searchResults.length > 0 && (
+                <div className="text-sm text-muted-foreground">Found {searchResults.length} hotels</div>
+              )}
             </div>
-            {searchResults.length > 0 && (
-              <div className="text-sm text-muted-foreground">Found {searchResults.length} hotels</div>
+            {trip?.destination && (trip?.startDate || trip?.endDate) && (
+              <p className="text-sm text-muted-foreground">
+                Trip destination: {trip.destination}
+                {(trip.startDate || trip.endDate) && " • "}
+                {trip.startDate ? format(new Date(trip.startDate), "MMM d") : "Start TBD"}
+                {trip.endDate ? `–${format(new Date(trip.endDate), "MMM d")}` : ""}
+              </p>
             )}
           </CardHeader>
           <CardContent>
