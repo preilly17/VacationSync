@@ -3,6 +3,8 @@ import { useParams, useLocation, Link } from "wouter";
 import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -16,12 +18,15 @@ import {
   ChevronRight,
   ChevronDown,
   ArrowLeft,
+  ArrowRight,
   Clock,
   User as UserIcon,
   Package,
   DollarSign,
   ShoppingCart,
   Plane,
+  PlaneTakeoff,
+  PlaneLanding,
   Hotel,
   Utensils,
   Star,
@@ -31,12 +36,15 @@ import {
   Sparkles,
   CheckCircle,
   Settings,
+  Search,
+  Loader2,
   type LucideIcon
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
+import { formatCurrency } from "@/lib/utils";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { AddActivityModal } from "@/components/add-activity-modal";
 import { EditTripModal } from "@/components/edit-trip-modal";
@@ -64,6 +72,7 @@ import type {
   User,
   InsertHotel,
   ActivityInviteStatus,
+  InsertFlight,
 } from "@shared/schema";
 import {
   format,
@@ -92,6 +101,7 @@ import {
   type HotelFormValues,
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
+import SmartLocationSearch from "@/components/SmartLocationSearch";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -1761,7 +1771,7 @@ export default function Trip() {
                 )}
 
                 {activeTab === "flights" && (
-                  <FlightCoordination tripId={parseInt(id || "0")} user={user} />
+                  <FlightCoordination tripId={parseInt(id || "0")} user={user} trip={trip} />
                 )}
                 
                 {activeTab === "hotels" && (
@@ -2224,86 +2234,915 @@ export default function Trip() {
 }
 
 // Flight Coordination Component
-function FlightCoordination({ tripId, user }: { tripId: number; user: any }) {
-  const [, setLocation] = useLocation();
-  const { data: flights, isLoading } = useQuery({
+function FlightCoordination({
+  tripId,
+  user,
+  trip,
+}: {
+  tripId: number;
+  user: any;
+  trip?: TripWithDetails | null;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: flightsData, isLoading } = useQuery({
     queryKey: [`/api/trips/${tripId}/flights`],
     enabled: !!tripId,
   });
 
+  const flights = Array.isArray(flightsData) ? flightsData : [];
+
+  const [searchFormData, setSearchFormData] = useState({
+    departure: "",
+    arrival: "",
+    departureDate: "",
+    returnDate: "",
+    passengers: "1",
+    airline: "any",
+  });
+  const [hasPrefilledSearch, setHasPrefilledSearch] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
+  const [manualFlightData, setManualFlightData] = useState({
+    flightNumber: "",
+    airline: "",
+    airlineCode: "",
+    departureAirport: "",
+    departureCode: "",
+    departureTime: "",
+    arrivalAirport: "",
+    arrivalCode: "",
+    arrivalTime: "",
+    price: "",
+    seatClass: "economy",
+    flightType: "outbound",
+    bookingReference: "",
+    aircraft: "",
+    status: "confirmed",
+  });
+
+  useEffect(() => {
+    if (hasPrefilledSearch) {
+      return;
+    }
+
+    setSearchFormData((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      if (!prev.departure) {
+        if (user?.defaultLocationCode) {
+          next.departure = user.defaultLocationCode;
+          changed = true;
+        } else if (user?.defaultLocation) {
+          next.departure = user.defaultLocation;
+          changed = true;
+        }
+      }
+
+      if (!prev.arrival && trip?.destination) {
+        next.arrival = trip.destination;
+        changed = true;
+      }
+
+      if (!prev.departureDate && trip?.startDate) {
+        next.departureDate = format(new Date(trip.startDate), "yyyy-MM-dd");
+        changed = true;
+      }
+
+      if (!prev.returnDate && trip?.endDate) {
+        next.returnDate = format(new Date(trip.endDate), "yyyy-MM-dd");
+        changed = true;
+      }
+
+      if (changed) {
+        setHasPrefilledSearch(true);
+        return next;
+      }
+
+      return prev;
+    });
+  }, [trip, user, hasPrefilledSearch]);
+
+  const resetManualFlightForm = useCallback(() => {
+    setManualFlightData({
+      flightNumber: "",
+      airline: "",
+      airlineCode: "",
+      departureAirport: "",
+      departureCode: "",
+      departureTime: "",
+      arrivalAirport: "",
+      arrivalCode: "",
+      arrivalTime: "",
+      price: "",
+      seatClass: "economy",
+      flightType: "outbound",
+      bookingReference: "",
+      aircraft: "",
+      status: "confirmed",
+    });
+  }, []);
+
+  const createFlightMutation = useMutation({
+    mutationFn: async (flightData: InsertFlight) => {
+      return apiRequest(`/api/trips/${tripId}/flights`, {
+        method: "POST",
+        body: flightData,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      toast({
+        title: "Flight added",
+        description: "Your flight has been saved to the trip.",
+      });
+      setIsManualDialogOpen(false);
+      resetManualFlightForm();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to add flight",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleManualSubmit = useCallback(() => {
+    if (
+      !manualFlightData.flightNumber ||
+      !manualFlightData.airline ||
+      !manualFlightData.departureAirport ||
+      !manualFlightData.arrivalAirport ||
+      !manualFlightData.departureTime ||
+      !manualFlightData.arrivalTime
+    ) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all required fields before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const payload: InsertFlight = {
+      ...manualFlightData,
+      tripId,
+      departureTime: new Date(manualFlightData.departureTime),
+      arrivalTime: new Date(manualFlightData.arrivalTime),
+      price: manualFlightData.price ? Number(manualFlightData.price) : null,
+      currency: "USD",
+    };
+
+    createFlightMutation.mutate(payload);
+  }, [createFlightMutation, manualFlightData, toast, tripId]);
+
+  const handleFlightSearch = useCallback(async () => {
+    if (!searchFormData.departure || !searchFormData.arrival || !searchFormData.departureDate) {
+      toast({
+        title: "Missing information",
+        description: "Add departure, arrival, and departure date to search flights.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSearching(true);
+    setHasSearched(true);
+
+    try {
+      const response = await apiRequest("/api/search/flights", {
+        method: "POST",
+        body: {
+          origin: searchFormData.departure,
+          destination: searchFormData.arrival,
+          departureDate: searchFormData.departureDate,
+          returnDate: searchFormData.returnDate || undefined,
+          passengers: parseInt(searchFormData.passengers, 10),
+          airline: searchFormData.airline && searchFormData.airline !== "any" ? searchFormData.airline : undefined,
+          provider: "both",
+          page: 1,
+          limit: 50,
+        },
+      });
+
+      const data = await response.json();
+
+      if (data && Array.isArray(data.flights) && data.flights.length > 0) {
+        setSearchResults(data.flights);
+        toast({
+          title: "Flights found",
+          description: `We found ${data.flights.length} flight options for your search.`,
+        });
+      } else {
+        setSearchResults([]);
+        toast({
+          title: "No flights found",
+          description: "Try adjusting your dates or destinations.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error("Flight search error", error);
+      setSearchResults([]);
+      toast({
+        title: "Search failed",
+        description: error?.message || "Unable to search flights right now.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearching(false);
+    }
+  }, [searchFormData, toast]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
       </div>
     );
   }
 
+  const handleManualDialogOpen = () => {
+    resetManualFlightForm();
+    setIsManualDialogOpen(true);
+  };
+
+  const handleManualDialogChange = (open: boolean) => {
+    if (!open) {
+      resetManualFlightForm();
+    }
+    setIsManualDialogOpen(open);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">Flight Coordination</h2>
-          <p className="text-gray-600">Coordinate flights with your group</p>
-        </div>
-        <Button
-          onClick={() => {
-            setLocation(`/trip/${tripId}/flights?panel=search`);
-          }}
-          className="bg-primary hover:bg-red-600 text-white"
-        >
-          <Plane className="w-4 h-4 mr-2" />
-          Manage Flights
-        </Button>
+      <div>
+        <h2 className="text-xl font-semibold">Flight Coordination</h2>
+        <p className="text-gray-600">Coordinate flights with your group</p>
       </div>
 
       <Card>
-        <CardContent className="p-6">
-          {(flights as any) && (flights as any).length > 0 ? (
-            <div className="space-y-4">
-              {(flights as any).slice(0, 3).map((flight: any) => (
-                <div key={flight.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <Plane className="w-5 h-5 text-blue-600" />
-                    <div>
-                      <p className="font-semibold">{flight.flightNumber}</p>
-                      <p className="text-sm text-gray-600">
-                        {flight.departureCode} → {flight.arrivalCode}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {format(new Date(flight.departureTime), 'MMM dd, h:mm a')}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="outline">{flight.status}</Badge>
-                </div>
-              ))}
-              {(flights as any).length > 3 && (
-                <p className="text-sm text-gray-500 text-center">
-                  +{(flights as any).length - 3} more flights
-                </p>
-              )}
+        <CardContent className="space-y-6 p-6">
+          <form
+            className="space-y-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleFlightSearch();
+            }}
+          >
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <Label>From</Label>
+                <SmartLocationSearch
+                  placeholder="Departure city or airport"
+                  value={searchFormData.departure}
+                  onLocationSelect={(location) =>
+                    setSearchFormData((prev) => ({ ...prev, departure: location.displayName }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>To</Label>
+                <SmartLocationSearch
+                  placeholder="Arrival city or airport"
+                  value={searchFormData.arrival}
+                  onLocationSelect={(location) =>
+                    setSearchFormData((prev) => ({ ...prev, arrival: location.displayName }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="flight-search-departure-date">Departure date</Label>
+                <Input
+                  id="flight-search-departure-date"
+                  type="date"
+                  value={searchFormData.departureDate}
+                  onChange={(event) =>
+                    setSearchFormData((prev) => ({ ...prev, departureDate: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="flight-search-return-date">Return (optional)</Label>
+                <Input
+                  id="flight-search-return-date"
+                  type="date"
+                  value={searchFormData.returnDate}
+                  onChange={(event) =>
+                    setSearchFormData((prev) => ({ ...prev, returnDate: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="flight-search-passengers">Passengers</Label>
+                <Select
+                  value={searchFormData.passengers}
+                  onValueChange={(value) => setSearchFormData((prev) => ({ ...prev, passengers: value }))}
+                >
+                  <SelectTrigger id="flight-search-passengers">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
+                      <SelectItem key={num} value={num.toString()}>
+                        {num} {num === 1 ? "passenger" : "passengers"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="flight-search-airline">Airline</Label>
+                <Select
+                  value={searchFormData.airline}
+                  onValueChange={(value) => setSearchFormData((prev) => ({ ...prev, airline: value }))}
+                >
+                  <SelectTrigger id="flight-search-airline">
+                    <SelectValue placeholder="Any airline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="any">Any Airline</SelectItem>
+                    <SelectItem value="AA">American Airlines</SelectItem>
+                    <SelectItem value="DL">Delta Air Lines</SelectItem>
+                    <SelectItem value="UA">United Airlines</SelectItem>
+                    <SelectItem value="SW">Southwest Airlines</SelectItem>
+                    <SelectItem value="AS">Alaska Airlines</SelectItem>
+                    <SelectItem value="B6">JetBlue Airways</SelectItem>
+                    <SelectItem value="F9">Frontier Airlines</SelectItem>
+                    <SelectItem value="NK">Spirit Airlines</SelectItem>
+                    <SelectItem value="G4">Allegiant Air</SelectItem>
+                    <SelectItem value="VS">Virgin Atlantic</SelectItem>
+                    <SelectItem value="BA">British Airways</SelectItem>
+                    <SelectItem value="LH">Lufthansa</SelectItem>
+                    <SelectItem value="AF">Air France</SelectItem>
+                    <SelectItem value="KL">KLM</SelectItem>
+                    <SelectItem value="IB">Iberia</SelectItem>
+                    <SelectItem value="OS">Austrian Airlines</SelectItem>
+                    <SelectItem value="EY">Etihad Airways</SelectItem>
+                    <SelectItem value="QR">Qatar Airways</SelectItem>
+                    <SelectItem value="EK">Emirates</SelectItem>
+                    <SelectItem value="TK">Turkish Airlines</SelectItem>
+                    <SelectItem value="JL">Japan Airlines</SelectItem>
+                    <SelectItem value="NH">All Nippon Airways</SelectItem>
+                    <SelectItem value="CX">Cathay Pacific</SelectItem>
+                    <SelectItem value="SQ">Singapore Airlines</SelectItem>
+                    <SelectItem value="AC">Air Canada</SelectItem>
+                    <SelectItem value="WS">WestJet</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          ) : (
-            <div className="text-center py-8">
-              <Plane className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No flights added yet</h3>
-              <p className="text-gray-600 mb-4">
-                Add and coordinate flights with your travel group
-              </p>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+              <Button type="submit" className="w-full sm:w-auto" disabled={isSearching}>
+                {isSearching ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-4 w-4" />
+                    Search
+                  </>
+                )}
+              </Button>
               <Button
-                onClick={() => setLocation(`/trip/${tripId}/flights?panel=search`)}
-                className="bg-primary hover:bg-red-600 text-white"
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={handleManualDialogOpen}
               >
-                <Plane className="w-4 h-4 mr-2" />
-                Add Flight
+                Log Flight Manually
               </Button>
             </div>
-          )}
+          </form>
+
+          {isSearching ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
+            </div>
+          ) : searchResults.length > 0 ? (
+            <div className="space-y-4">
+              {searchResults.map((flight, index) => {
+                const airlineName = getFlightAirlineName(flight);
+                const priceLabel = formatPriceDisplay(flight.price ?? flight.totalPrice, flight.currency);
+                const hasNumericPrice = parseNumericAmount(flight.price ?? flight.totalPrice) !== null;
+                const departureInfo = getFlightEndpointInfo(flight, "departure", searchFormData.departure);
+                const arrivalInfo = getFlightEndpointInfo(flight, "arrival", searchFormData.arrival);
+                const stops = getFlightStops(flight);
+                const duration = getFlightDurationLabel(flight);
+
+                return (
+                  <div key={`${airlineName}-${index}`} className="rounded-lg border p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+                        <Plane className="h-4 w-4 text-blue-600" />
+                        <span>{airlineName}</span>
+                        {flight.flightNumber && <span className="text-gray-500">{flight.flightNumber}</span>}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-green-600">{priceLabel}</div>
+                        {hasNumericPrice && <div className="text-xs text-gray-500">per traveler</div>}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-1 gap-4 text-sm md:grid-cols-[1fr_auto_1fr] md:items-center">
+                      <div className="flex items-start gap-2">
+                        <PlaneTakeoff className="mt-0.5 h-4 w-4 text-green-600" />
+                        <div>
+                          <div className="font-medium">{departureInfo.location}</div>
+                          <div className="text-gray-500">{departureInfo.timeLabel}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+                        <ArrowRight className="h-4 w-4" />
+                        <span>{duration}</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <PlaneLanding className="mt-0.5 h-4 w-4 text-red-600" />
+                        <div>
+                          <div className="font-medium">{arrivalInfo.location}</div>
+                          <div className="text-gray-500">{arrivalInfo.timeLabel}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-gray-600">
+                      {typeof stops === "number" && (
+                        <span>{stops === 0 ? "Non-stop" : `${stops} stop${stops > 1 ? "s" : ""}`}</span>
+                      )}
+                      {flight.class && <span className="capitalize">{flight.class}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : hasSearched ? (
+            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-gray-600">
+              No flights matched your search. Try different dates or airports.
+            </div>
+          ) : flights.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-6 text-center">
+              <Plane className="mx-auto mb-3 h-10 w-10 text-gray-400" />
+              <p className="text-sm text-gray-600">Search for flights to start coordinating with your group.</p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
+
+      {searchResults.length === 0 && !isSearching && !hasSearched && (
+        <Card>
+          <CardContent className="p-6">
+            {flights.length > 0 ? (
+              <div className="space-y-4">
+                {flights.slice(0, 3).map((flight: any) => (
+                  <div key={flight.id} className="flex items-center justify-between rounded-lg border p-4">
+                    <div className="flex items-center space-x-4">
+                      <Plane className="h-5 w-5 text-blue-600" />
+                      <div>
+                        <p className="font-semibold">{flight.flightNumber}</p>
+                        <p className="text-sm text-gray-600">
+                          {flight.departureCode} → {flight.arrivalCode}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {format(new Date(flight.departureTime), "MMM dd, h:mm a")}
+                        </p>
+                      </div>
+                    </div>
+                    <Badge variant="outline">{flight.status}</Badge>
+                  </div>
+                ))}
+                {flights.length > 3 && (
+                  <p className="text-center text-sm text-gray-500">+{flights.length - 3} more flights</p>
+                )}
+              </div>
+            ) : (
+              <div className="py-8 text-center">
+                <Plane className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+                <h3 className="mb-2 text-lg font-medium text-gray-900">No flights added yet</h3>
+                <p className="text-gray-600">Use the search form above or log a flight manually to get started.</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={isManualDialogOpen} onOpenChange={handleManualDialogChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Log Flight Manually</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="manual-flight-number">Flight Number *</Label>
+                <Input
+                  id="manual-flight-number"
+                  placeholder="e.g., AA123"
+                  value={manualFlightData.flightNumber}
+                  onChange={(event) =>
+                    setManualFlightData((prev) => ({ ...prev, flightNumber: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="manual-airline">Airline *</Label>
+                <Input
+                  id="manual-airline"
+                  placeholder="e.g., American Airlines"
+                  value={manualFlightData.airline}
+                  onChange={(event) =>
+                    setManualFlightData((prev) => ({ ...prev, airline: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label>From *</Label>
+                <SmartLocationSearch
+                  placeholder="Departure airport"
+                  value={manualFlightData.departureAirport}
+                  onLocationSelect={(location) =>
+                    setManualFlightData((prev) => ({
+                      ...prev,
+                      departureAirport: location.displayName,
+                      departureCode: location.code,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <Label>To *</Label>
+                <SmartLocationSearch
+                  placeholder="Arrival airport"
+                  value={manualFlightData.arrivalAirport}
+                  onLocationSelect={(location) =>
+                    setManualFlightData((prev) => ({
+                      ...prev,
+                      arrivalAirport: location.displayName,
+                      arrivalCode: location.code,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="manual-departure-time">Departure Time *</Label>
+                <Input
+                  id="manual-departure-time"
+                  type="datetime-local"
+                  value={manualFlightData.departureTime}
+                  onChange={(event) =>
+                    setManualFlightData((prev) => ({ ...prev, departureTime: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="manual-arrival-time">Arrival Time *</Label>
+                <Input
+                  id="manual-arrival-time"
+                  type="datetime-local"
+                  value={manualFlightData.arrivalTime}
+                  onChange={(event) =>
+                    setManualFlightData((prev) => ({ ...prev, arrivalTime: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="manual-price">Price ($)</Label>
+                <Input
+                  id="manual-price"
+                  type="number"
+                  min="0"
+                  value={manualFlightData.price}
+                  onChange={(event) =>
+                    setManualFlightData((prev) => ({ ...prev, price: event.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <Label htmlFor="manual-seat-class">Seat Class</Label>
+                <Select
+                  value={manualFlightData.seatClass}
+                  onValueChange={(value) => setManualFlightData((prev) => ({ ...prev, seatClass: value }))}
+                >
+                  <SelectTrigger id="manual-seat-class">
+                    <SelectValue placeholder="Select class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="economy">Economy</SelectItem>
+                    <SelectItem value="premium">Premium Economy</SelectItem>
+                    <SelectItem value="business">Business</SelectItem>
+                    <SelectItem value="first">First</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <Label htmlFor="manual-flight-type">Flight Type</Label>
+                <Select
+                  value={manualFlightData.flightType}
+                  onValueChange={(value) => setManualFlightData((prev) => ({ ...prev, flightType: value }))}
+                >
+                  <SelectTrigger id="manual-flight-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="outbound">Outbound</SelectItem>
+                    <SelectItem value="return">Return</SelectItem>
+                    <SelectItem value="connecting">Connecting</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="manual-booking-reference">Booking Reference</Label>
+                <Input
+                  id="manual-booking-reference"
+                  placeholder="e.g., ABC123"
+                  value={manualFlightData.bookingReference}
+                  onChange={(event) =>
+                    setManualFlightData((prev) => ({ ...prev, bookingReference: event.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" type="button" onClick={() => handleManualDialogChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleManualSubmit}
+                disabled={createFlightMutation.isPending}
+              >
+                {createFlightMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Add Flight"
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
+}
+
+function parseNumericAmount(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isNaN(value) ? null : value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  return null;
+}
+
+function formatPriceDisplay(value: unknown, currency?: string | null, fallback = "See details"): string {
+  const amount = parseNumericAmount(value);
+  if (amount !== null) {
+    return formatCurrency(amount, { currency: currency ?? "USD" });
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+
+  return fallback;
+}
+
+function getFlightDurationLabel(flight: any): string {
+  const durationSource =
+    flight?.duration ||
+    flight?.totalDuration ||
+    flight?.itineraries?.[0]?.duration ||
+    flight?.segments?.[0]?.duration ||
+    null;
+
+  if (!durationSource) {
+    return "Duration varies";
+  }
+
+  const minutes = parseDurationToMinutes(durationSource);
+  if (minutes === null) {
+    return typeof durationSource === "string" ? durationSource : "Duration varies";
+  }
+
+  return formatDuration(minutes);
+}
+
+function parseDurationToMinutes(duration?: string | number | null): number | null {
+  if (duration == null) {
+    return null;
+  }
+
+  if (typeof duration === "number") {
+    return duration;
+  }
+
+  const isoMatch = duration.match(/^PT(?:(\d+)H)?(?:(\d+)M)?$/i);
+  if (isoMatch) {
+    const hours = isoMatch[1] ? parseInt(isoMatch[1], 10) : 0;
+    const minutes = isoMatch[2] ? parseInt(isoMatch[2], 10) : 0;
+    return hours * 60 + minutes;
+  }
+
+  const simpleMatch = duration.match(/(\d+)h\s*(\d+)?m?/i);
+  if (simpleMatch) {
+    const hours = parseInt(simpleMatch[1], 10);
+    const minutes = simpleMatch[2] ? parseInt(simpleMatch[2], 10) : 0;
+    return hours * 60 + minutes;
+  }
+
+  const numeric = parseInt(duration, 10);
+  return Number.isNaN(numeric) ? null : numeric;
+}
+
+function formatDuration(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours === 0) {
+    return `${mins}m`;
+  }
+  if (mins === 0) {
+    return `${hours}h`;
+  }
+  return `${hours}h ${mins}m`;
+}
+
+function getFlightEndpointInfo(
+  flight: any,
+  key: "departure" | "arrival",
+  fallbackLocation?: string,
+): { location: string; timeLabel: string } {
+  const segments = Array.isArray(flight?.segments) ? flight.segments : flight?.itineraries?.[0]?.segments;
+  const segmentIndex = key === "departure" ? 0 : Math.max((segments?.length ?? 1) - 1, 0);
+  const segment = segments?.[segmentIndex];
+  const endpoint = flight?.[key] || segment?.[key] || segment?.[key === "departure" ? "origin" : "destination"] || {};
+
+  const airportName =
+    endpoint?.airport ||
+    endpoint?.name ||
+    endpoint?.city ||
+    endpoint?.iataCode ||
+    endpoint?.iata ||
+    (key === "departure" ? flight?.departureAirport : flight?.arrivalAirport) ||
+    extractAirportName(fallbackLocation) ||
+    fallbackLocation ||
+    "TBD";
+
+  const airportCode =
+    endpoint?.iataCode ||
+    endpoint?.iata ||
+    endpoint?.code ||
+    (key === "departure" ? flight?.departureCode : flight?.arrivalCode) ||
+    extractAirportCode(fallbackLocation) ||
+    null;
+
+  let location = airportName;
+  if (airportCode && !location.includes(airportCode)) {
+    location = `${location} (${airportCode})`;
+  }
+
+  const timeSource =
+    endpoint?.time ||
+    endpoint?.at ||
+    endpoint?.dateTime ||
+    (key === "departure" ? flight?.departureTime : flight?.arrivalTime);
+
+  const timeLabel = timeSource
+    ? new Date(timeSource).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+    : "Time varies";
+
+  return { location, timeLabel };
+}
+
+function getFlightStops(flight: any): number | null {
+  if (typeof flight?.stops === "number") {
+    return flight.stops;
+  }
+
+  if (typeof flight?.numberOfStops === "number") {
+    return flight.numberOfStops;
+  }
+
+  const segments = Array.isArray(flight?.segments)
+    ? flight.segments
+    : Array.isArray(flight?.itineraries?.[0]?.segments)
+    ? flight.itineraries[0].segments
+    : null;
+
+  if (segments && segments.length > 0) {
+    return Math.max(segments.length - 1, 0);
+  }
+
+  return null;
+}
+
+function extractAirportCode(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 3) {
+    return trimmed.toUpperCase();
+  }
+
+  const match = trimmed.match(/\(([A-Z]{3})\)/);
+  return match ? match[1] : null;
+}
+
+function extractAirportName(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/^(.*)\s+\([A-Z]{3}\)$/);
+  if (match) {
+    return match[1].trim();
+  }
+
+  return value;
+}
+
+function getFlightAirlineName(flight: any): string {
+  let airlineCode = "";
+
+  if (Array.isArray(flight?.airlines) && flight.airlines.length > 0) {
+    airlineCode = flight.airlines[0];
+  } else if (typeof flight?.airline === "string") {
+    airlineCode = flight.airline;
+  } else if (Array.isArray(flight?.segments) && flight.segments.length > 0) {
+    airlineCode = flight.segments[0]?.airline || flight.segments[0]?.carrierCode || "";
+  } else if (Array.isArray(flight?.validatingAirlineCodes) && flight.validatingAirlineCodes.length > 0) {
+    airlineCode = flight.validatingAirlineCodes[0];
+  }
+
+  airlineCode = airlineCode.toString().trim().toUpperCase();
+
+  if (airlineCode && airlineCode.length >= 2 && airlineCode.length <= 3) {
+    return getAirlineName(airlineCode);
+  }
+
+  if (airlineCode && airlineCode.length > 3) {
+    return airlineCode;
+  }
+
+  return "Flight";
+}
+
+function getAirlineName(code: string): string {
+  const airlineMap: Record<string, string> = {
+    AA: "American Airlines",
+    DL: "Delta Air Lines",
+    UA: "United Airlines",
+    SW: "Southwest Airlines",
+    WN: "Southwest Airlines",
+    AS: "Alaska Airlines",
+    B6: "JetBlue Airways",
+    F9: "Frontier Airlines",
+    NK: "Spirit Airlines",
+    G4: "Allegiant Air",
+    SY: "Sun Country Airlines",
+    VS: "Virgin Atlantic",
+    BA: "British Airways",
+    LH: "Lufthansa",
+    AF: "Air France",
+    KL: "KLM",
+    IB: "Iberia",
+    OS: "Austrian Airlines",
+    EY: "Etihad Airways",
+    QR: "Qatar Airways",
+    EK: "Emirates",
+    TK: "Turkish Airlines",
+    JL: "Japan Airlines",
+    NH: "All Nippon Airways",
+    CX: "Cathay Pacific",
+    SQ: "Singapore Airlines",
+    AC: "Air Canada",
+    WS: "WestJet",
+  };
+
+  return airlineMap[code] ?? code;
 }
 
 // Hotel Booking Component
