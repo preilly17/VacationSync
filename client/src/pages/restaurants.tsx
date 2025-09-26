@@ -938,13 +938,10 @@ export default function RestaurantsPage() {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                 No restaurants yet
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 text-center mb-4">
-                Search for restaurants or add your own reservations to start planning your dining experiences.
+              <p className="text-gray-600 dark:text-gray-400 text-center">
+                Use the search form above to discover restaurants, or log an existing reservation manually to
+                add it to your plans.
               </p>
-              <Button onClick={() => setShowSearch(true)}>
-                <Search className="h-4 w-4 mr-2" />
-                Search Restaurants
-              </Button>
             </CardContent>
           </Card>
         ) : (
