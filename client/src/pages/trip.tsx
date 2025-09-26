@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect, useCallback, useMemo, type KeyboardEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +55,8 @@ import { PackingList } from "@/components/packing-list";
 import { ExpenseTracker } from "@/components/expense-tracker";
 import { GroceryList } from "@/components/grocery-list";
 import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
+import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/hotel-search-panel";
+import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -75,6 +77,8 @@ import type {
   ActivityInviteStatus,
   InsertFlight,
   RestaurantWithDetails,
+  HotelProposalWithDetails,
+  HotelSearchResult,
 } from "@shared/schema";
 import {
   format,
@@ -104,6 +108,7 @@ import {
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
+import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -3149,7 +3154,6 @@ function getAirlineName(code: string): string {
 
 // Hotel Booking Component
 function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?: TripWithDetails | null }) {
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: hotels, isLoading } = useQuery({
@@ -3157,9 +3161,74 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
     enabled: !!tripId,
   });
 
+  const { data: hotelProposals = [] } = useQuery<HotelProposalWithDetails[]>({
+    queryKey: [`/api/trips/${tripId}/hotel-proposals`],
+    enabled: !!tripId,
+  });
 
+  const {
+    showModal: showBookingModal,
+    bookingData,
+    storeBookingIntent,
+    closeModal: closeBookingModal,
+  } = useBookingConfirmation();
+
+  const searchPanelRef = useRef<HotelSearchPanelRef>(null);
   const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
 
+  const focusSearchPanel = useCallback(() => {
+    searchPanelRef.current?.focusForm();
+  }, []);
+
+  const openManualForm = useCallback(() => {
+    setIsManualHotelFormOpen(true);
+  }, []);
+
+  const shareHotelWithGroup = useCallback(
+    async (hotel: HotelSearchResult) => {
+      try {
+        await apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
+          method: "POST",
+          body: JSON.stringify({
+            hotelName: hotel.name,
+            location: hotel.location,
+            price: hotel.price,
+            pricePerNight: hotel.pricePerNight || hotel.price,
+            rating: hotel.rating || 4,
+            amenities: hotel.amenities || "WiFi, Breakfast",
+            platform: hotel.platform,
+            bookingUrl: hotel.bookingUrl,
+          }),
+        });
+
+        toast({
+          title: "Added to Group Hotels!",
+          description: `${hotel.name} is now ready for everyone to review and rank.`,
+        });
+
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      } catch (error) {
+        const errorObj = error instanceof Error ? error : new Error(String(error));
+        if (isUnauthorizedError(errorObj)) {
+          toast({
+            title: "Unauthorized",
+            description: "You need to be logged in to propose hotels.",
+            variant: "destructive",
+          });
+          setTimeout(() => {
+            window.location.href = "/login";
+          }, 500);
+          return;
+        }
+        toast({
+          title: "Error",
+          description: "Failed to propose hotel. Please try again.",
+          variant: "destructive",
+        });
+      }
+    },
+    [queryClient, toast, tripId],
+  );
 
   const formDefaults = useCallback(
     () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
@@ -3189,9 +3258,7 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
         description: "Your hotel booking has been saved to the trip.",
       });
       form.reset(formDefaults());
-
       setIsManualHotelFormOpen(false);
-
     },
     onError: (error) => {
       if (isUnauthorizedError(error as Error)) {
@@ -3226,142 +3293,164 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">Hotel Booking</h2>
-          <p className="text-gray-600">Find and book accommodations</p>
-        </div>
-        <Button
-          onClick={() => {
-            setLocation(`/trip/${tripId}/hotels`);
-          }}
-          className="bg-primary hover:bg-red-600 text-white"
-        >
-          <Hotel className="w-4 h-4 mr-2" />
-          Manage Hotels
-        </Button>
-      </div>
-
-      <Card className="border-dashed">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Plus className="h-5 w-5 text-primary" />
-            Add a Hotel Booking
-          </CardTitle>
-          <CardDescription>
-            Save a custom stay or confirmed reservation directly to this trip so everyone can view the details.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="rounded-lg bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
-            <p className="font-medium text-neutral-800">Trip snapshot</p>
-            <p>
-              Destination: <span className="font-semibold text-neutral-900">{trip?.destination ?? "TBD"}</span>
-            </p>
-            <p>
-              Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), 'MMM d, yyyy')} – ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
-            </p>
+    <>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Hotel Booking</h2>
+            <p className="text-gray-600">Find and book accommodations</p>
           </div>
-          <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-neutral-900">Manual entry</p>
-                <p className="text-sm text-muted-foreground">
-                  Record a stay that isn't imported from the hotel search results.
-                </p>
-              </div>
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto justify-between sm:justify-center"
-                >
-                  <span>{isManualHotelFormOpen ? "Close" : "Add a Hotel"}</span>
-                  <ChevronDown
-                    className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
-                  />
-                </Button>
-              </CollapsibleTrigger>
+          <Button
+            onClick={focusSearchPanel}
+            className="bg-primary hover:bg-red-600 text-white"
+          >
+            <Search className="w-4 h-4 mr-2" />
+            Search Hotels
+          </Button>
+        </div>
+
+        <Card className="border-dashed">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Plus className="h-5 w-5 text-primary" />
+              Add a Hotel Booking
+            </CardTitle>
+            <CardDescription>
+              Save a custom stay or confirmed reservation directly to this trip so everyone can view the details.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="rounded-lg bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+              <p className="font-medium text-neutral-800">Trip snapshot</p>
+              <p>
+                Destination: <span className="font-semibold text-neutral-900">{trip?.destination ?? "TBD"}</span>
+              </p>
+              <p>
+                Dates: <span className="font-semibold text-neutral-900">{trip?.startDate && trip?.endDate ? `${format(new Date(trip.startDate), 'MMM d, yyyy')} – ${format(new Date(trip.endDate), 'MMM d, yyyy')}` : 'Choose trip dates to prefill the form'}</span>
+              </p>
             </div>
-            <CollapsibleContent className="space-y-6 pt-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)}>
-                  <HotelFormFields
-                    form={form}
-                    isSubmitting={createHotelMutation.isPending}
-                    submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
-                    showCancelButton
-                    onCancel={() => {
-                      form.reset(formDefaults());
-                      setIsManualHotelFormOpen(false);
-                    }}
-                  />
-                </form>
-              </Form>
-            </CollapsibleContent>
-          </Collapsible>
+            <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-neutral-900">Manual entry</p>
+                  <p className="text-sm text-muted-foreground">
+                    Record a stay that isn't imported from the hotel search results.
+                  </p>
+                </div>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto justify-between sm:justify-center"
+                  >
+                    <span>{isManualHotelFormOpen ? "Close" : "Add a Hotel"}</span>
+                    <ChevronDown
+                      className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
+                    />
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+              <CollapsibleContent className="space-y-6 pt-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)}>
+                    <HotelFormFields
+                      form={form}
+                      isSubmitting={createHotelMutation.isPending}
+                      submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+                      showCancelButton
+                      onCancel={() => {
+                        form.reset(formDefaults());
+                        setIsManualHotelFormOpen(false);
+                      }}
+                    />
+                  </form>
+                </Form>
+              </CollapsibleContent>
+            </Collapsible>
 
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardContent className="p-6">
-          {(hotels as any) && (hotels as any).length > 0 ? (
-            <div className="space-y-4">
-              {(hotels as any).slice(0, 3).map((hotel: any) => (
-                <div key={hotel.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <Hotel className="w-5 h-5 text-green-600" />
-                    <div>
-                      <p className="font-semibold">{hotel.hotelName}</p>
-                      <p className="text-sm text-gray-600">{hotel.address}</p>
-                      <p className="text-sm text-gray-500">
-                        {format(new Date(hotel.checkInDate), 'MMM dd')} - {format(new Date(hotel.checkOutDate), 'MMM dd')}
-                      </p>
+        <HotelSearchPanel
+          ref={searchPanelRef}
+          tripId={tripId}
+          trip={trip ?? null}
+          onLogHotelManually={openManualForm}
+          onShareHotelWithGroup={shareHotelWithGroup}
+          storeBookingIntent={storeBookingIntent}
+          hotelProposalsCount={hotelProposals.length}
+          toast={toast}
+        />
+
+        <Card>
+          <CardContent className="p-6">
+            {(hotels as any) && (hotels as any).length > 0 ? (
+              <div className="space-y-4">
+                {(hotels as any).slice(0, 3).map((hotel: any) => (
+                  <div key={hotel.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      <Hotel className="w-5 h-5 text-green-600" />
+                      <div>
+                        <p className="font-semibold">{hotel.hotelName}</p>
+                        <p className="text-sm text-gray-600">{hotel.address}</p>
+                        <p className="text-sm text-gray-500">
+                          {format(new Date(hotel.checkInDate), 'MMM dd')} - {format(new Date(hotel.checkOutDate), 'MMM dd')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      {hotel.totalPrice && (
+                        <p className="font-semibold">${hotel.totalPrice}</p>
+                      )}
+                      {hotel.hotelRating && (
+                        <div className="flex items-center">
+                          {Array.from({ length: hotel.hotelRating }).map((_, i) => (
+                            <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    {hotel.totalPrice && (
-                      <p className="font-semibold">${hotel.totalPrice}</p>
-                    )}
-                    {hotel.hotelRating && (
-                      <div className="flex items-center">
-                        {Array.from({ length: hotel.hotelRating }).map((_, i) => (
-                          <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {(hotels as any).length > 3 && (
-                <p className="text-sm text-gray-500 text-center">
-                  +{(hotels as any).length - 3} more hotels
+                ))}
+                {(hotels as any).length > 3 && (
+                  <p className="text-sm text-gray-500 text-center">
+                    +{(hotels as any).length - 3} more hotels
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Hotel className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No hotels added yet</h3>
+                <p className="text-gray-600 mb-4">
+                  Search and book accommodations for your trip
                 </p>
-              )}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Hotel className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No hotels added yet</h3>
-              <p className="text-gray-600 mb-4">
-                Search and book accommodations for your trip
-              </p>
-              <Button 
-                onClick={() => setLocation(`/trip/${tripId}/hotels`)}
-                className="bg-primary hover:bg-red-600 text-white"
-              >
-                <Hotel className="w-4 h-4 mr-2" />
-                Search Hotels
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                <Button
+                  onClick={focusSearchPanel}
+                  className="bg-primary hover:bg-red-600 text-white"
+                >
+                  <Search className="w-4 h-4 mr-2" />
+                  Search Hotels
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <BookingConfirmationModal
+        isOpen={showBookingModal}
+        onClose={closeBookingModal}
+        bookingType={bookingData?.type || "hotel"}
+        bookingData={bookingData?.data}
+        tripId={tripId}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+        }}
+      />
+    </>
   );
 }
-
 // Restaurant Booking Component
 function RestaurantBooking({
   tripId,
