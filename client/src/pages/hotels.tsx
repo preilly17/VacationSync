@@ -500,161 +500,41 @@ export default function HotelsPage() {
         </TabsList>
 
         <TabsContent value="search" className="space-y-6 mt-6">
+          {/* Add Hotel Dialog */}
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              if (open) {
+                setIsDialogOpen(true);
+              } else {
+                handleDialogClose();
+              }
+            }}
+          >
+            <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingHotel ? "Edit Hotel" : "Add Hotel"}
+                </DialogTitle>
+                <DialogDescription>
+                  Provide the hotel details exactly as defined in the booking schema. Fields marked with an asterisk (*) are required.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)}>
+                  <HotelFormFields
+                    form={form}
+                    isSubmitting={createHotelMutation.isPending || updateHotelMutation.isPending}
+                    submitLabel={editingHotel ? "Save Changes" : "Add Hotel"}
+                    onCancel={handleDialogClose}
+                    showCancelButton
+                  />
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
 
-      {/* Add Hotel Dialog */}
-      <Dialog
-        open={isDialogOpen}
-        onOpenChange={(open) => {
-          if (open) {
-            setIsDialogOpen(true);
-          } else {
-            handleDialogClose();
-          }
-        }}
-      >
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingHotel ? "Edit Hotel" : "Add Hotel"}
-            </DialogTitle>
-            <DialogDescription>
-              Provide the hotel details exactly as defined in the booking schema. Fields marked with an asterisk (*) are required.
-            </DialogDescription>
-          </DialogHeader>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)}>
-              <HotelFormFields
-                form={form}
-                isSubmitting={createHotelMutation.isPending || updateHotelMutation.isPending}
-                submitLabel={editingHotel ? "Save Changes" : "Add Hotel"}
-                onCancel={handleDialogClose}
-                showCancelButton
-              />
-            </form>
-          </Form>
-          </DialogContent>
-        </Dialog>
-
-      {/* Group Hotel Proposals */}
-      {hotelProposals.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Group Hotel Proposals
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Rank these hotels from 1 (most preferred) to help your group decide
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 md:grid-cols-2">
-              {hotelProposals.map((proposal) => (
-                <Card key={proposal.id} className="relative">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg">{proposal.hotelName}</CardTitle>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                          <MapPin className="h-3 w-3" />
-                          {proposal.location}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Proposed by {proposal.proposer.firstName || 'Group Member'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="flex items-center gap-1">
-                          {getStarRating(Number(proposal.rating))}
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="bg-blue-50 p-3 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-muted-foreground">Price:</span>
-                        <span className="text-lg font-bold text-blue-600">{proposal.price}</span>
-                      </div>
-                      {proposal.averageRanking != null && (
-                        <div className="flex items-center justify-between mt-1">
-                          <span className="text-xs text-muted-foreground">Group Average:</span>
-                          <span className="text-sm font-medium text-blue-600">#{proposal.averageRanking}</span>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {proposal.amenities && (
-                      <div className="space-y-2">
-                        <span className="text-sm font-medium text-muted-foreground">Amenities:</span>
-                        <p className="text-sm text-gray-600 leading-relaxed">{proposal.amenities}</p>
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center justify-between pt-2">
-                      <Badge variant="outline" className="text-xs">
-                        {proposal.platform}
-                      </Badge>
-                      {proposal.currentUserRanking && (
-                        <Badge variant="secondary" className="text-xs">
-                          Your Rank: #{proposal.currentUserRanking.ranking}
-                        </Badge>
-                      )}
-                    </div>
-                    
-                    {/* Ranking Interface */}
-                    <div className="space-y-3 border-t pt-3">
-                      <span className="text-sm font-medium">Rank this hotel:</span>
-                      <div className="flex gap-2">
-                        {[1, 2, 3, 4, 5].map((rank) => (
-                          <Button
-                            key={rank}
-                            size="sm"
-                            variant={proposal.currentUserRanking?.ranking === rank ? "default" : "outline"}
-                            onClick={() => submitRanking(proposal.id, rank)}
-                            className="text-xs px-3"
-                          >
-                            #{rank}
-                          </Button>
-                        ))}
-                      </div>
-                      
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => window.open(proposal.bookingUrl, '_blank')}
-                          className="flex-1"
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          View Hotel
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    {/* Show other members' rankings */}
-                    {proposal.rankings.length > 0 && (
-                      <div className="space-y-2 border-t pt-3">
-                        <span className="text-sm font-medium">Group Rankings:</span>
-                        <div className="space-y-1">
-                          {proposal.rankings.map((ranking) => (
-                            <div key={ranking.id} className="flex items-center justify-between text-sm">
-                              <span>{ranking.user.firstName || 'Group Member'}</span>
-                              <Badge variant="outline" className="text-xs">
-                                #{ranking.ranking}
-                              </Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          {/* Search tab intentionally has no snapshot card to keep the focus on the search form */}
         </TabsContent>
 
         <TabsContent value="voting" className="space-y-6 mt-6">
