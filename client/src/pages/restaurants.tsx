@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useParams, useLocation, Link } from "wouter";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useParams, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
@@ -32,7 +32,6 @@ import {
   Utensils,
   Globe,
   ArrowLeft,
-  X,
   NotebookPen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -84,18 +83,9 @@ type RestaurantFormData = z.infer<typeof restaurantFormSchema>;
 
 export default function RestaurantsPage() {
   const { tripId } = useParams<{ tripId: string }>();
-  const [currentLocation, setRouteLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const queryParams = useMemo(() => {
-    const queryIndex = currentLocation.indexOf("?");
-    const search = queryIndex >= 0 ? currentLocation.slice(queryIndex + 1) : "";
-    return new URLSearchParams(search);
-  }, [currentLocation]);
-
-  const addRestaurantButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // Booking confirmation system
   const {
@@ -119,74 +109,10 @@ export default function RestaurantsPage() {
   const [searchDistance, setSearchDistance] = useState("all");
   const [searchOpenNow, setSearchOpenNow] = useState(false);
   const [searchDietaryTags, setSearchDietaryTags] = useState<string[]>([]);
-  const [showSearch, setShowSearch] = useState(() => queryParams.get("panel") === "search");
-  const [shouldAutoSearch, setShouldAutoSearch] = useState(
-    () => queryParams.get("panel") === "search" && queryParams.get("auto") === "1"
-  );
   const [hasSearched, setHasSearched] = useState(false);
   const [showBooking, setShowBooking] = useState(false);
   const [showProposalModal, setShowProposalModal] = useState(false);
   const [restaurantToPropose, setRestaurantToPropose] = useState<any>(null);
-
-  useEffect(() => {
-    const panelIsSearch = queryParams.get("panel") === "search";
-    if (panelIsSearch !== showSearch) {
-      setShowSearch(panelIsSearch);
-      if (!panelIsSearch) {
-        setHasSearched(false);
-      }
-    }
-    const wantsAuto = panelIsSearch && queryParams.get("auto") === "1";
-    if (wantsAuto !== shouldAutoSearch) {
-      setShouldAutoSearch(wantsAuto);
-    }
-  }, [queryParams, showSearch, shouldAutoSearch, setHasSearched]);
-
-  const updateLocationQuery = useCallback(
-    (updates: Record<string, string | null | undefined>) => {
-      const queryIndex = currentLocation.indexOf("?");
-      const path = queryIndex >= 0 ? currentLocation.slice(0, queryIndex) : currentLocation;
-      const params = new URLSearchParams(queryIndex >= 0 ? currentLocation.slice(queryIndex + 1) : "");
-
-      Object.entries(updates).forEach(([key, value]) => {
-        if (value === null || value === undefined) {
-          params.delete(key);
-        } else {
-          params.set(key, value);
-        }
-      });
-
-      const nextQuery = params.toString();
-      setRouteLocation(`${path}${nextQuery ? `?${nextQuery}` : ""}`);
-    },
-    [currentLocation, setRouteLocation]
-  );
-
-  const handleOpenSearchPanel = useCallback(() => {
-    if (!showSearch) {
-      setShowSearch(true);
-      updateLocationQuery({ panel: "search" });
-    }
-
-    if (typeof window !== "undefined") {
-      window.requestAnimationFrame(() => {
-        document
-          .getElementById("restaurant-search-panel")
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-    }
-  }, [showSearch, updateLocationQuery]);
-
-  const handleHideSearchPanel = useCallback(() => {
-    if (showSearch) {
-      setShowSearch(false);
-      updateLocationQuery({ panel: null, auto: null });
-      setHasSearched(false);
-      window.setTimeout(() => {
-        addRestaurantButtonRef.current?.focus();
-      }, 0);
-    }
-  }, [showSearch, updateLocationQuery, setHasSearched]);
 
   // Get trip details (only if tripId exists)
   const { data: trip } = useQuery({
@@ -453,14 +379,6 @@ export default function RestaurantsPage() {
     searchRestaurants();
   }, [searchLocation, toast, searchRestaurants, setHasSearched]);
 
-  useEffect(() => {
-    if (showSearch && shouldAutoSearch) {
-      setShouldAutoSearch(false);
-      handleSearch();
-      updateLocationQuery({ auto: null });
-    }
-  }, [showSearch, shouldAutoSearch, handleSearch, updateLocationQuery]);
-
   // Handle location selection from smart search
   const handleLocationSelect = (location: any) => {
     // Extract just the city name for the search
@@ -631,54 +549,27 @@ export default function RestaurantsPage() {
             {trip ? `Find and book restaurants for ${(trip as any).destination}` : "Find and book restaurants"}
           </p>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Button
-            ref={addRestaurantButtonRef}
-            onClick={handleOpenSearchPanel}
-            className="flex items-center gap-2"
-            aria-expanded={showSearch}
-            aria-controls="restaurant-search-panel"
-          >
-            <Search className="h-4 w-4" />
-            Add Restaurant
-          </Button>
-
-          <Dialog open={showBooking} onOpenChange={setShowBooking}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="flex items-center gap-2">
-                <NotebookPen className="h-4 w-4" />
-                Log Restaurant Manually
-              </Button>
-            </DialogTrigger>
-          </Dialog>
-        </div>
       </div>
 
       {/* Search Section */}
-      {showSearch && (
-        <Card id="restaurant-search-panel" aria-live="polite">
-          <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-1">
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
-                Search Restaurants
-              </CardTitle>
-              <CardDescription>
-                Plan a reservation without leaving the page.
-              </CardDescription>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleHideSearchPanel}
-              className="self-start"
-            >
-              <X className="h-4 w-4 mr-1" />
-              Hide search
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-6">
+      <Card id="restaurant-search-panel" aria-live="polite">
+        <CardHeader className="space-y-1">
+          <CardTitle className="flex items-center gap-2">
+            <Search className="h-5 w-5" />
+            Search Restaurants
+          </CardTitle>
+          <CardDescription>
+            Plan a reservation without leaving the page.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleSearch();
+            }}
+            className="space-y-6"
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <Label htmlFor="location">Location</Label>
@@ -883,24 +774,31 @@ export default function RestaurantsPage() {
                 <Filter className="h-4 w-4" />
                 Adjust filters, then search when you're ready.
               </div>
-              <Button
-                onClick={handleSearch}
-                disabled={searchLoading}
-                className="w-full sm:w-auto"
-              >
-                {searchLoading ? (
-                  <div className="flex items-center gap-2">
-                    <TravelLoading variant="compass" size="sm" />
-                    Searching...
-                  </div>
-                ) : (
-                  "Search Restaurants"
-                )}
-              </Button>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 w-full sm:w-auto">
+                <Button type="submit" disabled={searchLoading} className="w-full sm:w-auto">
+                  {searchLoading ? (
+                    <div className="flex items-center gap-2">
+                      <TravelLoading variant="compass" size="sm" />
+                      Searching...
+                    </div>
+                  ) : (
+                    "Search Restaurants"
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={() => setShowBooking(true)}
+                >
+                  <NotebookPen className="h-4 w-4 mr-2" />
+                  Log Restaurant Manually
+                </Button>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </form>
+        </CardContent>
+      </Card>
 
       {hasSearched && !searchLoading && sortedSearchResults.length === 0 && (
         <Card>
