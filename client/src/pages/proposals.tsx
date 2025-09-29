@@ -119,6 +119,27 @@ interface ProposalsPageProps {
 
 type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
 
+const normalizeArrayData = <T,>(value: unknown): { items: T[]; isInvalid: boolean } => {
+  if (Array.isArray(value)) {
+    return { items: value as T[], isInvalid: false };
+  }
+
+  return { items: [], isInvalid: value !== undefined && value !== null };
+};
+
+const getInlineErrorMessage = (error: unknown, invalid: boolean, fallback: string) => {
+  if (invalid) {
+    return fallback;
+  }
+
+  if (error) {
+    const parsed = parseApiError(error);
+    return parsed.message || fallback;
+  }
+
+  return fallback;
+};
+
 type ActivityRsvpAction = "ACCEPT" | "DECLINE" | "WAITLIST" | "MAYBE";
 
 const inviteStatusBadgeClasses: Record<ActivityInviteStatus, string> = {
@@ -182,28 +203,87 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   });
 
   // Fetch hotel proposals
-  const { data: hotelProposals = [], isLoading: hotelProposalsLoading } = useQuery<HotelProposalWithDetails[]>({
+  const {
+    data: hotelProposalsData,
+    isLoading: hotelProposalsLoading,
+    error: hotelProposalsError,
+    refetch: refetchHotelProposals,
+  } = useQuery<unknown>({
     queryKey: [`/api/trips/${tripId}/hotel-proposals`],
     enabled: !!tripId && isAuthenticated,
   });
 
   // Fetch flight proposals
-  const { data: flightProposals = [], isLoading: flightProposalsLoading } = useQuery<FlightProposalWithDetails[]>({
+  const {
+    data: flightProposalsData,
+    isLoading: flightProposalsLoading,
+    error: flightProposalsError,
+    refetch: refetchFlightProposals,
+  } = useQuery<unknown>({
     queryKey: [`/api/trips/${tripId}/flight-proposals`],
     enabled: !!tripId && isAuthenticated,
   });
 
   // For now, activity and restaurant proposals use placeholder data
   // TODO: Implement API routes for activity and restaurant proposals
-  const { data: rawActivityProposals = [], isLoading: activityProposalsLoading } = useQuery<ActivityWithDetails[]>({
+  const {
+    data: rawActivityProposalsData,
+    isLoading: activityProposalsLoading,
+    error: activityProposalsError,
+    refetch: refetchActivityProposals,
+  } = useQuery<unknown>({
     queryKey: [`/api/trips/${tripId}/activities`],
     enabled: !!tripId && isAuthenticated,
   });
 
-  const { data: restaurantProposals = [], isLoading: restaurantProposalsLoading } = useQuery<RestaurantProposalWithDetails[]>({
+  const {
+    data: restaurantProposalsData,
+    isLoading: restaurantProposalsLoading,
+    error: restaurantProposalsError,
+    refetch: refetchRestaurantProposals,
+  } = useQuery<unknown>({
     queryKey: ["/api/trips", tripId, "restaurant-proposals"],
     enabled: !!tripId && isAuthenticated,
   });
+
+  const { items: hotelProposals, isInvalid: hotelProposalsInvalid } = normalizeArrayData<HotelProposalWithDetails>(
+    hotelProposalsData,
+  );
+  const { items: flightProposals, isInvalid: flightProposalsInvalid } = normalizeArrayData<FlightProposalWithDetails>(
+    flightProposalsData,
+  );
+  const { items: rawActivityProposals, isInvalid: activityProposalsInvalid } = normalizeArrayData<ActivityWithDetails>(
+    rawActivityProposalsData,
+  );
+  const { items: restaurantProposals, isInvalid: restaurantProposalsInvalid } = normalizeArrayData<
+    RestaurantProposalWithDetails
+  >(restaurantProposalsData);
+
+  const hotelProposalsHasError = Boolean(hotelProposalsError) || hotelProposalsInvalid;
+  const flightProposalsHasError = Boolean(flightProposalsError) || flightProposalsInvalid;
+  const activityProposalsHasError = Boolean(activityProposalsError) || activityProposalsInvalid;
+  const restaurantProposalsHasError = Boolean(restaurantProposalsError) || restaurantProposalsInvalid;
+
+  const hotelProposalsErrorMessage = getInlineErrorMessage(
+    hotelProposalsError,
+    hotelProposalsInvalid,
+    "We couldn't load the hotel proposals. Please try again.",
+  );
+  const flightProposalsErrorMessage = getInlineErrorMessage(
+    flightProposalsError,
+    flightProposalsInvalid,
+    "We couldn't load the flight proposals. Please try again.",
+  );
+  const activityProposalsErrorMessage = getInlineErrorMessage(
+    activityProposalsError,
+    activityProposalsInvalid,
+    "We couldn't load the activity proposals. Please try again.",
+  );
+  const restaurantProposalsErrorMessage = getInlineErrorMessage(
+    restaurantProposalsError,
+    restaurantProposalsInvalid,
+    "We couldn't load the restaurant proposals. Please try again.",
+  );
 
   // Hotel ranking mutation
   const rankHotelMutation = useMutation({
@@ -1526,6 +1606,27 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     );
   };
 
+  const InlineErrorState = ({
+    message,
+    onRetry,
+    testId,
+  }: {
+    message: string;
+    onRetry: () => void;
+    testId: string;
+  }) => (
+    <div className="text-center py-12 space-y-4" data-testid={testId}>
+      <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold text-neutral-700">We hit a snag</h3>
+        <p className="text-neutral-500 max-w-md mx-auto">{message}</p>
+      </div>
+      <Button variant="outline" onClick={onRetry} data-testid={`${testId}-retry`}>
+        Try again
+      </Button>
+    </div>
+  );
+
   // Empty state component
   const EmptyState = ({ type, icon: Icon }: { type: string; icon: any }) => {
     const showGlobalEmpty = noProposalsAtAll;
@@ -1674,8 +1775,13 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     otherFlightProposals.length +
     otherActivityProposals.length +
     otherRestaurantProposals.length;
+  const hasProposalDataIssues =
+    hotelProposalsHasError ||
+    flightProposalsHasError ||
+    activityProposalsHasError ||
+    restaurantProposalsHasError;
 
-  const noProposalsAtAll = totalAvailableProposals === 0;
+  const noProposalsAtAll = !hasProposalDataIssues && totalAvailableProposals === 0;
 
   return (
     <div className="min-h-screen bg-neutral-50">
@@ -1837,6 +1943,12 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading hotel proposals..." />
               </div>
+            ) : hotelProposalsHasError ? (
+              <InlineErrorState
+                message={hotelProposalsErrorMessage}
+                onRetry={() => void refetchHotelProposals()}
+                testId="error-hotel-proposals"
+              />
             ) : filteredHotelProposals.length > 0 ? (
               <div data-testid="list-hotel-proposals">
                 {filteredHotelProposals.map((proposal) => (
@@ -1855,6 +1967,12 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading flight proposals..." />
               </div>
+            ) : flightProposalsHasError ? (
+              <InlineErrorState
+                message={flightProposalsErrorMessage}
+                onRetry={() => void refetchFlightProposals()}
+                testId="error-flight-proposals"
+              />
             ) : filteredFlightProposals.length > 0 ? (
               <div data-testid="list-flight-proposals">
                 {filteredFlightProposals.map((proposal) => (
@@ -1873,6 +1991,12 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading activity proposals..." />
               </div>
+            ) : activityProposalsHasError ? (
+              <InlineErrorState
+                message={activityProposalsErrorMessage}
+                onRetry={() => void refetchActivityProposals()}
+                testId="error-activity-proposals"
+              />
             ) : filteredActivityProposals.length > 0 ? (
               <div data-testid="list-activity-proposals">
                 {filteredActivityProposals.map((proposal) => (
@@ -1891,6 +2015,12 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
               <div className="flex justify-center py-8">
                 <TravelLoading text="Loading restaurant proposals..." />
               </div>
+            ) : restaurantProposalsHasError ? (
+              <InlineErrorState
+                message={restaurantProposalsErrorMessage}
+                onRetry={() => void refetchRestaurantProposals()}
+                testId="error-restaurant-proposals"
+              />
             ) : filteredRestaurantProposals.length > 0 ? (
               <div data-testid="list-restaurant-proposals">
                 {filteredRestaurantProposals.map((proposal) => (
