@@ -62,6 +62,8 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   const debounceRef = useRef<NodeJS.Timeout>();
   const internalInputRef = useRef<HTMLInputElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const userInitiatedSearchRef = useRef(false);
+  const pendingUserSearchCountRef = useRef(0);
   const listboxId = useId();
   const hintId = useId();
 
@@ -105,6 +107,8 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       setResults([]);
       setSelectedLocation(null);
       setActiveIndex(-1);
+      pendingUserSearchCountRef.current = 0;
+      setIsLoading(false);
       return;
     }
 
@@ -124,7 +128,14 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
 
     debounceRef.current = setTimeout(async () => {
-      setIsLoading(true);
+      const shouldShowLoadingIndicator = userInitiatedSearchRef.current;
+
+      if (shouldShowLoadingIndicator) {
+        pendingUserSearchCountRef.current += 1;
+        setIsLoading(true);
+        userInitiatedSearchRef.current = false;
+      }
+
       try {
         const response = await apiFetch(buildSearchUrl(query));
         if (response.ok) {
@@ -141,12 +152,20 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         console.error('Location search error:', error);
         setResults([]);
       } finally {
-        setIsLoading(false);
+        if (shouldShowLoadingIndicator) {
+          pendingUserSearchCountRef.current = Math.max(0, pendingUserSearchCountRef.current - 1);
+          if (pendingUserSearchCountRef.current === 0) {
+            setIsLoading(false);
+          }
+        }
       }
     }, 300);
   }, [query, selectedLocation, normalisedAllowedTypes]);
 
   const handleLocationClick = (location: LocationResult) => {
+    pendingUserSearchCountRef.current = 0;
+    userInitiatedSearchRef.current = false;
+    setIsLoading(false);
     setSelectedLocation(location);
     setQuery(location.displayName);
     onQueryChange?.(location.displayName);
@@ -286,6 +305,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           onChange={(event) => {
             const newValue = event.target.value;
             setQuery(newValue);
+            userInitiatedSearchRef.current = true;
             onQueryChange?.(newValue);
 
             if (newValue.trim().length > 0) {
@@ -294,6 +314,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
               setIsDropdownOpen(false);
               setResults([]);
               setActiveIndex(-1);
+              pendingUserSearchCountRef.current = 0;
+              userInitiatedSearchRef.current = false;
+              setIsLoading(false);
             }
           }}
           className="w-full pr-10"
