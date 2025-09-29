@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -250,6 +251,23 @@ function getAirlineName(airlineCode: string): string {
   return airlineMap[airlineCode] || airlineCode;
 }
 
+type TripType = "oneway" | "roundtrip";
+type CabinClass = "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST";
+
+const kayakCabinMap: Record<CabinClass, string> = {
+  ECONOMY: "e",
+  PREMIUM_ECONOMY: "p",
+  BUSINESS: "b",
+  FIRST: "f",
+};
+
+const expediaCabinMap: Record<CabinClass, string> = {
+  ECONOMY: "economy",
+  PREMIUM_ECONOMY: "premium_economy",
+  BUSINESS: "business",
+  FIRST: "first",
+};
+
 interface FlightFormState {
   flightNumber: string;
   airline: string;
@@ -281,6 +299,8 @@ interface FlightSearchFormState {
   returnDate: string;
   passengers: string;
   airline: string;
+  tripType: TripType;
+  cabinClass: CabinClass;
 }
 
 type FlightFilterKey = "best" | "cheapest" | "fastest";
@@ -306,6 +326,8 @@ interface CachedFlightSearchParams {
   passengers: number;
   originCode?: string;
   destinationCode?: string;
+  tripType: TripType;
+  cabinClass: CabinClass;
 }
 
 interface FlightSearchPanelProps {
@@ -732,9 +754,19 @@ function FlightSearchPanel({
                     <Input
                       id="returnDate"
                       type="date"
-                      value={searchFormData.returnDate}
-                      onChange={(e) => setSearchFormData((prev) => ({ ...prev, returnDate: e.target.value }))}
+                      value={searchFormData.tripType === "roundtrip" ? searchFormData.returnDate : ""}
+                      onChange={(e) =>
+                        setSearchFormData((prev) => ({
+                          ...prev,
+                          returnDate: e.target.value,
+                          tripType: e.target.value ? "roundtrip" : prev.tripType,
+                        }))
+                      }
+                      disabled={searchFormData.tripType === "oneway"}
                     />
+                    {searchFormData.tripType === "oneway" && (
+                      <p className="mt-1 text-xs text-muted-foreground">Return date not required for one-way trips.</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-end gap-4">
@@ -755,6 +787,30 @@ function FlightSearchPanel({
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  <div className="min-w-[12rem]">
+                    <Label>Trip Type</Label>
+                    <ToggleGroup
+                      type="single"
+                      value={searchFormData.tripType}
+                      onValueChange={(value) => {
+                        if (!value) return;
+                        setSearchFormData((prev) => ({
+                          ...prev,
+                          tripType: value as TripType,
+                          returnDate: value === "oneway" ? "" : prev.returnDate,
+                        }));
+                      }}
+                      className="justify-start"
+                      size="sm"
+                    >
+                      <ToggleGroupItem value="oneway" className="flex-1 px-3">
+                        One-way
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="roundtrip" className="flex-1 px-3">
+                        Round-trip
+                      </ToggleGroupItem>
+                    </ToggleGroup>
                   </div>
                   <div>
                     <Label htmlFor="airline">Airline</Label>
@@ -793,6 +849,28 @@ function FlightSearchPanel({
                         <SelectItem value="SQ">Singapore Airlines</SelectItem>
                         <SelectItem value="AC">Air Canada</SelectItem>
                         <SelectItem value="WS">WestJet</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="cabinClass">Cabin Class</Label>
+                    <Select
+                      value={searchFormData.cabinClass}
+                      onValueChange={(value) =>
+                        setSearchFormData((prev) => ({
+                          ...prev,
+                          cabinClass: value as CabinClass,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-44">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ECONOMY">Economy</SelectItem>
+                        <SelectItem value="PREMIUM_ECONOMY">Premium Economy</SelectItem>
+                        <SelectItem value="BUSINESS">Business</SelectItem>
+                        <SelectItem value="FIRST">First</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -1043,8 +1121,10 @@ function FlightSearchPanel({
                                       href={`https://www.kayak.com/flights/${cachedSearchParams?.originCode || "ATL"}-${
                                         cachedSearchParams?.destinationCode || "MIA"
                                       }/${searchFormData.departureDate}${
-                                        searchFormData.returnDate ? `/${searchFormData.returnDate}` : ""
-                                      }?sort=bestflight_a`}
+                                        searchFormData.tripType === "roundtrip" && searchFormData.returnDate
+                                          ? `/${searchFormData.returnDate}`
+                                          : ""
+                                      }?sort=bestflight_a&cabin=${kayakCabinMap[searchFormData.cabinClass]}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                     >
@@ -1060,16 +1140,16 @@ function FlightSearchPanel({
                                   >
                                     <a
                                       href={`https://www.expedia.com/Flights-Search?trip=${
-                                        searchFormData.returnDate ? "roundtrip" : "oneway"
+                                        searchFormData.tripType === "roundtrip" ? "roundtrip" : "oneway"
                                       }&leg1=from:${cachedSearchParams?.originCode || "ATL"},to:${
                                         cachedSearchParams?.destinationCode || "MIA"
                                       },departure:${searchFormData.departureDate}TANYT${
-                                        searchFormData.returnDate
+                                        searchFormData.tripType === "roundtrip" && searchFormData.returnDate
                                           ? `&leg2=from:${cachedSearchParams?.destinationCode || "MIA"},to:${
                                               cachedSearchParams?.originCode || "ATL"
                                             },departure:${searchFormData.returnDate}TANYT`
                                           : ""
-                                      }`}
+                                      }&cabinclass=${expediaCabinMap[searchFormData.cabinClass]}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                     >
@@ -1495,17 +1575,11 @@ export default function FlightsPage() {
     returnDate: '',
     passengers: '1',
     airline: '',
+    tripType: 'roundtrip',
+    cabinClass: 'ECONOMY',
   });
   // Store cached search parameters to avoid re-triggering location searches
-  const [cachedSearchParams, setCachedSearchParams] = useState<{
-    origin: string;
-    destination: string;
-    departureDate: string;
-    returnDate?: string;
-    passengers: number;
-    originCode?: string;
-    destinationCode?: string;
-  } | null>(null);
+  const [cachedSearchParams, setCachedSearchParams] = useState<CachedFlightSearchParams | null>(null);
   const [addingFlightKey, setAddingFlightKey] = useState<string | null>(null);
   
   // Server-side filter state with caching
@@ -1560,15 +1634,22 @@ export default function FlightsPage() {
     setIsSearching(true);
 
     try {
+      const isRoundTrip = searchFormData.tripType === "roundtrip";
+      const normalizedReturnDate = isRoundTrip && searchFormData.returnDate
+        ? searchFormData.returnDate
+        : undefined;
+
       const response = await apiRequest("/api/search/flights", {
         method: "POST",
         body: {
           origin: searchFormData.departure,
           destination: searchFormData.arrival,
           departureDate: searchFormData.departureDate,
-          returnDate: searchFormData.returnDate || undefined,
+          returnDate: normalizedReturnDate,
           passengers: parseInt(searchFormData.passengers),
           airline: searchFormData.airline && searchFormData.airline !== "any" ? searchFormData.airline : undefined,
+          class: searchFormData.cabinClass,
+          tripType: searchFormData.tripType,
           provider: "both",
           page: 1,
           limit: 50,
@@ -1583,10 +1664,12 @@ export default function FlightsPage() {
           origin: searchFormData.departure,
           destination: searchFormData.arrival,
           departureDate: searchFormData.departureDate,
-          returnDate: searchFormData.returnDate,
+          returnDate: normalizedReturnDate,
           passengers: parseInt(searchFormData.passengers),
           originCode: searchFormData.departure.length === 3 ? searchFormData.departure : undefined,
           destinationCode: searchFormData.arrival.length === 3 ? searchFormData.arrival : undefined,
+          tripType: searchFormData.tripType,
+          cabinClass: searchFormData.cabinClass,
         });
 
         setFilterResults({
@@ -1773,9 +1856,14 @@ export default function FlightsPage() {
           origin: cachedSearchParams.originCode || cachedSearchParams.origin,
           destination: cachedSearchParams.destinationCode || cachedSearchParams.destination,
           departureDate: cachedSearchParams.departureDate,
-          returnDate: cachedSearchParams.returnDate || undefined,
+          returnDate:
+            cachedSearchParams.tripType === "roundtrip" && cachedSearchParams.returnDate
+              ? cachedSearchParams.returnDate
+              : undefined,
           passengers: cachedSearchParams.passengers,
           airline: searchFormData.airline && searchFormData.airline !== 'any' ? searchFormData.airline : undefined,
+          class: cachedSearchParams.cabinClass,
+          tripType: cachedSearchParams.tripType,
           provider: 'both', // Use both Amadeus and Duffel providers
           filter: newFilter, // Add filter parameter
           page: 1,
@@ -2153,11 +2241,12 @@ export default function FlightsPage() {
       const fallbackDeparture = searchFormData.departureDate
         ? `${searchFormData.departureDate}T00:00:00`
         : undefined;
-      const fallbackArrival = searchFormData.returnDate
-        ? `${searchFormData.returnDate}T00:00:00`
-        : searchFormData.departureDate
-          ? `${searchFormData.departureDate}T00:00:00`
-          : undefined;
+      const fallbackArrival =
+        searchFormData.tripType === "roundtrip" && searchFormData.returnDate
+          ? `${searchFormData.returnDate}T00:00:00`
+          : searchFormData.departureDate
+            ? `${searchFormData.departureDate}T00:00:00`
+            : undefined;
 
       const airlineName = getFlightAirlineName(flight);
       const airlineCode = getFlightAirlineCode(flight);
