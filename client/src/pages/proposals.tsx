@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useParams, useLocation, Link } from "wouter";
+import { useParams, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -115,6 +115,7 @@ const parseApiError = (error: unknown): ParsedApiError => {
 
 interface ProposalsPageProps {
   tripId?: number;
+  embedded?: boolean;
 }
 
 type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
@@ -163,8 +164,7 @@ const actionToStatusMap: Record<ActivityRsvpAction, ActivityInviteStatus | null>
   MAYBE: "pending",
 };
 
-function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
-  const [, setLocation] = useLocation();
+function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -329,7 +329,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
       if (!tripId) {
         return;
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flight-proposals"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] });
       toast({
         title: "Vote Recorded",
         description: "Your flight preference has been saved.",
@@ -1210,9 +1210,13 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     );
   };
 
+  const boundaryWrapperClass = embedded
+    ? "py-12 flex items-center justify-center"
+    : "min-h-screen bg-neutral-50 flex items-center justify-center";
+
   if (!tripId) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <div className={boundaryWrapperClass}>
         <Card className="w-full max-w-md mx-4">
           <CardContent className="pt-6 text-center">
             <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
@@ -1231,7 +1235,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   if (authLoading || tripLoading) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <div className={boundaryWrapperClass}>
         <TravelLoading variant="journey" size="lg" text="Loading your proposals..." />
       </div>
     );
@@ -1241,7 +1245,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     const parsedError = parseApiError(tripError);
 
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <div className={boundaryWrapperClass}>
         <Card className="w-full max-w-md mx-4">
           <CardContent className="pt-6 text-center">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -1267,7 +1271,7 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   if (!trip) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <div className={boundaryWrapperClass}>
         <Card className="w-full max-w-md mx-4">
           <CardContent className="pt-6 text-center">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -1783,62 +1787,39 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   const noProposalsAtAll = !hasProposalDataIssues && totalAvailableProposals === 0;
 
-  return (
-    <div className="min-h-screen bg-neutral-50">
-      {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href={`/trip/${tripId}`}>
-                <Button variant="ghost" size="sm" data-testid="button-back-to-trip">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Trip
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-xl font-semibold" data-testid="text-page-title">
-                  Group Proposals
-                </h1>
-                <p className="text-sm text-neutral-600" data-testid="text-trip-name">
-                  {trip.name}
-                </p>
-              </div>
-            </div>
-          </div>
+  const mainContent = (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold">Vote on Group Proposals</h2>
+        <p className="text-neutral-600">
+          Review and rank proposals from your group members. Your votes help determine the best options for everyone.
+        </p>
+      </div>
+
+      <div
+        className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end"
+        data-testid="proposals-filters"
+      >
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-neutral-600">Status</span>
+          <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
+            <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="canceled">Canceled</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold mb-2">Vote on Group Proposals</h2>
-          <p className="text-neutral-600">
-            Review and rank proposals from your group members. Your votes help determine the best options for everyone.
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end mb-6" data-testid="proposals-filters">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-neutral-600">Status</span>
-            <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
-              <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="canceled">Canceled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as ProposalTab)}
-          className="space-y-6"
-        >
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setActiveTab(value as ProposalTab)}
+        className="space-y-6"
+      >
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger
               value="my-proposals"
@@ -2035,6 +2016,42 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
           </TabsContent>
         </Tabs>
       </div>
+  );
+
+  if (embedded) {
+    return (
+      <div className="space-y-6">
+        <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">{mainContent}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-neutral-50">
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Link href={`/trip/${tripId}`}>
+                <Button variant="ghost" size="sm" data-testid="button-back-to-trip">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Back to Trip
+                </Button>
+              </Link>
+              <div>
+                <h1 className="text-xl font-semibold" data-testid="text-page-title">
+                  Group Proposals
+                </h1>
+                <p className="text-sm text-neutral-600" data-testid="text-trip-name">
+                  {trip.name}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{mainContent}</div>
     </div>
   );
 }
