@@ -328,6 +328,7 @@ const flightSearchSchema = z.object({
   passengers: z.number().min(1).max(9).optional(),
   class: z.enum(["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST"]).optional(),
   airline: z.string().optional(),
+  tripType: z.enum(["oneway", "roundtrip"]).default("roundtrip"),
   provider: z.enum(["amadeus", "duffel", "both"]).default("both"),
   page: z.number().min(1).optional().default(1),
   limit: z.number().min(1).max(50).optional().default(20),
@@ -1274,11 +1275,12 @@ export function setupRoutes(app: Express) {
   // Cached flight search function with 5-minute TTL
   const searchFlightsCached = memoize(
     async (searchParams: any) => {
-      const { origin, destination, departureDate, returnDate, passengers, flightClass, airline, provider } = searchParams;
-      
+      const { origin, destination, departureDate, returnDate, passengers, flightClass, airline, provider, tripType } = searchParams;
+
       console.log(`🔍 Flight Search Request:`);
       console.log(`  📍 Route: ${origin} → ${destination}`);
       console.log(`  📅 Departure: ${departureDate}${returnDate ? `, Return: ${returnDate}` : ''}`);
+      console.log(`  🔁 Trip Type: ${tripType || (returnDate ? 'roundtrip' : 'oneway')}`);
       console.log(`  👥 Passengers: ${passengers || 1}`);
       console.log(`  💺 Class: ${flightClass || 'ECONOMY'}`);
       console.log(`  ✈️ Airline Filter: ${airline || 'Any'}`);
@@ -1433,10 +1435,11 @@ export function setupRoutes(app: Express) {
   app.post("/api/search/flights", async (req: any, res) => {
     try {
       const validatedData = flightSearchSchema.parse(req.body);
-      const { origin, destination, departureDate, returnDate, passengers, class: flightClass, airline, provider, page, limit, filter } = validatedData;
+      const { origin, destination, departureDate, returnDate, passengers, class: flightClass, airline, provider, tripType, page, limit, filter } = validatedData;
+      const normalizedReturnDate = tripType === 'oneway' ? undefined : returnDate;
 
       // Get cached flight results
-      const searchParams = { origin, destination, departureDate, returnDate, passengers, flightClass, airline, provider };
+      const searchParams = { origin, destination, departureDate, returnDate: normalizedReturnDate, passengers, flightClass, airline, provider, tripType };
       const { flights: allFlights, errors, sources } = await searchFlightsCached(searchParams);
 
       if (allFlights.length === 0) {
