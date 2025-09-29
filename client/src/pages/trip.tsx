@@ -2301,6 +2301,13 @@ export default function Trip() {
 type TripFlightType = "roundtrip" | "oneway";
 type TripCabinClass = "economy" | "premiumeconomy" | "business" | "first";
 
+const POINTHOUND_CABIN_CLASS_MAP: Record<TripCabinClass, string> = {
+  economy: "Economy",
+  premiumeconomy: "PremiumEconomy",
+  business: "Business",
+  first: "First",
+};
+
 interface TripFlightSearchFormState {
   departure: string;
   departureCity: string;
@@ -2383,7 +2390,38 @@ function FlightCoordination({
     aircraft: "",
     status: "confirmed",
   });
+  const selectedDepartureAirportDetails = useMemo(
+    () =>
+      departureAirports.find((airport) => airport.iata === selectedDepartureAirport) ?? null,
+    [departureAirports, selectedDepartureAirport],
+  );
+  const selectedArrivalAirportDetails = useMemo(
+    () =>
+      arrivalAirports.find((airport) => airport.iata === selectedArrivalAirport) ?? null,
+    [arrivalAirports, selectedArrivalAirport],
+  );
   const isRoundTrip = searchFormData.tripType === "roundtrip";
+  const canOpenFlightSearchLinks = useMemo(() => {
+    const passengerCount = Number.parseInt(searchFormData.passengers, 10);
+    const hasPassengers = Number.isFinite(passengerCount) && passengerCount >= 1;
+    const hasDepartureAirport = Boolean(
+      selectedDepartureAirportDetails?.iata && selectedDepartureAirportDetails?.name,
+    );
+    const hasArrivalAirport = Boolean(
+      selectedArrivalAirportDetails?.iata && selectedArrivalAirportDetails?.name,
+    );
+    const hasDepartureDate = Boolean(searchFormData.departureDate);
+    const hasReturnDate = !isRoundTrip || Boolean(searchFormData.returnDate);
+
+    return hasDepartureAirport && hasArrivalAirport && hasDepartureDate && hasReturnDate && hasPassengers;
+  }, [
+    isRoundTrip,
+    searchFormData.departureDate,
+    searchFormData.passengers,
+    searchFormData.returnDate,
+    selectedArrivalAirportDetails,
+    selectedDepartureAirportDetails,
+  ]);
 
   useEffect(() => {
     setDepartureQuery(searchFormData.departureCity || searchFormData.departure || '');
@@ -2682,22 +2720,31 @@ function FlightCoordination({
   }, [isRoundTrip, searchFormData]);
 
   const buildPointhoundLink = useCallback(
-    (origin: string, destination: string, date: string) => {
-      const url = new URL("https://pointhound.com/flights/search");
-      url.searchParams.set("from", origin.trim().toUpperCase());
-      url.searchParams.set("to", destination.trim().toUpperCase());
-      url.searchParams.set("depart", date);
-      url.searchParams.set("adults", searchFormData.passengers || "1");
-      url.searchParams.set("cabinClass", searchFormData.cabinClass);
-      url.searchParams.set("tripType", isRoundTrip ? "roundtrip" : "oneway");
-
-      if (searchFormData.airline && searchFormData.airline !== "any") {
-        url.searchParams.set("airline", searchFormData.airline);
+    (origin: NearbyAirport | null, destination: NearbyAirport | null, date: string) => {
+      if (!origin || !destination || !date) {
+        return null;
       }
+
+      const passengerCount = Number.parseInt(searchFormData.passengers, 10);
+      const normalizedPassengerCount = Number.isFinite(passengerCount) && passengerCount > 0 ? passengerCount : 1;
+      const cabinClass =
+        POINTHOUND_CABIN_CLASS_MAP[searchFormData.cabinClass] || POINTHOUND_CABIN_CLASS_MAP.economy;
+      const originName = origin.name.trim() || origin.iata;
+      const destinationName = destination.name.trim() || destination.iata;
+      const url = new URL("https://www.pointhound.com/flights");
+
+      url.searchParams.set("dateBuffer", "false");
+      url.searchParams.set("flightClass", cabinClass);
+      url.searchParams.set("originCode", origin.iata);
+      url.searchParams.set("originName", originName);
+      url.searchParams.set("destinationCode", destination.iata);
+      url.searchParams.set("destinationName", destinationName);
+      url.searchParams.set("passengerCount", normalizedPassengerCount.toString());
+      url.searchParams.set("departureDate", date);
 
       return url.toString();
     },
-    [isRoundTrip, searchFormData.airline, searchFormData.cabinClass, searchFormData.passengers],
+    [searchFormData.cabinClass, searchFormData.passengers],
   );
 
   const handleSkyscannerLink = useCallback(() => {
@@ -2707,6 +2754,15 @@ function FlightCoordination({
       toast({
         title: "Missing information",
         description: "Add departure, arrival, and departure date to open Skyscanner.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedDepartureAirportDetails || !selectedArrivalAirportDetails) {
+      toast({
+        title: "Select airports",
+        description: "Choose specific departure and arrival airports before opening Skyscanner.",
         variant: "destructive",
       });
       return;
@@ -2727,7 +2783,14 @@ function FlightCoordination({
 
     const url = buildSkyscannerLink();
     window.open(url, "_blank", "noopener,noreferrer");
-  }, [buildSkyscannerLink, isRoundTrip, searchFormData, toast]);
+  }, [
+    buildSkyscannerLink,
+    isRoundTrip,
+    searchFormData,
+    selectedArrivalAirportDetails,
+    selectedDepartureAirportDetails,
+    toast,
+  ]);
 
   const handlePointhoundLink = useCallback(() => {
     const { departure, arrival, departureDate, returnDate } = searchFormData;
@@ -2736,6 +2799,15 @@ function FlightCoordination({
       toast({
         title: "Missing information",
         description: "Add departure, arrival, and departure date to open Pointhound.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!selectedDepartureAirportDetails || !selectedArrivalAirportDetails) {
+      toast({
+        title: "Select airports",
+        description: "Choose specific departure and arrival airports before opening Pointhound.",
         variant: "destructive",
       });
       return;
@@ -2754,14 +2826,42 @@ function FlightCoordination({
       return;
     }
 
-    const outboundUrl = buildPointhoundLink(departure, arrival, departureDate);
+    const outboundUrl = buildPointhoundLink(
+      selectedDepartureAirportDetails,
+      selectedArrivalAirportDetails,
+      departureDate,
+    );
+
+    if (!outboundUrl) {
+      toast({
+        title: "Unable to open Pointhound",
+        description: "We couldn't build a link with the current flight details. Try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     window.open(outboundUrl, "_blank", "noopener,noreferrer");
 
     if (isRoundTrip && returnDate) {
-      const inboundUrl = buildPointhoundLink(arrival, departure, returnDate);
-      window.open(inboundUrl, "_blank", "noopener,noreferrer");
+      const inboundUrl = buildPointhoundLink(
+        selectedArrivalAirportDetails,
+        selectedDepartureAirportDetails,
+        returnDate,
+      );
+
+      if (inboundUrl) {
+        window.open(inboundUrl, "_blank", "noopener,noreferrer");
+      }
     }
-  }, [buildPointhoundLink, isRoundTrip, searchFormData, toast]);
+  }, [
+    buildPointhoundLink,
+    isRoundTrip,
+    searchFormData,
+    selectedArrivalAirportDetails,
+    selectedDepartureAirportDetails,
+    toast,
+  ]);
 
   const resetManualFlightForm = useCallback(() => {
     setManualFlightData({
@@ -3129,6 +3229,7 @@ function FlightCoordination({
                 variant="secondary"
                 className="w-full sm:w-auto"
                 onClick={handleSkyscannerLink}
+                disabled={!canOpenFlightSearchLinks}
               >
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Search on Skyscanner
@@ -3138,6 +3239,7 @@ function FlightCoordination({
                 variant="secondary"
                 className="w-full sm:w-auto"
                 onClick={handlePointhoundLink}
+                disabled={!canOpenFlightSearchLinks}
               >
                 <ExternalLink className="mr-2 h-4 w-4" />
                 Search on Pointhound
