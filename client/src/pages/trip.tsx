@@ -3145,6 +3145,7 @@ function FlightCoordination({
     }
   }, [isRoundTrip, searchFormData, toast]);
 
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -3153,10 +3154,19 @@ function FlightCoordination({
     );
   }
 
+
   const handleManualDialogOpen = useCallback(() => {
     resetManualFlightForm();
     setIsManualDialogOpen(true);
   }, [resetManualFlightForm]);
+
+
+  useEffect(() => {
+    if (manualDialogOpenSignal > 0) {
+      handleManualDialogOpen();
+    }
+  }, [handleManualDialogOpen, manualDialogOpenSignal]);
+
 
   const handleManualDialogChange = (open: boolean) => {
     if (!open) {
@@ -3165,11 +3175,21 @@ function FlightCoordination({
     setIsManualDialogOpen(open);
   };
 
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+      </div>
+    );
+  }
+
   useEffect(() => {
     if (manualDialogOpenSignal > 0) {
       handleManualDialogOpen();
     }
   }, [handleManualDialogOpen, manualDialogOpenSignal]);
+
 
   return (
     <div className="space-y-6">
