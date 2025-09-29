@@ -115,6 +115,7 @@ const parseApiError = (error: unknown): ParsedApiError => {
 
 interface ProposalsPageProps {
   tripId?: number;
+  layout?: "page" | "embedded";
 }
 
 type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
@@ -142,13 +143,14 @@ const actionToStatusMap: Record<ActivityRsvpAction, ActivityInviteStatus | null>
   MAYBE: "pending",
 };
 
-function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
+function ProposalsPage({ tripId, layout = "page" }: ProposalsPageProps = {}) {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "canceled">("all");
+  const isEmbedded = layout === "embedded";
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -1130,28 +1132,90 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
     );
   };
 
-  if (!tripId) {
+  const renderInlineMessage = (
+    options: {
+      iconClassName?: string;
+      title: string;
+      message: string;
+      primaryAction?: { label: string; onClick: () => void };
+      secondaryAction?: { label: string; href: string; testId?: string };
+      primaryTestId?: string;
+    },
+  ) => {
+    const { iconClassName, title, message, primaryAction, secondaryAction, primaryTestId } = options;
+
+    if (!isEmbedded) {
+      return (
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+          <Card className="w-full max-w-md mx-4">
+            <CardContent className="pt-6 text-center">
+              <AlertCircle className={`w-12 h-12 mx-auto mb-4 ${iconClassName ?? "text-amber-500"}`} />
+              <h2 className="text-lg font-semibold mb-2">{title}</h2>
+              <p className="text-neutral-600 mb-4">{message}</p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+                {primaryAction && (
+                  <Button onClick={primaryAction.onClick} data-testid={primaryTestId}>
+                    {primaryAction.label}
+                  </Button>
+                )}
+                {secondaryAction && (
+                  <Link href={secondaryAction.href}>
+                    <Button variant="outline" data-testid={secondaryAction.testId}>
+                      {secondaryAction.label}
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Trip not specified</h2>
-            <p className="text-neutral-600 mb-4">
-              We couldn't determine which trip to load proposals for. Please go back and pick a trip first.
-            </p>
-            <Link href="/">
-              <Button data-testid="button-trip-missing-back-home">Back to Home</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="border border-dashed border-neutral-300 bg-white/70">
+        <CardContent className="pt-6 text-center">
+          <AlertCircle className={`w-10 h-10 mx-auto mb-4 ${iconClassName ?? "text-amber-500"}`} />
+          <h3 className="text-base font-semibold mb-2">{title}</h3>
+          <p className="text-sm text-neutral-600 mb-4">{message}</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            {primaryAction && (
+              <Button size="sm" onClick={primaryAction.onClick} data-testid={primaryTestId}>
+                {primaryAction.label}
+              </Button>
+            )}
+            {secondaryAction && (
+              <Link href={secondaryAction.href}>
+                <Button size="sm" variant="outline" data-testid={secondaryAction.testId}>
+                  {secondaryAction.label}
+                </Button>
+              </Link>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     );
+  };
+
+  if (!tripId) {
+    return renderInlineMessage({
+      title: "Trip not specified",
+      message: "We couldn't determine which trip to load proposals for. Please go back and pick a trip first.",
+      secondaryAction: { label: "Back to Home", href: "/", testId: "button-trip-missing-back-home" },
+    });
   }
 
   if (authLoading || tripLoading) {
+    if (!isEmbedded) {
+      return (
+        <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+          <TravelLoading variant="journey" size="lg" text="Loading your proposals..." />
+        </div>
+      );
+    }
+
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
+      <div className="py-12 flex justify-center">
         <TravelLoading variant="journey" size="lg" text="Loading your proposals..." />
       </div>
     );
@@ -1160,48 +1224,25 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
   if (tripError) {
     const parsedError = parseApiError(tripError);
 
-    return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Unable to load trip</h2>
-            <p className="text-neutral-600 mb-4">
-              {parsedError.message || "Something went wrong while loading this trip. Please try again."}
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <Button onClick={() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] })}>
-                Try again
-              </Button>
-              <Link href="/">
-                <Button variant="outline" data-testid="button-trip-error-back-home">
-                  Back to Home
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return renderInlineMessage({
+      iconClassName: "text-red-500",
+      title: "Unable to load trip",
+      message: parsedError.message || "Something went wrong while loading this trip. Please try again.",
+      primaryAction: {
+        label: "Try again",
+        onClick: () => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] }),
+      },
+      secondaryAction: { label: "Back to Home", href: "/", testId: "button-trip-error-back-home" },
+    });
   }
 
   if (!trip) {
-    return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Trip Not Found</h2>
-            <p className="text-neutral-600 mb-4">
-              The trip you're looking for doesn't exist or you don't have access to it.
-            </p>
-            <Link href="/">
-              <Button data-testid="button-back-home">Back to Home</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return renderInlineMessage({
+      iconClassName: "text-red-500",
+      title: "Trip Not Found",
+      message: "The trip you're looking for doesn't exist or you don't have access to it.",
+      secondaryAction: { label: "Back to Home", href: "/", testId: "button-back-home" },
+    });
   }
 
   // Hotel proposal card component
@@ -1677,9 +1718,222 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
 
   const noProposalsAtAll = totalAvailableProposals === 0;
 
+  const headerDescription = isEmbedded
+    ? `Review proposals shared with your ${trip.members?.length ?? 0}-person group.`
+    : "Review and rank proposals from your group members. Your votes help determine the best options for everyone.";
+
+  const filtersSection = (
+    <div
+      className={`flex flex-col gap-4 md:flex-row md:items-center md:justify-end ${isEmbedded ? "mb-4" : "mb-6"}`}
+      data-testid="proposals-filters"
+    >
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-neutral-600">Status</span>
+        <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
+          <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
+            <SelectValue placeholder="All statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="canceled">Canceled</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+
+  const tabsSection = (
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => setActiveTab(value as ProposalTab)}
+      className="space-y-6"
+    >
+      <TabsList className="grid w-full grid-cols-5">
+        <TabsTrigger
+          value="my-proposals"
+          className="flex items-center gap-2"
+          data-testid="tab-my-proposals"
+        >
+          <User className="w-4 h-4" />
+          My Proposals {totalMyProposals > 0 && `(${totalMyProposals})`}
+        </TabsTrigger>
+        <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
+          <Hotel className="w-4 h-4" />
+          Hotels {otherHotelProposals.length > 0 && `(${otherHotelProposals.length})`}
+        </TabsTrigger>
+        <TabsTrigger value="flights" className="flex items-center gap-2" data-testid="tab-flights">
+          <Plane className="w-4 h-4" />
+          Flights {otherFlightProposals.length > 0 && `(${otherFlightProposals.length})`}
+        </TabsTrigger>
+        <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
+          <MapPin className="w-4 h-4" />
+          Activities {otherActivityProposals.length > 0 && `(${otherActivityProposals.length})`}
+        </TabsTrigger>
+        <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
+          <Utensils className="w-4 h-4" />
+          Restaurants {otherRestaurantProposals.length > 0 && `(${otherRestaurantProposals.length})`}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="my-proposals" className="space-y-6">
+        {totalMyProposals > 0 ? (
+          <div className="space-y-8" data-testid="list-my-proposals">
+            {filteredMyHotelProposals.length > 0 && (
+              <section className="space-y-4" data-testid="section-my-hotel-proposals">
+                <div className="flex items-center gap-2 text-neutral-700">
+                  <Hotel className="w-4 h-4" />
+                  <h3 className="text-lg font-semibold">
+                    Hotel proposals ({filteredMyHotelProposals.length})
+                  </h3>
+                </div>
+                <div className="space-y-4">
+                  {filteredMyHotelProposals.map((proposal) => (
+                    <HotelProposalCard key={proposal.id} proposal={proposal} />
+                  ))}
+                </div>
+              </section>
+            )}
+            {filteredMyFlightProposals.length > 0 && (
+              <section className="space-y-4" data-testid="section-my-flight-proposals">
+                <div className="flex items-center gap-2 text-neutral-700">
+                  <Plane className="w-4 h-4" />
+                  <h3 className="text-lg font-semibold">
+                    Flight proposals ({filteredMyFlightProposals.length})
+                  </h3>
+                </div>
+                <div className="space-y-4">
+                  {filteredMyFlightProposals.map((proposal) => (
+                    <FlightProposalCard key={proposal.id} proposal={proposal} />
+                  ))}
+                </div>
+              </section>
+            )}
+            {filteredMyActivityProposals.length > 0 && (
+              <section className="space-y-4" data-testid="section-my-activity-proposals">
+                <div className="flex items-center gap-2 text-neutral-700">
+                  <MapPin className="w-4 h-4" />
+                  <h3 className="text-lg font-semibold">
+                    Activity proposals ({filteredMyActivityProposals.length})
+                  </h3>
+                </div>
+                <div className="space-y-4">
+                  {filteredMyActivityProposals.map((proposal) => (
+                    <ActivityProposalCard key={proposal.id} proposal={proposal} />
+                  ))}
+                </div>
+              </section>
+            )}
+            {filteredMyRestaurantProposals.length > 0 && (
+              <section className="space-y-4" data-testid="section-my-restaurant-proposals">
+                <div className="flex items-center gap-2 text-neutral-700">
+                  <Utensils className="w-4 h-4" />
+                  <h3 className="text-lg font-semibold">
+                    Restaurant proposals ({filteredMyRestaurantProposals.length})
+                  </h3>
+                </div>
+                <div className="space-y-4">
+                  {filteredMyRestaurantProposals.map((proposal) => (
+                    <RestaurantProposalCard key={proposal.id} proposal={proposal} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        ) : (
+          <MyProposalsEmptyState hasAny={hasAnyMyProposals} />
+        )}
+      </TabsContent>
+
+      <TabsContent value="hotels" className="space-y-4" data-testid="list-hotel-proposals">
+        {hotelProposalsLoading ? (
+          <div className="flex justify-center py-12">
+            <TravelLoading variant="journey" size="lg" text="Loading hotel proposals..." />
+          </div>
+        ) : filteredHotelProposals.length > 0 ? (
+          <div className="space-y-4">
+            {filteredHotelProposals.map((proposal) => (
+              <HotelProposalCard key={proposal.id} proposal={proposal} />
+            ))}
+          </div>
+        ) : hotelProposals.length > 0 ? (
+          <FilteredEmptyState type="Hotel" />
+        ) : (
+          <EmptyState type="Hotel" icon={Hotel} />
+        )}
+      </TabsContent>
+
+      <TabsContent value="flights" className="space-y-4" data-testid="list-flight-proposals">
+        {flightProposalsLoading ? (
+          <div className="flex justify-center py-12">
+            <TravelLoading variant="journey" size="lg" text="Loading flight proposals..." />
+          </div>
+        ) : filteredFlightProposals.length > 0 ? (
+          <div className="space-y-4">
+            {filteredFlightProposals.map((proposal) => (
+              <FlightProposalCard key={proposal.id} proposal={proposal} />
+            ))}
+          </div>
+        ) : flightProposals.length > 0 ? (
+          <FilteredEmptyState type="Flight" />
+        ) : (
+          <EmptyState type="Flight" icon={Plane} />
+        )}
+      </TabsContent>
+
+      <TabsContent value="activities" className="space-y-4" data-testid="list-activity-proposals">
+        {activityProposalsLoading ? (
+          <div className="flex justify-center py-12">
+            <TravelLoading variant="journey" size="lg" text="Loading activity proposals..." />
+          </div>
+        ) : filteredActivityProposals.length > 0 ? (
+          <div className="space-y-4">
+            {filteredActivityProposals.map((proposal) => (
+              <ActivityProposalCard key={proposal.id} proposal={proposal} />
+            ))}
+          </div>
+        ) : activityProposals.length > 0 ? (
+          <FilteredEmptyState type="Activity" />
+        ) : (
+          <EmptyState type="Activity" icon={MapPin} />
+        )}
+      </TabsContent>
+
+      <TabsContent value="restaurants" className="space-y-4" data-testid="list-restaurant-proposals">
+        {restaurantProposalsLoading ? (
+          <div className="flex justify-center py-12">
+            <TravelLoading variant="journey" size="lg" text="Loading restaurant proposals..." />
+          </div>
+        ) : filteredRestaurantProposals.length > 0 ? (
+          <div className="space-y-4">
+            {filteredRestaurantProposals.map((proposal) => (
+              <RestaurantProposalCard key={proposal.id} proposal={proposal} />
+            ))}
+          </div>
+        ) : restaurantProposals.length > 0 ? (
+          <FilteredEmptyState type="Restaurant" />
+        ) : (
+          <EmptyState type="Restaurant" icon={Utensils} />
+        )}
+      </TabsContent>
+    </Tabs>
+  );
+
+  if (isEmbedded) {
+    return (
+      <section className="space-y-6">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-semibold text-neutral-900">Group Proposals</h2>
+          <p className="text-sm text-neutral-600">{headerDescription}</p>
+        </div>
+        {filtersSection}
+        {tabsSection}
+      </section>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-neutral-50">
-      {/* Header */}
       <div className="bg-white border-b sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -1703,211 +1957,16 @@ function ProposalsPage({ tripId }: ProposalsPageProps = {}) {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <h2 className="text-2xl font-bold mb-2">Vote on Group Proposals</h2>
-          <p className="text-neutral-600">
-            Review and rank proposals from your group members. Your votes help determine the best options for everyone.
-          </p>
+          <p className="text-neutral-600">{headerDescription}</p>
         </div>
-
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end mb-6" data-testid="proposals-filters">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-neutral-600">Status</span>
-            <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
-              <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="canceled">Canceled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as ProposalTab)}
-          className="space-y-6"
-        >
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger
-              value="my-proposals"
-              className="flex items-center gap-2"
-              data-testid="tab-my-proposals"
-            >
-              <User className="w-4 h-4" />
-              My Proposals {totalMyProposals > 0 && `(${totalMyProposals})`}
-            </TabsTrigger>
-            <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
-              <Hotel className="w-4 h-4" />
-              Hotels {otherHotelProposals.length > 0 && `(${otherHotelProposals.length})`}
-            </TabsTrigger>
-            <TabsTrigger value="flights" className="flex items-center gap-2" data-testid="tab-flights">
-              <Plane className="w-4 h-4" />
-              Flights {otherFlightProposals.length > 0 && `(${otherFlightProposals.length})`}
-            </TabsTrigger>
-            <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
-              <MapPin className="w-4 h-4" />
-              Activities {otherActivityProposals.length > 0 && `(${otherActivityProposals.length})`}
-            </TabsTrigger>
-            <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
-              <Utensils className="w-4 h-4" />
-              Restaurants {otherRestaurantProposals.length > 0 && `(${otherRestaurantProposals.length})`}
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="my-proposals" className="space-y-6">
-            {totalMyProposals > 0 ? (
-              <div className="space-y-8" data-testid="list-my-proposals">
-                {filteredMyHotelProposals.length > 0 && (
-                  <section className="space-y-4" data-testid="section-my-hotel-proposals">
-                    <div className="flex items-center gap-2 text-neutral-700">
-                      <Hotel className="w-4 h-4" />
-                      <h3 className="text-lg font-semibold">
-                        Hotel proposals ({filteredMyHotelProposals.length})
-                      </h3>
-                    </div>
-                    <div className="space-y-4">
-                      {filteredMyHotelProposals.map((proposal) => (
-                        <HotelProposalCard key={proposal.id} proposal={proposal} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {filteredMyFlightProposals.length > 0 && (
-                  <section className="space-y-4" data-testid="section-my-flight-proposals">
-                    <div className="flex items-center gap-2 text-neutral-700">
-                      <Plane className="w-4 h-4" />
-                      <h3 className="text-lg font-semibold">
-                        Flight proposals ({filteredMyFlightProposals.length})
-                      </h3>
-                    </div>
-                    <div className="space-y-4">
-                      {filteredMyFlightProposals.map((proposal) => (
-                        <FlightProposalCard key={proposal.id} proposal={proposal} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {filteredMyActivityProposals.length > 0 && (
-                  <section className="space-y-4" data-testid="section-my-activity-proposals">
-                    <div className="flex items-center gap-2 text-neutral-700">
-                      <MapPin className="w-4 h-4" />
-                      <h3 className="text-lg font-semibold">
-                        Activity proposals ({filteredMyActivityProposals.length})
-                      </h3>
-                    </div>
-                    <div className="space-y-4">
-                      {filteredMyActivityProposals.map((proposal) => (
-                        <ActivityProposalCard key={proposal.id} proposal={proposal} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {filteredMyRestaurantProposals.length > 0 && (
-                  <section className="space-y-4" data-testid="section-my-restaurant-proposals">
-                    <div className="flex items-center gap-2 text-neutral-700">
-                      <Utensils className="w-4 h-4" />
-                      <h3 className="text-lg font-semibold">
-                        Restaurant proposals ({filteredMyRestaurantProposals.length})
-                      </h3>
-                    </div>
-                    <div className="space-y-4">
-                      {filteredMyRestaurantProposals.map((proposal) => (
-                        <RestaurantProposalCard key={proposal.id} proposal={proposal} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </div>
-            ) : (
-              <MyProposalsEmptyState hasAny={hasAnyMyProposals} />
-            )}
-          </TabsContent>
-
-          <TabsContent value="hotels" className="space-y-6">
-            {hotelProposalsLoading ? (
-              <div className="flex justify-center py-8">
-                <TravelLoading text="Loading hotel proposals..." />
-              </div>
-            ) : filteredHotelProposals.length > 0 ? (
-              <div data-testid="list-hotel-proposals">
-                {filteredHotelProposals.map((proposal) => (
-                  <HotelProposalCard key={proposal.id} proposal={proposal} />
-                ))}
-              </div>
-            ) : hotelProposals.length > 0 ? (
-              <FilteredEmptyState type="Hotel" />
-            ) : (
-              <EmptyState type="Hotel" icon={Hotel} />
-            )}
-          </TabsContent>
-
-          <TabsContent value="flights" className="space-y-6">
-            {flightProposalsLoading ? (
-              <div className="flex justify-center py-8">
-                <TravelLoading text="Loading flight proposals..." />
-              </div>
-            ) : filteredFlightProposals.length > 0 ? (
-              <div data-testid="list-flight-proposals">
-                {filteredFlightProposals.map((proposal) => (
-                  <FlightProposalCard key={proposal.id} proposal={proposal} />
-                ))}
-              </div>
-            ) : flightProposals.length > 0 ? (
-              <FilteredEmptyState type="Flight" />
-            ) : (
-              <EmptyState type="Flight" icon={Plane} />
-            )}
-          </TabsContent>
-
-          <TabsContent value="activities" className="space-y-6">
-            {activityProposalsLoading ? (
-              <div className="flex justify-center py-8">
-                <TravelLoading text="Loading activity proposals..." />
-              </div>
-            ) : filteredActivityProposals.length > 0 ? (
-              <div data-testid="list-activity-proposals">
-                {filteredActivityProposals.map((proposal) => (
-                  <ActivityProposalCard key={proposal.id} proposal={proposal} />
-                ))}
-              </div>
-            ) : activityProposals.length > 0 ? (
-              <FilteredEmptyState type="Activity" />
-            ) : (
-              <EmptyState type="Activity" icon={MapPin} />
-            )}
-          </TabsContent>
-
-          <TabsContent value="restaurants" className="space-y-6">
-            {restaurantProposalsLoading ? (
-              <div className="flex justify-center py-8">
-                <TravelLoading text="Loading restaurant proposals..." />
-              </div>
-            ) : filteredRestaurantProposals.length > 0 ? (
-              <div data-testid="list-restaurant-proposals">
-                {filteredRestaurantProposals.map((proposal) => (
-                  <RestaurantProposalCard key={proposal.id} proposal={proposal} />
-                ))}
-              </div>
-            ) : restaurantProposals.length > 0 ? (
-              <FilteredEmptyState type="Restaurant" />
-            ) : (
-              <EmptyState type="Restaurant" icon={Utensils} />
-            )}
-          </TabsContent>
-        </Tabs>
+        {filtersSection}
+        {tabsSection}
       </div>
     </div>
   );
-}
 
 // Route wrapper component for standalone routes
 function ProposalsRoute() {
