@@ -42,8 +42,8 @@ describe('computeSplits', () => {
       { userId: 'b', sourceMinorUnits: 2500, targetMinorUnits: 2500 },
       { userId: 'c', sourceMinorUnits: 2500, targetMinorUnits: 2500 },
     ]);
-    expect(result.totalSourceMinorUnits).toBe(10000);
-    expect(result.totalTargetMinorUnits).toBe(10000);
+    expect(result.totalSourceMinorUnits).toBe(7500);
+    expect(result.totalTargetMinorUnits).toBe(7500);
   });
 
   it('distributes remainder cents to earliest debtors', () => {
@@ -60,7 +60,7 @@ describe('computeSplits', () => {
     ]);
   });
 
-  it('sums of debtor amounts equal the total', () => {
+  it('sums of debtor amounts equal the total owed by others', () => {
     const amountCents = 12345;
     const debtors = ['a', 'b', 'c'];
     const result = computeSplits({
@@ -75,8 +75,8 @@ describe('computeSplits', () => {
       0,
     );
 
-    expect(sum).toBe(amountCents);
-    expect(result.totalSourceMinorUnits).toBe(amountCents);
+    expect(sum).toBe(result.totalSourceMinorUnits);
+    expect(result.totalSourceMinorUnits).toBe(amountCents - Math.floor(amountCents / (debtors.length + 1)));
   });
 
   it('is deterministic for the same debtor ordering', () => {
@@ -171,5 +171,21 @@ describe('computeSplits', () => {
     );
 
     expect(totalShares).toBe(result.totalTargetMinorUnits);
+  });
+
+  it('includes the payer in the headcount but does not assign them a request', () => {
+    const result = computeSplits({
+      totalSourceMinorUnits: 2000,
+      debtorIds: ['patrick'],
+      sourceCurrency: 'USD',
+      targetCurrency: 'USD',
+      conversionRate: 1,
+    });
+
+    expect(result.shares).toEqual([
+      { userId: 'patrick', sourceMinorUnits: 1000, targetMinorUnits: 1000 },
+    ]);
+    expect(result.totalSourceMinorUnits).toBe(1000);
+    expect(result.totalTargetMinorUnits).toBe(1000);
   });
 });

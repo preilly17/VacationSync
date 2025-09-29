@@ -150,15 +150,30 @@ export function computeSplits({
   const targetFactor = getCurrencyMinorUnitFactor(targetCurrency);
   const rateValue = ensurePositiveRate(conversionRate);
 
-  const nTotal = normalizedDebtors.length + 1;
-  const base = Math.floor(totalSourceMinorUnits / nTotal);
-  let remainder = totalSourceMinorUnits - base * nTotal;
+  const totalParticipants = normalizedDebtors.length + 1;
+  const baseShare = Math.floor(totalSourceMinorUnits / totalParticipants);
+  let remainder = totalSourceMinorUnits - baseShare * totalParticipants;
 
-  const shares: SplitShare[] = normalizedDebtors.map((userId) => {
-    let shareSource = base;
+  const payerPlaceholder = "__payer__";
+  const ordering = [...normalizedDebtors, payerPlaceholder];
+  const sourceShares = new Map<string, number>();
+
+  for (const participant of ordering) {
+    let shareSource = baseShare;
     if (remainder > 0) {
       shareSource += 1;
       remainder -= 1;
+    }
+
+    if (participant !== payerPlaceholder) {
+      sourceShares.set(participant, shareSource);
+    }
+  }
+
+  const shares: SplitShare[] = normalizedDebtors.map((userId) => {
+    const shareSource = sourceShares.get(userId);
+    if (shareSource === undefined) {
+      throw new Error("Missing share for participant");
     }
 
     const targetMinorUnits = convertMinorUnits(
@@ -175,8 +190,13 @@ export function computeSplits({
     };
   });
 
+  const totalDebtorSourceMinorUnits = shares.reduce(
+    (sum, share) => sum + share.sourceMinorUnits,
+    0,
+  );
+
   const totalTargetMinorUnits = convertMinorUnits(
-    totalSourceMinorUnits,
+    totalDebtorSourceMinorUnits,
     sourceFactor,
     targetFactor,
     rateValue,
@@ -188,26 +208,35 @@ export function computeSplits({
   );
 
   let difference = totalTargetMinorUnits - currentSum;
-  if (difference !== 0) {
+  if (difference !== 0 && shares.length > 0) {
     const direction = Math.sign(difference);
-    difference = Math.abs(difference);
-    for (let index = 0; index < normalizedDebtors.length && difference > 0; index += 1) {
-      const share = shares[index];
-      const updated = share.targetMinorUnits + direction;
-      if (updated < 0) {
-        continue;
+    let remaining = Math.abs(difference);
+
+    while (remaining > 0) {
+      let adjustedThisPass = false;
+      for (let index = 0; index < shares.length && remaining > 0; index += 1) {
+        const share = shares[index];
+        const updated = share.targetMinorUnits + direction;
+        if (updated < 0) {
+          continue;
+        }
+        shares[index] = {
+          ...share,
+          targetMinorUnits: updated,
+        };
+        remaining -= 1;
+        adjustedThisPass = true;
       }
-      shares[index] = {
-        ...share,
-        targetMinorUnits: updated,
-      };
-      difference -= 1;
+
+      if (!adjustedThisPass) {
+        break;
+      }
     }
   }
 
   return {
     shares,
-    totalSourceMinorUnits,
+    totalSourceMinorUnits: totalDebtorSourceMinorUnits,
     totalTargetMinorUnits,
   };
 }
