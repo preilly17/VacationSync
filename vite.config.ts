@@ -39,6 +39,7 @@ export default defineConfig(async ({ mode }) => {
       proxy: {
         "/health": apiProxyTarget,
         "/search": apiProxyTarget,
+        "/api": apiProxyTarget,
       },
     },
   };
