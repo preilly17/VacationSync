@@ -360,6 +360,10 @@ export const airportInfo = {
   'TLV': { name: 'Ben Gurion Airport', city: 'Tel Aviv', country: 'Israel' },
 };
 
+/**
+ * @deprecated This hardcoded search is retained only for legacy airport helpers.
+ *             GeoNames is now used as the fallback for /api/locations/search.
+ */
 // Smart location search function - completely flexible
 export function searchLocations(query: string): LocationResult[] {
   const results: LocationResult[] = [];

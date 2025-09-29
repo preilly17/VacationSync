@@ -295,6 +295,12 @@ type TripRow = {
   share_code: string;
   created_by: string;
   created_at: Date | null;
+  geoname_id: string | number | null;
+  city_name: string | null;
+  country_name: string | null;
+  latitude: string | number | null;
+  longitude: string | number | null;
+  population: string | number | null;
 };
 
 type TripMemberRow = {
@@ -975,6 +981,12 @@ const mapTrip = (row: TripRow): TripCalendar => ({
   shareCode: row.share_code,
   createdBy: row.created_by,
   createdAt: row.created_at,
+  geonameId: toNumberOrNull(row.geoname_id),
+  cityName: row.city_name,
+  countryName: row.country_name,
+  latitude: toNumberOrNull(row.latitude),
+  longitude: toNumberOrNull(row.longitude),
+  population: toNumberOrNull(row.population),
 });
 
 const mapTripMember = (row: TripMemberRow): TripMember => ({
@@ -1528,6 +1540,12 @@ const mapFlightWithDetails = (row: FlightWithDetailsRow): FlightWithDetails => {
     share_code: row.trip_share_code,
     created_by: row.trip_created_by,
     created_at: row.trip_created_at,
+    geoname_id: null,
+    city_name: null,
+    country_name: null,
+    latitude: null,
+    longitude: null,
+    population: null,
   };
 
   return {
@@ -1594,6 +1612,12 @@ const mapHotelWithDetails = (row: HotelWithDetailsRow): HotelWithDetails => {
     share_code: row.trip_share_code,
     created_by: row.trip_created_by,
     created_at: row.trip_created_at,
+    geoname_id: null,
+    city_name: null,
+    country_name: null,
+    latitude: null,
+    longitude: null,
+    population: null,
   };
 
   return {
@@ -1643,6 +1667,12 @@ const mapRestaurantWithDetails = (
     share_code: row.trip_share_code,
     created_by: row.trip_created_by,
     created_at: row.trip_created_at,
+    geoname_id: null,
+    city_name: null,
+    country_name: null,
+    latitude: null,
+    longitude: null,
+    population: null,
   };
 
   return {
@@ -2294,11 +2324,52 @@ export class DatabaseStorage implements IStorage {
       }
     } while (await this.shareCodeExists(shareCode));
 
+    const parseNullableNumber = (value: unknown): number | null => {
+      if (value === undefined || value === null) {
+        return null;
+      }
+
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const geonameIdValue = parseNullableNumber(trip.geonameId);
+    const latitudeValue = parseNullableNumber(trip.latitude);
+    const longitudeValue = parseNullableNumber(trip.longitude);
+    const populationValue = parseNullableNumber(trip.population);
+
     const { rows } = await query<TripRow>(
       `
-      INSERT INTO trip_calendars (name, destination, start_date, end_date, share_code, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, name, destination, start_date, end_date, share_code, created_by, created_at
+      INSERT INTO trip_calendars (
+        name,
+        destination,
+        start_date,
+        end_date,
+        share_code,
+        created_by,
+        geoname_id,
+        city_name,
+        country_name,
+        latitude,
+        longitude,
+        population
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING
+        id,
+        name,
+        destination,
+        start_date,
+        end_date,
+        share_code,
+        created_by,
+        created_at,
+        geoname_id,
+        city_name,
+        country_name,
+        latitude,
+        longitude,
+        population
       `,
       [
         trip.name,
@@ -2307,6 +2378,12 @@ export class DatabaseStorage implements IStorage {
         trip.endDate,
         shareCode,
         userId,
+        geonameIdValue,
+        trip.cityName ?? null,
+        trip.countryName ?? null,
+        latitudeValue,
+        longitudeValue,
+        populationValue,
       ],
     );
 
@@ -2701,6 +2778,58 @@ export class DatabaseStorage implements IStorage {
       index += 1;
     }
 
+    if (data.geonameId !== undefined) {
+      const parsed =
+        data.geonameId === null || data.geonameId === undefined
+          ? null
+          : Number(data.geonameId);
+      setClauses.push(`geoname_id = $${index}`);
+      values.push(Number.isFinite(parsed as number) ? parsed : null);
+      index += 1;
+    }
+
+    if (data.cityName !== undefined) {
+      setClauses.push(`city_name = $${index}`);
+      values.push(data.cityName ?? null);
+      index += 1;
+    }
+
+    if (data.countryName !== undefined) {
+      setClauses.push(`country_name = $${index}`);
+      values.push(data.countryName ?? null);
+      index += 1;
+    }
+
+    if (data.latitude !== undefined) {
+      const parsed =
+        data.latitude === null || data.latitude === undefined
+          ? null
+          : Number(data.latitude);
+      setClauses.push(`latitude = $${index}`);
+      values.push(Number.isFinite(parsed as number) ? parsed : null);
+      index += 1;
+    }
+
+    if (data.longitude !== undefined) {
+      const parsed =
+        data.longitude === null || data.longitude === undefined
+          ? null
+          : Number(data.longitude);
+      setClauses.push(`longitude = $${index}`);
+      values.push(Number.isFinite(parsed as number) ? parsed : null);
+      index += 1;
+    }
+
+    if (data.population !== undefined) {
+      const parsed =
+        data.population === null || data.population === undefined
+          ? null
+          : Number(data.population);
+      setClauses.push(`population = $${index}`);
+      values.push(Number.isFinite(parsed as number) ? parsed : null);
+      index += 1;
+    }
+
     if (setClauses.length === 0) {
       return mapTrip(existing);
     }
@@ -2709,7 +2838,21 @@ export class DatabaseStorage implements IStorage {
       UPDATE trip_calendars
       SET ${setClauses.join(", ")}
       WHERE id = $${index}
-      RETURNING id, name, destination, start_date, end_date, share_code, created_by, created_at
+      RETURNING
+        id,
+        name,
+        destination,
+        start_date,
+        end_date,
+        share_code,
+        created_by,
+        created_at,
+        geoname_id,
+        city_name,
+        country_name,
+        latitude,
+        longitude,
+        population
     `;
 
     values.push(tripId);
@@ -2796,6 +2939,12 @@ export class DatabaseStorage implements IStorage {
         tc.share_code,
         tc.created_by,
         tc.created_at,
+        tc.geoname_id,
+        tc.city_name,
+        tc.country_name,
+        tc.latitude,
+        tc.longitude,
+        tc.population,
         creator.id AS creator_id,
         creator.email AS creator_email,
         creator.username AS creator_username,
@@ -2846,6 +2995,12 @@ export class DatabaseStorage implements IStorage {
         tc.share_code,
         tc.created_by,
         tc.created_at,
+        tc.geoname_id,
+        tc.city_name,
+        tc.country_name,
+        tc.latitude,
+        tc.longitude,
+        tc.population,
         creator.id AS creator_id,
         creator.email AS creator_email,
         creator.username AS creator_username,
@@ -4649,6 +4804,12 @@ export class DatabaseStorage implements IStorage {
           share_code: row.trip_share_code as string,
           created_by: row.trip_created_by as string,
           created_at: row.trip_created_at,
+          geoname_id: null,
+          city_name: null,
+          country_name: null,
+          latitude: null,
+          longitude: null,
+          population: null,
         };
         result.trip = mapTrip(tripRow);
       }
