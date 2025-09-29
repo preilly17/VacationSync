@@ -180,6 +180,14 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     setActiveIndex(-1);
   }, [query]);
 
+  useEffect(() => {
+    if (query.trim().length === 0) {
+      setIsDropdownOpen(false);
+      setResults([]);
+      setActiveIndex(-1);
+    }
+  }, [query]);
+
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -241,7 +249,18 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           type="text"
           placeholder={placeholder}
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(event) => {
+            const newValue = event.target.value;
+            setQuery(newValue);
+
+            if (newValue.trim().length > 0) {
+              setIsDropdownOpen(true);
+            } else {
+              setIsDropdownOpen(false);
+              setResults([]);
+              setActiveIndex(-1);
+            }
+          }}
           className="w-full pr-10"
           role="combobox"
           aria-autocomplete="list"
