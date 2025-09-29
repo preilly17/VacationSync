@@ -1767,7 +1767,7 @@ export default function Trip() {
 
                 {activeTab === "proposals" && (
                   <div className="space-y-6" data-testid="proposals-section">
-                    <Proposals tripId={parseInt(id || "0")} />
+                    <Proposals tripId={parseInt(id || "0")} embedded />
                   </div>
                 )}
 
