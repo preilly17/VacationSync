@@ -15,6 +15,15 @@ interface LocationResult {
   country: string;
   state?: string;
   airports?: string[];
+  id?: string | number;
+  label?: string;
+  geonameId?: number | string;
+  cityName?: string | null;
+  countryName?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  population?: number | null;
+  source?: string;
 }
 
 interface SmartLocationSearchProps {
@@ -297,14 +306,16 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                   }
 
                   const safeLocation = {
+                    ...location,
                     type: location.type || "city",
                     name: location.name || "Unknown Location",
                     code: location.code || "N/A",
                     displayName: location.displayName || location.name || "Unknown Location",
+                    label: location.label || location.displayName || location.name || "Unknown Location",
                     country: location.country || "Unknown Country",
                     state: location.state,
                     airports: Array.isArray(location.airports) ? location.airports : [],
-                  };
+                  } satisfies LocationResult;
 
                   const isActive = index === activeIndex;
 

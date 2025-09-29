@@ -330,7 +330,7 @@ import { foursquareService } from "./foursquareService";
 import memoize from 'memoizee';
 import { googleMapsService } from "./googleMapsService";
 import { locationService } from "./locationService";
-import { searchLocations, getAirportFromLocation, getAirportCodes } from "./locationDatabase";
+import { getAirportCodes } from "./locationDatabase";
 import { getCurrentWeather, getWeatherForecast, getFullWeatherData, getWeatherAdvice, formatTemperature } from "./weatherService";
 
 const getErrorMessage = (error: unknown, fallback = "Unknown error"): string =>
@@ -745,24 +745,100 @@ export function setupRoutes(app: Express) {
       } catch (googleError) {
         console.error("Google Maps autocomplete failed, falling back to internal database:", googleError);
       }
-      
-      // Fallback to our internal location database
-      const results = searchLocations(query.trim());
-      
-      // Transform to SmartLocationSearch expected format
-      const transformedResults = results.map((location, index) => ({
-        id: index,
-        name: location.name,
-        displayName: location.displayName,
-        type: location.type,
-        code: location.code,
-        country: location.country,
-        state: location.state,
-        airports: location.airports || []
-      }));
-      
-      console.log(`✅ Internal database found ${transformedResults.length} locations for "${query}"`);
-      res.json(transformedResults);
+
+      // Fallback to GeoNames API when Google Places fails
+      const geonamesUsername = process.env.GEONAMES_USERNAME;
+      if (!geonamesUsername) {
+        console.error("GeoNames username is not configured. Set GEONAMES_USERNAME in the environment.");
+        return res.json([]);
+      }
+
+      const geonamesUrl = new URL("http://api.geonames.org/searchJSON");
+      geonamesUrl.searchParams.set("q", query.trim());
+      geonamesUrl.searchParams.set("maxRows", "10");
+      geonamesUrl.searchParams.set("featureClass", "P");
+      geonamesUrl.searchParams.set("username", geonamesUsername);
+
+      try {
+        const geonamesResponse = await fetch(geonamesUrl.toString());
+        if (!geonamesResponse.ok) {
+          console.error(
+            `GeoNames API request failed with status ${geonamesResponse.status}: ${geonamesResponse.statusText}`,
+          );
+          return res.json([]);
+        }
+
+        const geonamesData: {
+          geonames?: Array<{
+            geonameId?: number;
+            name?: string;
+            countryName?: string;
+            adminName1?: string;
+            lat?: string;
+            lng?: string;
+            population?: number | string;
+          }>;
+          status?: { message?: string };
+        } = await geonamesResponse.json();
+
+        if (geonamesData.status?.message) {
+          console.error("GeoNames API returned an error:", geonamesData.status.message);
+          return res.json([]);
+        }
+
+        const parseNullableNumber = (value: unknown): number | null => {
+          if (value === undefined || value === null) {
+            return null;
+          }
+
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        };
+
+        const transformedResults = (geonamesData.geonames ?? []).map((location, index) => {
+          const latitude = parseNullableNumber(location.lat);
+          const longitude = parseNullableNumber(location.lng);
+          const population = parseNullableNumber(location.population);
+
+          const displayParts = [location.name, location.adminName1, location.countryName].filter(
+            (part): part is string => Boolean(part && part.trim()),
+          );
+
+          const displayName = displayParts.join(", ");
+          const rawGeonameId = location.geonameId ?? index;
+          const parsedGeonameId =
+            typeof rawGeonameId === "string" ? Number(rawGeonameId) : rawGeonameId;
+          const geonameId =
+            typeof parsedGeonameId === "number" && Number.isFinite(parsedGeonameId)
+              ? parsedGeonameId
+              : index;
+
+          return {
+            id: `geonames-${geonameId}`,
+            name: location.name ?? "Unknown Location",
+            displayName: displayName || location.name || "Unknown Location",
+            label: displayName || location.name || "Unknown Location",
+            type: "city" as const,
+            code: String(geonameId),
+            country: location.countryName ?? "",
+            state: location.adminName1 ?? "",
+            airports: [],
+            geonameId,
+            cityName: location.name ?? null,
+            countryName: location.countryName ?? null,
+            latitude,
+            longitude,
+            population,
+            source: "geonames" as const,
+          };
+        });
+
+        console.log(`✅ GeoNames fallback found ${transformedResults.length} locations for "${query}"`);
+        return res.json(transformedResults);
+      } catch (geonamesError) {
+        console.error("GeoNames fallback failed:", geonamesError);
+        return res.json([]);
+      }
     } catch (error: unknown) {
       console.error("Location search error:", error);
       res.status(500).json({ error: "Location search failed" });

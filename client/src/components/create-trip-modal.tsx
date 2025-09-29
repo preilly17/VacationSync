@@ -38,6 +38,12 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
       destination: "",
       startDate: "",
       endDate: "",
+      geonameId: null,
+      cityName: null,
+      countryName: null,
+      latitude: null,
+      longitude: null,
+      population: null,
     },
   });
 
@@ -98,6 +104,37 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
   const handleDestinationSelect = (location: any) => {
     setSelectedDestination(location);
     form.setValue("destination", location.displayName || location.name);
+    const geonameIdValue =
+      location?.geonameId !== undefined && location?.geonameId !== null
+        ? Number(location.geonameId)
+        : null;
+    form.setValue("geonameId", Number.isFinite(geonameIdValue ?? NaN) ? geonameIdValue : null);
+    form.setValue("cityName", location?.cityName ?? location?.name ?? null);
+    form.setValue(
+      "countryName",
+      location?.countryName ?? location?.country ?? null,
+    );
+    const latitudeValue =
+      typeof location?.latitude === "number"
+        ? location.latitude
+        : location?.latitude
+        ? Number(location.latitude)
+        : null;
+    const longitudeValue =
+      typeof location?.longitude === "number"
+        ? location.longitude
+        : location?.longitude
+        ? Number(location.longitude)
+        : null;
+    form.setValue("latitude", Number.isFinite(latitudeValue ?? NaN) ? latitudeValue : null);
+    form.setValue("longitude", Number.isFinite(longitudeValue ?? NaN) ? longitudeValue : null);
+    const populationValue =
+      typeof location?.population === "number"
+        ? location.population
+        : location?.population
+        ? Number(location.population)
+        : null;
+    form.setValue("population", Number.isFinite(populationValue ?? NaN) ? populationValue : null);
   };
 
   return (

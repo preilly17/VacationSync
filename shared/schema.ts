@@ -119,6 +119,12 @@ export interface TripCalendar {
   shareCode: string;
   createdBy: string;
   createdAt: IsoDate | null;
+  geonameId?: number | null;
+  cityName?: string | null;
+  countryName?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  population?: number | null;
 }
 
 export const insertTripCalendarSchema = z.object({
@@ -126,6 +132,12 @@ export const insertTripCalendarSchema = z.object({
   destination: z.string().min(1, "Destination is required"),
   startDate: z.union([z.date(), z.string()]),
   endDate: z.union([z.date(), z.string()]),
+  geonameId: nullableNumberInput("Geoname ID must be a number"),
+  cityName: z.string().nullable().optional(),
+  countryName: z.string().nullable().optional(),
+  latitude: nullableNumberInput("Latitude must be a number"),
+  longitude: nullableNumberInput("Longitude must be a number"),
+  population: nullableNumberInput("Population must be a number"),
 });
 
 export type InsertTripCalendar = z.infer<typeof insertTripCalendarSchema>;
