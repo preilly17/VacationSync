@@ -218,6 +218,7 @@ interface DayViewProps {
   currentUser?: User | null;
   onSubmitRsvp?: (activity: ActivityWithDetails, action: ActivityRsvpAction) => void;
   isRsvpPending?: boolean;
+  viewMode?: "group" | "personal";
 }
 
 const getParticipantDisplayName = (user: User) => {
@@ -277,6 +278,7 @@ function DayView({
   currentUser,
   onSubmitRsvp,
   isRsvpPending,
+  viewMode = "group",
 }: DayViewProps) {
   const dayActivities = activities
     .filter((activity) => isSameDay(new Date(activity.startTime), date))
@@ -285,6 +287,7 @@ function DayView({
     );
 
   const now = new Date();
+  const isPersonalView = viewMode === "personal";
 
   return (
     <div className="space-y-6">
@@ -337,7 +340,15 @@ function DayView({
               ?? null;
             const derivedStatus: ActivityInviteStatus = currentInvite?.status
               ?? (activity.isAccepted ? "accepted" : "pending");
-            const statusLabel = inviteStatusLabelMap[derivedStatus];
+            const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
+            const isProposal = activityType === "PROPOSE";
+            const showPersonalProposalChip = Boolean(isPersonalView && isCreator && isProposal);
+            const statusLabel = showPersonalProposalChip
+              ? "Proposed"
+              : inviteStatusLabelMap[derivedStatus];
+            const statusBadgeClasses = showPersonalProposalChip
+              ? "bg-blue-100 text-blue-800 border-blue-200"
+              : inviteStatusBadgeClasses[derivedStatus];
             const isPastActivity = (() => {
               const end = activity.endTime ? new Date(activity.endTime) : null;
               const start = new Date(activity.startTime);
@@ -352,8 +363,6 @@ function DayView({
             const isRsvpClosed = Boolean(
               rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
             );
-            const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
-            const isProposal = activityType === "PROPOSE";
             const capacityFull = Boolean(
               !isProposal && activity.maxCapacity != null
                 && activity.acceptedCount >= activity.maxCapacity,
@@ -552,9 +561,19 @@ function DayView({
                 className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm transition hover:border-primary/40 hover:shadow-md cursor-pointer"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="text-lg font-semibold text-neutral-900">
-                    {activity.name}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-semibold text-neutral-900">
+                      {activity.name}
+                    </h3>
+                    {showPersonalProposalChip && (
+                      <Badge
+                        variant="outline"
+                        className="border-blue-200 bg-blue-50 text-blue-700"
+                      >
+                        Proposed
+                      </Badge>
+                    )}
+                  </div>
                   <div className="flex flex-col items-end gap-2 text-sm font-medium text-neutral-700">
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <span className="inline-flex items-center">
@@ -570,7 +589,7 @@ function DayView({
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <Badge
                         variant="outline"
-                        className={`border ${inviteStatusBadgeClasses[derivedStatus]}`}
+                        className={`border ${statusBadgeClasses}`}
                       >
                         {statusLabel}
                       </Badge>
@@ -943,9 +962,44 @@ export default function Trip() {
 
   const myScheduleActivities = useMemo(() => {
     if (!user) return [];
-    return activities.filter((activity) =>
-      activity.invites?.some((invite) => invite.userId === user.id && invite.status === "accepted"),
-    );
+
+    const seen = new Set<number>();
+
+    return activities.filter((activity) => {
+      if (!activity) {
+        return false;
+      }
+
+      const normalizedType = (activity.type ?? "SCHEDULED").toUpperCase();
+      const isProposal = normalizedType === "PROPOSE";
+      const isCreator = activity.postedBy === user.id || activity.poster.id === user.id;
+
+      if (isProposal) {
+        if (!isCreator) {
+          return false;
+        }
+      } else {
+        const hasAcceptedInvite = Boolean(
+          activity.invites?.some(
+            (invite) => invite.userId === user.id && invite.status === "accepted",
+          )
+            || (activity.currentUserInvite?.userId === user.id
+              && activity.currentUserInvite.status === "accepted")
+            || activity.isAccepted,
+        );
+
+        if (!isCreator && !hasAcceptedInvite) {
+          return false;
+        }
+      }
+
+      if (seen.has(activity.id)) {
+        return false;
+      }
+
+      seen.add(activity.id);
+      return true;
+    });
   }, [activities, user]);
 
   const filteredMyInvitedActivities = useMemo(() => {
@@ -1657,8 +1711,8 @@ export default function Trip() {
                       <div className="px-6 py-4 border-b border-gray-200 space-y-4">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <h2 className="text-lg font-semibold text-neutral-900">My Personal Calendar</h2>
-                            <p className="text-sm text-neutral-600">Visual calendar of your accepted activities</p>
+                            <h2 className="text-lg font-semibold text-neutral-900">My Schedule</h2>
+                            <p className="text-sm text-neutral-600">Things you’re going to or created.</p>
                           </div>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -1714,6 +1768,8 @@ export default function Trip() {
                             activities={myScheduleActivities}
                             trip={trip}
                             selectedDate={selectedDate}
+                            currentUserId={user?.id}
+                            highlightPersonalProposals
                             onDayClick={(date) => {
                               openAddActivityModal(clampDateToTrip(date));
                             }}
@@ -1727,11 +1783,12 @@ export default function Trip() {
                             onNextDay={handleScheduleNextDay}
                             canGoPrevious={canGoToPreviousScheduleDay}
                             canGoNext={canGoToNextScheduleDay}
-                            emptyStateMessage="No activities accepted for this day yet."
+                            emptyStateMessage="No activities you're going to or created for this day yet."
                             onActivityClick={handleActivityClick}
                             currentUser={user}
                             onSubmitRsvp={(activity, action) => submitRsvpAction(activity.id, action)}
                             isRsvpPending={respondToInviteMutation.isPending}
+                            viewMode="personal"
                           />
                         ) : (
                           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
