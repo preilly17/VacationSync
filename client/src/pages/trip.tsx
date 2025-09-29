@@ -57,7 +57,14 @@ import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
 import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/hotel-search-panel";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -78,6 +85,7 @@ import type {
   RestaurantWithDetails,
   HotelProposalWithDetails,
   HotelSearchResult,
+  HotelWithDetails,
 } from "@shared/schema";
 import {
   format,
@@ -118,6 +126,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  clearExternalRedirect,
+  hasExternalRedirect,
+  markExternalRedirect,
+  FLIGHT_REDIRECT_STORAGE_KEY,
+  HOTEL_REDIRECT_STORAGE_KEY,
+} from "@/lib/externalRedirects";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 
@@ -678,6 +693,11 @@ export default function Trip() {
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [summaryPanel, setSummaryPanel] = useState<SummaryPanel | null>(null);
+  const [shouldShowFlightReturnPrompt, setShouldShowFlightReturnPrompt] = useState(false);
+  const [shouldShowHotelReturnPrompt, setShouldShowHotelReturnPrompt] = useState(false);
+  const [activeRedirectModal, setActiveRedirectModal] = useState<"flight" | "hotel" | null>(null);
+  const [flightManualOpenSignal, setFlightManualOpenSignal] = useState(0);
+  const [hotelManualOpenSignal, setHotelManualOpenSignal] = useState(0);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -689,6 +709,56 @@ export default function Trip() {
       setActiveTab(viewParam);
     }
   }, []);
+
+  useEffect(() => {
+    if (hasExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY)) {
+      setShouldShowFlightReturnPrompt(true);
+    }
+    if (hasExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY)) {
+      setShouldShowHotelReturnPrompt(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (shouldShowFlightReturnPrompt) {
+      setActiveRedirectModal("flight");
+      return;
+    }
+
+    if (shouldShowHotelReturnPrompt) {
+      setActiveRedirectModal("hotel");
+      return;
+    }
+
+    setActiveRedirectModal(null);
+  }, [shouldShowFlightReturnPrompt, shouldShowHotelReturnPrompt]);
+
+  const handleFlightReturnNo = useCallback(() => {
+    clearExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
+    setShouldShowFlightReturnPrompt(false);
+  }, []);
+
+  const handleFlightReturnYes = useCallback(() => {
+    clearExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
+    setShouldShowFlightReturnPrompt(false);
+    setActiveTab("flights");
+    setFlightManualOpenSignal((value) => value + 1);
+  }, []);
+
+  const handleHotelReturnNo = useCallback(() => {
+    clearExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY);
+    setShouldShowHotelReturnPrompt(false);
+  }, []);
+
+  const handleHotelReturnYes = useCallback(() => {
+    clearExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY);
+    setShouldShowHotelReturnPrompt(false);
+    setActiveTab("hotels");
+    setHotelManualOpenSignal((value) => value + 1);
+  }, []);
+
+  const flightDialogOpen = activeRedirectModal === "flight";
+  const hotelDialogOpen = activeRedirectModal === "hotel";
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -1836,11 +1906,21 @@ export default function Trip() {
                 )}
 
                 {activeTab === "flights" && (
-                  <FlightCoordination tripId={parseInt(id || "0")} user={user} trip={trip} />
+                  <FlightCoordination
+                    tripId={parseInt(id || "0")}
+                    user={user}
+                    trip={trip}
+                    manualDialogOpenSignal={flightManualOpenSignal}
+                  />
                 )}
-                
+
                 {activeTab === "hotels" && (
-                  <HotelBooking tripId={parseInt(id || "0")} user={user} trip={trip} />
+                  <HotelBooking
+                    tripId={parseInt(id || "0")}
+                    user={user}
+                    trip={trip}
+                    manualFormOpenSignal={hotelManualOpenSignal}
+                  />
                 )}
                 
                 {activeTab === "restaurants" && (
@@ -2225,6 +2305,72 @@ export default function Trip() {
           )}
         </Dialog>
 
+        <Dialog
+          open={flightDialogOpen}
+          onOpenChange={(open) => {
+            if (!open && flightDialogOpen && shouldShowFlightReturnPrompt) {
+              handleFlightReturnNo();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Did you book a flight?</DialogTitle>
+              <DialogDescription>
+                Add your flight details so your group can stay coordinated.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                className="sm:flex-1"
+                onClick={handleFlightReturnNo}
+              >
+                No
+              </Button>
+              <Button
+                className="sm:flex-1 bg-gradient-to-r from-primary via-rose-500 to-orange-500 text-white shadow-md hover:opacity-90"
+                onClick={handleFlightReturnYes}
+              >
+                Yes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={hotelDialogOpen}
+          onOpenChange={(open) => {
+            if (!open && hotelDialogOpen && shouldShowHotelReturnPrompt) {
+              handleHotelReturnNo();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Did you book a hotel?</DialogTitle>
+              <DialogDescription>
+                Log your stay to keep everyone on the same page.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                className="sm:flex-1"
+                onClick={handleHotelReturnNo}
+              >
+                No
+              </Button>
+              <Button
+                className="sm:flex-1 bg-gradient-to-r from-primary via-rose-500 to-orange-500 text-white shadow-md hover:opacity-90"
+                onClick={handleHotelReturnYes}
+              >
+                Yes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <AddActivityModal
           open={showAddActivity}
           onOpenChange={(open) => {
@@ -2330,10 +2476,12 @@ function FlightCoordination({
   tripId,
   user,
   trip,
+  manualDialogOpenSignal = 0,
 }: {
   tripId: number;
   user: any;
   trip?: TripWithDetails | null;
+  manualDialogOpenSignal?: number;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -2782,6 +2930,7 @@ function FlightCoordination({
     }
 
     const url = buildSkyscannerLink();
+    markExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
     window.open(url, "_blank", "noopener,noreferrer");
   }, [
     buildSkyscannerLink,
@@ -2841,6 +2990,7 @@ function FlightCoordination({
       return;
     }
 
+    markExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
     window.open(outboundUrl, "_blank", "noopener,noreferrer");
 
     if (isRoundTrip && returnDate) {
@@ -3003,10 +3153,10 @@ function FlightCoordination({
     );
   }
 
-  const handleManualDialogOpen = () => {
+  const handleManualDialogOpen = useCallback(() => {
     resetManualFlightForm();
     setIsManualDialogOpen(true);
-  };
+  }, [resetManualFlightForm]);
 
   const handleManualDialogChange = (open: boolean) => {
     if (!open) {
@@ -3014,6 +3164,12 @@ function FlightCoordination({
     }
     setIsManualDialogOpen(open);
   };
+
+  useEffect(() => {
+    if (manualDialogOpenSignal > 0) {
+      handleManualDialogOpen();
+    }
+  }, [handleManualDialogOpen, manualDialogOpenSignal]);
 
   return (
     <div className="space-y-6">
@@ -3795,7 +3951,17 @@ function getAirlineName(code: string): string {
 }
 
 // Hotel Booking Component
-function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?: TripWithDetails | null }) {
+function HotelBooking({
+  tripId,
+  user,
+  trip,
+  manualFormOpenSignal = 0,
+}: {
+  tripId: number;
+  user: any;
+  trip?: TripWithDetails | null;
+  manualFormOpenSignal?: number;
+}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { isLoading } = useQuery<HotelWithDetails[]>({
@@ -3825,6 +3991,12 @@ function HotelBooking({ tripId, user, trip }: { tripId: number; user: any; trip?
   const openManualForm = useCallback(() => {
     setIsManualHotelFormOpen(true);
   }, []);
+
+  useEffect(() => {
+    if (manualFormOpenSignal > 0) {
+      openManualForm();
+    }
+  }, [manualFormOpenSignal, openManualForm]);
 
   const shareHotelWithGroup = useCallback(
     async (hotel: HotelSearchResult) => {
