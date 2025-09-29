@@ -10,6 +10,8 @@ interface CalendarGridProps {
   selectedDate?: Date | null;
   onDayClick?: (date: Date) => void;
   onActivityClick?: (activity: ActivityWithDetails) => void;
+  currentUserId?: string;
+  highlightPersonalProposals?: boolean;
 }
 
 const categoryColors = {
@@ -70,7 +72,16 @@ const formatActivityAriaLabel = (activity: ActivityWithDetails, day: Date) => {
   return `${activity.name} at ${timeLabel} on ${dateLabel}`;
 };
 
-export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onDayClick, onActivityClick }: CalendarGridProps) {
+export function CalendarGrid({
+  currentMonth,
+  activities,
+  trip,
+  selectedDate,
+  onDayClick,
+  onActivityClick,
+  currentUserId,
+  highlightPersonalProposals,
+}: CalendarGridProps) {
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -197,7 +208,16 @@ export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onD
               {dayActivities.length > 0 && (
                 <div className="mt-1 flex-1 min-h-0 overflow-hidden">
                   <div className="flex h-full flex-col gap-1 overflow-hidden">
-                    {visibleActivities.map(activity => (
+                    {visibleActivities.map(activity => {
+                      const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
+                      const isProposal = activityType === "PROPOSE";
+                      const isCreator = Boolean(
+                        currentUserId
+                          && (activity.postedBy === currentUserId || activity.poster?.id === currentUserId),
+                      );
+                      const showProposedChip = Boolean(highlightPersonalProposals && isProposal && isCreator);
+
+                      return (
                       <Tooltip key={activity.id}>
                         <TooltipTrigger asChild>
                           <button
@@ -217,6 +237,11 @@ export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onD
                             <span className="flex-1 truncate text-left">
                               {activity.name}
                             </span>
+                            {showProposedChip && (
+                              <span className="shrink-0 rounded-sm bg-white/80 px-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                                Proposed
+                              </span>
+                            )}
                             <span className="shrink-0 rounded-sm bg-white/20 px-1 text-[10px] uppercase tracking-tight">
                               {formatBadgeTime(activity.startTime)}
                             </span>
@@ -229,7 +254,8 @@ export function CalendarGrid({ currentMonth, activities, trip, selectedDate, onD
                           </div>
                         </TooltipContent>
                       </Tooltip>
-                    ))}
+                    );
+                    })}
                     {hiddenCount > 0 && (
                       <button
                         type="button"

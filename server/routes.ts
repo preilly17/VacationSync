@@ -1975,9 +1975,13 @@ export function setupRoutes(app: Express) {
       const filteredAttendeeIds = Array.from(
         new Set(attendeeIds.filter((id) => typeof id === 'string' && validMemberIds.has(id))),
       );
-      const inviteeIds = Array.from(new Set([...filteredAttendeeIds, userId]));
+      const attendeeIdSet = new Set(filteredAttendeeIds);
+      attendeeIdSet.delete(userId);
+      const inviteeIds = Array.from(attendeeIdSet);
 
       const activity = await storage.createActivity(activityData, userId, inviteeIds);
+
+      await storage.setActivityInviteStatus(activity.id, userId, "accepted");
 
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
