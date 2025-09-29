@@ -118,6 +118,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 
 const TRIP_TAB_KEYS = [
@@ -2297,6 +2298,9 @@ export default function Trip() {
   );
 }
 
+type TripFlightType = "roundtrip" | "oneway";
+type TripCabinClass = "economy" | "premiumeconomy" | "business" | "first";
+
 interface TripFlightSearchFormState {
   departure: string;
   departureCity: string;
@@ -2310,6 +2314,8 @@ interface TripFlightSearchFormState {
   returnDate: string;
   passengers: string;
   airline: string;
+  tripType: TripFlightType;
+  cabinClass: TripCabinClass;
 }
 
 // Flight Coordination Component
@@ -2344,6 +2350,8 @@ function FlightCoordination({
     returnDate: "",
     passengers: "1",
     airline: "any",
+    tripType: "roundtrip",
+    cabinClass: "economy",
   });
   const [hasPrefilledSearch, setHasPrefilledSearch] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -2375,6 +2383,7 @@ function FlightCoordination({
     aircraft: "",
     status: "confirmed",
   });
+  const isRoundTrip = searchFormData.tripType === "roundtrip";
 
   useEffect(() => {
     setDepartureQuery(searchFormData.departureCity || searchFormData.departure || '');
@@ -2604,6 +2613,30 @@ function FlightCoordination({
     }
   };
 
+  const handleTripTypeChange = (value: string) => {
+    if (value !== "roundtrip" && value !== "oneway") {
+      return;
+    }
+
+    setSearchFormData((prev) => ({
+      ...prev,
+      tripType: value,
+      returnDate:
+        value === "roundtrip"
+          ? prev.returnDate || (trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : "")
+          : "",
+    }));
+  };
+
+  const handleCabinClassChange = (value: string) => {
+    if (value === "economy" || value === "premiumeconomy" || value === "business" || value === "first") {
+      setSearchFormData((prev) => ({
+        ...prev,
+        cabinClass: value,
+      }));
+    }
+  };
+
   const handleDepartureAirportChange = (iata: string) => {
     const value = iata.toUpperCase();
     setSelectedDepartureAirport(value);
@@ -2621,6 +2654,114 @@ function FlightCoordination({
       arrival: value,
     }));
   };
+
+  const buildSkyscannerLink = useCallback(() => {
+    const { departure, arrival, departureDate, returnDate, passengers, airline, cabinClass } = searchFormData;
+    const url = new URL("https://www.skyscanner.com/transport/flights");
+    const pathSegments = [
+      departure.trim().toLowerCase(),
+      arrival.trim().toLowerCase(),
+      departureDate.replace(/-/g, ""),
+    ].filter(Boolean);
+
+    if (isRoundTrip && returnDate) {
+      pathSegments.push(returnDate.replace(/-/g, ""));
+      url.searchParams.set("returnDate", returnDate);
+    }
+
+    url.pathname += `/${pathSegments.join("/")}`;
+    url.searchParams.set("adults", passengers || "1");
+    url.searchParams.set("cabinclass", cabinClass);
+    url.searchParams.set("trip", isRoundTrip ? "roundtrip" : "oneway");
+
+    if (airline && airline !== "any") {
+      url.searchParams.set("preferredeairline", airline);
+    }
+
+    return url.toString();
+  }, [isRoundTrip, searchFormData]);
+
+  const buildPointhoundLink = useCallback(
+    (origin: string, destination: string, date: string) => {
+      const url = new URL("https://pointhound.com/flights/search");
+      url.searchParams.set("from", origin.trim().toUpperCase());
+      url.searchParams.set("to", destination.trim().toUpperCase());
+      url.searchParams.set("depart", date);
+      url.searchParams.set("adults", searchFormData.passengers || "1");
+      url.searchParams.set("cabinClass", searchFormData.cabinClass);
+      url.searchParams.set("tripType", isRoundTrip ? "roundtrip" : "oneway");
+
+      if (searchFormData.airline && searchFormData.airline !== "any") {
+        url.searchParams.set("airline", searchFormData.airline);
+      }
+
+      return url.toString();
+    },
+    [isRoundTrip, searchFormData.airline, searchFormData.cabinClass, searchFormData.passengers],
+  );
+
+  const handleSkyscannerLink = useCallback(() => {
+    const { departure, arrival, departureDate, returnDate } = searchFormData;
+
+    if (!departure || !arrival || !departureDate) {
+      toast({
+        title: "Missing information",
+        description: "Add departure, arrival, and departure date to open Skyscanner.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isRoundTrip && !returnDate) {
+      toast({
+        title: "Add a return date",
+        description: "Include a return date or switch to one-way before opening Skyscanner.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = buildSkyscannerLink();
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [buildSkyscannerLink, isRoundTrip, searchFormData, toast]);
+
+  const handlePointhoundLink = useCallback(() => {
+    const { departure, arrival, departureDate, returnDate } = searchFormData;
+
+    if (!departure || !arrival || !departureDate) {
+      toast({
+        title: "Missing information",
+        description: "Add departure, arrival, and departure date to open Pointhound.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isRoundTrip && !returnDate) {
+      toast({
+        title: "Add a return date",
+        description: "Include a return date or switch to one-way before opening Pointhound.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const outboundUrl = buildPointhoundLink(departure, arrival, departureDate);
+    window.open(outboundUrl, "_blank", "noopener,noreferrer");
+
+    if (isRoundTrip && returnDate) {
+      const inboundUrl = buildPointhoundLink(arrival, departure, returnDate);
+      window.open(inboundUrl, "_blank", "noopener,noreferrer");
+    }
+  }, [buildPointhoundLink, isRoundTrip, searchFormData, toast]);
 
   const resetManualFlightForm = useCallback(() => {
     setManualFlightData({
@@ -2716,7 +2857,7 @@ function FlightCoordination({
           origin: searchFormData.departure,
           destination: searchFormData.arrival,
           departureDate: searchFormData.departureDate,
-          returnDate: searchFormData.returnDate || undefined,
+          returnDate: isRoundTrip && searchFormData.returnDate ? searchFormData.returnDate : undefined,
           passengers: parseInt(searchFormData.passengers, 10),
           airline: searchFormData.airline && searchFormData.airline !== "any" ? searchFormData.airline : undefined,
           provider: "both",
@@ -2752,7 +2893,7 @@ function FlightCoordination({
     } finally {
       setIsSearching(false);
     }
-  }, [searchFormData, toast]);
+  }, [isRoundTrip, searchFormData, toast]);
 
   if (isLoading) {
     return (
@@ -2790,7 +2931,24 @@ function FlightCoordination({
               void handleFlightSearch();
             }}
           >
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2 md:col-span-2 lg:col-span-3">
+                <Label>Trip Type</Label>
+                <ToggleGroup
+                  type="single"
+                  size="sm"
+                  value={searchFormData.tripType}
+                  onValueChange={handleTripTypeChange}
+                  className="w-full justify-start gap-2"
+                >
+                  <ToggleGroupItem value="roundtrip" className="flex-1">
+                    Round-trip
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="oneway" className="flex-1">
+                    One-way
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </div>
               <div className="space-y-2">
                 <Label>From</Label>
                 <SmartLocationSearch
@@ -2865,7 +3023,7 @@ function FlightCoordination({
                   </div>
                 )}
               </div>
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="flight-search-departure-date">Departure date</Label>
                 <Input
                   id="flight-search-departure-date"
@@ -2876,16 +3034,20 @@ function FlightCoordination({
                   }
                 />
               </div>
-              <div>
-                <Label htmlFor="flight-search-return-date">Return (optional)</Label>
+              <div className={`space-y-2 ${isRoundTrip ? "" : "opacity-60"}`}>
+                <Label htmlFor="flight-search-return-date">Return date</Label>
                 <Input
                   id="flight-search-return-date"
                   type="date"
                   value={searchFormData.returnDate}
+                  disabled={!isRoundTrip}
                   onChange={(event) =>
                     setSearchFormData((prev) => ({ ...prev, returnDate: event.target.value }))
                   }
                 />
+                {!isRoundTrip && (
+                  <p className="text-xs text-muted-foreground">Return date not required for one-way trips.</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="flight-search-passengers">Passengers</Label>
@@ -2902,6 +3064,20 @@ function FlightCoordination({
                         {num} {num === 1 ? "passenger" : "passengers"}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="flight-search-cabin-class">Cabin Class</Label>
+                <Select value={searchFormData.cabinClass} onValueChange={handleCabinClassChange}>
+                  <SelectTrigger id="flight-search-cabin-class">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="economy">Economy</SelectItem>
+                    <SelectItem value="premiumeconomy">Premium Economy</SelectItem>
+                    <SelectItem value="business">Business</SelectItem>
+                    <SelectItem value="first">First</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -2940,11 +3116,32 @@ function FlightCoordination({
                     <SelectItem value="NH">All Nippon Airways</SelectItem>
                     <SelectItem value="CX">Cathay Pacific</SelectItem>
                     <SelectItem value="SQ">Singapore Airlines</SelectItem>
-                    <SelectItem value="AC">Air Canada</SelectItem>
-                    <SelectItem value="WS">WestJet</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <SelectItem value="AC">Air Canada</SelectItem>
+                  <SelectItem value="WS">WestJet</SelectItem>
+                </SelectContent>
+              </Select>
               </div>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={handleSkyscannerLink}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Search on Skyscanner
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={handlePointhoundLink}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Search on Pointhound
+              </Button>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
