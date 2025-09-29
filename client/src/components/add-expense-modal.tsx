@@ -1236,6 +1236,10 @@ export function AddExpenseModal({
               />
             </div>
 
+            <p className="px-6 text-xs text-muted-foreground">
+              Splits include the payer; the payer never receives a request.
+            </p>
+
             <div className="flex flex-col gap-3 border-t bg-muted/30 px-6 py-4 sm:flex-row sm:items-center sm:justify-end">
               {submitError ? (
                 <p className="text-sm font-medium text-destructive sm:mr-auto">

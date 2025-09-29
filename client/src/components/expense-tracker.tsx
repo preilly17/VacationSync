@@ -1,17 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Badge,
+} from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -20,15 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { AddExpenseModal } from "./add-expense-modal";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -36,11 +26,11 @@ import type { ExpenseWithDetails, User } from "@shared/schema";
 import { minorUnitsToAmount } from "@shared/expenses";
 import {
   CheckCircle2,
+  ChevronDown,
   Loader2,
   Plus,
   ReceiptText,
   Trash2,
-  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -55,9 +45,7 @@ interface ExpenseTrackerProps {
   user?: User;
 }
 
-type SummaryView = "youPaid" | "youOwe" | "youAreOwed";
-
-type SortOption = "date-desc" | "date-asc" | "amount-desc" | "amount-asc";
+type SectionKey = "needsYourPayment" | "waitingOnOthers" | "settled";
 
 function formatCurrency(amount: number, currency: string) {
   const safeAmount = Number.isFinite(amount) ? amount : 0;
@@ -154,19 +142,22 @@ function getShareSourceAmountForExpense(
 
 function ExpenseListSkeleton() {
   return (
-    <div className="space-y-4">
-      {[0, 1].map((item) => (
-        <Card key={item}>
-          <CardHeader className="space-y-3 pb-0">
-            <Skeleton className="h-5 w-48" />
-            <Skeleton className="h-4 w-32" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {[0, 1, 2].map((row) => (
-              <Skeleton key={row} className="h-10 w-full" />
-            ))}
-          </CardContent>
-        </Card>
+    <div className="space-y-3">
+      {[0, 1, 2].map((item) => (
+        <div
+          key={item}
+          className="flex items-center gap-3 rounded-md border border-transparent bg-muted/40 px-3 py-3"
+        >
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-1/3" />
+            <Skeleton className="h-3 w-1/4" />
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -176,9 +167,12 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
   const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [settlingId, setSettlingId] = useState<number | null>(null);
-  const [detailView, setDetailView] = useState<SummaryView | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortOption, setSortOption] = useState<SortOption>("date-desc");
+  const [activeExpenseId, setActiveExpenseId] = useState<number | null>(null);
+  const [openSections, setOpenSections] = useState({
+    needsYourPayment: true,
+    waitingOnOthers: true,
+    settled: false,
+  });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -307,183 +301,432 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
 
   const summaryLoading = isLoadingExpenses && expenses.length === 0;
 
-  useEffect(() => {
-    if (detailView) {
-      setSearchTerm("");
-      setSortOption("date-desc");
-    }
-  }, [detailView]);
-
-  const cardConfigs: {
-    type: SummaryView;
-    title: string;
-    description: string;
-    amount: number;
-    amountClassName?: string;
-  }[] = useMemo(
-    () => [
-      {
-        type: "youPaid",
-        title: "You paid",
-        description: "Amount you covered for everyone else.",
-        amount: summary.youPaid,
-        amountClassName: "text-blue-600",
-      },
-      {
-        type: "youOwe",
-        title: "You owe",
-        description: "Outstanding amount you still need to pay.",
-        amount: summary.owes,
-        amountClassName: "text-rose-600",
-      },
-      {
-        type: "youAreOwed",
-        title: "You're owed",
-        description: "Friends still owe you this much.",
-        amount: summary.owed,
-        amountClassName: "text-emerald-600",
-      },
-    ],
-    [summary.owed, summary.owes, summary.youPaid],
-  );
-
-  const selectedCard = detailView
-    ? cardConfigs.find((card) => card.type === detailView)
-    : null;
-
-  const filteredExpenses = useMemo(() => {
-    if (!detailView) {
-      return [] as ExpenseWithDetails[];
-    }
-
-    const matchesView = (expense: ExpenseWithDetails) => {
-      if (!user?.id) {
-        return false;
-      }
-
-      const shareForCurrentUser = expense.shares.find(
-        (share) => share.userId === user.id && share.userId !== expense.paidBy.id,
-      );
-
-      if (detailView === "youPaid") {
-        return expense.paidBy.id === user.id;
-      }
-
-      if (detailView === "youOwe") {
-        return (
-          !!shareForCurrentUser &&
-          getShareTargetAmountForExpense(shareForCurrentUser, expense) > 0 &&
-          shareForCurrentUser.status !== "paid"
-        );
-      }
-
-      if (detailView === "youAreOwed") {
-        if (expense.paidBy.id !== user.id) {
-          return false;
-        }
-        return expense.shares.some(
-          (share) =>
-            share.userId !== user.id &&
-            share.userId !== expense.paidBy.id &&
-            getShareTargetAmountForExpense(share, expense) > 0 &&
-            share.status !== "paid",
-        );
-      }
-
-      return false;
-    };
-
-    const matchesTrip = (expense: ExpenseWithDetails) => {
-      if (!Number.isFinite(tripId)) {
-        return true;
-      }
-
-      if (typeof expense.tripId !== "number") {
-        return true;
-      }
-
-      return expense.tripId === tripId;
-    };
-
-    const searchQuery = searchTerm.trim().toLowerCase();
-
-    const matchesSearch = (expense: ExpenseWithDetails) => {
-      if (!searchQuery) {
-        return true;
-      }
-
-      const title = expense.description?.toLowerCase() ?? "";
-      const category = expense.category?.toLowerCase() ?? "";
-      const activityName = expense.activity?.name?.toLowerCase() ?? "";
-      const notes: string[] = [];
-      if (category) notes.push(category.replace(/[_-]/g, " "));
-      if (activityName) notes.push(activityName);
-      const haystack = `${title} ${notes.join(" ")}`.trim();
-      return haystack.includes(searchQuery);
-    };
-
-    const filtered = expenses.filter(
-      (expense) => matchesView(expense) && matchesTrip(expense) && matchesSearch(expense),
-    );
-
-    return filtered.sort((a, b) => {
-      if (sortOption === "date-desc" || sortOption === "date-asc") {
+  const sortedExpenses = useMemo(
+    () =>
+      [...expenses].sort((a, b) => {
         const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        const comparison = aDate - bDate;
-        return sortOption === "date-desc" ? -comparison : comparison;
+        return bDate - aDate;
+      }),
+    [expenses],
+  );
+
+  const sectionedExpenses = useMemo(() => {
+    const buckets: Record<SectionKey, ExpenseWithDetails[]> = {
+      needsYourPayment: [],
+      waitingOnOthers: [],
+      settled: [],
+    };
+
+    sortedExpenses.forEach((expense) => {
+      const shareForCurrentUser = user?.id
+        ? expense.shares.find((share) => share.userId === user.id)
+        : null;
+      const pendingNonPayerShares = expense.shares.filter(
+        (share) => share.userId !== expense.paidBy.id && share.status !== "paid",
+      );
+      const needsYourPayment =
+        !!shareForCurrentUser &&
+        shareForCurrentUser.userId !== expense.paidBy.id &&
+        shareForCurrentUser.status !== "paid";
+      const waitingOnOthers =
+        expense.paidBy.id === user?.id && pendingNonPayerShares.length > 0;
+
+      if (needsYourPayment) {
+        buckets.needsYourPayment.push(expense);
+      } else if (waitingOnOthers) {
+        buckets.waitingOnOthers.push(expense);
+      } else {
+        buckets.settled.push(expense);
       }
-
-      const aAmount = a.totalAmount;
-      const bAmount = b.totalAmount;
-      const comparison = aAmount - bAmount;
-      return sortOption === "amount-desc" ? -comparison : comparison;
     });
-  }, [
-    detailView,
-    expenses,
-    searchTerm,
-    sortOption,
-    tripId,
-    user?.id,
-  ]);
 
-  const sortOptions: { value: SortOption; label: string }[] = [
-    { value: "date-desc", label: "Date (newest)" },
-    { value: "date-asc", label: "Date (oldest)" },
-    { value: "amount-desc", label: "Amount (high to low)" },
-    { value: "amount-asc", label: "Amount (low to high)" },
+    return buckets;
+  }, [sortedExpenses, user?.id]);
+
+  const activeExpense = useMemo(
+    () => expenses.find((expense) => expense.id === activeExpenseId) ?? null,
+    [expenses, activeExpenseId],
+  );
+
+  const pendingBadgeClass = "border-transparent bg-primary/10 text-primary";
+  const paidBadgeClass = "border-transparent bg-muted text-muted-foreground";
+
+  const sections: { key: SectionKey; title: string; description: string }[] = [
+    {
+      key: "needsYourPayment",
+      title: "Needs your payment",
+      description: "These balances still require your payment.",
+    },
+    {
+      key: "waitingOnOthers",
+      title: "Waiting on others",
+      description: "You covered these expenses and are waiting to be repaid.",
+    },
+    {
+      key: "settled",
+      title: "Settled",
+      description: "Paid expenses stay on record here for reference.",
+    },
   ];
 
-  const openDetailView = (type: SummaryView) => {
-    if (summaryLoading) {
-      return;
-    }
-    setDetailView(type);
+  const renderExpenseRow = (expense: ExpenseWithDetails) => {
+    const targetCurrency = expense.targetCurrency ?? expense.currency;
+    const shareForCurrentUser = user?.id
+      ? expense.shares.find((share) => share.userId === user.id)
+      : null;
+    const yourShareAmount =
+      shareForCurrentUser !== undefined && shareForCurrentUser !== null
+        ? getShareTargetAmountForExpense(shareForCurrentUser, expense)
+        : null;
+    const yourShareDisplay =
+      yourShareAmount !== null
+        ? formatCurrency(yourShareAmount, targetCurrency)
+        : "—";
+    const isCurrentUserDebtor =
+      !!shareForCurrentUser &&
+      shareForCurrentUser.userId !== expense.paidBy.id &&
+      shareForCurrentUser.status !== "paid";
+    const hasPendingFromOthers = expense.shares.some(
+      (share) => share.userId !== expense.paidBy.id && share.status !== "paid",
+    );
+    const waitingOnOthers =
+      expense.paidBy.id === user?.id && hasPendingFromOthers;
+    const status = isCurrentUserDebtor || waitingOnOthers ? "pending" : "paid";
+    const badgeClassName =
+      status === "pending" ? pendingBadgeClass : paidBadgeClass;
+    const statusLabel = status === "pending" ? "Pending" : "Paid";
+    const isSettlingRow = settlingId === expense.id;
+    const payerDisplay = getUserDisplayName(expense.paidBy);
+    const dateDisplay = formatExpenseDate(expense.createdAt);
+    const totalDisplay = formatCurrency(expense.totalAmount, targetCurrency);
+    const shareClassName = cn(
+      "text-sm font-semibold tabular-nums text-right",
+      yourShareAmount === null ? "text-muted-foreground" : undefined,
+    );
+
+    return (
+      <div
+        key={expense.id}
+        role="button"
+        tabIndex={0}
+        onClick={() => setActiveExpenseId(expense.id)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setActiveExpenseId(expense.id);
+          }
+        }}
+        className="group flex items-start gap-3 rounded-md px-3 py-2 transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Avatar className="h-9 w-9">
+          <AvatarImage
+            src={expense.paidBy.profileImageUrl || undefined}
+            alt={payerDisplay}
+          />
+          <AvatarFallback>{getUserInitials(expense.paidBy)}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="truncate text-sm font-medium">
+            {expense.description || "Untitled expense"}
+          </p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span>{payerDisplay}</span>
+            <span className="hidden sm:inline">•</span>
+            <span>{dateDisplay}</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex items-center gap-2">
+            <span className={shareClassName}>{yourShareDisplay}</span>
+            <Badge
+              variant="outline"
+              className={cn("border-transparent text-xs font-medium", badgeClassName)}
+            >
+              {statusLabel}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            {isCurrentUserDebtor ? (
+              <Button
+                variant="default"
+                size="sm"
+                disabled={isSettlingRow}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  markAsPaidMutation.mutate(expense.id);
+                }}
+              >
+                {isSettlingRow ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1 h-4 w-4" />
+                )}
+                Mark paid
+              </Button>
+            ) : null}
+            <span className="text-xs text-muted-foreground tabular-nums text-right">
+              {totalDisplay}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const closeDetailView = () => {
-    setDetailView(null);
-  };
-
-  const handleViewExpense = (expenseId: number) => {
-    closeDetailView();
-    if (typeof window === "undefined") {
-      return;
+  const detailContent = (() => {
+    if (!activeExpense) {
+      return null;
     }
 
-    window.setTimeout(() => {
-      const element = document.getElementById(`expense-${expenseId}`);
-      if (element) {
-        element.scrollIntoView({ behavior: "smooth", block: "start" });
-        if (element instanceof HTMLElement) {
-          element.focus({ preventScroll: true });
-        }
+    const targetCurrency = activeExpense.targetCurrency ?? activeExpense.currency;
+    const sourceCurrency = activeExpense.originalCurrency ?? targetCurrency;
+    const rateLabel = formatRate(activeExpense.exchangeRate);
+    const rateDescriptor = rateLabel
+      ? `${rateLabel} ${targetCurrency}/${sourceCurrency}`
+      : null;
+    const sourceTotalAmount =
+      typeof activeExpense.sourceAmountMinorUnits === "number"
+        ? minorUnitsToAmount(activeExpense.sourceAmountMinorUnits, sourceCurrency)
+        : null;
+    const sharesExcludingPayer = activeExpense.shares.filter(
+      (share) => share.userId !== activeExpense.paidBy.id,
+    );
+    const shareForCurrentUser = user?.id
+      ? activeExpense.shares.find((share) => share.userId === user.id)
+      : null;
+    const isCurrentUserSharePaid = shareForCurrentUser?.status === "paid";
+    const isCurrentUserDebtor =
+      !!shareForCurrentUser &&
+      shareForCurrentUser.userId !== activeExpense.paidBy.id &&
+      !isCurrentUserSharePaid;
+    const payerDisplay = getUserDisplayName(activeExpense.paidBy);
+    const isSettlingDetail = settlingId === activeExpense.id;
+    const isDeletingDetail = deletingId === activeExpense.id;
+    const categoryLabel = activeExpense.category?.replace(/[_-]/g, " ");
+
+    const headerDetails: string[] = [];
+    if (sourceTotalAmount !== null) {
+      headerDetails.push(`Paid ${formatCurrency(sourceTotalAmount, sourceCurrency)}`);
+    }
+    if (rateDescriptor && sourceCurrency !== targetCurrency) {
+      headerDetails.push(`Rate ${rateDescriptor}`);
+    }
+    const headerDetailText = headerDetails.join(" • ");
+
+    const getShareTargetAmount = (
+      share: (typeof activeExpense.shares)[number],
+    ) => getShareTargetAmountForExpense(share, activeExpense);
+    const getShareSourceAmount = (
+      share: (typeof activeExpense.shares)[number],
+    ) => getShareSourceAmountForExpense(share, activeExpense);
+
+    const currentUserTargetShare =
+      shareForCurrentUser !== undefined && shareForCurrentUser !== null
+        ? getShareTargetAmount(shareForCurrentUser)
+        : null;
+    const currentUserTargetDisplay =
+      currentUserTargetShare !== null
+        ? formatCurrency(currentUserTargetShare, targetCurrency)
+        : null;
+    const currentUserSourceShare =
+      shareForCurrentUser !== undefined && shareForCurrentUser !== null
+        ? getShareSourceAmount(shareForCurrentUser)
+        : null;
+    const currentUserSourceDisplay =
+      currentUserSourceShare !== null
+        ? formatCurrency(currentUserSourceShare, sourceCurrency)
+        : null;
+    const currentUserConversionDetail = (() => {
+      if (!shareForCurrentUser || sourceCurrency === targetCurrency) {
+        return null;
       }
-      window.location.hash = `expense-${expenseId}`;
-    }, 150);
-  };
+      if (currentUserSourceDisplay) {
+        return rateDescriptor
+          ? `${currentUserSourceDisplay} @ ${rateDescriptor}`
+          : currentUserSourceDisplay;
+      }
+      return rateDescriptor ? `Rate ${rateDescriptor}` : null;
+    })();
 
+    const footerMessage = (() => {
+      if (shareForCurrentUser) {
+        if (isCurrentUserSharePaid) {
+          return "You're settled for this expense.";
+        }
+        const fallbackAmount = formatCurrency(
+          getShareTargetAmount(shareForCurrentUser),
+          targetCurrency,
+        );
+        const amountDisplay = currentUserTargetDisplay ?? fallbackAmount;
+        return currentUserConversionDetail
+          ? `You owe ${amountDisplay} to ${payerDisplay} (based on ${currentUserConversionDetail}).`
+          : `You owe ${amountDisplay} to ${payerDisplay}.`;
+      }
+      if (activeExpense.paidBy.id === user?.id) {
+        return "You covered this expense for everyone else.";
+      }
+      return "You are not part of this split.";
+    })();
+
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>{activeExpense.description || "Untitled expense"}</DialogTitle>
+          <DialogDescription>
+            Paid by {payerDisplay} on {formatExpenseDate(activeExpense.createdAt)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-lg font-semibold">
+              {formatCurrency(activeExpense.totalAmount, targetCurrency)}
+            </span>
+            {headerDetailText ? (
+              <span className="text-xs text-muted-foreground">{headerDetailText}</span>
+            ) : null}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Splits include the payer; the payer never receives a request.
+          </p>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {categoryLabel ? (
+              <Badge variant="outline" className="border-transparent capitalize">
+                {categoryLabel}
+              </Badge>
+            ) : null}
+            {activeExpense.activity ? (
+              <Badge variant="outline" className="border-transparent">
+                Linked to {activeExpense.activity.name}
+              </Badge>
+            ) : null}
+            {activeExpense.receiptUrl ? (
+              <Button asChild variant="link" size="sm" className="px-0">
+                <a
+                  href={activeExpense.receiptUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ReceiptText className="mr-1 h-4 w-4" />
+                  Receipt
+                </a>
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          {sharesExcludingPayer.map((share) => {
+            const isSharePaid = share.status === "paid";
+            const targetShareAmount = getShareTargetAmount(share);
+            const targetShareDisplay = formatCurrency(
+              targetShareAmount,
+              targetCurrency,
+            );
+            const sourceShareAmount = getShareSourceAmount(share);
+            const sourceShareDisplay =
+              sourceShareAmount !== null
+                ? formatCurrency(sourceShareAmount, sourceCurrency)
+                : null;
+            const conversionDetail =
+              sourceCurrency === targetCurrency
+                ? null
+                : sourceShareDisplay
+                ? rateDescriptor
+                  ? `${sourceShareDisplay} @ ${rateDescriptor}`
+                  : sourceShareDisplay
+                : rateDescriptor
+                ? `Rate ${rateDescriptor}`
+                : null;
+
+            return (
+              <div
+                key={share.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage
+                      src={share.user.profileImageUrl || undefined}
+                      alt={getUserDisplayName(share.user)}
+                    />
+                    <AvatarFallback>{getUserInitials(share.user)}</AvatarFallback>
+                  </Avatar>
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">
+                      {getUserDisplayName(share.user)}
+                      {share.userId === user?.id ? (
+                        <Badge
+                          variant="outline"
+                          className="ml-2 border-transparent text-xs text-muted-foreground"
+                        >
+                          You
+                        </Badge>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {isSharePaid
+                        ? "Paid"
+                        : share.userId === user?.id
+                        ? "Awaiting your payment"
+                        : "Awaiting payment"}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-1 text-right">
+                  <p className="text-sm font-semibold tabular-nums">
+                    {targetShareDisplay}
+                  </p>
+                  {conversionDetail ? (
+                    <p className="text-xs text-muted-foreground">{conversionDetail}</p>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-sm text-muted-foreground">
+          <p>{footerMessage}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            {isCurrentUserDebtor ? (
+              <Button
+                variant="default"
+                size="sm"
+                disabled={isSettlingDetail}
+                onClick={() => markAsPaidMutation.mutate(activeExpense.id)}
+              >
+                {isSettlingDetail ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1 h-4 w-4" />
+                )}
+                Mark paid
+              </Button>
+            ) : null}
+            {activeExpense.paidBy.id === user?.id ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isDeletingDetail}
+                onClick={() => deleteExpenseMutation.mutate(activeExpense.id)}
+              >
+                {isDeletingDetail ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-1 h-4 w-4" />
+                )}
+                Delete
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </>
+    );
+  })();
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -499,580 +742,96 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cardConfigs.map((card) => (
-          <Card
-            key={card.type}
-            role="button"
-            tabIndex={0}
-            onClick={() => openDetailView(card.type)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                openDetailView(card.type);
-              }
-            }}
-            className={cn(
-              "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              "cursor-pointer hover:border-primary/50",
-              detailView === card.type ? "border-primary" : undefined,
-            )}
-            aria-label={`${card.title} details`}
-          >
-            <CardHeader className="pb-2">
-              <CardDescription>{card.title}</CardDescription>
-              {summaryLoading ? (
-                <Skeleton className="h-8 w-28" />
-              ) : (
-                <CardTitle
-                  className={cn("text-2xl font-semibold", card.amountClassName)}
-                >
-                  {formatCurrency(card.amount, summary.currency)}
-                </CardTitle>
-              )}
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-xs text-muted-foreground">{card.description}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="rounded-lg border border-dashed bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-        {summary.net > 0
-          ? `You should receive ${formatCurrency(summary.net, summary.currency)} when everyone settles up.`
-          : summary.net < 0
-          ? `You still owe ${formatCurrency(Math.abs(summary.net), summary.currency)} in total.`
-          : "You're all settled up!"}
-      </div>
-
-      <section className="space-y-4">
-        {isLoadingExpenses ? (
-          <ExpenseListSkeleton />
-        ) : expenses.length === 0 ? (
-          <Card className="text-center">
-            <CardHeader className="items-center space-y-3">
-              <Users className="h-10 w-10 text-muted-foreground" />
-              <CardTitle className="text-base font-semibold">
-                No expenses yet
-              </CardTitle>
-              <CardDescription>
-                Add your first expense to start tracking balances.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button onClick={() => setIsAddExpenseModalOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add an expense
-              </Button>
-            </CardContent>
-          </Card>
+      <div className="space-y-2">
+        <div className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+          {summaryLoading ? (
+            <Skeleton className="h-4 w-32" />
+          ) : summary.net === 0 ? (
+            <span>You're all settled up</span>
+          ) : summary.net > 0 ? (
+            <span>You're owed {formatCurrency(summary.net, summary.currency)}</span>
+          ) : (
+            <span>You owe {formatCurrency(Math.abs(summary.net), summary.currency)}</span>
+          )}
+        </div>
+        {summaryLoading ? (
+          <Skeleton className="h-3 w-64" />
         ) : (
-          expenses.map((expense) => {
-            const sharesExcludingPayer = expense.shares.filter(
-              (share) => share.userId !== expense.paidBy.id,
-            );
-            const shareForCurrentUser = sharesExcludingPayer.find(
-              (share) => share.userId === user?.id,
-            );
-            const isDeleting = deletingId === expense.id;
-            const isSettling = settlingId === expense.id;
-            const isCurrentUserSharePaid =
-              shareForCurrentUser?.status === "paid";
-            const targetCurrency = expense.targetCurrency ?? expense.currency;
-            const sourceCurrency =
-              expense.originalCurrency ?? targetCurrency;
-            const rateLabel = formatRate(expense.exchangeRate);
-            const rateDescriptor = rateLabel
-              ? `${rateLabel} ${targetCurrency}/${sourceCurrency}`
-              : null;
-            const sourceTotalAmount =
-              typeof expense.sourceAmountMinorUnits === "number"
-                ? minorUnitsToAmount(
-                    expense.sourceAmountMinorUnits,
-                    sourceCurrency,
-                  )
-                : null;
-            const headerDetails: string[] = [];
-            if (sourceTotalAmount !== null) {
-              headerDetails.push(
-                `Paid ${formatCurrency(sourceTotalAmount, sourceCurrency)}`,
-              );
-            }
-            if (rateDescriptor && sourceCurrency !== targetCurrency) {
-              headerDetails.push(`Rate ${rateDescriptor}`);
-            }
-            const headerDetailText = headerDetails.join(" • ");
-
-            const getShareTargetAmount = (
-              share: (typeof expense.shares)[number],
-            ) => getShareTargetAmountForExpense(share, expense);
-
-            const shareSummaryLabel = (() => {
-              if (sharesExcludingPayer.length <= 1) {
-                return null;
-              }
-
-              const normalizedAmounts = sharesExcludingPayer.map((share) =>
-                getShareTargetAmount(share).toFixed(2),
-              );
-              const distinctAmounts = Array.from(
-                new Set(normalizedAmounts),
-              );
-
-              if (distinctAmounts.length === 1) {
-                return `${formatCurrency(
-                  getShareTargetAmount(sharesExcludingPayer[0]),
-                  targetCurrency,
-                )} each`;
-              }
-
-              const minAmount = Math.min(
-                ...sharesExcludingPayer.map((share) =>
-                  getShareTargetAmount(share),
-                ),
-              );
-              const maxAmount = Math.max(
-                ...sharesExcludingPayer.map((share) =>
-                  getShareTargetAmount(share),
-                ),
-              );
-
-              return `${formatCurrency(minAmount, targetCurrency)} – ${formatCurrency(maxAmount, targetCurrency)} each`;
-            })();
-
-            const currentUserTargetShare = shareForCurrentUser
-              ? getShareTargetAmount(shareForCurrentUser)
-              : null;
-            const currentUserTargetDisplay =
-              currentUserTargetShare !== null
-                ? formatCurrency(currentUserTargetShare, targetCurrency)
-                : null;
-            const currentUserSourceShare =
-              shareForCurrentUser
-                ? getShareSourceAmountForExpense(shareForCurrentUser, expense)
-                : null;
-            const currentUserSourceDisplay =
-              currentUserSourceShare !== null
-                ? formatCurrency(currentUserSourceShare, sourceCurrency)
-                : null;
-            const currentUserConversionDetail = (() => {
-              if (!shareForCurrentUser || sourceCurrency === targetCurrency) {
-                return null;
-              }
-              if (currentUserSourceDisplay) {
-                return rateDescriptor
-                  ? `${currentUserSourceDisplay} @ ${rateDescriptor}`
-                  : currentUserSourceDisplay;
-              }
-              return rateDescriptor ? `Rate ${rateDescriptor}` : null;
-            })();
-            const payerDisplay = getUserDisplayName(expense.paidBy);
-
-            return (
-              <Card
-                key={expense.id}
-                id={`expense-${expense.id}`}
-                className="shadow-sm"
-                tabIndex={-1}
-              >
-                <CardHeader className="gap-4 pb-0">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex items-start gap-3">
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage
-                          src={expense.paidBy.profileImageUrl || undefined}
-                          alt={getUserDisplayName(expense.paidBy)}
-                        />
-                        <AvatarFallback>
-                          {getUserInitials(expense.paidBy)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="space-y-1">
-                        <CardTitle className="text-base font-semibold">
-                          {expense.description}
-                        </CardTitle>
-                        <CardDescription>
-                          Paid by {getUserDisplayName(expense.paidBy)} on {" "}
-                          {formatExpenseDate(expense.createdAt)}
-                        </CardDescription>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xl font-semibold">
-                        {formatCurrency(expense.totalAmount, targetCurrency)}
-                      </p>
-                      {shareSummaryLabel ? (
-                        <p className="text-xs text-muted-foreground">
-                          {shareSummaryLabel}
-                        </p>
-                      ) : null}
-                      {headerDetailText ? (
-                        <p className="text-xs text-muted-foreground">
-                          {headerDetailText}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <Badge variant="secondary" className="capitalize">
-                      {expense.category.replace(/[_-]/g, " ")}
-                    </Badge>
-                    {expense.activity ? (
-                      <Badge variant="outline" className="max-w-[200px] truncate">
-                        Linked to {expense.activity.name}
-                      </Badge>
-                    ) : null}
-                    {expense.receiptUrl ? (
-                      <Button
-                        asChild
-                        variant="link"
-                        size="sm"
-                        className="px-0"
-                      >
-                        <a
-                          href={expense.receiptUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ReceiptText className="mr-1 h-4 w-4" /> Receipt
-                        </a>
-                      </Button>
-                    ) : null}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-3 pt-4">
-                  {sharesExcludingPayer.map((share) => {
-                    const isCurrentUser = share.userId === user?.id;
-                    const isSharePaid = share.status === "paid";
-                    const targetShareAmount = getShareTargetAmount(share);
-                    const targetShareDisplay = formatCurrency(
-                      targetShareAmount,
-                      targetCurrency,
-                    );
-                    const sourceShareAmount =
-                      getShareSourceAmountForExpense(share, expense);
-                    const sourceShareDisplay =
-                      sourceShareAmount !== null
-                        ? formatCurrency(sourceShareAmount, sourceCurrency)
-                        : null;
-                    const conversionDetail =
-                      sourceCurrency === targetCurrency
-                        ? null
-                        : sourceShareDisplay
-                        ? rateDescriptor
-                          ? `${sourceShareDisplay} @ ${rateDescriptor}`
-                          : sourceShareDisplay
-                        : rateDescriptor
-                        ? `Rate ${rateDescriptor}`
-                        : null;
-                    return (
-                      <div
-                        key={share.id}
-                        className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            <AvatarImage
-                              src={share.user.profileImageUrl || undefined}
-                              alt={getUserDisplayName(share.user)}
-                            />
-                            <AvatarFallback>
-                              {getUserInitials(share.user)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="space-y-0.5">
-                            <p className="text-sm font-medium">
-                              {getUserDisplayName(share.user)}
-                              {isCurrentUser ? (
-                                <Badge variant="outline" className="ml-2 text-xs">
-                                  You
-                                </Badge>
-                              ) : null}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {isSharePaid
-                                ? "Settled"
-                                : isCurrentUser
-                                ? "Awaiting your payment"
-                                : "Waiting for payment"}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold">
-                            {targetShareDisplay}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {isSharePaid ? "Paid" : "Outstanding"}
-                          </p>
-                          {conversionDetail ? (
-                            <p className="text-xs text-muted-foreground">
-                              {`Based on ${conversionDetail}`}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-
-                <Separator className="mx-6" />
-
-                <CardFooter className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
-                  <div>
-                    {shareForCurrentUser ? (
-                      isCurrentUserSharePaid ? (
-                        "You're settled for this expense."
-                      ) : (
-                        currentUserConversionDetail
-                          ? `You owe ${
-                              currentUserTargetDisplay ??
-                              formatCurrency(
-                                getShareTargetAmount(shareForCurrentUser),
-                                targetCurrency,
-                              )
-                            } to ${payerDisplay} (based on ${currentUserConversionDetail}).`
-                          : `You owe ${
-                              currentUserTargetDisplay ??
-                              formatCurrency(
-                                getShareTargetAmount(shareForCurrentUser),
-                                targetCurrency,
-                              )
-                            } to ${payerDisplay}.`
-                      )
-                    ) : expense.paidBy.id === user?.id ? (
-                      "You covered this expense for everyone else."
-                    ) : (
-                      "You are not part of this split."
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {shareForCurrentUser && !isCurrentUserSharePaid ? (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={isSettling}
-                        onClick={() => markAsPaidMutation.mutate(expense.id)}
-                      >
-                        {isSettling ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="mr-2 h-4 w-4" />
-                        )}
-                        Mark paid
-                      </Button>
-                    ) : null}
-                    {expense.paidBy.id === user?.id ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isDeleting}
-                        onClick={() => deleteExpenseMutation.mutate(expense.id)}
-                      >
-                        {isDeleting ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="mr-2 h-4 w-4" />
-                        )}
-                        Delete
-                      </Button>
-                    ) : null}
-                  </div>
-                </CardFooter>
-              </Card>
-            );
-          })
+          <p className="text-xs text-muted-foreground">
+            You paid {formatCurrency(summary.youPaid, summary.currency)} • You owe{" "}
+            {formatCurrency(summary.owes, summary.currency)} • You're owed{" "}
+            {formatCurrency(summary.owed, summary.currency)}
+          </p>
         )}
-      </section>
+      </div>
+
+      {summaryLoading ? (
+        <ExpenseListSkeleton />
+      ) : expenses.length === 0 ? (
+        <div className="rounded-md border border-border/60 px-4 py-6 text-center text-sm text-muted-foreground">
+          No shared expenses yet. Add your first one to start tracking balances.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sections.map((section) => {
+            const items = sectionedExpenses[section.key];
+            const isOpen = openSections[section.key];
+            return (
+              <Collapsible
+                key={section.key}
+                open={isOpen}
+                onOpenChange={(open) =>
+                  setOpenSections((previous) => ({ ...previous, [section.key]: open }))
+                }
+              >
+                <div className="rounded-lg border border-border/60 px-3 py-2">
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-2 text-left text-sm font-medium"
+                    >
+                      <span>{section.title}</span>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{items.length}</span>
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 transition-transform",
+                            isOpen ? "rotate-180" : "rotate-0",
+                          )}
+                        />
+                      </div>
+                    </button>
+                  </CollapsibleTrigger>
+                  <p className="mt-1 text-xs text-muted-foreground">{section.description}</p>
+                  <CollapsibleContent>
+                    <div className="space-y-2 pt-2">
+                      {items.length === 0 ? (
+                        <p className="px-1 py-2 text-xs text-muted-foreground">
+                          {section.key === "settled"
+                            ? "Paid expenses will appear here once everything is settled."
+                            : "All caught up here."}
+                        </p>
+                      ) : (
+                        items.map(renderExpenseRow)
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            );
+          })}
+        </div>
+      )}
 
       <Dialog
-        open={detailView !== null}
+        open={activeExpense !== null}
         onOpenChange={(open) => {
           if (!open) {
-            closeDetailView();
+            setActiveExpenseId(null);
           }
         }}
       >
-        <DialogContent className="max-w-6xl">
-          <DialogHeader>
-            <DialogTitle>{selectedCard?.title}</DialogTitle>
-            <DialogDescription>
-              Review the individual expenses that make up this total.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total</p>
-                <p className="text-2xl font-semibold">
-                  {selectedCard
-                    ? formatCurrency(selectedCard.amount, summary.currency)
-                    : formatCurrency(0, summary.currency)}
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-                <div className="text-sm text-muted-foreground sm:text-right">
-                  Showing expenses for this trip.
-                </div>
-                <Input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search by title or notes"
-                  className="w-full min-w-[200px] sm:w-60"
-                  aria-label="Search expenses"
-                />
-                <Select
-                  value={sortOption}
-                  onValueChange={(value: SortOption) => setSortOption(value)}
-                >
-                  <SelectTrigger
-                    className="w-full min-w-[200px] sm:w-52"
-                    aria-label="Sort expenses"
-                  >
-                    <SelectValue placeholder="Sort by" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sortOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {filteredExpenses.length === 0 ? (
-              <div className="rounded-lg border border-dashed bg-muted/30 px-6 py-12 text-center">
-                <h4 className="text-base font-semibold">Nothing here yet</h4>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  When expenses for this trip appear, they’ll show up here.
-                </p>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[200px]">Added by</TableHead>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Total amount</TableHead>
-                    <TableHead className="text-right">My share</TableHead>
-                    <TableHead>Notes</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredExpenses.map((expense) => {
-                    const sharesExcludingPayer = expense.shares.filter(
-                      (share) => share.userId !== expense.paidBy.id,
-                    );
-                    const shareForCurrentUser = sharesExcludingPayer.find(
-                      (share) => share.userId === user?.id,
-                    );
-
-                    const outstandingFromOthers = sharesExcludingPayer
-                      .filter(
-                        (share) =>
-                          share.userId !== user?.id && share.status !== "paid",
-                      )
-                      .reduce(
-                        (total, share) =>
-                          total + getShareTargetAmountForExpense(share, expense),
-                        0,
-                      );
-
-                    const myShareAmount =
-                      detailView === "youOwe"
-                        ? shareForCurrentUser
-                          ? getShareTargetAmountForExpense(
-                              shareForCurrentUser,
-                              expense,
-                            )
-                          : 0
-                        : detailView === "youAreOwed"
-                          ? outstandingFromOthers
-                          : 0;
-
-                    const notes: string[] = [];
-                    if (expense.category) {
-                      notes.push(expense.category.replace(/[_-]/g, " "));
-                    }
-                    if (expense.activity?.name) {
-                      notes.push(`Linked to ${expense.activity.name}`);
-                    }
-
-                    const notesText = notes.join(" • ") || "—";
-
-                    return (
-                      <TableRow key={expense.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage
-                                src={expense.paidBy.profileImageUrl || undefined}
-                                alt={getUserDisplayName(expense.paidBy)}
-                              />
-                              <AvatarFallback>
-                                {getUserInitials(expense.paidBy)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="space-y-0.5">
-                              <p className="text-sm font-medium">
-                                {getUserDisplayName(expense.paidBy)}
-                                {expense.paidBy.id === user?.id ? " (you)" : ""}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {formatExpenseDate(expense.createdAt)}
-                              </p>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {expense.description || "Untitled expense"}
-                        </TableCell>
-                        <TableCell>{formatExpenseDate(expense.createdAt)}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(
-                            expense.totalAmount,
-                            expense.targetCurrency ?? expense.currency,
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {detailView === "youOwe" || detailView === "youAreOwed"
-                            ? myShareAmount > 0
-                              ? formatCurrency(
-                                  myShareAmount,
-                                  expense.targetCurrency ?? expense.currency,
-                                )
-                              : "—"
-                            : "—"}
-                        </TableCell>
-                        <TableCell className="max-w-[220px] truncate" title={notesText}>
-                          {notesText}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="link"
-                            size="sm"
-                            className="px-0"
-                            onClick={() => handleViewExpense(expense.id)}
-                          >
-                            View expense
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        </DialogContent>
+        <DialogContent className="max-w-3xl">{detailContent}</DialogContent>
       </Dialog>
 
       <AddExpenseModal
@@ -1084,3 +843,4 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     </div>
   );
 }
+
