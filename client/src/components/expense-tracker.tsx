@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  Badge,
-} from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,12 +23,15 @@ import { useToast } from "@/hooks/use-toast";
 import type { ExpenseWithDetails, User } from "@shared/schema";
 import { minorUnitsToAmount } from "@shared/expenses";
 import {
+  ArrowUpCircle,
   CheckCircle2,
   ChevronDown,
   Loader2,
+  PiggyBank,
   Plus,
   ReceiptText,
   Trash2,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +46,7 @@ interface ExpenseTrackerProps {
   user?: User;
 }
 
-type SectionKey = "needsYourPayment" | "waitingOnOthers" | "settled";
+type SectionKey = "open" | "completed";
 
 function formatCurrency(amount: number, currency: string) {
   const safeAmount = Number.isFinite(amount) ? amount : 0;
@@ -169,9 +170,8 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
   const [settlingId, setSettlingId] = useState<number | null>(null);
   const [activeExpenseId, setActiveExpenseId] = useState<number | null>(null);
   const [openSections, setOpenSections] = useState({
-    needsYourPayment: true,
-    waitingOnOthers: true,
-    settled: false,
+    open: true,
+    completed: false,
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -313,9 +313,8 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
 
   const sectionedExpenses = useMemo(() => {
     const buckets: Record<SectionKey, ExpenseWithDetails[]> = {
-      needsYourPayment: [],
-      waitingOnOthers: [],
-      settled: [],
+      open: [],
+      completed: [],
     };
 
     sortedExpenses.forEach((expense) => {
@@ -332,12 +331,10 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       const waitingOnOthers =
         expense.paidBy.id === user?.id && pendingNonPayerShares.length > 0;
 
-      if (needsYourPayment) {
-        buckets.needsYourPayment.push(expense);
-      } else if (waitingOnOthers) {
-        buckets.waitingOnOthers.push(expense);
+      if (needsYourPayment || waitingOnOthers) {
+        buckets.open.push(expense);
       } else {
-        buckets.settled.push(expense);
+        buckets.completed.push(expense);
       }
     });
 
@@ -349,24 +346,27 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     [expenses, activeExpenseId],
   );
 
-  const pendingBadgeClass = "border-transparent bg-primary/10 text-primary";
+  const owesBadgeClass = "border-transparent bg-destructive/10 text-destructive";
+  const waitingBadgeClass = "border-transparent bg-primary/10 text-primary";
   const paidBadgeClass = "border-transparent bg-muted text-muted-foreground";
 
-  const sections: { key: SectionKey; title: string; description: string }[] = [
+  const sections: {
+    key: SectionKey;
+    title: string;
+    description: string;
+    emptyMessage: string;
+  }[] = [
     {
-      key: "needsYourPayment",
-      title: "Needs your payment",
-      description: "These balances still require your payment.",
+      key: "open",
+      title: "Open transactions",
+      description: "Outstanding expenses that still need attention.",
+      emptyMessage: "You're all caught up. Nothing needs attention right now.",
     },
     {
-      key: "waitingOnOthers",
-      title: "Waiting on others",
-      description: "You covered these expenses and are waiting to be repaid.",
-    },
-    {
-      key: "settled",
-      title: "Settled",
-      description: "Paid expenses stay on record here for reference.",
+      key: "completed",
+      title: "Completed",
+      description: "Settled expenses stay on record for reference.",
+      emptyMessage: "Once expenses are fully paid they will move here.",
     },
   ];
 
@@ -387,15 +387,21 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       !!shareForCurrentUser &&
       shareForCurrentUser.userId !== expense.paidBy.id &&
       shareForCurrentUser.status !== "paid";
-    const hasPendingFromOthers = expense.shares.some(
+    const pendingSharesForOthers = expense.shares.filter(
       (share) => share.userId !== expense.paidBy.id && share.status !== "paid",
     );
     const waitingOnOthers =
-      expense.paidBy.id === user?.id && hasPendingFromOthers;
-    const status = isCurrentUserDebtor || waitingOnOthers ? "pending" : "paid";
-    const badgeClassName =
-      status === "pending" ? pendingBadgeClass : paidBadgeClass;
-    const statusLabel = status === "pending" ? "Pending" : "Paid";
+      expense.paidBy.id === user?.id && pendingSharesForOthers.length > 0;
+    const badgeClassName = isCurrentUserDebtor
+      ? owesBadgeClass
+      : waitingOnOthers
+      ? waitingBadgeClass
+      : paidBadgeClass;
+    const statusLabel = isCurrentUserDebtor
+      ? "You owe"
+      : waitingOnOthers
+      ? "Waiting"
+      : "Settled";
     const isSettlingRow = settlingId === expense.id;
     const payerDisplay = getUserDisplayName(expense.paidBy);
     const dateDisplay = formatExpenseDate(expense.createdAt);
@@ -404,6 +410,20 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       "text-sm font-semibold tabular-nums text-right",
       yourShareAmount === null ? "text-muted-foreground" : undefined,
     );
+
+    const shareSummary = (() => {
+      if (isCurrentUserDebtor) {
+        const shareLabel =
+          yourShareAmount !== null ? yourShareDisplay : "your share";
+        return `You still owe ${shareLabel}.`;
+      }
+      if (waitingOnOthers) {
+        const paymentCount = pendingSharesForOthers.length;
+        const paymentLabel = paymentCount === 1 ? "payment" : "payments";
+        return `Waiting on ${paymentCount} ${paymentLabel}.`;
+      }
+      return "All settled.";
+    })();
 
     return (
       <div
@@ -435,6 +455,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
             <span className="hidden sm:inline">•</span>
             <span>{dateDisplay}</span>
           </div>
+          <p className="text-xs text-muted-foreground">{shareSummary}</p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
           <div className="flex items-center gap-2">
@@ -742,27 +763,74 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         </Button>
       </div>
 
-      <div className="space-y-2">
-        <div className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
-          {summaryLoading ? (
-            <Skeleton className="h-4 w-32" />
-          ) : summary.net === 0 ? (
-            <span>You're all settled up</span>
-          ) : summary.net > 0 ? (
-            <span>You're owed {formatCurrency(summary.net, summary.currency)}</span>
-          ) : (
-            <span>You owe {formatCurrency(Math.abs(summary.net), summary.currency)}</span>
-          )}
+      <div className="space-y-3">
+        <div className="rounded-xl border border-border/60 bg-card px-4 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="font-medium text-muted-foreground">Net balance</span>
+            <div className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+              {summaryLoading ? (
+                <Skeleton className="h-4 w-24" />
+              ) : summary.net === 0 ? (
+                <span>You're all settled up</span>
+              ) : summary.net > 0 ? (
+                <span>You're owed {formatCurrency(summary.net, summary.currency)}</span>
+              ) : (
+                <span>You owe {formatCurrency(Math.abs(summary.net), summary.currency)}</span>
+              )}
+            </div>
+          </div>
+          {!summaryLoading ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              This is the difference between what you're owed and what you owe across every expense on this trip.
+            </p>
+          ) : null}
         </div>
-        {summaryLoading ? (
-          <Skeleton className="h-3 w-64" />
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            You paid {formatCurrency(summary.youPaid, summary.currency)} • You owe{" "}
-            {formatCurrency(summary.owes, summary.currency)} • You're owed{" "}
-            {formatCurrency(summary.owed, summary.currency)}
-          </p>
-        )}
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          {summaryLoading
+            ? [0, 1, 2].map((item) => (
+                <div
+                  key={item}
+                  className="rounded-xl border border-border/60 bg-muted/40 p-4"
+                >
+                  <Skeleton className="mb-3 h-10 w-10 rounded-full" />
+                  <Skeleton className="mb-2 h-4 w-24" />
+                  <Skeleton className="h-3 w-20" />
+                </div>
+              ))
+            : [
+                {
+                  label: "You've paid",
+                  value: formatCurrency(summary.youPaid, summary.currency),
+                  description: "Total amount you've personally covered.",
+                  Icon: Wallet,
+                },
+                {
+                  label: "You owe",
+                  value: formatCurrency(summary.owes, summary.currency),
+                  description: "What you still need to pay others.",
+                  Icon: ArrowUpCircle,
+                },
+                {
+                  label: "You're owed",
+                  value: formatCurrency(summary.owed, summary.currency),
+                  description: "What others still need to pay you.",
+                  Icon: PiggyBank,
+                },
+              ].map(({ label, value, description, Icon }) => (
+                <div
+                  key={label}
+                  className="rounded-xl border border-border/60 bg-card p-4 shadow-sm"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <p className="mt-4 text-sm font-medium">{label}</p>
+                  <p className="text-lg font-semibold tabular-nums">{value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+                </div>
+              ))}
+        </div>
       </div>
 
       {summaryLoading ? (
@@ -807,9 +875,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                     <div className="space-y-2 pt-2">
                       {items.length === 0 ? (
                         <p className="px-1 py-2 text-xs text-muted-foreground">
-                          {section.key === "settled"
-                            ? "Paid expenses will appear here once everything is settled."
-                            : "All caught up here."}
+                          {section.emptyMessage}
                         </p>
                       ) : (
                         items.map(renderExpenseRow)
