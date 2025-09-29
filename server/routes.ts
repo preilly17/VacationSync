@@ -5,6 +5,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
+import { query } from "./db";
 import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
@@ -50,6 +51,14 @@ const RSVP_ACTION_MAP: Record<string, ActivityInviteStatus> = {
   WAITLIST: "waitlisted",
   MAYBE: "pending",
 };
+
+const VALID_LOCATION_TYPES = new Set([
+  'airport',
+  'city',
+  'metro',
+  'state',
+  'country',
+]);
 
 const getWaitlistOrderingTimestamp = (invite: ActivityWithDetails["invites"][number]) => {
   if (invite.respondedAt) {
@@ -679,18 +688,40 @@ export function setupRoutes(app: Express) {
       if (!query) {
         return res.status(400).json({ error: "Query parameter 'q' is required" });
       }
-      
+
       // If query is too short, return empty results
       if (query.trim().length < 2) {
         return res.json([]);
       }
-      
+
       console.log(`🔍 Location search for: "${query}"`);
-      
+
+      const typesParam = req.query.types;
+      const requestedTypes =
+        typeof typesParam === 'string'
+          ? typesParam
+              .split(',')
+              .map((type) => type.trim().toLowerCase())
+              .filter((type) => VALID_LOCATION_TYPES.has(type))
+          : [];
+      const allowedTypes = requestedTypes.length > 0 ? requestedTypes : null;
+
+      const filterByAllowedTypes = <T extends { type?: string }>(results: T[]): T[] => {
+        if (!allowedTypes) {
+          return results;
+        }
+
+        return results.filter((result) => {
+          const typeValue =
+            typeof result?.type === 'string' ? result.type.toLowerCase() : '';
+          return allowedTypes.includes(typeValue);
+        });
+      };
+
       try {
         // Try Google Maps autocomplete first
         const googleResults = await googleMapsService.autocompleteLocation(query.trim());
-        
+
         if (googleResults && googleResults.length > 0) {
           // Transform Google Maps results to SmartLocationSearch expected format
           const transformedResults = googleResults.map((location, index) => {
@@ -738,9 +769,21 @@ export function setupRoutes(app: Express) {
               airports: [] // Will be populated for cities that have airports
             };
           });
-          
-          console.log(`✅ Google Maps found ${transformedResults.length} locations for "${query}"`);
-          return res.json(transformedResults);
+
+          const filteredGoogleResults = filterByAllowedTypes(transformedResults);
+
+          if (filteredGoogleResults.length > 0) {
+            console.log(
+              `✅ Google Maps found ${filteredGoogleResults.length} locations for "${query}" (requested types: ${
+                allowedTypes?.join(', ') || 'all'
+              })`,
+            );
+            return res.json(filteredGoogleResults);
+          }
+
+          console.log(
+            `ℹ️ Google Maps results for "${query}" did not match requested types (${allowedTypes?.join(', ') || 'all'}), falling back to GeoNames`,
+          );
         }
       } catch (googleError) {
         console.error("Google Maps autocomplete failed, falling back to internal database:", googleError);
@@ -833,8 +876,14 @@ export function setupRoutes(app: Express) {
           };
         });
 
-        console.log(`✅ GeoNames fallback found ${transformedResults.length} locations for "${query}"`);
-        return res.json(transformedResults);
+        const filteredGeonamesResults = filterByAllowedTypes(transformedResults);
+
+        console.log(
+          `✅ GeoNames fallback found ${filteredGeonamesResults.length} locations for "${query}" (requested types: ${
+            allowedTypes?.join(', ') || 'all'
+          })`,
+        );
+        return res.json(filteredGeonamesResults);
       } catch (geonamesError) {
         console.error("GeoNames fallback failed:", geonamesError);
         return res.json([]);
@@ -842,6 +891,89 @@ export function setupRoutes(app: Express) {
     } catch (error: unknown) {
       console.error("Location search error:", error);
       res.status(500).json({ error: "Location search failed" });
+    }
+  });
+
+  app.get("/api/flights/airports", async (req, res) => {
+    try {
+      const latitudeParam = req.query.latitude;
+      const longitudeParam = req.query.longitude;
+
+      if (typeof latitudeParam !== 'string' || typeof longitudeParam !== 'string') {
+        return res.status(400).json({
+          error: "Query parameters 'latitude' and 'longitude' are required",
+        });
+      }
+
+      const latitude = Number(latitudeParam);
+      const longitude = Number(longitudeParam);
+
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        return res.status(400).json({
+          error: "Latitude and longitude must be valid numbers",
+        });
+      }
+
+      const cityName = typeof req.query.city_name === 'string' ? req.query.city_name : null;
+      const countryName = typeof req.query.country_name === 'string' ? req.query.country_name : null;
+
+      const parseDbNumber = (value: unknown): number | null => {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return value;
+        }
+        if (typeof value === 'string') {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      };
+
+      const result = await query(
+        `SELECT iata_code, name, municipality, iso_country, latitude, longitude,
+          ( 6371 * acos( cos( radians($1) ) * cos( radians(latitude) )
+          * cos( radians(longitude) - radians($2) ) + sin( radians($1) )
+          * sin( radians(latitude) ) ) ) AS distance_km
+        FROM airports
+        WHERE iata_code IS NOT NULL
+          AND type IN ('large_airport','medium_airport')
+        ORDER BY distance_km
+        LIMIT 3;`,
+        [latitude, longitude],
+      );
+
+      const airports = result.rows
+        .map((row: any) => {
+          const iata = row.iata_code || row.iata || null;
+          const distanceKm = parseDbNumber(row.distance_km);
+          const latitudeDeg = parseDbNumber(row.latitude);
+          const longitudeDeg = parseDbNumber(row.longitude);
+
+          if (!iata || !row.name) {
+            return null;
+          }
+
+          return {
+            iata,
+            name: row.name,
+            municipality: row.municipality ?? null,
+            iso_country: row.iso_country ?? null,
+            latitude: latitudeDeg,
+            longitude: longitudeDeg,
+            distance_km: distanceKm,
+          };
+        })
+        .filter((airport: any): airport is Record<string, unknown> => Boolean(airport));
+
+      return res.json({
+        city_name: cityName,
+        country_name: countryName,
+        latitude,
+        longitude,
+        airports,
+      });
+    } catch (error) {
+      console.error('Nearest airports lookup failed:', error);
+      return res.status(500).json({ error: 'Failed to fetch nearest airports' });
     }
   });
 
