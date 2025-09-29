@@ -18,6 +18,7 @@ import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { apiFetch } from "@/lib/api";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { HOTEL_REDIRECT_STORAGE_KEY, markExternalRedirect } from "@/lib/externalRedirects";
 import type { TripWithDates, HotelSearchResult } from "@shared/schema";
 import { format } from "date-fns";
 import {
@@ -235,6 +236,7 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
         }
 
         if (url) {
+          markExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY);
           window.open(url, "_blank", "noopener,noreferrer");
         }
       },
