@@ -813,6 +813,27 @@ function FlightSearchPanel({
                     </ToggleGroup>
                   </div>
                   <div>
+                    <Label htmlFor="tripType">Trip Type</Label>
+                    <Select
+                      value={searchFormData.tripType}
+                      onValueChange={(value) =>
+                        setSearchFormData((prev) => ({
+                          ...prev,
+                          tripType: value as TripType,
+                          returnDate: value === "oneway" ? "" : prev.returnDate,
+                        }))
+                      }
+                    >
+                      <SelectTrigger id="tripType" className="w-40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="roundtrip">Round-trip</SelectItem>
+                        <SelectItem value="oneway">One-way</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
                     <Label htmlFor="airline">Airline</Label>
                     <Select
                       value={searchFormData.airline}
