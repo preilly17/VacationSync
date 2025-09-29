@@ -178,6 +178,7 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
             <SmartLocationSearch
               placeholder="e.g., Tokyo, Japan"
               value={selectedDestination?.name || form.getValues("destination") || ""}
+              allowedTypes={['city']}
               onLocationSelect={handleDestinationSelect}
             />
             {form.formState.errors.destination && (

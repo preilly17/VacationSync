@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, Plane, Globe, Building, ChevronDown } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 
-interface LocationResult {
+export interface LocationResult {
   type: 'airport' | 'city' | 'metro' | 'state' | 'country';
   name: string;
   code: string;
@@ -26,12 +26,22 @@ interface LocationResult {
   source?: string;
 }
 
+const VALID_LOCATION_TYPES: Array<LocationResult['type']> = [
+  'airport',
+  'city',
+  'metro',
+  'state',
+  'country',
+];
+
 interface SmartLocationSearchProps {
   id?: string;
   placeholder?: string;
   value?: string;
   onLocationSelect: (location: LocationResult) => void;
   className?: string;
+  allowedTypes?: Array<LocationResult['type']>;
+  onQueryChange?: (value: string) => void;
 }
 
 const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProps>(function SmartLocationSearch({
@@ -39,7 +49,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   placeholder = "Enter city, airport, or state...",
   value = "",
   onLocationSelect,
-  className = ""
+  className = "",
+  allowedTypes,
+  onQueryChange,
 }, ref) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<LocationResult[]>([]);
@@ -64,10 +76,28 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
 
   // ROOT CAUSE 1 FIX: Sync value prop changes to internal query state
   useEffect(() => {
-    if (value !== query) {
+    if (value !== undefined && value !== query) {
       setQuery(value || '');
     }
   }, [value]);
+
+  const normalisedAllowedTypes = allowedTypes && allowedTypes.length > 0
+    ? Array.from(
+        new Set(
+          allowedTypes.filter((type): type is LocationResult['type'] =>
+            VALID_LOCATION_TYPES.includes(type),
+          ),
+        ),
+      )
+    : null;
+
+  const buildSearchUrl = (searchQuery: string) => {
+    const params = new URLSearchParams({ q: searchQuery });
+    if (normalisedAllowedTypes) {
+      params.set('types', normalisedAllowedTypes.join(','));
+    }
+    return `/api/locations/search?${params.toString()}`;
+  };
 
   useEffect(() => {
     // FIXED: Add null/undefined safety check for query
@@ -96,12 +126,15 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true);
       try {
-        const response = await apiFetch(`/api/locations/search?q=${encodeURIComponent(query)}`);
+        const response = await apiFetch(buildSearchUrl(query));
         if (response.ok) {
           const data = await response.json();
           // ROOT CAUSE 2 FIX: Ensure results is always an array and limit suggestions
           const safeResults = Array.isArray(data) ? data.slice(0, 7) : [];
-          setResults(safeResults);
+          const filteredResults = normalisedAllowedTypes
+            ? safeResults.filter((location) => normalisedAllowedTypes.includes(location.type))
+            : safeResults;
+          setResults(filteredResults);
           // Keep dropdown state controlled by user intent
         }
       } catch (error) {
@@ -111,11 +144,12 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         setIsLoading(false);
       }
     }, 300);
-  }, [query, selectedLocation]);
+  }, [query, selectedLocation, normalisedAllowedTypes]);
 
   const handleLocationClick = (location: LocationResult) => {
     setSelectedLocation(location);
     setQuery(location.displayName);
+    onQueryChange?.(location.displayName);
     setIsDropdownOpen(false);
     setResults([]); // Clear results to prevent "No locations found" message
     setActiveIndex(-1);
@@ -252,6 +286,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           onChange={(event) => {
             const newValue = event.target.value;
             setQuery(newValue);
+            onQueryChange?.(newValue);
 
             if (newValue.trim().length > 0) {
               setIsDropdownOpen(true);
