@@ -682,20 +682,19 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Location search endpoint - uses Google Maps autocomplete with fallback
+  // Location search endpoint - queries the local Postgres cities table
   app.get("/api/locations/search", async (req, res) => {
     try {
-      const query = req.query.q as string;
-      if (!query) {
+      const rawQuery = typeof req.query.q === 'string' ? req.query.q : '';
+      const searchTerm = rawQuery.trim();
+
+      if (!searchTerm) {
         return res.status(400).json({ error: "Query parameter 'q' is required" });
       }
 
-      // If query is too short, return empty results
-      if (query.trim().length < 2) {
+      if (searchTerm.length < 2) {
         return res.json([]);
       }
-
-      console.log(`🔍 Location search for: "${query}"`);
 
       const typesParam = req.query.types;
       const requestedTypes =
@@ -707,191 +706,74 @@ export function setupRoutes(app: Express) {
           : [];
       const allowedTypes = requestedTypes.length > 0 ? requestedTypes : null;
 
-      const filterByAllowedTypes = <T extends { type?: string }>(results: T[]): T[] => {
-        if (!allowedTypes) {
-          return results;
+      // This endpoint now only serves city lookups. Respect allowed type filters.
+      if (allowedTypes && !allowedTypes.includes('city')) {
+        return res.json([]);
+      }
+
+      console.log(`🏙️ Searching local cities database for "${searchTerm}"`);
+
+      const dbResult = await query(
+        `SELECT geoname_id, name, country_code, latitude, longitude, population, timezone
+         FROM cities
+         WHERE name ILIKE $1 || '%'
+         ORDER BY population DESC
+         LIMIT 10;`,
+        [searchTerm],
+      );
+
+      const parseNullableNumber = (value: unknown): number | null => {
+        if (value === undefined || value === null) {
+          return null;
         }
 
-        return results.filter((result) => {
-          const typeValue =
-            typeof result?.type === 'string' ? result.type.toLowerCase() : '';
-          return allowedTypes.includes(typeValue);
-        });
+        if (typeof value === 'number') {
+          return Number.isFinite(value) ? value : null;
+        }
+
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
       };
 
-      try {
-        // Try Google Maps autocomplete first
-        const googleResults = await googleMapsService.autocompleteLocation(query.trim());
+      const results = dbResult.rows.map((row: any) => {
+        const geonameId = parseNullableNumber(row.geoname_id);
+        const latitude = parseNullableNumber(row.latitude);
+        const longitude = parseNullableNumber(row.longitude);
+        const population = parseNullableNumber(row.population);
+        const name = typeof row.name === 'string' ? row.name : '';
+        const countryCode = typeof row.country_code === 'string' ? row.country_code : '';
+        const timezone = typeof row.timezone === 'string' ? row.timezone : null;
 
-        if (googleResults && googleResults.length > 0) {
-          // Transform Google Maps results to SmartLocationSearch expected format
-          const transformedResults = googleResults.map((location, index) => {
-            // Better type detection based on Google Places types
-            let locationType: 'airport' | 'city' | 'metro' | 'state' | 'country' = 'city';
-            
-            console.log(`🔍 Analyzing location types for "${location.name}":`, location.types);
-            
-            // More specific type detection for Google Places
-            if (location.types?.includes('airport')) {
-              locationType = 'airport';
-            } else if (location.types?.includes('country')) {
-              locationType = 'country';
-            } else if (location.types?.includes('administrative_area_level_1')) {
-              locationType = 'state';  
-            } else if (location.types?.includes('locality') || location.types?.includes('postal_town')) {
-              locationType = 'city';
-            } else if (location.types?.includes('sublocality') || location.types?.includes('neighborhood')) {
-              locationType = 'metro';
-            } else if (location.types?.includes('administrative_area_level_2')) {
-              locationType = 'city'; // Often represents cities/counties
-            } else {
-              // Default fallback based on display name analysis
-              const displayLower = location.displayName.toLowerCase();
-              if (displayLower.includes('airport') || displayLower.includes('international')) {
-                locationType = 'airport';
-              } else {
-                locationType = 'city'; // Safe default
-              }
-            }
-            
-            // Better parsing of display name components
-            const displayParts = location.displayName.split(',').map((part: string) => part.trim());
-            const country = displayParts.length > 0 ? displayParts[displayParts.length - 1] : '';
-            const state = displayParts.length > 2 ? displayParts[displayParts.length - 2] : '';
-            
-            return {
-              id: index,
-              name: location.name,
-              displayName: location.displayName,
-              type: locationType,
-              code: location.place_id, // Use place_id as code for Google Places
-              country: country,
-              state: state,
-              airports: [] // Will be populated for cities that have airports
-            };
-          });
+        const displayNameParts = [name, countryCode].filter(Boolean);
+        const displayName = displayNameParts.join(', ');
 
-          const filteredGoogleResults = filterByAllowedTypes(transformedResults);
-
-          if (filteredGoogleResults.length > 0) {
-            console.log(
-              `✅ Google Maps found ${filteredGoogleResults.length} locations for "${query}" (requested types: ${
-                allowedTypes?.join(', ') || 'all'
-              })`,
-            );
-            return res.json(filteredGoogleResults);
-          }
-
-          console.log(
-            `ℹ️ Google Maps results for "${query}" did not match requested types (${allowedTypes?.join(', ') || 'all'}), falling back to GeoNames`,
-          );
-        }
-      } catch (googleError) {
-        console.error("Google Maps autocomplete failed, falling back to internal database:", googleError);
-      }
-
-      // Fallback to GeoNames API when Google Places fails
-      const geonamesUsername = process.env.GEONAMES_USERNAME;
-      if (!geonamesUsername) {
-        console.error("GeoNames username is not configured. Set GEONAMES_USERNAME in the environment.");
-        return res.json([]);
-      }
-
-      const geonamesUrl = new URL("http://api.geonames.org/searchJSON");
-      geonamesUrl.searchParams.set("q", query.trim());
-      geonamesUrl.searchParams.set("maxRows", "10");
-      geonamesUrl.searchParams.set("featureClass", "P");
-      geonamesUrl.searchParams.set("username", geonamesUsername);
-
-      try {
-        const geonamesResponse = await fetch(geonamesUrl.toString());
-        if (!geonamesResponse.ok) {
-          console.error(
-            `GeoNames API request failed with status ${geonamesResponse.status}: ${geonamesResponse.statusText}`,
-          );
-          return res.json([]);
-        }
-
-        const geonamesData: {
-          geonames?: Array<{
-            geonameId?: number;
-            name?: string;
-            countryName?: string;
-            adminName1?: string;
-            lat?: string;
-            lng?: string;
-            population?: number | string;
-          }>;
-          status?: { message?: string };
-        } = await geonamesResponse.json();
-
-        if (geonamesData.status?.message) {
-          console.error("GeoNames API returned an error:", geonamesData.status.message);
-          return res.json([]);
-        }
-
-        const parseNullableNumber = (value: unknown): number | null => {
-          if (value === undefined || value === null) {
-            return null;
-          }
-
-          const parsed = Number(value);
-          return Number.isFinite(parsed) ? parsed : null;
+        return {
+          id: geonameId ?? row.geoname_id ?? name,
+          geonameId: geonameId ?? null,
+          name,
+          displayName: displayName || name,
+          label: displayName || name,
+          type: 'city' as const,
+          code: geonameId ? String(geonameId) : name,
+          country: countryCode,
+          country_code: countryCode,
+          state: null,
+          cityName: name,
+          countryName: countryCode,
+          latitude,
+          longitude,
+          population,
+          timezone,
+          airports: [],
+          source: 'cities-db' as const,
         };
+      });
 
-        const transformedResults = (geonamesData.geonames ?? []).map((location, index) => {
-          const latitude = parseNullableNumber(location.lat);
-          const longitude = parseNullableNumber(location.lng);
-          const population = parseNullableNumber(location.population);
-
-          const displayParts = [location.name, location.adminName1, location.countryName].filter(
-            (part): part is string => Boolean(part && part.trim()),
-          );
-
-          const displayName = displayParts.join(", ");
-          const rawGeonameId = location.geonameId ?? index;
-          const parsedGeonameId =
-            typeof rawGeonameId === "string" ? Number(rawGeonameId) : rawGeonameId;
-          const geonameId =
-            typeof parsedGeonameId === "number" && Number.isFinite(parsedGeonameId)
-              ? parsedGeonameId
-              : index;
-
-          return {
-            id: `geonames-${geonameId}`,
-            name: location.name ?? "Unknown Location",
-            displayName: displayName || location.name || "Unknown Location",
-            label: displayName || location.name || "Unknown Location",
-            type: "city" as const,
-            code: String(geonameId),
-            country: location.countryName ?? "",
-            state: location.adminName1 ?? "",
-            airports: [],
-            geonameId,
-            cityName: location.name ?? null,
-            countryName: location.countryName ?? null,
-            latitude,
-            longitude,
-            population,
-            source: "geonames" as const,
-          };
-        });
-
-        const filteredGeonamesResults = filterByAllowedTypes(transformedResults);
-
-        console.log(
-          `✅ GeoNames fallback found ${filteredGeonamesResults.length} locations for "${query}" (requested types: ${
-            allowedTypes?.join(', ') || 'all'
-          })`,
-        );
-        return res.json(filteredGeonamesResults);
-      } catch (geonamesError) {
-        console.error("GeoNames fallback failed:", geonamesError);
-        return res.json([]);
-      }
+      console.log(`✅ Returning ${results.length} city matches for "${searchTerm}"`);
+      return res.json(results);
     } catch (error: unknown) {
-      console.error("Location search error:", error);
-      res.status(500).json({ error: "Location search failed" });
+      console.error('Location search error:', error);
+      return res.status(500).json({ error: 'Location search failed' });
     }
   });
 
