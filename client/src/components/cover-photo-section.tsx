@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
-const MAX_FILE_SIZE_MB = 5;
+const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const ACCEPTED_FILE_TYPES = "image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif";
 
 const UNSPLASH_PRESETS: { url: string; label: string; attribution: string }[] = [
   {
@@ -114,6 +116,7 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
   const [focusY, setFocusY] = useState(50);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const [altText, setAltText] = useState<string>(value.coverPhotoAlt ?? defaultAltText);
+  const fileInputId = useId();
 
   const hasImage = Boolean(value.coverPhotoUrl);
 
@@ -240,7 +243,7 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
   const handleFile = useCallback(
     async (file: File) => {
       if (!file.type.startsWith("image/")) {
-        setError("Please upload an image file (JPG, PNG, or WEBP).");
+        setError("Please upload an image file (JPG, PNG, or HEIC).");
         return;
       }
       if (file.size > MAX_FILE_SIZE_BYTES) {
@@ -248,6 +251,7 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
         return;
       }
 
+      setError(null);
       const reader = new FileReader();
       reader.onload = async () => {
         try {
@@ -270,6 +274,7 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
     async (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       if (event.dataTransfer.files?.length) {
+        setError(null);
         await handleFile(event.dataTransfer.files[0]!);
       }
     },
@@ -287,6 +292,7 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
       setAltText((prev) => prev || defaultAltText);
       setEditorFromImage(src, image.naturalWidth, image.naturalHeight, null);
       setUrlInput("");
+      setError(null);
     } catch (loadError) {
       console.error(loadError);
       setError("Couldn't load this image. Try another link or upload.");
@@ -299,6 +305,7 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
         const image = await loadImage(preset.url);
         setAltText(`${preset.label} – ${defaultAltText}`);
         setEditorFromImage(preset.url, image.naturalWidth, image.naturalHeight, preset.attribution);
+        setError(null);
       } catch (presetError) {
         console.error(presetError);
         setError("We couldn't load that Unsplash image. Try another option.");
@@ -342,8 +349,40 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
     [focusX, focusY],
   );
 
+  const openFilePicker = useCallback(() => {
+    const input = fileInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    if (!input || isProcessing) {
+      return;
+    }
+    try {
+      if (typeof input.showPicker === "function") {
+        input.showPicker();
+        return;
+      }
+    } catch (showPickerError) {
+      console.warn("File picker showPicker failed, falling back to click.", showPickerError);
+    }
+    input.click();
+  }, [isProcessing]);
+
   return (
     <div className="space-y-4">
+      <input
+        ref={fileInputRef}
+        id={fileInputId}
+        type="file"
+        accept={ACCEPTED_FILE_TYPES}
+        className="sr-only"
+        aria-label="Choose a cover photo"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            void handleFile(file);
+            event.target.value = "";
+          }
+        }}
+        disabled={isProcessing}
+      />
       <div className="space-y-1.5">
         <Label className="text-sm font-semibold text-slate-700">Cover photo</Label>
         <p className="text-xs text-slate-500">
@@ -365,6 +404,12 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
                 className={cn("h-full w-full object-cover", isProcessing && "opacity-70")}
                 loading="lazy"
               />
+              {isProcessing ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/50 text-white">
+                  <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
+                  <span className="text-xs font-medium">Processing photo…</span>
+                </div>
+              ) : null}
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent p-4">
                 <p className="text-sm font-medium text-white">Trip banner preview</p>
               </div>
@@ -403,7 +448,21 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
           {editorState ? focusControls : null}
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isProcessing}>
+            <Button
+              type="button"
+              size="sm"
+              onClick={openFilePicker}
+              onKeyDown={(event) => {
+                if (
+                  (event.key === "Enter" || event.key === " " || event.key === "Spacebar") &&
+                  !isProcessing
+                ) {
+                  event.preventDefault();
+                  openFilePicker();
+                }
+              }}
+              disabled={isProcessing}
+            >
               Replace photo
             </Button>
             <Button
@@ -439,24 +498,30 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
             onDrop={handleDrop}
           >
             <p className="text-sm font-semibold text-slate-700">Add a cover photo</p>
-            <p className="text-xs text-slate-500">Drag & drop or choose a JPG, PNG, or WEBP (max {MAX_FILE_SIZE_MB}MB).</p>
+            <p className="text-xs text-slate-500">
+              Drag & drop or choose a JPG, PNG, or HEIC (max {MAX_FILE_SIZE_MB}MB).
+            </p>
             <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button type="button" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isProcessing}>
-                Upload photo
-              </Button>
-              <Input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="hidden"
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) {
-                    void handleFile(file);
-                    event.target.value = "";
+              <Button
+                type="button"
+                size="sm"
+                onClick={openFilePicker}
+                onKeyDown={(event) => {
+                  if (
+                    (event.key === "Enter" || event.key === " " || event.key === "Spacebar") &&
+                    !isProcessing
+                  ) {
+                    event.preventDefault();
+                    openFilePicker();
                   }
                 }}
-              />
+                disabled={isProcessing}
+              >
+                Upload photo
+              </Button>
+              <Label htmlFor={fileInputId} className="sr-only">
+                Choose a cover photo file
+              </Label>
             </div>
           </div>
 
