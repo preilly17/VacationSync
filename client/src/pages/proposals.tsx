@@ -1210,84 +1210,6 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     );
   };
 
-  const boundaryWrapperClass = embedded
-    ? "py-12 flex items-center justify-center"
-    : "min-h-screen bg-neutral-50 flex items-center justify-center";
-
-  if (!tripId) {
-    return (
-      <div className={boundaryWrapperClass}>
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Trip not specified</h2>
-            <p className="text-neutral-600 mb-4">
-              We couldn't determine which trip to load proposals for. Please go back and pick a trip first.
-            </p>
-            <Link href="/">
-              <Button data-testid="button-trip-missing-back-home">Back to Home</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (authLoading || tripLoading) {
-    return (
-      <div className={boundaryWrapperClass}>
-        <TravelLoading variant="journey" size="lg" text="Loading your proposals..." />
-      </div>
-    );
-  }
-
-  if (tripError) {
-    const parsedError = parseApiError(tripError);
-
-    return (
-      <div className={boundaryWrapperClass}>
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Unable to load trip</h2>
-            <p className="text-neutral-600 mb-4">
-              {parsedError.message || "Something went wrong while loading this trip. Please try again."}
-            </p>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <Button onClick={() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] })}>
-                Try again
-              </Button>
-              <Link href="/">
-                <Button variant="outline" data-testid="button-trip-error-back-home">
-                  Back to Home
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!trip) {
-    return (
-      <div className={boundaryWrapperClass}>
-        <Card className="w-full max-w-md mx-4">
-          <CardContent className="pt-6 text-center">
-            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-2">Trip Not Found</h2>
-            <p className="text-neutral-600 mb-4">
-              The trip you're looking for doesn't exist or you don't have access to it.
-            </p>
-            <Link href="/">
-              <Button data-testid="button-back-home">Back to Home</Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   // Hotel proposal card component
   const HotelProposalCard = ({ proposal }: { proposal: HotelProposalWithDetails }) => {
     const userRanking = getUserRanking(proposal.rankings || [], user?.id || '');
@@ -1786,6 +1708,84 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     restaurantProposalsHasError;
 
   const noProposalsAtAll = !hasProposalDataIssues && totalAvailableProposals === 0;
+
+  const boundaryWrapperClass = embedded
+    ? "py-12 flex items-center justify-center"
+    : "min-h-screen bg-neutral-50 flex items-center justify-center";
+
+  if (!tripId) {
+    return (
+      <div className={boundaryWrapperClass}>
+        <Card className="w-full max-w-md mx-4">
+          <CardContent className="pt-6 text-center">
+            <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2">Trip not specified</h2>
+            <p className="text-neutral-600 mb-4">
+              We couldn't determine which trip to load proposals for. Please go back and pick a trip first.
+            </p>
+            <Link href="/">
+              <Button data-testid="button-trip-missing-back-home">Back to Home</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (authLoading || tripLoading) {
+    return (
+      <div className={boundaryWrapperClass}>
+        <TravelLoading variant="journey" size="lg" text="Loading your proposals..." />
+      </div>
+    );
+  }
+
+  if (tripError) {
+    const parsedError = parseApiError(tripError);
+
+    return (
+      <div className={boundaryWrapperClass}>
+        <Card className="w-full max-w-md mx-4">
+          <CardContent className="pt-6 text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2">Unable to load trip</h2>
+            <p className="text-neutral-600 mb-4">
+              {parsedError.message || "Something went wrong while loading this trip. Please try again."}
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button onClick={() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] })}>
+                Try again
+              </Button>
+              <Link href="/">
+                <Button variant="outline" data-testid="button-trip-error-back-home">
+                  Back to Home
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <div className={boundaryWrapperClass}>
+        <Card className="w-full max-w-md mx-4">
+          <CardContent className="pt-6 text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold mb-2">Trip Not Found</h2>
+            <p className="text-neutral-600 mb-4">
+              The trip you're looking for doesn't exist or you don't have access to it.
+            </p>
+            <Link href="/">
+              <Button data-testid="button-back-home">Back to Home</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const mainContent = (
     <div className="space-y-6">
