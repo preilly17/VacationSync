@@ -89,18 +89,16 @@ export default function LocationDatabase() {
     setSearchResults([]);
     
     try {
-      const response = await apiFetch('/api/locations/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: searchQuery,
-          type: searchType === 'ALL' ? undefined : searchType,
-          limit: 20,
-          useApi: useApi
-        }),
-      });
+      const params = new URLSearchParams({ q: searchQuery, limit: '20' });
+      if (searchType !== 'ALL') {
+        params.set('types', searchType.toLowerCase());
+      }
+
+      if (useApi) {
+        params.set('useApi', 'true');
+      }
+
+      const response = await apiFetch(`/api/locations/search?${params.toString()}`);
       
       if (!response.ok) {
         throw new Error('Search failed');

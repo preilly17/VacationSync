@@ -41,6 +41,43 @@ interface LocationSearchProps {
   maxResults?: number;
 }
 
+const toTypeParam = (value?: LocationSearchProps["type"]): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  switch (value) {
+    case 'AIRPORT':
+      return 'airport';
+    case 'CITY':
+      return 'city';
+    case 'COUNTRY':
+      return 'country';
+    default:
+      return null;
+  }
+};
+
+const buildSearchUrl = (
+  query: string,
+  options: {
+    type?: LocationSearchProps["type"];
+    limit?: number;
+  } = {},
+) => {
+  const params = new URLSearchParams({ q: query });
+  const typeParam = toTypeParam(options.type);
+  if (typeParam) {
+    params.set('types', typeParam);
+  }
+
+  if (typeof options.limit === 'number') {
+    params.set('limit', options.limit.toString());
+  }
+
+  return `/api/locations/search?${params.toString()}`;
+};
+
 export default function LocationSearch({ 
   value = null, 
   onChange, 
@@ -96,18 +133,9 @@ export default function LocationSearch({
 
   const loadPopularDestinations = async () => {
     try {
-      const response = await apiFetch('/api/locations/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: 'popular',
-          type: type,
-          limit: 20,
-          useApi: false
-        }),
-      });
+      const response = await apiFetch(
+        buildSearchUrl('popular', { type, limit: 20 }),
+      );
 
       if (response.ok) {
         const results = await response.json();
@@ -149,18 +177,9 @@ export default function LocationSearch({
     setShowingPopular(false);
     
     try {
-      const response = await apiFetch('/api/locations/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: searchQuery,
-          type: type,
-          limit: maxResults,
-          useApi: false // Start with cached data for speed
-        }),
-      });
+      const response = await apiFetch(
+        buildSearchUrl(searchQuery, { type, limit: maxResults }),
+      );
 
       if (response.ok) {
         const searchResults = await response.json();
@@ -206,18 +225,9 @@ export default function LocationSearch({
       
       if (result.type === 'CITY') {
         try {
-          const airportResponse = await apiFetch('/api/locations/search', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              query: result.name,
-              type: 'AIRPORT',
-              limit: 5,
-              useApi: false
-            }),
-          });
+          const airportResponse = await apiFetch(
+            buildSearchUrl(result.name, { type: 'AIRPORT', limit: 5 }),
+          );
           
           if (airportResponse.ok) {
             const airports = await airportResponse.json();
