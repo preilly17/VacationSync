@@ -67,10 +67,9 @@ export function StatCard({
     "data-testid": testId,
     "aria-label": ariaLabel,
     className: cn(
-      "group relative flex h-full flex-col justify-between rounded-3xl border border-slate-200/70 bg-white/90 p-6 text-left shadow-sm transition duration-200",
-      "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-3xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
+      "card card--accent group relative flex h-full flex-col justify-between overflow-hidden p-6 text-left",
       isInteractive
-        ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]"
+        ? "cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#7c5cff]"
         : "cursor-default",
     ),
     onClick: handleActivate,
@@ -187,7 +186,7 @@ function CardContents({
   return (
     <div className="flex h-full flex-col gap-6">
       <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#ff7e5f]/15 via-[#feb47b]/10 to-[#654ea3]/15 text-[#ff7e5f]">
+        <div className="icon-pill">
           {icon}
         </div>
         {href ? (
@@ -200,19 +199,19 @@ function CardContents({
               event.stopPropagation();
               onNavigate?.();
             }}
-            className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 transition hover:text-slate-600"
+            className="stat-label opacity-70 transition hover:opacity-100"
           >
             View
           </a>
         ) : (
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">View</span>
+          <span className="stat-label opacity-70">View</span>
         )}
       </div>
       <div className="space-y-1.5">
-        <div className="text-[30px] font-semibold leading-none text-slate-900">{value}</div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
+        <div className="stat-number leading-none">{value}</div>
+        <p className="stat-label">{label}</p>
         {description ? (
-          <p className="text-sm text-slate-500">{description}</p>
+          <p className="body text-sm text-slate-500">{description}</p>
         ) : null}
       </div>
     </div>

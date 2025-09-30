@@ -388,7 +388,7 @@ export default function Home() {
 
   const heroStyles: CSSProperties = heroBackground
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.55)), url(${heroBackground})`,
+        backgroundImage: `url(${heroBackground})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
       }
@@ -411,35 +411,31 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
-      <div className="mx-auto w-full max-w-7xl px-4 pb-24 pt-28 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-16">
+    <div className="dashboard-page min-h-screen">
+      <div className="container w-full pb-24 pt-28">
+        <div className="flex flex-col gap-12">
           <section
             aria-labelledby="dashboard-hero"
-            className="rounded-[32px] border border-white/20 bg-slate-900/80 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
+            className="hero section--tight p-8 text-white sm:p-12"
             style={heroStyles}
           >
             <div className="grid gap-6">
-              <div className="text-sm uppercase tracking-[0.2em] text-white/80">
-                Your travel hub
-              </div>
+              <div className="eyebrow">Your travel hub</div>
               <div className="space-y-4">
-                <h1 id="dashboard-hero" className="text-4xl font-semibold sm:text-5xl">
-                  Dashboard
-                </h1>
-                <p className="text-base text-white/80">
+                <h1 id="dashboard-hero">Dashboard</h1>
+                <p className="body">
                   Plan new trips and see what’s next—all in one place.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   onClick={handlePlanTrip}
-                  className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-base font-semibold text-white shadow-lg transition-opacity hover:opacity-90"
+                  className="button-primary rounded-full px-6 text-base font-semibold"
                 >
                   Plan a New Trip
                 </Button>
                 {nextTripChip ? (
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white/90">
+                  <span className="chip text-xs font-medium text-slate-900/85">
                     {nextTripChip}
                   </span>
                 ) : null}
@@ -447,10 +443,7 @@ export default function Home() {
             </div>
           </section>
 
-          <section
-            aria-labelledby="dashboard-highlights"
-            className="rounded-3xl border border-white/30 bg-white/90 p-6 shadow-lg backdrop-blur"
-          >
+          <section aria-labelledby="dashboard-highlights" className="card section p-6">
             <h2 id="dashboard-highlights" className="sr-only">
               Highlights
             </h2>
@@ -532,13 +525,17 @@ export default function Home() {
 
           <section className="grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <div className="flex flex-col gap-12">
-              <section aria-labelledby="upcoming-trips-heading" className="space-y-6">
-                <h2 id="upcoming-trips-heading" className="text-2xl font-semibold text-slate-900">
-                  Upcoming trips
-                </h2>
+              <section aria-labelledby="upcoming-trips-heading" className="section space-y-6">
+                <div>
+                  <div className="eyebrow">Plan ahead</div>
+                  <h2 id="upcoming-trips-heading" className="section-title text-2xl">
+                    Upcoming trips
+                  </h2>
+                  <div className="divider" />
+                </div>
 
                 {error ? (
-                  <Card className="rounded-3xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
+                  <Card className="section--tight border border-amber-200 bg-amber-50/90 p-6 text-amber-900">
                     We’re having trouble loading your trips right now. Try refreshing the page.
                   </Card>
                 ) : null}
@@ -548,7 +545,7 @@ export default function Home() {
                     {Array.from({ length: 3 }).map((_, index) => (
                       <Card
                         key={`trip-skeleton-${index}`}
-                        className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-sm"
+                        className="overflow-hidden p-4"
                       >
                         <Skeleton className="aspect-video w-full rounded-2xl" />
                         <div className="mt-4 space-y-2">
@@ -566,15 +563,15 @@ export default function Home() {
                     ))}
                   </div>
                 ) : (
-                  <Card className="flex flex-col items-center justify-center gap-5 rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
+                  <Card className="flex flex-col items-center justify-center gap-5 border border-dashed border-slate-200 bg-white p-10 text-center">
                     <div className="text-5xl">🌅</div>
-                    <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
-                    <p className="max-w-md text-sm text-slate-500">
+                    <h3 className="title text-2xl text-slate-900">Ready for your next getaway?</h3>
+                    <p className="body max-w-md text-sm text-slate-500">
                       Start planning a new adventure to see it appear here with all the essentials at a glance.
                     </p>
                     <Button
                       onClick={handlePlanTrip}
-                      className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-white shadow-md transition-opacity hover:opacity-90"
+                      className="button-primary rounded-full px-6 text-white"
                     >
                       Plan a New Trip
                     </Button>
@@ -583,24 +580,28 @@ export default function Home() {
               </section>
 
               {insights.length > 0 ? (
-                <section aria-labelledby="insights-heading" className="space-y-6">
+                <section aria-labelledby="insights-heading" className="section space-y-6">
                   <div className="flex items-center justify-between">
-                    <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
-                      Helpful insights
-                    </h2>
+                    <div>
+                      <div className="eyebrow">Make the most</div>
+                      <h2 id="insights-heading" className="section-title text-2xl">
+                        Helpful insights
+                      </h2>
+                      <div className="divider" />
+                    </div>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {insights.map((insight) => (
                       <Link key={insight.id} href={insight.href} className="group">
-                        <Card className="flex h-full flex-col justify-between overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm transition-transform group-hover:-translate-y-1 group-hover:shadow-md">
+                        <Card className="flex h-full flex-col justify-between overflow-hidden p-6">
                           <div className="space-y-3">
                             <span className="text-2xl" aria-hidden="true">
                               {insight.icon}
                             </span>
-                            <h3 className="text-lg font-semibold text-slate-900">{insight.title}</h3>
-                            <p className="text-sm text-slate-500">{insight.description}</p>
+                            <h3 className="title text-lg text-slate-900">{insight.title}</h3>
+                            <p className="body text-sm text-slate-500">{insight.description}</p>
                           </div>
-                          <span className="mt-6 text-sm font-semibold text-[#ff7e5f]">Go to trip →</span>
+                          <span className="mt-6 text-sm font-semibold text-[#7c5cff]">Go to trip →</span>
                         </Card>
                       </Link>
                     ))}
@@ -611,13 +612,14 @@ export default function Home() {
 
             <aside className="flex flex-col gap-6 self-start">
               <section aria-labelledby="converter-heading">
-                <Card className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+                <Card className="card--accent overflow-hidden p-6">
                   <div className="mb-4 flex items-center justify-between">
                     <div>
-                      <h2 id="converter-heading" className="text-lg font-semibold text-slate-900">
+                      <div className="eyebrow">Quick tools</div>
+                      <h2 id="converter-heading" className="section-title text-lg text-slate-900">
                         Currency converter
                       </h2>
-                      <p className="text-sm text-slate-500">
+                      <p className="body text-sm text-slate-500">
                         Quick conversions for the road.
                       </p>
                     </div>
@@ -634,19 +636,17 @@ export default function Home() {
               </section>
 
               {primaryTrip ? (
-                <Card className="rounded-3xl border border-slate-100 bg-gradient-to-br from-[#ffecd2] via-white to-[#fcb69f] p-6 shadow-sm">
+                <Card className="overflow-hidden bg-gradient-to-br from-[#ffecd2] via-white to-[#fcb69f] p-6">
                   <div className="flex flex-col gap-3">
-                    <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                      Next destination
-                    </span>
-                    <h3 className="text-xl font-semibold text-slate-900">
+                    <span className="eyebrow text-slate-700">Next destination</span>
+                    <h3 className="title text-xl text-slate-900">
                       {primaryTrip.name || primaryTrip.destination}
                     </h3>
                     <div className="flex items-center gap-2 text-sm text-slate-700">
                       <MapPin className="h-4 w-4" />
                       {primaryTrip.destination}
                     </div>
-                    <div className="text-sm text-slate-600">
+                    <div className="body text-sm text-slate-600">
                       {formatDateRange(
                         toDateString(primaryTrip.startDate),
                         toDateString(primaryTrip.endDate),
@@ -672,30 +672,29 @@ function TripCard({ trip, onOpen }: TripCardProps) {
   const imageUrl = trip.coverPhotoCardUrl ?? buildDestinationImageUrl(trip.destination);
   const altText = trip.coverPhotoAlt ?? `${trip.destination} travel inspiration`;
   return (
-    <Card className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
-      <div className="relative aspect-video overflow-hidden">
+    <Card className="group flex h-full flex-col overflow-hidden">
+      <div className="trip-card__media relative aspect-video">
         <img
           src={imageUrl}
           alt={altText}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
         <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
-          <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+          <Badge className="chip px-3 py-1 text-xs font-medium text-slate-700">
             {formatDateRange(trip.startDate, trip.endDate)}
           </Badge>
-          <Badge className="rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+          <Badge className="chip px-3 py-1 text-xs font-medium text-slate-700">
             {getTravelersLabel(trip.travelersCount)}
           </Badge>
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-4 p-6">
         <div className="space-y-2">
-          <h3 className="text-xl font-semibold text-slate-900" title={trip.name}>
+          <h3 className="title text-xl text-slate-900" title={trip.name}>
             {trip.name}
           </h3>
-          <p className="text-sm text-slate-500">{getCountdownLabel(trip.startDate, trip.endDate)}</p>
+          <p className="body text-sm text-slate-500">{getCountdownLabel(trip.startDate, trip.endDate)}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex -space-x-2">
@@ -706,14 +705,14 @@ function TripCard({ trip, onOpen }: TripCardProps) {
               </Avatar>
             ))}
           </div>
-          <Badge variant="secondary" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+          <Badge variant="secondary" className="chip px-3 py-1 text-xs font-medium text-slate-700">
             Planning {trip.progressPercent}%
           </Badge>
         </div>
-        <Progress value={trip.progressPercent} className="h-2 rounded-full bg-slate-100" />
+        <Progress value={trip.progressPercent} className="progress h-2 rounded-full bg-slate-100" />
         <Button
           onClick={onOpen}
-          className="mt-auto rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] text-white shadow-md hover:opacity-90"
+          className="button-primary mt-auto rounded-full text-white"
         >
           Open trip
         </Button>
