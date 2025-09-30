@@ -3029,8 +3029,7 @@ function FlightCoordination({
       return;
     }
 
-    markExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
-    window.open(outboundUrl, "_blank", "noopener,noreferrer");
+    const pointhoundUrls = [outboundUrl];
 
     if (isRoundTrip && returnDate) {
       const inboundUrl = buildPointhoundLink(
@@ -3040,9 +3039,14 @@ function FlightCoordination({
       );
 
       if (inboundUrl) {
-        window.open(inboundUrl, "_blank", "noopener,noreferrer");
+        pointhoundUrls.push(inboundUrl);
       }
     }
+
+    markExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
+    pointhoundUrls.forEach((url) => {
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
   }, [
     buildPointhoundLink,
     isRoundTrip,
