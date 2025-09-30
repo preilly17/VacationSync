@@ -1,4 +1,12 @@
-import { Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  lazy,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -341,6 +349,17 @@ export default function Home() {
       )}`
     : null;
 
+  const heroStyles: CSSProperties = heroBackground
+    ? {
+        backgroundImage: `linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.55)), url(${heroBackground})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      }
+    : {
+        backgroundImage:
+          "linear-gradient(135deg, rgba(255, 126, 95, 0.88), rgba(254, 180, 123, 0.85), rgba(101, 78, 163, 0.85))",
+      };
+
   const handlePlanTrip = () => {
     setLocation("/trips/new");
   };
@@ -355,33 +374,30 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 pb-20">
-      <section className="relative isolate h-[320px] w-full overflow-hidden sm:h-[380px] lg:h-[420px]">
-        <div className="absolute inset-0">
-          {heroBackground ? (
-            <img
-              src={heroBackground}
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-          ) : (
-            <div className="h-full w-full bg-gradient-to-br from-[#ff7e5f] via-[#feb47b] to-[#654ea3]" />
-          )}
-          <div className="absolute inset-0 bg-slate-900/45" aria-hidden="true" />
-        </div>
-        <div className="relative mx-auto flex h-full max-w-6xl items-end px-6 pb-10">
-          <div className="max-w-xl rounded-3xl border border-white/20 bg-white/10 p-8 text-white shadow-xl backdrop-blur">
-            <div className="flex flex-col gap-3">
-              <div className="text-sm uppercase tracking-[0.2em] text-white/80">Your travel hub</div>
-              <h1 className="text-4xl font-semibold sm:text-5xl">Dashboard</h1>
-              <p className="text-base text-white/80">
-                Plan new trips and see what’s next—all in one place.
-              </p>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
+      <div className="mx-auto w-full max-w-7xl px-4 pb-24 pt-28 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-16">
+          <section
+            aria-labelledby="dashboard-hero"
+            className="rounded-[32px] border border-white/20 bg-slate-900/80 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
+            style={heroStyles}
+          >
+            <div className="grid gap-6">
+              <div className="text-sm uppercase tracking-[0.2em] text-white/80">
+                Your travel hub
+              </div>
+              <div className="space-y-4">
+                <h1 id="dashboard-hero" className="text-4xl font-semibold sm:text-5xl">
+                  Dashboard
+                </h1>
+                <p className="text-base text-white/80">
+                  Plan new trips and see what’s next—all in one place.
+                </p>
+              </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   onClick={handlePlanTrip}
-                  className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-base font-semibold text-white shadow-lg hover:opacity-90"
+                  className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-base font-semibold text-white shadow-lg transition-opacity hover:opacity-90"
                 >
                   Plan a New Trip
                 </Button>
@@ -392,181 +408,185 @@ export default function Home() {
                 ) : null}
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
 
-      <div className="mx-auto -mt-16 flex max-w-6xl flex-col gap-12 px-6 sm:-mt-20">
-        <section aria-labelledby="dashboard-highlights" className="rounded-3xl border border-white/40 bg-white/90 p-6 shadow-lg backdrop-blur">
-          <h2 id="dashboard-highlights" className="sr-only">
-            Highlights
-          </h2>
-          {isLoading ? (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <Card
-                  key={`highlight-skeleton-${index}`}
-                  className="rounded-2xl border border-slate-100/60 bg-white/70 p-6 shadow-sm"
-                >
-                  <Skeleton className="h-5 w-10" />
-                  <Skeleton className="mt-4 h-6 w-20" />
-                  <Skeleton className="mt-2 h-4 w-24" />
+          <section
+            aria-labelledby="dashboard-highlights"
+            className="rounded-3xl border border-white/30 bg-white/90 p-6 shadow-lg backdrop-blur"
+          >
+            <h2 id="dashboard-highlights" className="sr-only">
+              Highlights
+            </h2>
+            {isLoading ? (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <Card
+                    key={`highlight-skeleton-${index}`}
+                    className="rounded-2xl border border-slate-100/60 bg-white/70 p-6 shadow-sm"
+                  >
+                    <Skeleton className="h-5 w-10" />
+                    <Skeleton className="mt-4 h-6 w-20" />
+                    <Skeleton className="mt-2 h-4 w-24" />
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <HighlightCard
+                  icon={<Plane className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  value={highlightStats.upcoming}
+                  label="Upcoming trips"
+                  href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
+                />
+                <HighlightCard
+                  icon={<Globe2 className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  value={highlightStats.destinations}
+                  label="Destinations"
+                  href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
+                />
+                <HighlightCard
+                  icon={<CalendarDays className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  value={highlightStats.daysToNext ?? "—"}
+                  label="Days to next trip"
+                  href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
+                />
+                <HighlightCard
+                  icon={<UserRound className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  value={highlightStats.travelersThisYear}
+                  label="Travelers this year"
+                  href={primaryTrip ? `/trip/${primaryTrip.id}?view=members` : "/"}
+                />
+              </div>
+            )}
+          </section>
+
+          <section className="grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="flex flex-col gap-12">
+              <section aria-labelledby="upcoming-trips-heading" className="space-y-6">
+                <h2 id="upcoming-trips-heading" className="text-2xl font-semibold text-slate-900">
+                  Upcoming trips
+                </h2>
+
+                {error ? (
+                  <Card className="rounded-3xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
+                    We’re having trouble loading your trips right now. Try refreshing the page.
+                  </Card>
+                ) : null}
+
+                {isLoading ? (
+                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <Card
+                        key={`trip-skeleton-${index}`}
+                        className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-sm"
+                      >
+                        <Skeleton className="aspect-video w-full rounded-2xl" />
+                        <div className="mt-4 space-y-2">
+                          <Skeleton className="h-5 w-2/3" />
+                          <Skeleton className="h-4 w-1/2" />
+                          <Skeleton className="h-2 w-full rounded-full" />
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ) : upcomingSummaries.length > 0 ? (
+                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                    {upcomingSummaries.map((trip) => (
+                      <TripCard key={trip.id} trip={trip} onOpen={() => handleOpenTrip(trip.id)} />
+                    ))}
+                  </div>
+                ) : (
+                  <Card className="flex flex-col items-center justify-center gap-5 rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
+                    <div className="text-5xl">🌅</div>
+                    <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
+                    <p className="max-w-md text-sm text-slate-500">
+                      Start planning a new adventure to see it appear here with all the essentials at a glance.
+                    </p>
+                    <Button
+                      onClick={handlePlanTrip}
+                      className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-white shadow-md transition-opacity hover:opacity-90"
+                    >
+                      Plan a New Trip
+                    </Button>
+                  </Card>
+                )}
+              </section>
+
+              {insights.length > 0 ? (
+                <section aria-labelledby="insights-heading" className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
+                      Helpful insights
+                    </h2>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {insights.map((insight) => (
+                      <Link key={insight.id} href={insight.href} className="group">
+                        <Card className="flex h-full flex-col justify-between overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm transition-transform group-hover:-translate-y-1 group-hover:shadow-md">
+                          <div className="space-y-3">
+                            <span className="text-2xl" aria-hidden="true">
+                              {insight.icon}
+                            </span>
+                            <h3 className="text-lg font-semibold text-slate-900">{insight.title}</h3>
+                            <p className="text-sm text-slate-500">{insight.description}</p>
+                          </div>
+                          <span className="mt-6 text-sm font-semibold text-[#ff7e5f]">Go to trip →</span>
+                        </Card>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+
+            <aside className="flex flex-col gap-6 self-start">
+              <section aria-labelledby="converter-heading">
+                <Card className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h2 id="converter-heading" className="text-lg font-semibold text-slate-900">
+                        Currency converter
+                      </h2>
+                      <p className="text-sm text-slate-500">
+                        Quick conversions for the road.
+                      </p>
+                    </div>
+                  </div>
+                  <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+                    <CurrencyConverterTool
+                      onClose={() => undefined}
+                      lastConversion={lastConversion}
+                      onConversion={handleConversionUpdate}
+                      mobile={!isDesktop}
+                    />
+                  </Suspense>
                 </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <HighlightCard
-                icon={<Plane className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                value={highlightStats.upcoming}
-                label="Upcoming trips"
-                href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
-              />
-              <HighlightCard
-                icon={<Globe2 className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                value={highlightStats.destinations}
-                label="Destinations"
-                href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
-              />
-              <HighlightCard
-                icon={<CalendarDays className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                value={highlightStats.daysToNext ?? "—"}
-                label="Days to next trip"
-                href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
-              />
-              <HighlightCard
-                icon={<UserRound className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                value={highlightStats.travelersThisYear}
-                label="Travelers this year"
-                href={primaryTrip ? `/trip/${primaryTrip.id}?view=members` : "/"}
-              />
-            </div>
-          )}
-        </section>
+              </section>
 
-        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-10">
-            <section aria-labelledby="upcoming-trips-heading" className="space-y-4">
-              <h2 id="upcoming-trips-heading" className="text-2xl font-semibold text-slate-900">
-                Upcoming trips
-              </h2>
-
-              {error ? (
-                <Card className="rounded-3xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
-                  We’re having trouble loading your trips right now. Try refreshing the page.
+              {primaryTrip ? (
+                <Card className="rounded-3xl border border-slate-100 bg-gradient-to-br from-[#ffecd2] via-white to-[#fcb69f] p-6 shadow-sm">
+                  <div className="flex flex-col gap-3">
+                    <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                      Next destination
+                    </span>
+                    <h3 className="text-xl font-semibold text-slate-900">
+                      {primaryTrip.name || primaryTrip.destination}
+                    </h3>
+                    <div className="flex items-center gap-2 text-sm text-slate-700">
+                      <MapPin className="h-4 w-4" />
+                      {primaryTrip.destination}
+                    </div>
+                    <div className="text-sm text-slate-600">
+                      {formatDateRange(
+                        toDateString(primaryTrip.startDate),
+                        toDateString(primaryTrip.endDate),
+                      )}
+                    </div>
+                  </div>
                 </Card>
               ) : null}
-
-              {isLoading ? (
-                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <Card key={`trip-skeleton-${index}`} className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-sm">
-                      <Skeleton className="aspect-video w-full rounded-2xl" />
-                      <div className="mt-4 space-y-2">
-                        <Skeleton className="h-5 w-2/3" />
-                        <Skeleton className="h-4 w-1/2" />
-                        <Skeleton className="h-2 w-full rounded-full" />
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              ) : upcomingSummaries.length > 0 ? (
-                <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                  {upcomingSummaries.map((trip) => (
-                    <TripCard key={trip.id} trip={trip} onOpen={() => handleOpenTrip(trip.id)} />
-                  ))}
-                </div>
-              ) : (
-                <Card className="flex flex-col items-center justify-center gap-5 rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
-                  <div className="text-5xl">🌅</div>
-                  <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
-                  <p className="max-w-md text-sm text-slate-500">
-                    Start planning a new adventure to see it appear here with all the essentials at a glance.
-                  </p>
-                  <Button
-                    onClick={handlePlanTrip}
-                    className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-white shadow-md hover:opacity-90"
-                  >
-                    Plan a New Trip
-                  </Button>
-                </Card>
-              )}
-            </section>
-
-            {insights.length > 0 ? (
-              <section aria-labelledby="insights-heading" className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
-                    Helpful insights
-                  </h2>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {insights.map((insight) => (
-                    <Link key={insight.id} href={insight.href} className="group">
-                      <Card className="flex h-full flex-col justify-between overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm transition-transform group-hover:-translate-y-1 group-hover:shadow-md">
-                        <div className="space-y-3">
-                          <span className="text-2xl" aria-hidden="true">
-                            {insight.icon}
-                          </span>
-                          <h3 className="text-lg font-semibold text-slate-900">{insight.title}</h3>
-                          <p className="text-sm text-slate-500">{insight.description}</p>
-                        </div>
-                        <span className="mt-6 text-sm font-semibold text-[#ff7e5f]">Go to trip →</span>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </div>
-
-          <aside className="space-y-6">
-            <section aria-labelledby="converter-heading">
-              <Card className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <h2 id="converter-heading" className="text-lg font-semibold text-slate-900">
-                      Currency converter
-                    </h2>
-                    <p className="text-sm text-slate-500">
-                      Quick conversions for the road.
-                    </p>
-                  </div>
-                </div>
-                <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
-                  <CurrencyConverterTool
-                    onClose={() => undefined}
-                    lastConversion={lastConversion}
-                    onConversion={handleConversionUpdate}
-                    mobile={!isDesktop}
-                  />
-                </Suspense>
-              </Card>
-            </section>
-
-            {primaryTrip ? (
-              <Card className="rounded-3xl border border-slate-100 bg-gradient-to-br from-[#ffecd2] via-white to-[#fcb69f] p-6 shadow-sm">
-                <div className="flex flex-col gap-3">
-                  <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                    Next destination
-                  </span>
-                  <h3 className="text-xl font-semibold text-slate-900">
-                    {primaryTrip.name || primaryTrip.destination}
-                  </h3>
-                  <div className="flex items-center gap-2 text-sm text-slate-700">
-                    <MapPin className="h-4 w-4" />
-                    {primaryTrip.destination}
-                  </div>
-                  <div className="text-sm text-slate-600">
-                    {formatDateRange(
-                      toDateString(primaryTrip.startDate),
-                      toDateString(primaryTrip.endDate),
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ) : null}
-          </aside>
+            </aside>
+          </section>
         </div>
       </div>
     </div>
