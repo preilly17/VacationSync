@@ -51,6 +51,7 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
       coverPhotoUrl: trip.coverPhotoUrl ?? null,
       coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
       coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
@@ -67,6 +68,7 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         destination: trip.destination,
         startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
         endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+        coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
         coverPhotoUrl: trip.coverPhotoUrl ?? null,
         coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
         coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
@@ -74,9 +76,9 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
       });
       // Set destination for SmartLocationSearch
-      setSelectedDestination({ 
-        name: trip.destination, 
-        displayName: trip.destination 
+      setSelectedDestination({
+        name: trip.destination,
+        displayName: trip.destination
       });
     }
   }, [open, trip, form]);
@@ -102,9 +104,15 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         return updatedTrip;
       });
       
+      const originalCover = trip.coverImageUrl ?? trip.coverPhotoUrl ?? null;
+      const updatedCover = updatedTrip.coverImageUrl ?? updatedTrip.coverPhotoUrl ?? null;
+      const coverChanged = originalCover !== updatedCover;
+
       toast({
-        title: "Trip updated!",
-        description: "Your trip details have been updated successfully.",
+        title: coverChanged ? "Saved" : "Trip updated!",
+        description: coverChanged
+          ? "Cover photo updated."
+          : "Your trip details have been updated successfully.",
       });
       onOpenChange(false);
     },
@@ -141,6 +149,7 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
 
   const handleCoverPhotoChange = useCallback(
     (next: CoverPhotoValue) => {
+      form.setValue("coverImageUrl", next.coverPhotoUrl, { shouldDirty: true });
       form.setValue("coverPhotoUrl", next.coverPhotoUrl, { shouldDirty: true });
       form.setValue("coverPhotoCardUrl", next.coverPhotoCardUrl, { shouldDirty: true });
       form.setValue("coverPhotoThumbUrl", next.coverPhotoThumbUrl, { shouldDirty: true });
@@ -170,11 +179,17 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+      coverPhotoAlt: trip.coverPhotoAlt ?? null,
+      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
     });
     // Reset selected destination to original
-    setSelectedDestination({ 
-      name: trip.destination, 
-      displayName: trip.destination 
+    setSelectedDestination({
+      name: trip.destination,
+      displayName: trip.destination
     });
     onOpenChange(false);
   };
@@ -190,6 +205,7 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <input type="hidden" {...form.register("coverImageUrl")} />
           <input type="hidden" {...form.register("coverPhotoUrl")} />
           <input type="hidden" {...form.register("coverPhotoCardUrl")} />
           <input type="hidden" {...form.register("coverPhotoThumbUrl")} />

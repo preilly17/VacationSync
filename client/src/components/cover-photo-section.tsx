@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
-const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_MB = 5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 const UNSPLASH_PRESETS: { url: string; label: string; attribution: string }[] = [
@@ -345,9 +345,9 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <Label className="text-sm font-semibold text-slate-700">Cover photo (optional)</Label>
+        <Label className="text-sm font-semibold text-slate-700">Cover photo</Label>
         <p className="text-xs text-slate-500">
-          Upload a custom cover or choose one of our curated travel shots. We’ll resize it for the dashboard and trip banner.
+          Upload an image to personalize your trip banner. We’ll optimize it for the dashboard and cards automatically.
         </p>
       </div>
 
@@ -438,11 +438,11 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
             onDragOver={(event) => event.preventDefault()}
             onDrop={handleDrop}
           >
-            <p className="text-sm font-semibold text-slate-700">Upload a photo</p>
+            <p className="text-sm font-semibold text-slate-700">Add a cover photo</p>
             <p className="text-xs text-slate-500">Drag & drop or choose a JPG, PNG, or WEBP (max {MAX_FILE_SIZE_MB}MB).</p>
             <div className="flex flex-wrap items-center justify-center gap-2">
               <Button type="button" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isProcessing}>
-                Choose file
+                Upload photo
               </Button>
               <Input
                 ref={fileInputRef}
