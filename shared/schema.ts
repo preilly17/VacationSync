@@ -125,7 +125,21 @@ export interface TripCalendar {
   latitude?: number | null;
   longitude?: number | null;
   population?: number | null;
+  coverPhotoUrl?: string | null;
+  coverPhotoCardUrl?: string | null;
+  coverPhotoThumbUrl?: string | null;
+  coverPhotoAlt?: string | null;
+  coverPhotoAttribution?: string | null;
 }
+
+const imageUrlSchema = z
+  .string()
+  .trim()
+  .max(5000000)
+  .refine(
+    (value) => value.length === 0 || value.startsWith("http") || value.startsWith("data:image"),
+    "Provide a valid image URL",
+  );
 
 export const insertTripCalendarSchema = z.object({
   name: z.string().min(1, "Trip name is required"),
@@ -138,6 +152,11 @@ export const insertTripCalendarSchema = z.object({
   latitude: nullableNumberInput("Latitude must be a number"),
   longitude: nullableNumberInput("Longitude must be a number"),
   population: nullableNumberInput("Population must be a number"),
+  coverPhotoUrl: imageUrlSchema.nullable().optional(),
+  coverPhotoCardUrl: imageUrlSchema.nullable().optional(),
+  coverPhotoThumbUrl: imageUrlSchema.nullable().optional(),
+  coverPhotoAlt: z.string().max(255).nullable().optional(),
+  coverPhotoAttribution: z.string().max(255).nullable().optional(),
 });
 
 export type InsertTripCalendar = z.infer<typeof insertTripCalendarSchema>;

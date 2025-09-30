@@ -224,14 +224,14 @@ export default function MemberSchedule() {
       {/* Mobile Navigation */}
       <MobileNav
         trip={trip}
-        user={currentUser}
+        user={currentUser ?? undefined}
       />
 
       <div className="lg:flex lg:h-screen">
         {/* Desktop Sidebar */}
         <Sidebar
           trip={trip}
-          user={currentUser}
+          user={currentUser ?? undefined}
           activeTab="members"
           onTabChange={() => {}}
         />

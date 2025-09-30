@@ -31,6 +31,7 @@ import {
   ArrowLeft,
   Search,
   NotebookPen,
+  ChefHat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/queryClient";
