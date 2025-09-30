@@ -20,7 +20,7 @@ const normalizeDate = (value: IsoDate): Date => {
   return startOfDay(parseISO(value));
 };
 
-const isTripInactive = (trip: TripWithDetails): boolean => {
+export const isTripInactive = (trip: TripWithDetails): boolean => {
   const candidate = trip as TripWithMeta;
   const normalizedStatus =
     candidate.status || candidate.tripStatus || (candidate as { state?: string }).state || null;
