@@ -43,7 +43,7 @@ const CurrencyConverterTool = lazy(() =>
 
 const LAST_CONVERSION_KEY = "dashboard.converter.last";
 
-type HeroStyle = CSSProperties & { "--hero-image"?: string };
+type HeroStyle = CSSProperties & { "--hero-photo"?: string };
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() =>
@@ -351,7 +351,10 @@ export default function Home() {
       )}`
     : null;
 
-  const heroStyles: HeroStyle = heroBackground ? { "--hero-image": `url(${heroBackground})` } : {};
+  const heroStyles: HeroStyle = { "--hero-photo": 'url("/images/hero-travel.svg")' };
+  if (heroBackground) {
+    heroStyles["--hero-photo"] = `url(${heroBackground})`;
+  }
 
   const handlePlanTrip = () => {
     setLocation("/trips/new");
