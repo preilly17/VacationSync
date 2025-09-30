@@ -10,6 +10,7 @@ import Landing from "@/pages/landing";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Home from "@/pages/home";
+import PlanTrip from "@/pages/plan-trip";
 import Trip from "@/pages/trip";
 import MemberSchedule from "@/pages/member-schedule";
 import Join from "@/pages/join";
@@ -71,6 +72,7 @@ function Router() {
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
         <Route path="/trip/:id" component={Trip} />
+        <Route path="/trips/new" component={PlanTrip} />
         <Route path="/trip/:tripId/members" component={MemberSchedule} />
         <Route path="/trip/:tripId/flights" component={Flights} />
         <Route path="/trips/:tripId/flights" component={Flights} />
