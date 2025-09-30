@@ -1,11 +1,11 @@
 import {
   Suspense,
   lazy,
+  useCallback,
   useEffect,
   useMemo,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -26,6 +26,7 @@ import {
   AvatarImage,
 } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import type { LastConversion } from "@/components/dashboard/converter-types";
 import type { TripWithDetails } from "@shared/schema";
 import {
@@ -36,6 +37,13 @@ import {
   MapPin,
 } from "lucide-react";
 import { Link } from "wouter";
+import { StatCard } from "@/components/dashboard/stat-card";
+import {
+  selectAllDestinationsUnique,
+  selectNextTrip,
+  selectUniqueTravelersThisYear,
+  selectUpcomingTrips,
+} from "@/lib/dashboardSelectors";
 
 const CurrencyConverterTool = lazy(() =>
   import("@/components/dashboard/currency-converter-tool"),
@@ -238,6 +246,7 @@ type Insight = {
 export default function Home() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [lastConversion, setLastConversion] = useState<LastConversion | null>(null);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
@@ -249,6 +258,7 @@ export default function Home() {
     data: trips,
     isLoading,
     error,
+    refetch,
   } = useQuery<TripWithDetails[]>({
     queryKey: ["/api/trips"],
     enabled: Boolean(user),
@@ -257,50 +267,55 @@ export default function Home() {
 
   const today = startOfDay(new Date());
 
-  const {
-    primaryTrip,
-    upcomingTrips,
-    highlightStats,
-  } = useMemo(() => {
+  const sortedTrips = useMemo(() => {
     const allTrips = trips ?? [];
-    const sorted = [...allTrips].sort(
+    return [...allTrips].sort(
       (a, b) =>
         parseISO(toDateString(a.startDate)).getTime() -
         parseISO(toDateString(b.startDate)).getTime(),
     );
+  }, [trips]);
 
-    const futureTrips = sorted.filter(
-      (trip) => !isBefore(parseISO(toDateString(trip.endDate)), today),
-    );
-    const primary = futureTrips[0] ?? null;
+  const upcomingTripsForDisplay = useMemo(
+    () =>
+      sortedTrips.filter(
+        (trip) => !isBefore(parseISO(toDateString(trip.endDate)), today),
+      ),
+    [sortedTrips, today],
+  );
 
-    const highlightUpcomingCount = futureTrips.length;
-    const destinationSet = new Set(sorted.map((trip) => trip.destination).filter(Boolean));
-    const destinationsCount = destinationSet.size;
+  const primaryTrip = upcomingTripsForDisplay[0] ?? null;
 
-    const nextTripDays = primary
-      ? Math.max(0, differenceInCalendarDays(parseISO(toDateString(primary.startDate)), today))
-      : null;
+  const upcomingTripsForStats = useMemo(
+    () => selectUpcomingTrips(sortedTrips, today),
+    [sortedTrips, today],
+  );
 
-    const currentYear = today.getFullYear();
-    const travelersThisYear = sorted
-      .filter((trip) => parseISO(toDateString(trip.startDate)).getFullYear() === currentYear)
-      .reduce((total, trip) => total + (trip.memberCount ?? 0), 0);
+  const nextTrip = useMemo(
+    () => selectNextTrip(sortedTrips, today),
+    [sortedTrips, today],
+  );
 
-    return {
-      primaryTrip: primary,
-      upcomingTrips: futureTrips,
-      highlightStats: {
-        upcoming: highlightUpcomingCount,
-        destinations: destinationsCount,
-        daysToNext: nextTripDays,
-        travelersThisYear,
-      },
-    };
-  }, [today, trips]);
+  const uniqueDestinations = useMemo(
+    () => selectAllDestinationsUnique(sortedTrips, today),
+    [sortedTrips, today],
+  );
+
+  const travelersThisYear = useMemo(
+    () => selectUniqueTravelersThisYear(sortedTrips, today),
+    [sortedTrips, today],
+  );
+
+  const daysToNextTrip = useMemo(() => {
+    if (!nextTrip) {
+      return null;
+    }
+    const startDate = startOfDay(parseISO(toDateString(nextTrip.startDate)));
+    return Math.max(0, differenceInCalendarDays(startDate, today));
+  }, [nextTrip, today]);
 
   const upcomingSummaries: TripSummary[] = useMemo(() => {
-    return upcomingTrips.map((trip) => ({
+    return upcomingTripsForDisplay.map((trip) => ({
       id: trip.id,
       name: trip.name || trip.destination,
       destination: trip.destination,
@@ -314,7 +329,21 @@ export default function Home() {
       coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? trip.coverPhotoCardUrl ?? trip.coverPhotoUrl ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? undefined,
     }));
-  }, [upcomingTrips]);
+  }, [upcomingTripsForDisplay]);
+
+  const statsLoading = isLoading && !trips;
+  const isError = Boolean(error);
+  const upcomingCount = upcomingTripsForStats.length;
+  const destinationsCount = uniqueDestinations.size;
+  const travelersCount = travelersThisYear.size;
+  const currentYear = today.getFullYear();
+
+  const handleNextTripUnavailable = useCallback(() => {
+    toast({
+      title: "No upcoming trips yet.",
+      description: "Plan a new trip to see it appear here.",
+    });
+  }, [toast]);
 
   const insights: Insight[] = useMemo(() => {
     if (!primaryTrip) {
@@ -425,47 +454,80 @@ export default function Home() {
             <h2 id="dashboard-highlights" className="sr-only">
               Highlights
             </h2>
-            {isLoading ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <Card
-                    key={`highlight-skeleton-${index}`}
-                    className="rounded-2xl border border-slate-100/60 bg-white/70 p-6 shadow-sm"
-                  >
-                    <Skeleton className="h-5 w-10" />
-                    <Skeleton className="mt-4 h-6 w-20" />
-                    <Skeleton className="mt-2 h-4 w-24" />
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <HighlightCard
-                  icon={<Plane className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                  value={highlightStats.upcoming}
-                  label="Upcoming trips"
-                  href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
-                />
-                <HighlightCard
-                  icon={<Globe2 className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                  value={highlightStats.destinations}
-                  label="Destinations"
-                  href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
-                />
-                <HighlightCard
-                  icon={<CalendarDays className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                  value={highlightStats.daysToNext ?? "—"}
-                  label="Days to next trip"
-                  href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
-                />
-                <HighlightCard
-                  icon={<UserRound className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
-                  value={highlightStats.travelersThisYear}
-                  label="Travelers this year"
-                  href={primaryTrip ? `/trip/${primaryTrip.id}?view=members` : "/"}
-                />
-              </div>
-            )}
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard
+                icon={<Plane className="h-5 w-5" aria-hidden="true" />}
+                value={upcomingCount}
+                label="Upcoming trips"
+                description={upcomingCount === 0 ? "No trips planned" : undefined}
+                ariaLabel={
+                  upcomingCount === 0
+                    ? "View upcoming trips"
+                    : `View ${upcomingCount} upcoming ${upcomingCount === 1 ? "trip" : "trips"}`
+                }
+                href="/trips?filter=upcoming"
+                isLoading={statsLoading}
+                isError={isError}
+                onRetry={() => {
+                  void refetch();
+                }}
+                testId="stat-upcoming"
+              />
+              <StatCard
+                icon={<Globe2 className="h-5 w-5" aria-hidden="true" />}
+                value={destinationsCount}
+                label="Destinations"
+                description={destinationsCount === 0 ? "Add your first destination" : undefined}
+                ariaLabel={
+                  destinationsCount === 0
+                    ? "Add your first destination"
+                    : `View ${destinationsCount} saved ${destinationsCount === 1 ? "destination" : "destinations"}`
+                }
+                href="/destinations"
+                isLoading={statsLoading}
+                isError={isError}
+                onRetry={() => {
+                  void refetch();
+                }}
+                testId="stat-destinations"
+              />
+              <StatCard
+                icon={<CalendarDays className="h-5 w-5" aria-hidden="true" />}
+                value={daysToNextTrip ?? "—"}
+                label={nextTrip ? "Days to next trip" : "No upcoming trips"}
+                ariaLabel={
+                  nextTrip
+                    ? `Open next trip: ${nextTrip.name || nextTrip.destination}`
+                    : "No upcoming trips yet."
+                }
+                href={nextTrip ? `/trips/${nextTrip.id}` : undefined}
+                onClick={nextTrip ? undefined : handleNextTripUnavailable}
+                isLoading={statsLoading}
+                isError={isError}
+                onRetry={() => {
+                  void refetch();
+                }}
+                testId="stat-next-days"
+              />
+              <StatCard
+                icon={<UserRound className="h-5 w-5" aria-hidden="true" />}
+                value={travelersCount}
+                label="Travelers this year"
+                description={travelersCount === 0 ? "Invite your crew" : undefined}
+                ariaLabel={
+                  travelersCount === 0
+                    ? "Invite your crew"
+                    : `View ${travelersCount} travelers this year`
+                }
+                href={`/travelers?year=${currentYear}`}
+                isLoading={statsLoading}
+                isError={isError}
+                onRetry={() => {
+                  void refetch();
+                }}
+                testId="stat-travelers"
+              />
+            </div>
           </section>
 
           <section className="grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
@@ -598,36 +660,6 @@ export default function Home() {
         </div>
       </div>
     </div>
-  );
-}
-
-type HighlightCardProps = {
-  icon: ReactNode;
-  value: number | string | null;
-  label: string;
-  href: string;
-};
-
-function HighlightCard({ icon, value, label, href }: HighlightCardProps) {
-  return (
-    <Link href={href} className="group">
-      <Card className="flex h-full flex-col justify-between gap-3 rounded-3xl border border-slate-100 bg-white/80 p-6 shadow-sm transition-shadow group-hover:shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#ff7e5f]/15 via-[#feb47b]/10 to-[#654ea3]/15">
-            {icon}
-          </div>
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            View
-          </span>
-        </div>
-        <div>
-          <div className="text-3xl font-semibold text-slate-900">
-            {value ?? "—"}
-          </div>
-          <p className="mt-1 text-sm text-slate-500">{label}</p>
-        </div>
-      </Card>
-    </Link>
   );
 }
 
