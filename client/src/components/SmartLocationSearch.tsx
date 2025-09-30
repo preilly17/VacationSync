@@ -64,6 +64,12 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   const containerRef = useRef<HTMLDivElement | null>(null);
   const userInitiatedSearchRef = useRef(false);
   const pendingUserSearchCountRef = useRef(0);
+  const isUserEditingRef = useRef(false);
+  const initialSelectedQuery = typeof value === "string" ? value.trim() : "";
+  const lastSelectedQueryRef = useRef<string | null>(
+    initialSelectedQuery.length > 0 ? initialSelectedQuery : null,
+  );
+  const lastFetchedQueryKeyRef = useRef<string>("");
   const listboxId = useId();
   const hintId = useId();
 
@@ -79,9 +85,15 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   // ROOT CAUSE 1 FIX: Sync value prop changes to internal query state
   useEffect(() => {
     if (value !== undefined && value !== query) {
-      setQuery(value || '');
+      const nextValue = value || "";
+      setQuery(nextValue);
+
+      const trimmedValue = nextValue.trim();
+      lastSelectedQueryRef.current = trimmedValue.length > 0 ? trimmedValue : null;
+      isUserEditingRef.current = false;
+      lastFetchedQueryKeyRef.current = "";
     }
-  }, [value]);
+  }, [value, query]);
 
   const normalisedAllowedTypes = allowedTypes && allowedTypes.length > 0
     ? Array.from(
@@ -102,32 +114,52 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   };
 
   useEffect(() => {
-    // FIXED: Add null/undefined safety check for query
-    if (!query || query.length < 2) {
-      setResults([]);
-      setSelectedLocation(null);
-      setActiveIndex(-1);
-      pendingUserSearchCountRef.current = 0;
-      setIsLoading(false);
-      return;
-    }
+    const trimmedQuery = query.trim();
 
-    // Don't search if we have a selected location with the same display name
-    if (selectedLocation && selectedLocation.displayName === query) {
-      return;
-    }
-
-    // Clear selected location when user starts typing again
-    if (selectedLocation) {
-      setSelectedLocation(null);
-    }
-
-    // Debounce search
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
 
+    if (trimmedQuery.length < 2) {
+      setResults([]);
+      setSelectedLocation(null);
+      setActiveIndex(-1);
+      pendingUserSearchCountRef.current = 0;
+      lastFetchedQueryKeyRef.current = "";
+      setIsLoading(false);
+      return;
+    }
+
+    if (selectedLocation && selectedLocation.displayName === trimmedQuery) {
+      return;
+    }
+
+    if (!isUserEditingRef.current && lastSelectedQueryRef.current === trimmedQuery) {
+      return;
+    }
+
+    if (selectedLocation) {
+      setSelectedLocation(null);
+    }
+
     debounceRef.current = setTimeout(async () => {
+      // Skip if the user has since cleared or changed the input
+      const currentQuery = internalInputRef.current?.value?.trim() ?? "";
+      if (currentQuery.length < 2) {
+        return;
+      }
+
+      if (!isUserEditingRef.current && lastSelectedQueryRef.current === currentQuery) {
+        return;
+      }
+
+      const currentAllowedTypesKey = normalisedAllowedTypes?.join(",") ?? "all";
+      const currentSearchKey = `${currentQuery}|${currentAllowedTypesKey}`;
+
+      if (lastFetchedQueryKeyRef.current === currentSearchKey) {
+        return;
+      }
+
       const shouldShowLoadingIndicator = userInitiatedSearchRef.current;
 
       if (shouldShowLoadingIndicator) {
@@ -137,7 +169,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       }
 
       try {
-        const response = await apiFetch(buildSearchUrl(query));
+        const response = await apiFetch(buildSearchUrl(currentQuery));
         if (response.ok) {
           const data = await response.json();
           // ROOT CAUSE 2 FIX: Ensure results is always an array and limit suggestions
@@ -146,11 +178,15 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
             ? safeResults.filter((location) => normalisedAllowedTypes.includes(location.type))
             : safeResults;
           setResults(filteredResults);
+          lastFetchedQueryKeyRef.current = currentSearchKey;
           // Keep dropdown state controlled by user intent
+        } else {
+          lastFetchedQueryKeyRef.current = "";
         }
       } catch (error) {
         console.error('Location search error:', error);
         setResults([]);
+        lastFetchedQueryKeyRef.current = "";
       } finally {
         if (shouldShowLoadingIndicator) {
           pendingUserSearchCountRef.current = Math.max(0, pendingUserSearchCountRef.current - 1);
@@ -162,13 +198,23 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }, 300);
   }, [query, selectedLocation, normalisedAllowedTypes]);
 
+  useEffect(() => () => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+  }, []);
+
   const handleLocationClick = (location: LocationResult) => {
     pendingUserSearchCountRef.current = 0;
     userInitiatedSearchRef.current = false;
+    isUserEditingRef.current = false;
+    lastFetchedQueryKeyRef.current = "";
     setIsLoading(false);
     setSelectedLocation(location);
-    setQuery(location.displayName);
-    onQueryChange?.(location.displayName);
+    const displayValue = location.displayName.trim();
+    lastSelectedQueryRef.current = displayValue.length > 0 ? displayValue : null;
+    setQuery(displayValue);
+    onQueryChange?.(displayValue);
     setIsDropdownOpen(false);
     setResults([]); // Clear results to prevent "No locations found" message
     setActiveIndex(-1);
@@ -305,6 +351,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           onChange={(event) => {
             const newValue = event.target.value;
             setQuery(newValue);
+            isUserEditingRef.current = true;
+            lastSelectedQueryRef.current = null;
+            lastFetchedQueryKeyRef.current = "";
             userInitiatedSearchRef.current = true;
             onQueryChange?.(newValue);
 
