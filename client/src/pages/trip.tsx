@@ -44,6 +44,12 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import {
+  TRIP_COVER_GRADIENT,
+  buildCoverPhotoAltText,
+  buildCoverPhotoSrcSet,
+  useCoverPhotoImage,
+} from "@/lib/tripCover";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { AddActivityModal } from "@/components/add-activity-modal";
 import { EditTripModal } from "@/components/edit-trip-modal";
@@ -157,11 +163,6 @@ const isTripTab = (value: string): value is TripTab =>
   TRIP_TAB_KEYS.includes(value as TripTab);
 
 type SummaryPanel = "activities" | "rsvps" | "next";
-
-const buildTripCoverFallback = (destination: string): string => {
-  const query = encodeURIComponent(`${destination} travel landscape`);
-  return `https://source.unsplash.com/2400x1350/?${query}`;
-};
 
 const inviteStatusLabelMap: Record<ActivityInviteStatus, string> = {
   accepted: "Accepted",
@@ -1270,9 +1271,24 @@ export default function Trip() {
     ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
     : null;
   const isTripCreator = trip ? user?.id === trip.createdBy : false;
-  const heroImage = trip ? trip.coverPhotoUrl ?? buildTripCoverFallback(trip.destination) : "";
+  const heroCoverPhoto = trip?.coverPhotoUrl ?? null;
+  const heroImageSrcSet = trip
+    ? buildCoverPhotoSrcSet({
+        full: trip.coverPhotoUrl ?? null,
+        card: trip.coverPhotoCardUrl ?? null,
+        thumb: trip.coverPhotoThumbUrl ?? null,
+      })
+    : undefined;
   const hasCustomCoverPhoto = Boolean(trip?.coverPhotoUrl);
-  const heroAltText = trip ? trip.coverPhotoAlt ?? `Cover photo for ${trip.name}` : "Trip cover photo";
+  const heroAltText = trip
+    ? buildCoverPhotoAltText(trip.name || trip.destination)
+    : "Trip cover photo";
+  const {
+    showImage: showHeroCover,
+    isLoaded: heroCoverLoaded,
+    handleLoad: handleHeroCoverLoad,
+    handleError: handleHeroCoverError,
+  } = useCoverPhotoImage(heroCoverPhoto);
 
   const upcomingActivities = useMemo(() => {
     const now = new Date();
@@ -1525,14 +1541,28 @@ export default function Trip() {
                 {/* Trip Header */}
                 <div className="mb-10 space-y-6">
                   <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900 text-white shadow-xl">
-                    <img
-                      src={heroImage}
-                      alt={heroAltText}
-                      className="absolute inset-0 h-full w-full object-cover"
-                      loading="lazy"
-                    />
                     <div
-                      className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/80"
+                      className="pointer-events-none absolute inset-0"
+                      style={{ backgroundImage: TRIP_COVER_GRADIENT }}
+                      aria-hidden="true"
+                    />
+                    {showHeroCover ? (
+                      <img
+                        src={heroCoverPhoto ?? undefined}
+                        srcSet={heroImageSrcSet}
+                        sizes="(max-width: 1024px) 100vw, 960px"
+                        alt={heroAltText}
+                        className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
+                          heroCoverLoaded ? "opacity-100" : "opacity-0"
+                        }`}
+                        onLoad={handleHeroCoverLoad}
+                        onError={handleHeroCoverError}
+                        loading="eager"
+                        decoding="async"
+                      />
+                    ) : null}
+                    <div
+                      className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/80"
                       aria-hidden="true"
                     />
                     {isTripCreator && !hasCustomCoverPhoto && showCoverCallout ? (
