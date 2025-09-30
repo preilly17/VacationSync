@@ -1,6 +1,4 @@
 import {
-  Suspense,
-  lazy,
   useCallback,
   useEffect,
   useId,
@@ -62,9 +60,7 @@ import {
   useCoverPhotoImage,
 } from "@/lib/tripCover";
 
-const CurrencyConverterTool = lazy(() =>
-  import("@/components/dashboard/currency-converter-tool"),
-);
+import CurrencyConverterTool from "@/components/dashboard/currency-converter-tool";
 
 const LAST_CONVERSION_KEY = "dashboard.converter.last";
 
@@ -754,15 +750,13 @@ export default function Home() {
               id={converterDialogId}
               className="w-full max-w-[560px] rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl"
             >
-              <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
-                <CurrencyConverterTool
-                  onClose={handleConverterClose}
-                  lastConversion={lastConversion}
-                  onConversion={handleConversionUpdate}
-                  mobile={!isDesktop}
-                  autoFocusAmount={isConverterOpen}
-                />
-              </Suspense>
+              <CurrencyConverterTool
+                onClose={handleConverterClose}
+                lastConversion={lastConversion}
+                onConversion={handleConversionUpdate}
+                mobile={!isDesktop}
+                autoFocusAmount={isConverterOpen}
+              />
             </DialogContent>
           </Dialog>
 
