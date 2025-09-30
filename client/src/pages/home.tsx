@@ -43,19 +43,6 @@ const CurrencyConverterTool = lazy(() =>
 
 const LAST_CONVERSION_KEY = "dashboard.converter.last";
 
-const themeTokens = {
-  "--dashboard-primary": "#f97362",
-  "--dashboard-secondary": "#f6b980",
-  "--dashboard-accent": "#6a5cff",
-  "--dashboard-text": "#0f172a",
-  "--dashboard-muted": "rgba(15, 23, 42, 0.7)",
-  "--dashboard-surface": "rgba(255, 255, 255, 0.88)",
-  "--dashboard-surface-strong": "rgba(255, 255, 255, 0.96)",
-  "--dashboard-card-border": "rgba(15, 23, 42, 0.08)",
-  "--dashboard-card-border-strong": "rgba(15, 23, 42, 0.16)",
-  "--dashboard-canvas": "#f6f5ff",
-} as CSSProperties;
-
 const brandGradient =
   "linear-gradient(120deg, var(--dashboard-primary), var(--dashboard-secondary), var(--dashboard-accent))";
 const cardShadow = "0 30px 60px -40px rgba(15, 23, 42, 0.55)";
@@ -398,10 +385,7 @@ export default function Home() {
   };
 
   return (
-    <div
-      className="relative min-h-screen overflow-hidden bg-[var(--dashboard-canvas,#f6f5ff)]"
-      style={themeTokens}
-    >
+    <div className="relative min-h-screen overflow-hidden bg-[var(--dashboard-canvas,#f6f5ff)]">
       <div className="pointer-events-none absolute inset-0 -z-10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,var(--dashboard-secondary)/0.15,transparent_65%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,var(--dashboard-accent)/0.12,transparent_60%)]" />
@@ -655,7 +639,7 @@ export default function Home() {
                       {primaryTrip.name || primaryTrip.destination}
                     </h3>
                     <div className="flex items-center gap-2 text-sm text-slate-700">
-                      <MapPin className="h-4 w-4" />
+                      <MapPin className="h-4 w-4" aria-hidden="true" />
                       {primaryTrip.destination}
                     </div>
                     <div className="text-sm text-slate-600">
