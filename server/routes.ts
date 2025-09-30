@@ -2992,6 +2992,87 @@ export function setupRoutes(app: Express) {
   });
 
   // Hotel booking routes  
+  const HOTEL_REQUEST_FIELD_MAP: Record<string, string> = {
+    tripId: "trip_id",
+    hotelName: "hotel_name",
+    hotelChain: "hotel_chain",
+    hotelRating: "hotel_rating",
+    address: "address",
+    city: "city",
+    country: "country",
+    zipCode: "zip_code",
+    latitude: "latitude",
+    longitude: "longitude",
+    checkInDate: "check_in_date",
+    checkOutDate: "check_out_date",
+    roomType: "room_type",
+    roomCount: "room_count",
+    guestCount: "guest_count",
+    bookingReference: "booking_reference",
+    totalPrice: "total_price",
+    pricePerNight: "price_per_night",
+    currency: "currency",
+    status: "status",
+    bookingSource: "booking_source",
+    purchaseUrl: "purchase_url",
+    amenities: "amenities",
+    images: "images",
+    policies: "policies",
+    contactInfo: "contact_info",
+    bookingPlatform: "booking_platform",
+    bookingUrl: "booking_url",
+    cancellationPolicy: "cancellation_policy",
+    notes: "notes",
+  };
+
+  const REQUIRED_HOTEL_FIELDS = [
+    "hotel_name",
+    "address",
+    "city",
+    "country",
+    "check_in_date",
+    "check_out_date",
+  ];
+
+  const normalizeHotelRequestBody = (
+    body: Record<string, unknown> | undefined,
+    tripId: number,
+  ): Record<string, unknown> => {
+    const source = body ?? {};
+    const normalized: Record<string, unknown> = { trip_id: tripId };
+
+    for (const [camelKey, snakeKey] of Object.entries(HOTEL_REQUEST_FIELD_MAP)) {
+      if (snakeKey === "trip_id") {
+        normalized[snakeKey] = tripId;
+        continue;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(source, snakeKey)) {
+        normalized[snakeKey] = (source as Record<string, unknown>)[snakeKey];
+      } else if (Object.prototype.hasOwnProperty.call(source, camelKey)) {
+        normalized[snakeKey] = (source as Record<string, unknown>)[camelKey];
+      }
+    }
+
+    return normalized;
+  };
+
+  const convertNormalizedHotelToCamel = (
+    normalized: Record<string, unknown>,
+  ): Record<string, unknown> => {
+    const camelCaseData: Record<string, unknown> = {};
+
+    for (const [camelKey, snakeKey] of Object.entries(HOTEL_REQUEST_FIELD_MAP)) {
+      if (!Object.prototype.hasOwnProperty.call(normalized, snakeKey)) {
+        continue;
+      }
+
+      camelCaseData[camelKey] = normalized[snakeKey];
+    }
+
+    return camelCaseData;
+  };
+
   app.get('/api/trips/:id/hotels', async (req: any, res) => {
     try {
       const tripId = parseInt(req.params.id);
@@ -3013,12 +3094,39 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
       
-      const validatedData = insertHotelSchema.parse({
-        ...req.body,
-        tripId,
-        bookedBy: userId
+      const normalizedHotelData = normalizeHotelRequestBody(req.body, tripId);
+
+      const missingRequiredFields = REQUIRED_HOTEL_FIELDS.filter((field) => {
+        if (!Object.prototype.hasOwnProperty.call(normalizedHotelData, field)) {
+          return true;
+        }
+
+        const value = normalizedHotelData[field];
+        if (value === null || value === undefined) {
+          return true;
+        }
+
+        if (typeof value === "string" && value.trim().length === 0) {
+          return true;
+        }
+
+        return false;
       });
-      
+
+      if (missingRequiredFields.length > 0) {
+        return res.status(400).json({
+          message: "Missing required hotel fields",
+          missingFields: missingRequiredFields,
+        });
+      }
+
+      const camelCaseHotelData = convertNormalizedHotelToCamel(normalizedHotelData);
+
+      const validatedData = insertHotelSchema.parse({
+        ...camelCaseHotelData,
+        tripId,
+      });
+
       const hotel = await storage.addHotel(validatedData, userId);
       res.json(hotel);
     } catch (error: unknown) {
