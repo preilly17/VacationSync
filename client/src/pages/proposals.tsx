@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -170,6 +171,9 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "canceled">("all");
+  const [responseFilter, setResponseFilter] = useState<
+    "needs-response" | "all" | "accepted" | "declined"
+  >("needs-response");
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -485,42 +489,51 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
         promotedUserId?: string | null;
       };
     },
-    onSuccess: (_data, variables) => {
-      if (tripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+    onMutate: async ({ activityId, action }) => {
+      const nextStatus = actionToStatusMap[action];
+      if (!tripId || !nextStatus) {
+        return {};
       }
 
-      const action = variables.action;
-      let title = "RSVP updated";
-      let description = "We saved your response.";
+      const queryKey = [`/api/trips/${tripId}/activities`] as const;
+      await queryClient.cancelQueries({ queryKey });
 
-      if (action === "ACCEPT") {
-        title = "You're going!";
-        description = "This activity is on your personal schedule now.";
-      } else if (action === "DECLINE") {
-        title = "You declined this activity";
-        description = "We won't show it on your personal schedule.";
-      } else if (action === "WAITLIST") {
-        title = "Joined the waitlist";
-        description = "We'll let you know if a spot opens up.";
-      } else {
-        title = "Marked as undecided";
-        description = "You can update your RSVP anytime.";
+      const previousActivities = queryClient.getQueryData<ActivityWithDetails[]>(queryKey) ?? null;
+      if (previousActivities) {
+        const updatedActivities = previousActivities.map((activity) =>
+          activity.id === activityId ? applyOptimisticActivityInviteUpdate(activity, nextStatus) : activity,
+        );
+        queryClient.setQueryData(queryKey, updatedActivities);
       }
 
-      toast({ title, description });
+      return { previousActivities, queryKey } as const;
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
       if (isUnauthorizedError(error)) {
         window.location.href = "/login";
         return;
       }
 
+      if (context?.previousActivities && context.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previousActivities);
+      }
+
+      const parsedError = parseApiError(error);
+      let description = parsedError.message || "We couldn’t save your RSVP. Please try again.";
+      if (parsedError.status === 404 || parsedError.status === 409 || parsedError.status === 410) {
+        description = "This item is no longer available to RSVP.";
+      }
+
       toast({
         title: "Unable to update RSVP",
-        description: "Please try again.",
+        description,
         variant: "destructive",
       });
+    },
+    onSuccess: () => {
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      }
     },
   });
 
@@ -652,7 +665,95 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   const normalizeStatus = (status?: string | null) =>
     (status ?? "active").toLowerCase();
 
-  const applyProposalFilters = useCallback(
+  type ActivityInviteWithUser = ActivityWithDetails["invites"][number];
+  type ActivityAcceptanceWithUser = ActivityWithDetails["acceptances"][number];
+
+  const applyOptimisticActivityInviteUpdate = useCallback(
+    (activity: ActivityWithDetails, nextStatus: ActivityInviteStatus): ActivityWithDetails => {
+      const nowIso = new Date().toISOString();
+      const invites: ActivityInviteWithUser[] = activity.invites
+        ? activity.invites.map((invite) => ({ ...invite }))
+        : [];
+
+      const targetUserId = user?.id ?? activity.currentUserInvite?.userId ?? null;
+      if (!targetUserId) {
+        return activity;
+      }
+
+      const existingIndex = invites.findIndex((invite) => invite.userId === targetUserId);
+      let updatedInvite: ActivityInviteWithUser | null = null;
+
+      if (existingIndex >= 0) {
+        const baseInvite = invites[existingIndex];
+        updatedInvite = {
+          ...baseInvite,
+          status: nextStatus,
+          respondedAt: nextStatus === "pending" ? null : nowIso,
+          updatedAt: nowIso,
+          user: baseInvite.user ?? user ?? baseInvite.user,
+        };
+        invites[existingIndex] = updatedInvite;
+      } else if (user && user.id === targetUserId) {
+        updatedInvite = {
+          id: -Math.abs(Date.now()),
+          activityId: activity.id,
+          userId: targetUserId,
+          status: nextStatus,
+          respondedAt: nextStatus === "pending" ? null : nowIso,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          user,
+        } as ActivityInviteWithUser;
+        invites.push(updatedInvite);
+      }
+
+      if (!updatedInvite) {
+        return activity;
+      }
+
+      const counts = invites.reduce(
+        (acc, invite) => {
+          if (invite.status === "accepted") {
+            acc.accepted += 1;
+          } else if (invite.status === "declined") {
+            acc.declined += 1;
+          } else if (invite.status === "waitlisted") {
+            acc.waitlisted += 1;
+          } else {
+            acc.pending += 1;
+          }
+          return acc;
+        },
+        { accepted: 0, pending: 0, declined: 0, waitlisted: 0 },
+      );
+
+      const acceptances: ActivityAcceptanceWithUser[] = invites
+        .filter((invite) => invite.status === "accepted")
+        .map((invite) => ({
+          id: invite.id,
+          activityId: activity.id,
+          userId: invite.userId,
+          acceptedAt: invite.respondedAt,
+          user: invite.user,
+        }));
+
+      return {
+        ...activity,
+        invites,
+        currentUserInvite: updatedInvite,
+        acceptedCount: counts.accepted,
+        pendingCount: counts.pending,
+        declinedCount: counts.declined,
+        waitlistedCount: counts.waitlisted,
+        acceptances,
+        isAccepted: nextStatus === "accepted" ? true : undefined,
+        hasResponded: nextStatus === "pending" ? undefined : true,
+      };
+    },
+    [user],
+  );
+
+  const applyStatusFilter = useCallback(
     <T extends BaseProposal>(items: T[]): T[] => {
       return items.filter((item) => {
         if (statusFilter === "all") {
@@ -668,6 +769,34 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
       });
     },
     [statusFilter],
+  );
+
+  const applyActivityResponseFilter = useCallback(
+    (items: NormalizedActivityProposal[]): NormalizedActivityProposal[] => {
+      if (responseFilter === "all") {
+        return applyStatusFilter(items);
+      }
+
+      return applyStatusFilter(items).filter((proposal) => {
+        const responseStatus: ActivityInviteStatus = proposal.currentUserInvite?.status
+          ?? (proposal.isAccepted ? "accepted" : "pending");
+
+        if (responseFilter === "needs-response") {
+          return responseStatus === "pending";
+        }
+
+        if (responseFilter === "accepted") {
+          return responseStatus === "accepted";
+        }
+
+        if (responseFilter === "declined") {
+          return responseStatus === "declined";
+        }
+
+        return true;
+      });
+    },
+    [applyStatusFilter, responseFilter],
   );
 
   const getUserRanking = (
@@ -1039,7 +1168,7 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
                   data-testid={`button-accept-activity-proposal-${proposal.id}`}
                 >
                   {isResponding && respondToInviteMutation.variables?.action === "ACCEPT"
-                    ? "Saving..."
+                    ? "Updating..."
                     : "Accept"}
                 </Button>
                 <Button
@@ -1050,9 +1179,17 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
                   data-testid={`button-decline-activity-proposal-${proposal.id}`}
                 >
                   {isResponding && respondToInviteMutation.variables?.action === "DECLINE"
-                    ? "Saving..."
+                    ? "Updating..."
                     : "Decline"}
                 </Button>
+                {isResponding ? (
+                  <div
+                    className="basis-full text-xs text-neutral-500"
+                    data-testid={`text-activity-rsvp-updating-${proposal.id}`}
+                  >
+                    Updating response…
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -1633,20 +1770,20 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   );
 
   const filteredHotelProposals = useMemo(
-    () => applyProposalFilters(otherHotelProposals),
-    [applyProposalFilters, otherHotelProposals],
+    () => applyStatusFilter(otherHotelProposals),
+    [applyStatusFilter, otherHotelProposals],
   );
   const filteredFlightProposals = useMemo(
-    () => applyProposalFilters(otherFlightProposals),
-    [applyProposalFilters, otherFlightProposals],
+    () => applyStatusFilter(otherFlightProposals),
+    [applyStatusFilter, otherFlightProposals],
   );
   const filteredActivityProposals = useMemo(
-    () => applyProposalFilters(otherActivityProposals),
-    [applyProposalFilters, otherActivityProposals],
+    () => applyActivityResponseFilter(otherActivityProposals),
+    [applyActivityResponseFilter, otherActivityProposals],
   );
   const filteredRestaurantProposals = useMemo(
-    () => applyProposalFilters(otherRestaurantProposals),
-    [applyProposalFilters, otherRestaurantProposals],
+    () => applyStatusFilter(otherRestaurantProposals),
+    [applyStatusFilter, otherRestaurantProposals],
   );
 
   const myHotelProposals = useMemo(
@@ -1667,20 +1804,20 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   );
 
   const filteredMyHotelProposals = useMemo(
-    () => applyProposalFilters(myHotelProposals),
-    [applyProposalFilters, myHotelProposals],
+    () => applyStatusFilter(myHotelProposals),
+    [applyStatusFilter, myHotelProposals],
   );
   const filteredMyFlightProposals = useMemo(
-    () => applyProposalFilters(myFlightProposals),
-    [applyProposalFilters, myFlightProposals],
+    () => applyStatusFilter(myFlightProposals),
+    [applyStatusFilter, myFlightProposals],
   );
   const filteredMyActivityProposals = useMemo(
-    () => applyProposalFilters(myActivityProposals),
-    [applyProposalFilters, myActivityProposals],
+    () => applyActivityResponseFilter(myActivityProposals),
+    [applyActivityResponseFilter, myActivityProposals],
   );
   const filteredMyRestaurantProposals = useMemo(
-    () => applyProposalFilters(myRestaurantProposals),
-    [applyProposalFilters, myRestaurantProposals],
+    () => applyStatusFilter(myRestaurantProposals),
+    [applyStatusFilter, myRestaurantProposals],
   );
 
   const totalMyProposals =
@@ -1800,18 +1937,46 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
         className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end"
         data-testid="proposals-filters"
       >
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-neutral-600">Status</span>
-          <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
-            <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
-              <SelectValue placeholder="All statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="canceled">Canceled</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end sm:gap-6">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-neutral-600">Status</span>
+            <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
+              <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="canceled">Canceled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2" data-testid="filter-proposals-response">
+            <span className="text-sm font-medium text-neutral-600">Show</span>
+            <ToggleGroup
+              type="single"
+              value={responseFilter}
+              onValueChange={(value) => {
+                if (value) {
+                  setResponseFilter(value as typeof responseFilter);
+                }
+              }}
+              className="justify-start sm:justify-center"
+            >
+              <ToggleGroupItem value="needs-response" className="px-3 py-1 text-sm">
+                Needs response
+              </ToggleGroupItem>
+              <ToggleGroupItem value="accepted" className="px-3 py-1 text-sm">
+                Accepted
+              </ToggleGroupItem>
+              <ToggleGroupItem value="declined" className="px-3 py-1 text-sm">
+                Declined
+              </ToggleGroupItem>
+              <ToggleGroupItem value="all" className="px-3 py-1 text-sm">
+                All
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
         </div>
       </div>
 
