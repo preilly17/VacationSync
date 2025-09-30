@@ -462,6 +462,47 @@ function FlightSearchPanel({
     const { latitude, longitude } = extractCoordinates(location);
     setDepartureQuery(location.displayName);
     setHasSelectedDeparture(true);
+
+    const selectedAirportCode = (location.iata ?? location.code ?? '').toUpperCase();
+
+    const fallbackCityName = location.cityName ?? location.name ?? location.displayName;
+
+    const applyAirportSelection = (airports: NearbyAirport[]) => {
+      setDepartureAirports(airports);
+      const defaultAirport = airports[0] ?? null;
+      const defaultCode = defaultAirport?.iata ?? selectedAirportCode;
+      setSelectedDepartureAirport(defaultCode);
+      setSearchFormData((prev) => ({
+        ...prev,
+        departure: defaultCode ?? '',
+        departureCity: fallbackCityName,
+        departureLatitude: latitude,
+        departureLongitude: longitude,
+      }));
+    };
+
+    if (location.type === 'airport') {
+      const airportDetails: NearbyAirport | null = selectedAirportCode
+        ? {
+            iata: selectedAirportCode,
+            name: location.name,
+            municipality: location.cityName ?? null,
+            isoCountry: location.countryName ?? location.country ?? null,
+            latitude,
+            longitude,
+            distanceKm: typeof location.distanceKm === 'number' ? location.distanceKm : null,
+          }
+        : null;
+
+      if (airportDetails) {
+        applyAirportSelection([airportDetails]);
+      } else {
+        applyAirportSelection([]);
+      }
+
+      return;
+    }
+
     setSearchFormData((prev) => ({
       ...prev,
       departureCity: location.displayName,
@@ -472,20 +513,17 @@ function FlightSearchPanel({
 
     try {
       const lookup = await fetchNearestAirportsForLocation(location);
-      setDepartureAirports(lookup.airports);
-
-      const defaultAirport = lookup.airports[0] ?? null;
-      setSelectedDepartureAirport(defaultAirport?.iata ?? '');
+      applyAirportSelection(lookup.airports);
 
       setSearchFormData((prev) => ({
         ...prev,
-        departure: defaultAirport?.iata ?? '',
-        departureCity: lookup.cityName ?? location.displayName,
+        departure: lookup.airports[0]?.iata ?? '',
+        departureCity: lookup.cityName ?? fallbackCityName,
         departureLatitude: lookup.latitude,
         departureLongitude: lookup.longitude,
       }));
 
-      if (!defaultAirport) {
+      if (lookup.airports.length === 0) {
         toast({
           title: 'No nearby airports found',
           description: `We couldn't find commercial airports near ${lookup.cityName ?? location.displayName}. Try another city.`,
@@ -519,6 +557,47 @@ function FlightSearchPanel({
     const { latitude, longitude } = extractCoordinates(location);
     setArrivalQuery(location.displayName);
     setHasSelectedArrival(true);
+
+    const selectedAirportCode = (location.iata ?? location.code ?? '').toUpperCase();
+
+    const fallbackCityName = location.cityName ?? location.name ?? location.displayName;
+
+    const applyAirportSelection = (airports: NearbyAirport[]) => {
+      setArrivalAirports(airports);
+      const defaultAirport = airports[0] ?? null;
+      const defaultCode = defaultAirport?.iata ?? selectedAirportCode;
+      setSelectedArrivalAirport(defaultCode);
+      setSearchFormData((prev) => ({
+        ...prev,
+        arrival: defaultCode ?? '',
+        arrivalCity: fallbackCityName,
+        arrivalLatitude: latitude,
+        arrivalLongitude: longitude,
+      }));
+    };
+
+    if (location.type === 'airport') {
+      const airportDetails: NearbyAirport | null = selectedAirportCode
+        ? {
+            iata: selectedAirportCode,
+            name: location.name,
+            municipality: location.cityName ?? null,
+            isoCountry: location.countryName ?? location.country ?? null,
+            latitude,
+            longitude,
+            distanceKm: typeof location.distanceKm === 'number' ? location.distanceKm : null,
+          }
+        : null;
+
+      if (airportDetails) {
+        applyAirportSelection([airportDetails]);
+      } else {
+        applyAirportSelection([]);
+      }
+
+      return;
+    }
+
     setSearchFormData((prev) => ({
       ...prev,
       arrivalCity: location.displayName,
@@ -529,20 +608,17 @@ function FlightSearchPanel({
 
     try {
       const lookup = await fetchNearestAirportsForLocation(location);
-      setArrivalAirports(lookup.airports);
-
-      const defaultAirport = lookup.airports[0] ?? null;
-      setSelectedArrivalAirport(defaultAirport?.iata ?? '');
+      applyAirportSelection(lookup.airports);
 
       setSearchFormData((prev) => ({
         ...prev,
-        arrival: defaultAirport?.iata ?? '',
-        arrivalCity: lookup.cityName ?? location.displayName,
+        arrival: lookup.airports[0]?.iata ?? '',
+        arrivalCity: lookup.cityName ?? fallbackCityName,
         arrivalLatitude: lookup.latitude,
         arrivalLongitude: lookup.longitude,
       }));
 
-      if (!defaultAirport) {
+      if (lookup.airports.length === 0) {
         toast({
           title: 'No nearby airports found',
           description: `We couldn't find commercial airports near ${lookup.cityName ?? location.displayName}. Try another city.`,
