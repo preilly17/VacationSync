@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Plane, Building } from "lucide-react";
-import { apiFetch } from "@/lib/api";
 import useDebouncedValue from "@/hooks/useDebouncedValue";
 import type { LocationResult } from "@/components/SmartLocationSearch";
 
@@ -144,14 +143,16 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
 }, ref) {
   const [inputValue, setInputValue] = useState(value);
   const [results, setResults] = useState<NormalisedSuggestion[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [hasSelected, setHasSelected] = useState(false);
-  const [showEmptyState, setShowEmptyState] = useState(false);
+  const [tried, setTried] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const debouncedValue = useDebouncedValue(inputValue, 300);
-  const requestIdRef = useRef(0);
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const apiBase = useMemo(() => (process.env.NEXT_PUBLIC_API_BASE ?? "").replace(/\/$/, ""), []);
+  const normalisedTypes = useMemo(() => (types ?? "city,airport").trim() || "city,airport", [types]);
+  const enabled = true;
+  const debug = true;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listboxId = useId();
@@ -160,102 +161,85 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
     setInputValue(value ?? "");
     if (!value || value.trim().length === 0) {
       setHasSelected(false);
+      setTried(false);
+      setResults([]);
+      setLoading(false);
     }
   }, [value]);
 
-  const cleanupRequest = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+  const mapToOptions = useCallback((data: unknown): NormalisedSuggestion[] => {
+    const arrayData = Array.isArray(data) ? data : [];
+    return arrayData
+      .map((item) => normaliseSuggestion(item))
+      .filter((item): item is NormalisedSuggestion => Boolean(item));
   }, []);
 
-  useEffect(() => () => {
-    cleanupRequest();
-  }, [cleanupRequest]);
-
-  const normalisedTypes = useMemo(() => types.trim() || "city,airport", [types]);
-
-  const executeSearch = useCallback(
-    async (searchTerm: string) => {
-      const trimmed = searchTerm.trim();
-      if (trimmed.length < 2 || hasSelected) {
-        return;
-      }
-
-      cleanupRequest();
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      const nextRequestId = requestIdRef.current + 1;
-      requestIdRef.current = nextRequestId;
-
-      setIsLoading(true);
-      setShowEmptyState(false);
-
-      console.debug("[FlightLocationSearch] search", { q: trimmed, types: normalisedTypes });
-
-      try {
-        const params = new URLSearchParams({ q: trimmed });
-        if (normalisedTypes.length > 0) {
-          params.set("types", normalisedTypes);
-        }
-        const response = await apiFetch(`/api/locations/search?${params.toString()}`, {
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error(`Location search failed with status ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (requestIdRef.current !== nextRequestId) {
-          return;
-        }
-
-        const arrayData = Array.isArray(data) ? data : [];
-        const suggestions = arrayData
-          .map((item) => normaliseSuggestion(item))
-          .filter((item): item is NormalisedSuggestion => Boolean(item));
-
-        setResults(suggestions);
-        setShowEmptyState(suggestions.length === 0 && trimmed.length >= 2);
-      } catch (error) {
-        if ((error as Error)?.name === "AbortError") {
-          return;
-        }
-        console.error("FlightLocationSearch search error", error);
-        if (requestIdRef.current === nextRequestId) {
-          setResults([]);
-          setShowEmptyState(true);
-        }
-      } finally {
-        if (requestIdRef.current === nextRequestId) {
-          setIsLoading(false);
-          abortControllerRef.current = null;
-        }
-      }
-    },
-    [cleanupRequest, hasSelected, normalisedTypes],
-  );
-
   useEffect(() => {
-    const trimmed = debouncedValue.trim();
+    const q = debouncedValue.trim();
 
-    if (trimmed.length < 2 || hasSelected) {
-      cleanupRequest();
-      setIsLoading(false);
-      if (trimmed.length < 2) {
-        setResults([]);
-      }
-      if (hasSelected) {
-        setResults([]);
-      }
-      setShowEmptyState(false);
+    if (debug) {
+      console.debug("[FLS] effect", { q, len: q.length, hasSelected, enabled, types: normalisedTypes });
+    }
+
+    if (!enabled) {
+      if (debug) console.debug("[FLS] skip: not enabled");
       return;
     }
 
-    void executeSearch(trimmed);
-  }, [debouncedValue, hasSelected, executeSearch, cleanupRequest]);
+    if (hasSelected) {
+      if (debug) console.debug("[FLS] skip: hasSelected");
+      return;
+    }
+
+    if (q.length < 2) {
+      if (debug) console.debug("[FLS] skip: too short");
+      setResults([]);
+      setLoading(false);
+      setTried(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setTried(true);
+
+    const baseUrl = apiBase || "";
+    const url = `${baseUrl}/api/locations/search?q=${encodeURIComponent(q)}&types=${encodeURIComponent(normalisedTypes)}`;
+
+    if (debug) {
+      console.debug("[FLS] fetching", url);
+    }
+
+    fetch(url)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setResults(mapToOptions(data));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          if (debug) {
+            console.debug("[FLS] fetch error", error);
+          }
+          setResults([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBase, debouncedValue, enabled, hasSelected, mapToOptions, normalisedTypes, debug]);
 
   const handleSelect = useCallback(
     (suggestion: NormalisedSuggestion) => {
@@ -263,16 +247,15 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
       setHasSelected(true);
       setIsOpen(false);
       setResults([]);
-      setShowEmptyState(false);
-      setIsLoading(false);
-      cleanupRequest();
+      setLoading(false);
+      setTried(false);
       onQueryChange?.(suggestion.label);
       onLocationSelect(suggestion.location);
       requestAnimationFrame(() => {
         inputRef.current?.blur();
       });
     },
-    [cleanupRequest, onLocationSelect, onQueryChange],
+    [onLocationSelect, onQueryChange],
   );
 
   const getIconForType = (type: LocationResult["type"]) => {
@@ -354,7 +337,8 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
   };
 
   const trimmedValue = inputValue.trim();
-  const shouldShowDropdown = isOpen && (results.length > 0 || isLoading || showEmptyState || trimmedValue.length < 2);
+  const showNoResults = tried && !loading && results.length === 0 && trimmedValue.length >= 2;
+  const shouldShowDropdown = isOpen && (results.length > 0 || loading || showNoResults || trimmedValue.length < 2);
 
   return (
     <div ref={containerRef} className={`relative ${className}`}>
@@ -367,15 +351,12 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
           const nextValue = event.target.value;
           setInputValue(nextValue);
           setHasSelected(false);
+          setTried(false);
           setIsOpen(true);
           onQueryChange?.(nextValue);
         }}
         onFocus={() => {
           setIsOpen(true);
-          const currentValue = inputRef.current?.value?.trim() ?? inputValue.trim();
-          if (currentValue.length >= 2 && !hasSelected && results.length === 0 && !isLoading) {
-            void executeSearch(currentValue);
-          }
         }}
         onBlur={() => {
           requestAnimationFrame(() => {
@@ -392,7 +373,7 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
         aria-activedescendant={activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
         role="combobox"
       />
-      {isLoading && (
+      {loading && (
         <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
           <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-blue-600"></div>
         </div>
@@ -440,12 +421,12 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
                     </div>
                   </button>
                 ))}
-                {!isLoading && showEmptyState && trimmedValue.length >= 2 ? (
+                {!loading && showNoResults ? (
                   <div className="p-3 text-center text-sm text-muted-foreground">
                     No locations found for "{trimmedValue}". Try a different search term.
                   </div>
                 ) : null}
-                {isLoading && results.length === 0 ? (
+                {loading && results.length === 0 ? (
                   <div className="flex items-center justify-center gap-2 p-3 text-sm text-muted-foreground">
                     <div className="h-3 w-3 animate-spin rounded-full border-b-2 border-blue-600"></div>
                     Loading suggestions...
