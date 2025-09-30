@@ -82,9 +82,15 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
   };
 
-  // ROOT CAUSE 1 FIX: Sync value prop changes to internal query state
+  // Sync value prop changes to internal query state without interrupting user edits
+  const previousValueRef = useRef(value);
   useEffect(() => {
-    if (value !== undefined && value !== query) {
+    if (value === undefined) {
+      previousValueRef.current = value;
+      return;
+    }
+
+    if (value !== previousValueRef.current) {
       const nextValue = value || "";
       setQuery(nextValue);
 
@@ -92,8 +98,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       lastSelectedQueryRef.current = trimmedValue.length > 0 ? trimmedValue : null;
       isUserEditingRef.current = false;
       lastFetchedQueryKeyRef.current = "";
+      previousValueRef.current = value;
     }
-  }, [value, query]);
+  }, [value]);
 
   const normalisedAllowedTypes = allowedTypes && allowedTypes.length > 0
     ? Array.from(

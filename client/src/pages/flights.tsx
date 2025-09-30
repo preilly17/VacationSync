@@ -394,6 +394,12 @@ function FlightSearchPanel({
   const [arrivalQuery, setArrivalQuery] = useState(
     searchFormData.arrivalCity || searchFormData.arrival || '',
   );
+  const [hasSelectedDeparture, setHasSelectedDeparture] = useState(
+    () => Boolean(searchFormData.departureCity || searchFormData.departure),
+  );
+  const [hasSelectedArrival, setHasSelectedArrival] = useState(
+    () => Boolean(searchFormData.arrivalCity || searchFormData.arrival),
+  );
   const [departureAirports, setDepartureAirports] = useState<NearbyAirport[]>([]);
   const [arrivalAirports, setArrivalAirports] = useState<NearbyAirport[]>([]);
   const [isLoadingDepartureAirports, setIsLoadingDepartureAirports] = useState(false);
@@ -401,14 +407,36 @@ function FlightSearchPanel({
   const [selectedDepartureAirport, setSelectedDepartureAirport] = useState(searchFormData.departure);
   const [selectedArrivalAirport, setSelectedArrivalAirport] = useState(searchFormData.arrival);
   useEffect(() => {
-    setDepartureQuery(searchFormData.departureCity || searchFormData.departure || '');
-    setSelectedDepartureAirport(searchFormData.departure || '');
-  }, [searchFormData.departureCity, searchFormData.departure]);
+    const nextQuery = searchFormData.departureCity || searchFormData.departure || '';
+    const nextSelectedAirport = searchFormData.departure || '';
+
+    if (!hasSelectedDeparture && nextQuery === '') {
+      setSelectedDepartureAirport(nextSelectedAirport);
+      return;
+    }
+
+    setDepartureQuery(nextQuery);
+    setSelectedDepartureAirport(nextSelectedAirport);
+    setHasSelectedDeparture(Boolean(nextQuery));
+  }, [
+    searchFormData.departureCity,
+    searchFormData.departure,
+    hasSelectedDeparture,
+  ]);
 
   useEffect(() => {
-    setArrivalQuery(searchFormData.arrivalCity || searchFormData.arrival || '');
-    setSelectedArrivalAirport(searchFormData.arrival || '');
-  }, [searchFormData.arrivalCity, searchFormData.arrival]);
+    const nextQuery = searchFormData.arrivalCity || searchFormData.arrival || '';
+    const nextSelectedAirport = searchFormData.arrival || '';
+
+    if (!hasSelectedArrival && nextQuery === '') {
+      setSelectedArrivalAirport(nextSelectedAirport);
+      return;
+    }
+
+    setArrivalQuery(nextQuery);
+    setSelectedArrivalAirport(nextSelectedAirport);
+    setHasSelectedArrival(Boolean(nextQuery));
+  }, [searchFormData.arrivalCity, searchFormData.arrival, hasSelectedArrival]);
 
   useEffect(() => {
     if (!searchFormData.departureCity) {
@@ -433,6 +461,7 @@ function FlightSearchPanel({
   const handleDepartureLocationSelect = async (location: LocationResult) => {
     const { latitude, longitude } = extractCoordinates(location);
     setDepartureQuery(location.displayName);
+    setHasSelectedDeparture(true);
     setSearchFormData((prev) => ({
       ...prev,
       departureCity: location.displayName,
@@ -489,6 +518,7 @@ function FlightSearchPanel({
   const handleArrivalLocationSelect = async (location: LocationResult) => {
     const { latitude, longitude } = extractCoordinates(location);
     setArrivalQuery(location.displayName);
+    setHasSelectedArrival(true);
     setSearchFormData((prev) => ({
       ...prev,
       arrivalCity: location.displayName,
@@ -544,7 +574,9 @@ function FlightSearchPanel({
 
   const handleDepartureQueryChange = (value: string) => {
     setDepartureQuery(value);
-    if (value.trim().length === 0) {
+    const trimmed = value.trim();
+    if (hasSelectedDeparture || trimmed.length === 0) {
+      setHasSelectedDeparture(false);
       setDepartureAirports([]);
       setSelectedDepartureAirport('');
       setSearchFormData((prev) => ({
@@ -559,7 +591,9 @@ function FlightSearchPanel({
 
   const handleArrivalQueryChange = (value: string) => {
     setArrivalQuery(value);
-    if (value.trim().length === 0) {
+    const trimmed = value.trim();
+    if (hasSelectedArrival || trimmed.length === 0) {
+      setHasSelectedArrival(false);
       setArrivalAirports([]);
       setSelectedArrivalAirport('');
       setSearchFormData((prev) => ({
@@ -1635,6 +1669,8 @@ export default function FlightsPage() {
     aircraft: '',
     status: 'confirmed'
   });
+  const [manualDepartureHasSelected, setManualDepartureHasSelected] = useState(false);
+  const [manualArrivalHasSelected, setManualArrivalHasSelected] = useState(false);
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -2237,6 +2273,8 @@ export default function FlightsPage() {
       aircraft: '',
       status: 'confirmed'
     });
+    setManualDepartureHasSelected(false);
+    setManualArrivalHasSelected(false);
   };
 
   const openManualFlightDialog = () => {
@@ -2428,6 +2466,8 @@ export default function FlightsPage() {
       aircraft: flight.aircraft || '',
       status: flight.status || 'confirmed'
     });
+    setManualDepartureHasSelected(Boolean(flight.departureAirport || flight.departureCode));
+    setManualArrivalHasSelected(Boolean(flight.arrivalAirport || flight.arrivalCode));
   };
 
   const handleFlightSubmit = () => {
@@ -2545,13 +2585,24 @@ export default function FlightsPage() {
                       <SmartLocationSearch
                         placeholder="Departure airport (e.g., JFK, New York)"
                         value={flightFormData.departureAirport}
-                        onLocationSelect={(location) =>
+                        onQueryChange={(value) => {
+                          setFlightFormData((prev) => ({
+                            ...prev,
+                            departureAirport: value,
+                            departureCode: manualDepartureHasSelected ? '' : prev.departureCode,
+                          }));
+                          if (manualDepartureHasSelected) {
+                            setManualDepartureHasSelected(false);
+                          }
+                        }}
+                        onLocationSelect={(location) => {
+                          setManualDepartureHasSelected(true);
                           setFlightFormData((prev) => ({
                             ...prev,
                             departureAirport: location.displayName,
                             departureCode: location.code,
-                          }))
-                        }
+                          }));
+                        }}
                       />
                     </div>
                     <div>
@@ -2559,13 +2610,24 @@ export default function FlightsPage() {
                       <SmartLocationSearch
                         placeholder="Arrival airport (e.g., LAX, Los Angeles)"
                         value={flightFormData.arrivalAirport}
-                        onLocationSelect={(location) =>
+                        onQueryChange={(value) => {
+                          setFlightFormData((prev) => ({
+                            ...prev,
+                            arrivalAirport: value,
+                            arrivalCode: manualArrivalHasSelected ? '' : prev.arrivalCode,
+                          }));
+                          if (manualArrivalHasSelected) {
+                            setManualArrivalHasSelected(false);
+                          }
+                        }}
+                        onLocationSelect={(location) => {
+                          setManualArrivalHasSelected(true);
                           setFlightFormData((prev) => ({
                             ...prev,
                             arrivalAirport: location.displayName,
                             arrivalCode: location.code,
-                          }))
-                        }
+                          }));
+                        }}
                       />
                     </div>
                   </div>

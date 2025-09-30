@@ -2554,6 +2554,8 @@ function FlightCoordination({
   const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
   const [departureQuery, setDepartureQuery] = useState('');
   const [arrivalQuery, setArrivalQuery] = useState('');
+  const [hasSelectedDeparture, setHasSelectedDeparture] = useState(false);
+  const [hasSelectedArrival, setHasSelectedArrival] = useState(false);
   const [departureAirports, setDepartureAirports] = useState<NearbyAirport[]>([]);
   const [arrivalAirports, setArrivalAirports] = useState<NearbyAirport[]>([]);
   const [isLoadingDepartureAirports, setIsLoadingDepartureAirports] = useState(false);
@@ -2577,6 +2579,8 @@ function FlightCoordination({
     aircraft: "",
     status: "confirmed",
   });
+  const [manualDepartureHasSelected, setManualDepartureHasSelected] = useState(false);
+  const [manualArrivalHasSelected, setManualArrivalHasSelected] = useState(false);
   const selectedDepartureAirportDetails = useMemo(
     () =>
       departureAirports.find((airport) => airport.iata === selectedDepartureAirport) ?? null,
@@ -2611,14 +2615,36 @@ function FlightCoordination({
   ]);
 
   useEffect(() => {
-    setDepartureQuery(searchFormData.departureCity || searchFormData.departure || '');
-    setSelectedDepartureAirport(searchFormData.departure || '');
-  }, [searchFormData.departureCity, searchFormData.departure]);
+    const nextQuery = searchFormData.departureCity || searchFormData.departure || '';
+    const nextSelectedAirport = searchFormData.departure || '';
+
+    if (!hasSelectedDeparture && nextQuery === '') {
+      setSelectedDepartureAirport(nextSelectedAirport);
+      return;
+    }
+
+    setDepartureQuery(nextQuery);
+    setSelectedDepartureAirport(nextSelectedAirport);
+    setHasSelectedDeparture(Boolean(nextQuery));
+  }, [
+    searchFormData.departureCity,
+    searchFormData.departure,
+    hasSelectedDeparture,
+  ]);
 
   useEffect(() => {
-    setArrivalQuery(searchFormData.arrivalCity || searchFormData.arrival || '');
-    setSelectedArrivalAirport(searchFormData.arrival || '');
-  }, [searchFormData.arrivalCity, searchFormData.arrival]);
+    const nextQuery = searchFormData.arrivalCity || searchFormData.arrival || '';
+    const nextSelectedAirport = searchFormData.arrival || '';
+
+    if (!hasSelectedArrival && nextQuery === '') {
+      setSelectedArrivalAirport(nextSelectedAirport);
+      return;
+    }
+
+    setArrivalQuery(nextQuery);
+    setSelectedArrivalAirport(nextSelectedAirport);
+    setHasSelectedArrival(Boolean(nextQuery));
+  }, [searchFormData.arrivalCity, searchFormData.arrival, hasSelectedArrival]);
 
   useEffect(() => {
     if (!searchFormData.departureCity) {
@@ -2699,6 +2725,7 @@ function FlightCoordination({
   const handleDepartureLocationSelect = async (location: LocationResult) => {
     const { latitude, longitude } = extractCoordinates(location);
     setDepartureQuery(location.displayName);
+    setHasSelectedDeparture(true);
     setSearchFormData((prev) => ({
       ...prev,
       departureCity: location.displayName,
@@ -2755,6 +2782,7 @@ function FlightCoordination({
   const handleArrivalLocationSelect = async (location: LocationResult) => {
     const { latitude, longitude } = extractCoordinates(location);
     setArrivalQuery(location.displayName);
+    setHasSelectedArrival(true);
     setSearchFormData((prev) => ({
       ...prev,
       arrivalCity: location.displayName,
@@ -2810,7 +2838,9 @@ function FlightCoordination({
 
   const handleDepartureQueryChange = (value: string) => {
     setDepartureQuery(value);
-    if (value.trim().length === 0) {
+    const trimmed = value.trim();
+    if (hasSelectedDeparture || trimmed.length === 0) {
+      setHasSelectedDeparture(false);
       setDepartureAirports([]);
       setSelectedDepartureAirport('');
       setSearchFormData((prev) => ({
@@ -2825,7 +2855,9 @@ function FlightCoordination({
 
   const handleArrivalQueryChange = (value: string) => {
     setArrivalQuery(value);
-    if (value.trim().length === 0) {
+    const trimmed = value.trim();
+    if (hasSelectedArrival || trimmed.length === 0) {
+      setHasSelectedArrival(false);
       setArrivalAirports([]);
       setSelectedArrivalAirport('');
       setSearchFormData((prev) => ({
@@ -3074,6 +3106,8 @@ function FlightCoordination({
       aircraft: "",
       status: "confirmed",
     });
+    setManualDepartureHasSelected(false);
+    setManualArrivalHasSelected(false);
   }, []);
 
   const handleManualDialogOpen = useCallback(() => {
@@ -3618,13 +3652,24 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Departure airport"
                   value={manualFlightData.departureAirport}
-                  onLocationSelect={(location) =>
+                  onQueryChange={(value) => {
+                    setManualFlightData((prev) => ({
+                      ...prev,
+                      departureAirport: value,
+                      departureCode: manualDepartureHasSelected ? '' : prev.departureCode,
+                    }));
+                    if (manualDepartureHasSelected) {
+                      setManualDepartureHasSelected(false);
+                    }
+                  }}
+                  onLocationSelect={(location) => {
+                    setManualDepartureHasSelected(true);
                     setManualFlightData((prev) => ({
                       ...prev,
                       departureAirport: location.displayName,
                       departureCode: location.code,
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </div>
               <div>
@@ -3632,13 +3677,24 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Arrival airport"
                   value={manualFlightData.arrivalAirport}
-                  onLocationSelect={(location) =>
+                  onQueryChange={(value) => {
+                    setManualFlightData((prev) => ({
+                      ...prev,
+                      arrivalAirport: value,
+                      arrivalCode: manualArrivalHasSelected ? '' : prev.arrivalCode,
+                    }));
+                    if (manualArrivalHasSelected) {
+                      setManualArrivalHasSelected(false);
+                    }
+                  }}
+                  onLocationSelect={(location) => {
+                    setManualArrivalHasSelected(true);
                     setManualFlightData((prev) => ({
                       ...prev,
                       arrivalAirport: location.displayName,
                       arrivalCode: location.code,
-                    }))
-                  }
+                    }));
+                  }}
                 />
               </div>
             </div>
