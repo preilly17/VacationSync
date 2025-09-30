@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { ClipboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,10 +21,10 @@ import {
   Lock,
   Share2,
   Unlock,
-  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LastConversion } from "./converter-types";
+import ModalLayout from "@/components/dashboard/modal-layout";
 
 const RECENTS_KEY = "dashboard.converter.recents";
 const RATE_CACHE_KEY = "dashboard.converter.rates";
@@ -70,6 +70,7 @@ type CurrencyConverterToolProps = {
   onConversion: (conversion: LastConversion) => void;
   mobile?: boolean;
   autoFocusAmount?: boolean;
+  closeButtonRef?: RefObject<HTMLButtonElement>;
 };
 
 export default function CurrencyConverterTool({
@@ -78,6 +79,7 @@ export default function CurrencyConverterTool({
   onConversion,
   mobile = false,
   autoFocusAmount = false,
+  closeButtonRef,
 }: CurrencyConverterToolProps) {
   const { toast } = useToast();
   const [amount, setAmount] = useState(() =>
@@ -377,26 +379,25 @@ export default function CurrencyConverterTool({
   }, [fromCurrency, toCurrency]);
 
   return (
-    <div className={cn("flex flex-col gap-6", mobile ? "p-4" : "p-6")}
-      aria-label="Currency converter panel"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div>
+    <ModalLayout
+      onClose={onClose}
+      closeButtonRef={closeButtonRef}
+      closeLabel="Close currency converter"
+      headerClassName={cn(
+        mobile ? "px-5 pt-6 pb-3" : "px-6 py-5",
+        "sm:px-8",
+      )}
+      bodyClassName={cn(
+        "px-6 pb-6 pt-2 sm:px-8",
+        mobile ? "px-5 sm:px-8" : null,
+      )}
+      header={
+        <div className="space-y-1">
           <h2 className="text-lg font-semibold text-slate-900">Currency converter</h2>
           <p className="text-sm text-slate-500">Live mid-market rates with offline fallbacks.</p>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          type="button"
-          onClick={onClose}
-          className="h-9 w-9 rounded-full text-slate-500 hover:text-slate-700"
-          aria-label="Close converter"
-        >
-          <X className="h-5 w-5" />
-        </Button>
-      </div>
-
+      }
+    >
       <form
         className="flex flex-col gap-5"
         onSubmit={(event) => {
@@ -588,7 +589,7 @@ export default function CurrencyConverterTool({
           </Button>
         </div>
       </form>
-    </div>
+    </ModalLayout>
   );
 }
 
