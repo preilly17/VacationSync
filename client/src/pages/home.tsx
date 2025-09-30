@@ -1,12 +1,4 @@
-import {
-  Suspense,
-  lazy,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -44,12 +36,21 @@ import {
   selectUniqueTravelersThisYear,
   selectUpcomingTrips,
 } from "@/lib/dashboardSelectors";
+import {
+  TRIP_COVER_GRADIENT,
+  buildCoverPhotoAltText,
+  buildCoverPhotoSrcSet,
+  useCoverPhotoImage,
+} from "@/lib/tripCover";
 
 const CurrencyConverterTool = lazy(() =>
   import("@/components/dashboard/currency-converter-tool"),
 );
 
 const LAST_CONVERSION_KEY = "dashboard.converter.last";
+
+const HERO_OVERLAY_GRADIENT =
+  "linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.55))";
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() =>
@@ -182,11 +183,6 @@ function buildTravelerData(
       initial,
     };
   });
-}
-
-function buildDestinationImageUrl(destination: string): string {
-  const query = encodeURIComponent(`${destination} travel landscape`);
-  return `https://source.unsplash.com/1600x900/?${query}`;
 }
 
 function loadLastConversion(): LastConversion | null {
@@ -375,10 +371,6 @@ export default function Home() {
     ];
   }, [primaryTrip]);
 
-  const heroBackground = primaryTrip
-    ? primaryTrip.coverPhotoUrl ?? buildDestinationImageUrl(primaryTrip.destination)
-    : null;
-
   const nextTripChip = primaryTrip
     ? `Next up: ${primaryTrip.name || primaryTrip.destination} · ${formatDateRange(
         toDateString(primaryTrip.startDate),
@@ -386,16 +378,23 @@ export default function Home() {
       )}`
     : null;
 
-  const heroStyles: CSSProperties = heroBackground
-    ? {
-        backgroundImage: `linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.55)), url(${heroBackground})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-      }
-    : {
-        backgroundImage:
-          "linear-gradient(135deg, rgba(255, 126, 95, 0.88), rgba(254, 180, 123, 0.85), rgba(101, 78, 163, 0.85))",
-      };
+  const heroCoverPhoto = primaryTrip?.coverPhotoUrl ?? null;
+  const heroImageSrcSet = primaryTrip
+    ? buildCoverPhotoSrcSet({
+        full: primaryTrip.coverPhotoUrl ?? null,
+        card: primaryTrip.coverPhotoCardUrl ?? null,
+        thumb: primaryTrip.coverPhotoThumbUrl ?? null,
+      })
+    : undefined;
+  const heroAltText = primaryTrip
+    ? buildCoverPhotoAltText(primaryTrip.name || primaryTrip.destination)
+    : "Trip cover photo";
+  const {
+    showImage: showHeroCover,
+    isLoaded: heroCoverLoaded,
+    handleLoad: handleHeroCoverLoad,
+    handleError: handleHeroCoverError,
+  } = useCoverPhotoImage(heroCoverPhoto);
 
   const handlePlanTrip = () => {
     setLocation("/trips/new");
@@ -416,10 +415,34 @@ export default function Home() {
         <div className="flex flex-col gap-16">
           <section
             aria-labelledby="dashboard-hero"
-            className="rounded-[32px] border border-white/20 bg-slate-900/80 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
-            style={heroStyles}
+            className="relative overflow-hidden rounded-[32px] border border-white/20 bg-slate-900 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
           >
-            <div className="grid gap-6">
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{ backgroundImage: TRIP_COVER_GRADIENT }}
+              aria-hidden="true"
+            />
+            {showHeroCover ? (
+              <img
+                src={heroCoverPhoto ?? undefined}
+                srcSet={heroImageSrcSet}
+                sizes="(max-width: 1024px) 100vw, 960px"
+                alt={heroAltText}
+                className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
+                  heroCoverLoaded ? "opacity-100" : "opacity-0"
+                }`}
+                onLoad={handleHeroCoverLoad}
+                onError={handleHeroCoverError}
+                loading="eager"
+                decoding="async"
+              />
+            ) : null}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{ backgroundImage: HERO_OVERLAY_GRADIENT }}
+              aria-hidden="true"
+            />
+            <div className="relative grid gap-6">
               <div className="text-sm uppercase tracking-[0.2em] text-white/80">
                 Your travel hub
               </div>
@@ -669,17 +692,42 @@ type TripCardProps = {
 };
 
 function TripCard({ trip, onOpen }: TripCardProps) {
-  const imageUrl = trip.coverPhotoCardUrl ?? buildDestinationImageUrl(trip.destination);
-  const altText = trip.coverPhotoAlt ?? `${trip.destination} travel inspiration`;
+  const cardImageSrc = trip.coverPhotoCardUrl ?? trip.coverPhotoUrl ?? null;
+  const cardImageSrcSet = buildCoverPhotoSrcSet({
+    full: trip.coverPhotoUrl ?? null,
+    card: trip.coverPhotoCardUrl ?? null,
+    thumb: trip.coverPhotoThumbUrl ?? null,
+  });
+  const altText = buildCoverPhotoAltText(trip.name);
+  const {
+    showImage: showCardImage,
+    isLoaded: cardImageLoaded,
+    handleLoad: handleCardImageLoad,
+    handleError: handleCardImageError,
+  } = useCoverPhotoImage(cardImageSrc);
   return (
     <Card className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
       <div className="relative aspect-video overflow-hidden">
-        <img
-          src={imageUrl}
-          alt={altText}
-          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          loading="lazy"
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: TRIP_COVER_GRADIENT }}
+          aria-hidden="true"
         />
+        {showCardImage ? (
+          <img
+            src={cardImageSrc ?? undefined}
+            srcSet={cardImageSrcSet}
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            alt={altText}
+            className={`absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+              cardImageLoaded ? "opacity-100" : "opacity-0"
+            } transition-opacity duration-700`}
+            onLoad={handleCardImageLoad}
+            onError={handleCardImageError}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : null}
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
         <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
           <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
