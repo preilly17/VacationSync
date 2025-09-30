@@ -771,7 +771,7 @@ function FlightSearchPanel({
                       id="departure"
                       placeholder="Search departure city or airport"
                       value={departureQuery}
-                      types="city,airport"
+                      types="city"
                       onQueryChange={handleDepartureQueryChange}
                       onLocationSelect={handleDepartureLocationSelect}
                     />
@@ -819,7 +819,7 @@ function FlightSearchPanel({
                       id="arrival"
                       placeholder="Search arrival city or airport"
                       value={arrivalQuery}
-                      types="city,airport"
+                      types="city"
                       onQueryChange={handleArrivalQueryChange}
                       onLocationSelect={handleArrivalLocationSelect}
                     />
