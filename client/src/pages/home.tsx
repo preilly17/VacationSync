@@ -23,8 +23,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Avatar,
   AvatarFallback,
@@ -344,7 +349,7 @@ export default function Home() {
   const converterButtonRef = useRef<HTMLButtonElement | null>(null);
   const upcomingSectionRef = useRef<HTMLHeadingElement | null>(null);
   const [isConverterOpen, setIsConverterOpen] = useState(false);
-  const [isConverterInfoOpen, setIsConverterInfoOpen] = useState(false);
+  const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [expandedCard, setExpandedCard] = useState<ExpandedCardKey | null>(null);
   const handleToggleCard = useCallback((card: ExpandedCardKey) => {
     setExpandedCard((current) => (current === card ? null : card));
@@ -355,18 +360,20 @@ export default function Home() {
   const handleConverterVisibilityChange = useCallback(
     (open: boolean) => {
       setIsConverterOpen(open);
-      if (open) {
-        setIsConverterInfoOpen(false);
-      } else {
+      if (!open) {
         converterButtonRef.current?.focus();
       }
     },
-    [converterButtonRef, setIsConverterInfoOpen, setIsConverterOpen],
+    [converterButtonRef, setIsConverterOpen],
   );
   const handleConverterClose = useCallback(() => {
     setIsConverterOpen(false);
     converterButtonRef.current?.focus();
   }, [converterButtonRef, setIsConverterOpen]);
+
+  const handleOpenProfile = useCallback(() => {
+    setLocation("/profile");
+  }, [setLocation]);
 
   useEffect(() => {
     setLastConversion(loadLastConversion());
@@ -692,6 +699,73 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
       <div className="mx-auto w-full max-w-[1240px] px-6 pb-20 pt-24">
         <div className="flex flex-col gap-8">
+          <nav
+            aria-label="Dashboard quick actions"
+            className="rounded-full border border-slate-200/80 bg-white/90 px-4 py-2 text-sm shadow-sm backdrop-blur"
+          >
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="rounded-full px-4 text-sm font-medium text-slate-700 hover:text-slate-900"
+                  onClick={() => setIsHowItWorksOpen(true)}
+                >
+                  How It Works
+                </Button>
+                <Button
+                  ref={converterButtonRef}
+                  type="button"
+                  variant="ghost"
+                  className="rounded-full px-4 text-sm font-medium text-slate-700 hover:text-slate-900"
+                  onClick={() => handleConverterVisibilityChange(true)}
+                  aria-controls={converterDialogId}
+                  aria-expanded={isConverterOpen}
+                  aria-haspopup="dialog"
+                >
+                  Currency Converter
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="rounded-full px-4 text-sm font-medium text-slate-700 hover:text-slate-900"
+                  onClick={handleOpenProfile}
+                >
+                  Profile & Preferences
+                </Button>
+              </div>
+            </div>
+          </nav>
+
+          <Dialog open={isHowItWorksOpen} onOpenChange={setIsHowItWorksOpen}>
+            <DialogContent className="w-full max-w-xl rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
+              <DialogHeader>
+                <DialogTitle>How VacationSync Works</DialogTitle>
+                <DialogDescription className="text-left">
+                  VacationSync keeps your travel plans organized in one place. Plan new trips, invite your crew, and track every
+                  detail from flights to activities with collaborative tools designed for effortless group travel.
+                </DialogDescription>
+              </DialogHeader>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isConverterOpen} onOpenChange={handleConverterVisibilityChange}>
+            <DialogContent
+              id={converterDialogId}
+              className="w-full max-w-[560px] rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl"
+            >
+              <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+                <CurrencyConverterTool
+                  onClose={handleConverterClose}
+                  lastConversion={lastConversion}
+                  onConversion={handleConversionUpdate}
+                  mobile={!isDesktop}
+                  autoFocusAmount={isConverterOpen}
+                />
+              </Suspense>
+            </DialogContent>
+          </Dialog>
+
           <section
             aria-labelledby="dashboard-hero"
             className="relative overflow-hidden rounded-[32px] border border-white/20 bg-slate-900 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
@@ -725,7 +799,7 @@ export default function Home() {
               <div className="text-sm uppercase tracking-[0.2em] text-white/80">
                 Your travel hub
               </div>
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-4">
                 <div className="space-y-4">
                   <h1 id="dashboard-hero" className="text-4xl font-semibold sm:text-5xl">
                     Dashboard
@@ -733,65 +807,6 @@ export default function Home() {
                   <p className="text-base text-white/80">
                     Plan new trips and see what’s next—all in one place.
                   </p>
-                </div>
-                <div className="flex flex-col items-start gap-3 text-left md:flex-row md:flex-wrap md:items-center md:justify-end lg:items-center lg:justify-end">
-                  <Popover open={isConverterInfoOpen} onOpenChange={setIsConverterInfoOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-full px-6 text-sm font-semibold text-white/90 hover:text-white"
-                      >
-                        How it works
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="end"
-                      className="w-[360px] max-w-[calc(100vw-48px)] rounded-2xl border border-white/20 bg-white/10 p-4 text-left text-sm text-white/80 backdrop-blur"
-                    >
-                      <p className="font-semibold text-white">Currency converter</p>
-                      <p className="mt-2 text-white/90">Quick conversions for the road.</p>
-                      <p className="mt-1 text-white/80">Live mid-market rates with offline fallbacks.</p>
-                      <div className="mt-3 flex justify-end">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="rounded-full px-4 text-xs font-semibold text-white/80 hover:text-white"
-                          onClick={() => setIsConverterInfoOpen(false)}
-                        >
-                          Close
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  <Dialog open={isConverterOpen} onOpenChange={handleConverterVisibilityChange}>
-                    <Button
-                      ref={converterButtonRef}
-                      type="button"
-                      onClick={() => handleConverterVisibilityChange(true)}
-                      aria-controls={converterDialogId}
-                      aria-expanded={isConverterOpen}
-                      aria-haspopup="dialog"
-                      className="sunset-gradient rounded-full px-6 py-2 text-sm font-semibold text-white shadow-lg transition-transform hover:-translate-y-0.5 hover:shadow-xl"
-                    >
-                      Currency converter
-                    </Button>
-                    <DialogContent
-                      id={converterDialogId}
-                      className="w-full max-w-[560px] rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl [&>button]:hidden"
-                    >
-                      <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
-                        <CurrencyConverterTool
-                          onClose={handleConverterClose}
-                          lastConversion={lastConversion}
-                          onConversion={handleConversionUpdate}
-                          mobile={!isDesktop}
-                          autoFocusAmount={isConverterOpen}
-                        />
-                      </Suspense>
-                    </DialogContent>
-                  </Dialog>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
