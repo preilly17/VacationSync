@@ -46,6 +46,17 @@
   --neutral-900: hsl(222 47% 12%);
   --neutral-600: hsl(215 16% 45%);
   --neutral-100: hsl(213 32% 94%);
+
+  --dashboard-canvas: #f6f5ff;
+  --dashboard-surface: rgba(255, 255, 255, 0.9);
+  --dashboard-surface-strong: rgba(255, 255, 255, 0.96);
+  --dashboard-primary: #f97362;
+  --dashboard-secondary: #f6b980;
+  --dashboard-accent: #6a5cff;
+  --dashboard-text: #0f172a;
+  --dashboard-muted: rgba(15, 23, 42, 0.68);
+  --dashboard-card-border: rgba(15, 23, 42, 0.08);
+  --dashboard-card-border-strong: rgba(15, 23, 42, 0.16);
 }
 
 .dark {
@@ -71,6 +82,17 @@
   --destructive-foreground: hsl(210 40% 98%);
   --ring: hsl(199 89% 58%);
   --radius: 0.875rem;
+
+  --dashboard-canvas: #050816;
+  --dashboard-surface: rgba(15, 23, 42, 0.78);
+  --dashboard-surface-strong: rgba(15, 23, 42, 0.88);
+  --dashboard-primary: #f9947c;
+  --dashboard-secondary: #f6c792;
+  --dashboard-accent: #8e87ff;
+  --dashboard-text: #e2e8f0;
+  --dashboard-muted: rgba(226, 232, 240, 0.7);
+  --dashboard-card-border: rgba(148, 163, 184, 0.28);
+  --dashboard-card-border-strong: rgba(148, 163, 184, 0.4);
 }
 
 @layer base {
@@ -197,6 +219,31 @@ body.dark .page-shell::after {
 .page-shell .border-slate-300,
 .page-shell .border-white {
   border-color: rgba(148, 163, 184, 0.45);
+}
+
+@keyframes dashboard-icon-pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.dashboard-progress > div {
+  background-image: linear-gradient(
+    90deg,
+    var(--dashboard-primary),
+    var(--dashboard-secondary),
+    var(--dashboard-accent)
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .page-shell .divide-slate-200,

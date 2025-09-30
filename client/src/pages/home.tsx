@@ -43,6 +43,23 @@ const CurrencyConverterTool = lazy(() =>
 
 const LAST_CONVERSION_KEY = "dashboard.converter.last";
 
+const themeTokens = {
+  "--dashboard-primary": "#f97362",
+  "--dashboard-secondary": "#f6b980",
+  "--dashboard-accent": "#6a5cff",
+  "--dashboard-text": "#0f172a",
+  "--dashboard-muted": "rgba(15, 23, 42, 0.7)",
+  "--dashboard-surface": "rgba(255, 255, 255, 0.88)",
+  "--dashboard-surface-strong": "rgba(255, 255, 255, 0.96)",
+  "--dashboard-card-border": "rgba(15, 23, 42, 0.08)",
+  "--dashboard-card-border-strong": "rgba(15, 23, 42, 0.16)",
+  "--dashboard-canvas": "#f6f5ff",
+} as CSSProperties;
+
+const brandGradient =
+  "linear-gradient(120deg, var(--dashboard-primary), var(--dashboard-secondary), var(--dashboard-accent))";
+const cardShadow = "0 30px 60px -40px rgba(15, 23, 42, 0.55)";
+
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() =>
     typeof window === "undefined" ? false : window.matchMedia(query).matches,
@@ -359,13 +376,12 @@ export default function Home() {
 
   const heroStyles: CSSProperties = heroBackground
     ? {
-        backgroundImage: `linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.55)), url(${heroBackground})`,
+        backgroundImage: `url(${heroBackground})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
       }
     : {
-        backgroundImage:
-          "linear-gradient(135deg, rgba(255, 126, 95, 0.88), rgba(254, 180, 123, 0.85), rgba(101, 78, 163, 0.85))",
+        backgroundImage: brandGradient,
       };
 
   const handlePlanTrip = () => {
@@ -382,35 +398,57 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
-      <div className="mx-auto w-full max-w-7xl px-4 pb-24 pt-28 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-16">
+    <div
+      className="relative min-h-screen overflow-hidden bg-[var(--dashboard-canvas,#f6f5ff)]"
+      style={themeTokens}
+    >
+      <div className="pointer-events-none absolute inset-0 -z-10">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,var(--dashboard-secondary)/0.15,transparent_65%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom,var(--dashboard-accent)/0.12,transparent_60%)]" />
+      </div>
+      <div className="mx-auto w-full max-w-6xl px-4 pb-20 pt-24 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-12">
           <section
             aria-labelledby="dashboard-hero"
-            className="rounded-[32px] border border-white/20 bg-slate-900/80 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
+            className="relative overflow-hidden rounded-[28px] border border-[rgba(255,255,255,0.18)] bg-slate-900/80 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
             style={heroStyles}
           >
-            <div className="grid gap-6">
-              <div className="text-sm uppercase tracking-[0.2em] text-white/80">
-                Your travel hub
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-900/75 via-slate-900/55 to-slate-900/70" aria-hidden="true" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle,transparent_45%,rgba(15,23,42,0.65))]" aria-hidden="true" />
+            <div
+              className="absolute inset-0 opacity-[0.18] mix-blend-soft-light"
+              aria-hidden="true"
+              style={{
+                backgroundImage:
+                  "url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAKUlEQVQoU2NkYGD4z0AEYBxVSF8GIg1E0UAMM1ECkWg0GhEExmAwGgAAIuYB+7cwXroAAAAASUVORK5CYII=')",
+                backgroundSize: "180px",
+              }}
+            />
+            <div className="relative grid gap-5">
+              <div className="text-xs font-semibold uppercase tracking-[0.4em] text-white/70">
+                Your Travel Hub
               </div>
               <div className="space-y-4">
-                <h1 id="dashboard-hero" className="text-4xl font-semibold sm:text-5xl">
+                <h1 id="dashboard-hero" className="text-4xl font-black leading-tight sm:text-6xl">
                   Dashboard
                 </h1>
-                <p className="text-base text-white/80">
+                <p className="text-base leading-normal text-white/80">
                   Plan new trips and see what’s next—all in one place.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   onClick={handlePlanTrip}
-                  className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-base font-semibold text-white shadow-lg transition-opacity hover:opacity-90"
+                  className="rounded-full px-7 py-2.5 text-base font-semibold text-white transition-transform duration-300 ease-out hover:-translate-y-0.5"
+                  style={{
+                    backgroundImage: brandGradient,
+                    boxShadow: "0 16px 35px -20px rgba(249, 115, 98, 0.65)",
+                  }}
                 >
                   Plan a New Trip
                 </Button>
                 {nextTripChip ? (
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white/90">
+                  <span className="rounded-full border border-white/30 bg-white/15 px-3 py-1 text-xs font-medium uppercase tracking-wide text-white/85 backdrop-blur-sm">
                     {nextTripChip}
                   </span>
                 ) : null}
@@ -418,10 +456,10 @@ export default function Home() {
             </div>
           </section>
 
-          <section
-            aria-labelledby="dashboard-highlights"
-            className="rounded-3xl border border-white/30 bg-white/90 p-6 shadow-lg backdrop-blur"
-          >
+          <section className="relative" aria-labelledby="dashboard-highlights">
+            <div className="pointer-events-none absolute inset-[-28px] -z-10 rounded-[40px] bg-[radial-gradient(circle_at_center,rgba(249,115,98,0.12),transparent_65%)]" />
+            <div className="pointer-events-none absolute inset-0 -z-10 rounded-[32px] bg-white/30 blur-3xl" />
+            <div className="rounded-[28px] border border-[rgba(15,23,42,0.06)] bg-[color:var(--dashboard-surface)] p-6 shadow-[0_35px_65px_-45px_rgba(15,23,42,0.65)] backdrop-blur">
             <h2 id="dashboard-highlights" className="sr-only">
               Highlights
             </h2>
@@ -430,53 +468,63 @@ export default function Home() {
                 {Array.from({ length: 4 }).map((_, index) => (
                   <Card
                     key={`highlight-skeleton-${index}`}
-                    className="rounded-2xl border border-slate-100/60 bg-white/70 p-6 shadow-sm"
+                    className="relative overflow-hidden rounded-[24px] border border-[rgba(15,23,42,0.08)] bg-white/70 p-6 shadow-sm"
                   >
-                    <Skeleton className="h-5 w-10" />
-                    <Skeleton className="mt-4 h-6 w-20" />
-                    <Skeleton className="mt-2 h-4 w-24" />
+                    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[rgba(249,115,98,0.45)] via-[rgba(246,185,128,0.45)] to-[rgba(106,92,255,0.45)]" />
+                    <Skeleton className="mt-4 h-5 w-10" />
+                    <Skeleton className="mt-5 h-7 w-24" />
+                    <Skeleton className="mt-3 h-3 w-28" />
                   </Card>
                 ))}
               </div>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <HighlightCard
-                  icon={<Plane className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  icon={<Plane className="h-5 w-5 text-[var(--dashboard-primary)]" aria-hidden="true" />}
                   value={highlightStats.upcoming}
                   label="Upcoming trips"
                   href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
                 />
                 <HighlightCard
-                  icon={<Globe2 className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  icon={<Globe2 className="h-5 w-5 text-[var(--dashboard-primary)]" aria-hidden="true" />}
                   value={highlightStats.destinations}
                   label="Destinations"
                   href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
                 />
                 <HighlightCard
-                  icon={<CalendarDays className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  icon={<CalendarDays className="h-5 w-5 text-[var(--dashboard-primary)]" aria-hidden="true" />}
                   value={highlightStats.daysToNext ?? "—"}
                   label="Days to next trip"
                   href={primaryTrip ? `/trip/${primaryTrip.id}` : "/"}
                 />
                 <HighlightCard
-                  icon={<UserRound className="h-5 w-5 text-[#ff7e5f]" aria-hidden="true" />}
+                  icon={<UserRound className="h-5 w-5 text-[var(--dashboard-primary)]" aria-hidden="true" />}
                   value={highlightStats.travelersThisYear}
                   label="Travelers this year"
                   href={primaryTrip ? `/trip/${primaryTrip.id}?view=members` : "/"}
                 />
               </div>
             )}
+            </div>
           </section>
 
-          <section className="grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <div className="flex flex-col gap-12">
+          <section className="grid gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+            <div className="flex flex-col gap-10">
               <section aria-labelledby="upcoming-trips-heading" className="space-y-6">
-                <h2 id="upcoming-trips-heading" className="text-2xl font-semibold text-slate-900">
-                  Upcoming trips
-                </h2>
+                <div className="space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                    Upcoming Trips
+                  </span>
+                  <div>
+                    <h2 id="upcoming-trips-heading" className="text-2xl font-semibold text-slate-900">
+                      Upcoming trips
+                    </h2>
+                    <div className="mt-2 h-px w-14 bg-gradient-to-r from-[var(--dashboard-primary)] via-[var(--dashboard-secondary)] to-[var(--dashboard-accent)]" />
+                  </div>
+                </div>
 
                 {error ? (
-                  <Card className="rounded-3xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
+                  <Card className="rounded-[28px] border border-amber-200/70 bg-amber-50/80 p-6 text-amber-900 shadow-sm">
                     We’re having trouble loading your trips right now. Try refreshing the page.
                   </Card>
                 ) : null}
@@ -486,13 +534,14 @@ export default function Home() {
                     {Array.from({ length: 3 }).map((_, index) => (
                       <Card
                         key={`trip-skeleton-${index}`}
-                        className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-sm"
+                        className="relative overflow-hidden rounded-[28px] border border-[rgba(15,23,42,0.08)] bg-white/80 p-5 shadow-sm"
                       >
+                        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[rgba(249,115,98,0.45)] via-[rgba(246,185,128,0.45)] to-[rgba(106,92,255,0.45)]" />
                         <Skeleton className="aspect-video w-full rounded-2xl" />
-                        <div className="mt-4 space-y-2">
+                        <div className="mt-5 space-y-3">
                           <Skeleton className="h-5 w-2/3" />
                           <Skeleton className="h-4 w-1/2" />
-                          <Skeleton className="h-2 w-full rounded-full" />
+                          <Skeleton className="h-2.5 w-full rounded-full" />
                         </div>
                       </Card>
                     ))}
@@ -504,7 +553,7 @@ export default function Home() {
                     ))}
                   </div>
                 ) : (
-                  <Card className="flex flex-col items-center justify-center gap-5 rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
+                  <Card className="flex flex-col items-center justify-center gap-5 rounded-[28px] border border-dashed border-[color:var(--dashboard-card-border-strong)] bg-white/80 p-10 text-center shadow-sm">
                     <div className="text-5xl">🌅</div>
                     <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
                     <p className="max-w-md text-sm text-slate-500">
@@ -512,7 +561,11 @@ export default function Home() {
                     </p>
                     <Button
                       onClick={handlePlanTrip}
-                      className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-white shadow-md transition-opacity hover:opacity-90"
+                      className="rounded-full px-6 text-white transition-transform duration-300 ease-out hover:-translate-y-0.5"
+                      style={{
+                        backgroundImage: brandGradient,
+                        boxShadow: "0 16px 35px -20px rgba(249, 115, 98, 0.6)",
+                      }}
                     >
                       Plan a New Trip
                     </Button>
@@ -522,23 +575,35 @@ export default function Home() {
 
               {insights.length > 0 ? (
                 <section aria-labelledby="insights-heading" className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
-                      Helpful insights
-                    </h2>
+                  <div className="space-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                      Your Travel Hub
+                    </span>
+                    <div className="flex items-center justify-between">
+                      <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
+                        Helpful insights
+                      </h2>
+                    </div>
+                    <div className="h-px w-14 bg-gradient-to-r from-[var(--dashboard-primary)] via-[var(--dashboard-secondary)] to-[var(--dashboard-accent)]" />
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {insights.map((insight) => (
                       <Link key={insight.id} href={insight.href} className="group">
-                        <Card className="flex h-full flex-col justify-between overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm transition-transform group-hover:-translate-y-1 group-hover:shadow-md">
-                          <div className="space-y-3">
-                            <span className="text-2xl" aria-hidden="true">
+                        <Card
+                          className="relative flex h-full flex-col justify-between overflow-hidden rounded-[24px] border border-[rgba(15,23,42,0.08)] bg-white/80 p-6 shadow-[0_25px_45px_-35px_rgba(15,23,42,0.45)] transition-transform duration-300 ease-out group-hover:-translate-y-2 group-hover:shadow-[0_32px_60px_-35px_rgba(15,23,42,0.55)]"
+                        >
+                          <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--dashboard-primary)] via-[var(--dashboard-secondary)] to-[var(--dashboard-accent)]" aria-hidden="true" />
+                          <div className="space-y-3 pt-2">
+                            <span
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[color:rgba(249,115,98,0.12)] text-xl"
+                              aria-hidden="true"
+                            >
                               {insight.icon}
                             </span>
                             <h3 className="text-lg font-semibold text-slate-900">{insight.title}</h3>
                             <p className="text-sm text-slate-500">{insight.description}</p>
                           </div>
-                          <span className="mt-6 text-sm font-semibold text-[#ff7e5f]">Go to trip →</span>
+                          <span className="mt-6 text-sm font-semibold text-[var(--dashboard-primary)]">Go to trip →</span>
                         </Card>
                       </Link>
                     ))}
@@ -547,17 +612,22 @@ export default function Home() {
               ) : null}
             </div>
 
-            <aside className="flex flex-col gap-6 self-start">
+            <aside className="flex flex-col gap-8 self-start">
               <section aria-labelledby="converter-heading">
-                <Card className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h2 id="converter-heading" className="text-lg font-semibold text-slate-900">
+                <Card
+                  className="relative overflow-hidden rounded-[28px] border border-[color:var(--dashboard-card-border)] bg-[color:var(--dashboard-surface-strong)] p-6 shadow-[0_25px_45px_-35px_rgba(15,23,42,0.4)] transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-[0_35px_65px_-30px_rgba(15,23,42,0.55)]"
+                  style={{ boxShadow: cardShadow }}
+                >
+                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--dashboard-primary)] via-[var(--dashboard-secondary)] to-[var(--dashboard-accent)]" aria-hidden="true" />
+                  <div className="mb-5 flex items-start justify-between">
+                    <div className="space-y-1">
+                      <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
+                        Travel Tools
+                      </span>
+                      <h2 id="converter-heading" className="text-lg font-semibold leading-tight text-slate-900">
                         Currency converter
                       </h2>
-                      <p className="text-sm text-slate-500">
-                        Quick conversions for the road.
-                      </p>
+                      <p className="text-sm text-slate-500">Quick conversions for the road.</p>
                     </div>
                   </div>
                   <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
@@ -572,9 +642,13 @@ export default function Home() {
               </section>
 
               {primaryTrip ? (
-                <Card className="rounded-3xl border border-slate-100 bg-gradient-to-br from-[#ffecd2] via-white to-[#fcb69f] p-6 shadow-sm">
-                  <div className="flex flex-col gap-3">
-                    <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
+                <Card
+                  className="relative rounded-[28px] border border-[color:var(--dashboard-card-border)] bg-gradient-to-br from-[rgba(249,115,98,0.08)] via-white to-[rgba(106,92,255,0.08)] p-6 text-slate-900 shadow-[0_25px_45px_-35px_rgba(15,23,42,0.4)] transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-[0_35px_65px_-30px_rgba(15,23,42,0.55)]"
+                  style={{ boxShadow: cardShadow }}
+                >
+                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--dashboard-primary)] via-[var(--dashboard-secondary)] to-[var(--dashboard-accent)]" aria-hidden="true" />
+                  <div className="flex flex-col gap-3 pt-3">
+                    <span className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">
                       Next destination
                     </span>
                     <h3 className="text-xl font-semibold text-slate-900">
@@ -611,20 +685,28 @@ type HighlightCardProps = {
 function HighlightCard({ icon, value, label, href }: HighlightCardProps) {
   return (
     <Link href={href} className="group">
-      <Card className="flex h-full flex-col justify-between gap-3 rounded-3xl border border-slate-100 bg-white/80 p-6 shadow-sm transition-shadow group-hover:shadow-md">
-        <div className="flex items-center justify-between">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#ff7e5f]/15 via-[#feb47b]/10 to-[#654ea3]/15">
+      <Card
+        className="relative flex h-full flex-col justify-between gap-5 overflow-hidden rounded-[24px] border border-[color:var(--dashboard-card-border)] bg-white/80 p-6 shadow-[0_25px_45px_-35px_rgba(15,23,42,0.45)] transition-all duration-300 ease-out group-hover:-translate-y-2 group-hover:shadow-[0_35px_65px_-30px_rgba(15,23,42,0.6)]"
+        style={{ boxShadow: cardShadow }}
+      >
+        <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--dashboard-primary)] via-[var(--dashboard-secondary)] to-[var(--dashboard-accent)]" aria-hidden="true" />
+        <div className="flex items-center justify-between pt-2">
+          <div
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[color:rgba(249,115,98,0.15)] text-[var(--dashboard-primary)]"
+            style={{ animation: "dashboard-icon-pop 0.6s ease-out both" }}
+            aria-hidden="true"
+          >
             {icon}
           </div>
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <span className="text-[0.7rem] font-semibold uppercase tracking-[0.35em] text-slate-400">
             View
           </span>
         </div>
-        <div>
-          <div className="text-3xl font-semibold text-slate-900">
+        <div className="space-y-1">
+          <div className="text-4xl font-semibold leading-tight text-slate-900">
             {value ?? "—"}
           </div>
-          <p className="mt-1 text-sm text-slate-500">{label}</p>
+          <p className="text-[0.75rem] uppercase tracking-[0.25em] text-slate-500">{label}</p>
         </div>
       </Card>
     </Link>
@@ -639,8 +721,23 @@ type TripCardProps = {
 function TripCard({ trip, onOpen }: TripCardProps) {
   const imageUrl = trip.coverPhotoCardUrl ?? buildDestinationImageUrl(trip.destination);
   const altText = trip.coverPhotoAlt ?? `${trip.destination} travel inspiration`;
+  const [progressValue, setProgressValue] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      setProgressValue(trip.progressPercent);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => setProgressValue(trip.progressPercent));
+    return () => window.cancelAnimationFrame(frame);
+  }, [trip.progressPercent]);
+
   return (
-    <Card className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
+    <Card
+      className="group relative flex h-full flex-col overflow-hidden rounded-[28px] border border-[color:var(--dashboard-card-border)] bg-white/85 shadow-[0_25px_45px_-35px_rgba(15,23,42,0.45)] transition-all duration-300 ease-out hover:-translate-y-2 hover:shadow-[0_35px_65px_-30px_rgba(15,23,42,0.6)]"
+      style={{ boxShadow: cardShadow }}
+    >
+      <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[var(--dashboard-primary)] via-[var(--dashboard-secondary)] to-[var(--dashboard-accent)]" aria-hidden="true" />
       <div className="relative aspect-video overflow-hidden">
         <img
           src={imageUrl}
@@ -648,19 +745,20 @@ function TripCard({ trip, onOpen }: TripCardProps) {
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 via-slate-900/35 to-transparent" aria-hidden="true" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,transparent_45%,rgba(15,23,42,0.5))]" aria-hidden="true" />
         <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
-          <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+          <Badge className="rounded-full border border-white/40 bg-white/30 px-3 py-1 text-xs font-medium text-white backdrop-blur">
             {formatDateRange(trip.startDate, trip.endDate)}
           </Badge>
-          <Badge className="rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+          <Badge className="rounded-full border border-white/35 bg-white/25 px-3 py-1 text-xs font-medium text-white backdrop-blur">
             {getTravelersLabel(trip.travelersCount)}
           </Badge>
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-4 p-6">
         <div className="space-y-2">
-          <h3 className="text-xl font-semibold text-slate-900" title={trip.name}>
+          <h3 className="text-xl font-semibold leading-tight text-slate-900" title={trip.name}>
             {trip.name}
           </h3>
           <p className="text-sm text-slate-500">{getCountdownLabel(trip.startDate, trip.endDate)}</p>
@@ -668,20 +766,33 @@ function TripCard({ trip, onOpen }: TripCardProps) {
         <div className="flex items-center gap-3">
           <div className="flex -space-x-2">
             {trip.travelers.slice(0, 3).map((traveler, index) => (
-              <Avatar key={`trip-${trip.id}-traveler-${index}`} className="h-8 w-8 border-2 border-white bg-slate-100">
+              <Avatar
+                key={`trip-${trip.id}-traveler-${index}`}
+                className="h-8 w-8 border-2 border-white/80 bg-slate-100 shadow-[0_6px_18px_-12px_rgba(15,23,42,0.45)]"
+              >
                 <AvatarImage src={traveler.avatar ?? undefined} alt="" loading="lazy" />
                 <AvatarFallback>{traveler.initial}</AvatarFallback>
               </Avatar>
             ))}
           </div>
-          <Badge variant="secondary" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+          <Badge className="rounded-full border border-[rgba(249,115,98,0.2)] bg-[rgba(249,115,98,0.08)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--dashboard-muted)]">
             Planning {trip.progressPercent}%
           </Badge>
         </div>
-        <Progress value={trip.progressPercent} className="h-2 rounded-full bg-slate-100" />
+        <Progress
+          value={progressValue}
+          className="dashboard-progress h-2 rounded-full bg-[rgba(15,23,42,0.08)]"
+          style={{
+            overflow: "hidden",
+          }}
+        />
         <Button
           onClick={onOpen}
-          className="mt-auto rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] text-white shadow-md hover:opacity-90"
+          className="mt-auto rounded-full px-6 text-white transition-transform duration-300 ease-out hover:-translate-y-0.5"
+          style={{
+            backgroundImage: brandGradient,
+            boxShadow: "0 16px 35px -20px rgba(249, 115, 98, 0.6)",
+          }}
         >
           Open trip
         </Button>
