@@ -76,12 +76,12 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
       className = "",
       onQueryChange,
       types,
-      allowedTypes = DEFAULT_ALLOWED_TYPES,
+      allowedTypes,
     },
     ref,
   ) {
     const [query, setQuery] = useState(value);
-    const normalisedAllowedTypes = normalizeAllowedTypes(allowedTypes, types);
+    const normalizedAllowedTypes = normalizeAllowedTypes(allowedTypes, types);
 
     useEffect(() => {
       setQuery(value ?? "");
@@ -94,7 +94,7 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
         placeholder={placeholder}
         value={query}
         className={className}
-        allowedTypes={normalisedAllowedTypes}
+        allowedTypes={normalizedAllowedTypes}
         onQueryChange={(nextValue) => {
           setQuery(nextValue);
           onQueryChange?.(nextValue);
