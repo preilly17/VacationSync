@@ -474,17 +474,78 @@ export default function Home() {
               style={{ backgroundImage: HERO_OVERLAY_GRADIENT }}
               aria-hidden="true"
             />
-            <div className="relative grid gap-6">
+            <div className="relative flex flex-col gap-6">
               <div className="text-sm uppercase tracking-[0.2em] text-white/80">
                 Your travel hub
               </div>
-              <div className="space-y-4">
-                <h1 id="dashboard-hero" className="text-4xl font-semibold sm:text-5xl">
-                  Dashboard
-                </h1>
-                <p className="text-base text-white/80">
-                  Plan new trips and see what’s next—all in one place.
-                </p>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-4">
+                  <h1 id="dashboard-hero" className="text-4xl font-semibold sm:text-5xl">
+                    Dashboard
+                  </h1>
+                  <p className="text-base text-white/80">
+                    Plan new trips and see what’s next—all in one place.
+                  </p>
+                </div>
+                <div className="flex flex-col items-start gap-3 text-left md:flex-row md:flex-wrap md:items-center md:justify-end lg:items-center lg:justify-end">
+                  <Popover open={isConverterInfoOpen} onOpenChange={setIsConverterInfoOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-full px-6 text-sm font-semibold text-white/90 hover:text-white"
+                      >
+                        How it works
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      className="w-[360px] max-w-[calc(100vw-48px)] rounded-2xl border border-white/20 bg-white/10 p-4 text-left text-sm text-white/80 backdrop-blur"
+                    >
+                      <p className="font-semibold text-white">Currency converter</p>
+                      <p className="mt-2 text-white/90">Quick conversions for the road.</p>
+                      <p className="mt-1 text-white/80">Live mid-market rates with offline fallbacks.</p>
+                      <div className="mt-3 flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-full px-4 text-xs font-semibold text-white/80 hover:text-white"
+                          onClick={() => setIsConverterInfoOpen(false)}
+                        >
+                          Close
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Dialog open={isConverterOpen} onOpenChange={handleConverterVisibilityChange}>
+                    <Button
+                      ref={converterButtonRef}
+                      type="button"
+                      onClick={() => handleConverterVisibilityChange(true)}
+                      aria-controls={converterDialogId}
+                      aria-expanded={isConverterOpen}
+                      aria-haspopup="dialog"
+                      className="sunset-gradient rounded-full px-6 py-2 text-sm font-semibold text-white shadow-lg transition-transform hover:-translate-y-0.5 hover:shadow-xl"
+                    >
+                      Currency converter
+                    </Button>
+                    <DialogContent
+                      id={converterDialogId}
+                      className="w-full max-w-[560px] rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl [&>button]:hidden"
+                    >
+                      <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+                        <CurrencyConverterTool
+                          onClose={handleConverterClose}
+                          lastConversion={lastConversion}
+                          onConversion={handleConversionUpdate}
+                          mobile={!isDesktop}
+                          autoFocusAmount={isConverterOpen}
+                        />
+                      </Suspense>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Button
@@ -637,61 +698,9 @@ export default function Home() {
 
           {(insights.length > 0 || primaryTrip) && (
             <section aria-labelledby="insights-heading" className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
-                  Helpful insights
-                </h2>
-                <div className="flex items-center gap-3">
-                  <Dialog
-                    open={isConverterOpen}
-                    onOpenChange={handleConverterVisibilityChange}
-                  >
-                    <Button
-                      ref={converterButtonRef}
-                      type="button"
-                      onClick={() => handleConverterVisibilityChange(true)}
-                      aria-controls={converterDialogId}
-                      aria-expanded={isConverterOpen}
-                      aria-haspopup="dialog"
-                      className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-sm font-semibold text-white shadow-md transition-opacity hover:opacity-90"
-                    >
-                      Currency converter
-                    </Button>
-                    <DialogContent
-                      id={converterDialogId}
-                      className="max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-lg [&>button]:hidden"
-                    >
-                      <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
-                        <CurrencyConverterTool
-                          onClose={handleConverterClose}
-                          lastConversion={lastConversion}
-                          onConversion={handleConversionUpdate}
-                          mobile={!isDesktop}
-                          autoFocusAmount={isConverterOpen}
-                        />
-                      </Suspense>
-                    </DialogContent>
-                  </Dialog>
-                  <Popover open={isConverterInfoOpen} onOpenChange={setIsConverterInfoOpen}>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="text-sm font-medium text-slate-500 underline-offset-4 transition hover:text-slate-700 hover:underline"
-                      >
-                        How it works
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="end"
-                      className="w-64 rounded-2xl border border-slate-200 bg-white p-4 text-left text-sm text-slate-600 shadow-lg"
-                    >
-                      <p className="font-semibold text-slate-900">Currency converter</p>
-                      <p className="mt-2 text-slate-600">Quick conversions for the road.</p>
-                      <p className="mt-1 text-slate-600">Live mid-market rates with offline fallbacks.</p>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
+              <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
+                Helpful insights
+              </h2>
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {insights.map((insight) => (
                   <Link key={insight.id} href={insight.href} className="group">
