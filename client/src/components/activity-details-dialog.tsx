@@ -274,40 +274,70 @@ export function ActivityDetailsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl font-semibold text-neutral-900">
-            {activity?.name ?? "Activity"}
-          </DialogTitle>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <DialogTitle className="text-xl font-semibold text-neutral-900">
+              {activity?.name ?? "Activity"}
+            </DialogTitle>
+            {isProposal && (
+              <Badge className="bg-blue-100 text-blue-800 border border-blue-200">
+                Proposed plan
+              </Badge>
+            )}
+          </div>
           <DialogDescription className="text-sm text-neutral-600">
-            Review the details and let everyone know if you’re joining.
+            {isProposal
+              ? "Gauge interest from the group before scheduling this activity."
+              : "Review the details and let everyone know if you’re joining."}
           </DialogDescription>
         </DialogHeader>
 
         {activity && (
           <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex items-start space-x-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <div
+                className={cn(
+                  "flex items-start space-x-3 rounded-lg border bg-neutral-50 p-4",
+                  isProposal && "border-blue-200 bg-blue-50",
+                )}
+              >
                 <div className="mt-1 rounded-md bg-primary/10 p-2 text-primary">
                   <Calendar className="h-4 w-4" />
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">When</p>
-                  <p className="text-sm font-medium text-neutral-900">{formatDateTime(activity.startTime)}</p>
+                  <p className="text-sm font-medium text-neutral-900">
+                    {formatDateTime(activity.startTime)}
+                  </p>
                   {endTimeLabel && (
                     <p className="text-xs text-neutral-500">Ends at {endTimeLabel}</p>
+                  )}
+                  {isProposal && (
+                    <p className="text-xs text-blue-700">
+                      Timing can change once the group confirms.
+                    </p>
                   )}
                 </div>
               </div>
 
-              <div className="flex items-start space-x-3 rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+              <div
+                className={cn(
+                  "flex items-start space-x-3 rounded-lg border bg-neutral-50 p-4",
+                  isProposal && "border-blue-200 bg-blue-50",
+                )}
+              >
                 <div className="mt-1 rounded-md bg-primary/10 p-2 text-primary">
                   <Users className="h-4 w-4" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">RSVP summary</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                    {isProposal ? "Interest" : "RSVP summary"}
+                  </p>
                   <p className="text-sm font-medium text-neutral-900">
-                    {activity.acceptedCount} going
-                    {activity.pendingCount > 0 && ` • ${activity.pendingCount} pending`}
-                    {activity.declinedCount > 0 && ` • ${activity.declinedCount} declined`}
+                    {activity.acceptedCount} {isProposal ? "interested" : "going"}
+                    {activity.pendingCount > 0
+                      && ` • ${activity.pendingCount} ${isProposal ? "considering" : "pending"}`}
+                    {activity.declinedCount > 0
+                      && ` • ${activity.declinedCount} ${isProposal ? "not interested" : "declined"}`}
                     {waitlistedCount > 0 && ` • ${waitlistedCount} waitlist`}
                   </p>
                 </div>
