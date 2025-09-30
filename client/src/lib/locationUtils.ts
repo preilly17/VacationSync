@@ -216,39 +216,41 @@ class LocationUtils {
   // Main search function with caching
   static async searchLocations(options: SearchOptions): Promise<LocationResult[]> {
     const { query, type, limit = 10, useApi = false } = options;
-    
+
     if (!query.trim()) {
       return [];
     }
-    
+
     // Generate cache key
     const cacheKey = `search_${query}_${type || 'all'}_${limit}_${useApi}`;
-    
+
     // Try cache first
     const cachedResult = await this.getCache(cacheKey);
     if (cachedResult) {
       return cachedResult;
     }
-    
+
     // Make API request
     try {
-      const response = await apiFetch('/api/locations/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query,
-          type,
-          limit,
-          useApi
-        }),
-      });
-      
+      const params = new URLSearchParams({ q: query });
+      if (type) {
+        params.set('types', type.toLowerCase());
+      }
+
+      if (typeof limit === 'number') {
+        params.set('limit', limit.toString());
+      }
+
+      if (useApi) {
+        params.set('useApi', 'true');
+      }
+
+      const response = await apiFetch(`/api/locations/search?${params.toString()}`);
+
       if (!response.ok) {
         throw new Error(`Search failed: ${response.status}`);
       }
-      
+
       const results = await response.json();
       
       // Cache the results for 1 hour

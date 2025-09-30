@@ -696,6 +696,7 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
                     ref={destinationInputRef}
                     placeholder="Search destination city..."
                     value={searchLocation?.displayName || searchLocation?.name || ""}
+                    allowedTypes={['city']}
                     onLocationSelect={(location) => {
                       setSearchLocation(location);
                     }}
