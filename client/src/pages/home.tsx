@@ -1,4 +1,13 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -12,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Avatar,
   AvatarFallback,
@@ -246,6 +257,25 @@ export default function Home() {
   const { toast } = useToast();
   const [lastConversion, setLastConversion] = useState<LastConversion | null>(null);
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  const converterDialogId = useId();
+  const converterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [isConverterOpen, setIsConverterOpen] = useState(false);
+  const [isConverterInfoOpen, setIsConverterInfoOpen] = useState(false);
+  const handleConverterVisibilityChange = useCallback(
+    (open: boolean) => {
+      setIsConverterOpen(open);
+      if (open) {
+        setIsConverterInfoOpen(false);
+      } else {
+        converterButtonRef.current?.focus();
+      }
+    },
+    [converterButtonRef, setIsConverterInfoOpen, setIsConverterOpen],
+  );
+  const handleConverterClose = useCallback(() => {
+    setIsConverterOpen(false);
+    converterButtonRef.current?.focus();
+  }, [converterButtonRef, setIsConverterOpen]);
 
   useEffect(() => {
     setLastConversion(loadLastConversion());
@@ -413,8 +443,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
-      <div className="mx-auto w-full max-w-7xl px-4 pb-24 pt-28 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-16">
+      <div className="mx-auto w-full max-w-[1240px] px-6 pb-20 pt-24">
+        <div className="flex flex-col gap-8">
           <section
             aria-labelledby="dashboard-hero"
             className="relative overflow-hidden rounded-[32px] border border-white/20 bg-slate-900 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
@@ -474,12 +504,12 @@ export default function Home() {
 
           <section
             aria-labelledby="dashboard-highlights"
-            className="rounded-3xl border border-white/30 bg-white/90 p-6 shadow-lg backdrop-blur"
+            className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm"
           >
             <h2 id="dashboard-highlights" className="sr-only">
               Highlights
             </h2>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
                 icon={<Plane className="h-5 w-5" aria-hidden="true" />}
                 value={upcomingCount}
@@ -555,133 +585,153 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="grid gap-12 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-            <div className="flex flex-col gap-12">
-              <section aria-labelledby="upcoming-trips-heading" className="space-y-6">
-                <h2 id="upcoming-trips-heading" className="text-2xl font-semibold text-slate-900">
-                  Upcoming trips
-                </h2>
+          <section aria-labelledby="upcoming-trips-heading" className="space-y-6">
+            <h2 id="upcoming-trips-heading" className="text-2xl font-semibold text-slate-900">
+              Upcoming trips
+            </h2>
 
-                {error ? (
-                  <Card className="rounded-3xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
-                    We’re having trouble loading your trips right now. Try refreshing the page.
+            {error ? (
+              <Card className="rounded-2xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
+                We’re having trouble loading your trips right now. Try refreshing the page.
+              </Card>
+            ) : null}
+
+            {isLoading ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <Card
+                    key={`trip-skeleton-${index}`}
+                    className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm"
+                  >
+                    <Skeleton className="aspect-video w-full rounded-xl" />
+                    <div className="mt-4 space-y-2">
+                      <Skeleton className="h-5 w-2/3" />
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-2 w-full rounded-full" />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : upcomingSummaries.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {upcomingSummaries.map((trip) => (
+                  <TripCard key={trip.id} trip={trip} onOpen={() => handleOpenTrip(trip.id)} />
+                ))}
+              </div>
+            ) : (
+              <Card className="flex flex-col items-center justify-center gap-5 rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
+                <div className="text-5xl">🌅</div>
+                <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
+                <p className="max-w-md text-sm text-slate-500">
+                  Start planning a new adventure to see it appear here with all the essentials at a glance.
+                </p>
+                <Button
+                  onClick={handlePlanTrip}
+                  className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-white shadow-md transition-opacity hover:opacity-90"
+                >
+                  Plan a New Trip
+                </Button>
+              </Card>
+            )}
+          </section>
+
+          {(insights.length > 0 || primaryTrip) && (
+            <section aria-labelledby="insights-heading" className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
+                  Helpful insights
+                </h2>
+                <div className="flex items-center gap-3">
+                  <Dialog
+                    open={isConverterOpen}
+                    onOpenChange={handleConverterVisibilityChange}
+                  >
+                    <Button
+                      ref={converterButtonRef}
+                      type="button"
+                      onClick={() => handleConverterVisibilityChange(true)}
+                      aria-controls={converterDialogId}
+                      aria-expanded={isConverterOpen}
+                      aria-haspopup="dialog"
+                      className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-sm font-semibold text-white shadow-md transition-opacity hover:opacity-90"
+                    >
+                      Currency converter
+                    </Button>
+                    <DialogContent
+                      id={converterDialogId}
+                      className="max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-lg [&>button]:hidden"
+                    >
+                      <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
+                        <CurrencyConverterTool
+                          onClose={handleConverterClose}
+                          lastConversion={lastConversion}
+                          onConversion={handleConversionUpdate}
+                          mobile={!isDesktop}
+                          autoFocusAmount={isConverterOpen}
+                        />
+                      </Suspense>
+                    </DialogContent>
+                  </Dialog>
+                  <Popover open={isConverterInfoOpen} onOpenChange={setIsConverterInfoOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="text-sm font-medium text-slate-500 underline-offset-4 transition hover:text-slate-700 hover:underline"
+                      >
+                        How it works
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      className="w-64 rounded-2xl border border-slate-200 bg-white p-4 text-left text-sm text-slate-600 shadow-lg"
+                    >
+                      <p className="font-semibold text-slate-900">Currency converter</p>
+                      <p className="mt-2 text-slate-600">Quick conversions for the road.</p>
+                      <p className="mt-1 text-slate-600">Live mid-market rates with offline fallbacks.</p>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {insights.map((insight) => (
+                  <Link key={insight.id} href={insight.href} className="group">
+                    <Card className="flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition-transform group-hover:-translate-y-1 group-hover:shadow-md">
+                      <div className="space-y-3">
+                        <span className="text-2xl" aria-hidden="true">
+                          {insight.icon}
+                        </span>
+                        <h3 className="text-lg font-semibold text-slate-900">{insight.title}</h3>
+                        <p className="text-sm text-slate-500">{insight.description}</p>
+                      </div>
+                      <span className="mt-6 text-sm font-semibold text-[#ff7e5f]">Go to trip →</span>
+                    </Card>
+                  </Link>
+                ))}
+                {primaryTrip ? (
+                  <Card className="flex h-full flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-6 text-left shadow-sm">
+                    <div className="flex flex-col gap-3">
+                      <span className="text-sm font-semibold uppercase tracking-wide text-slate-600">
+                        Next destination
+                      </span>
+                      <h3 className="text-xl font-semibold text-slate-900">
+                        {primaryTrip.name || primaryTrip.destination}
+                      </h3>
+                      <div className="flex items-center gap-2 text-sm text-slate-600">
+                        <MapPin className="h-4 w-4" />
+                        {primaryTrip.destination}
+                      </div>
+                      <div className="text-sm text-slate-500">
+                        {formatDateRange(
+                          toDateString(primaryTrip.startDate),
+                          toDateString(primaryTrip.endDate),
+                        )}
+                      </div>
+                    </div>
                   </Card>
                 ) : null}
-
-                {isLoading ? (
-                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                    {Array.from({ length: 3 }).map((_, index) => (
-                      <Card
-                        key={`trip-skeleton-${index}`}
-                        className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-4 shadow-sm"
-                      >
-                        <Skeleton className="aspect-video w-full rounded-2xl" />
-                        <div className="mt-4 space-y-2">
-                          <Skeleton className="h-5 w-2/3" />
-                          <Skeleton className="h-4 w-1/2" />
-                          <Skeleton className="h-2 w-full rounded-full" />
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                ) : upcomingSummaries.length > 0 ? (
-                  <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                    {upcomingSummaries.map((trip) => (
-                      <TripCard key={trip.id} trip={trip} onOpen={() => handleOpenTrip(trip.id)} />
-                    ))}
-                  </div>
-                ) : (
-                  <Card className="flex flex-col items-center justify-center gap-5 rounded-3xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
-                    <div className="text-5xl">🌅</div>
-                    <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
-                    <p className="max-w-md text-sm text-slate-500">
-                      Start planning a new adventure to see it appear here with all the essentials at a glance.
-                    </p>
-                    <Button
-                      onClick={handlePlanTrip}
-                      className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-white shadow-md transition-opacity hover:opacity-90"
-                    >
-                      Plan a New Trip
-                    </Button>
-                  </Card>
-                )}
-              </section>
-
-              {insights.length > 0 ? (
-                <section aria-labelledby="insights-heading" className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h2 id="insights-heading" className="text-2xl font-semibold text-slate-900">
-                      Helpful insights
-                    </h2>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {insights.map((insight) => (
-                      <Link key={insight.id} href={insight.href} className="group">
-                        <Card className="flex h-full flex-col justify-between overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm transition-transform group-hover:-translate-y-1 group-hover:shadow-md">
-                          <div className="space-y-3">
-                            <span className="text-2xl" aria-hidden="true">
-                              {insight.icon}
-                            </span>
-                            <h3 className="text-lg font-semibold text-slate-900">{insight.title}</h3>
-                            <p className="text-sm text-slate-500">{insight.description}</p>
-                          </div>
-                          <span className="mt-6 text-sm font-semibold text-[#ff7e5f]">Go to trip →</span>
-                        </Card>
-                      </Link>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-            </div>
-
-            <aside className="flex flex-col gap-6 self-start">
-              <section aria-labelledby="converter-heading">
-                <Card className="overflow-hidden rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div>
-                      <h2 id="converter-heading" className="text-lg font-semibold text-slate-900">
-                        Currency converter
-                      </h2>
-                      <p className="text-sm text-slate-500">
-                        Quick conversions for the road.
-                      </p>
-                    </div>
-                  </div>
-                  <Suspense fallback={<Skeleton className="h-64 w-full rounded-2xl" />}>
-                    <CurrencyConverterTool
-                      onClose={() => undefined}
-                      lastConversion={lastConversion}
-                      onConversion={handleConversionUpdate}
-                      mobile={!isDesktop}
-                    />
-                  </Suspense>
-                </Card>
-              </section>
-
-              {primaryTrip ? (
-                <Card className="rounded-3xl border border-slate-100 bg-gradient-to-br from-[#ffecd2] via-white to-[#fcb69f] p-6 shadow-sm">
-                  <div className="flex flex-col gap-3">
-                    <span className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                      Next destination
-                    </span>
-                    <h3 className="text-xl font-semibold text-slate-900">
-                      {primaryTrip.name || primaryTrip.destination}
-                    </h3>
-                    <div className="flex items-center gap-2 text-sm text-slate-700">
-                      <MapPin className="h-4 w-4" />
-                      {primaryTrip.destination}
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      {formatDateRange(
-                        toDateString(primaryTrip.startDate),
-                        toDateString(primaryTrip.endDate),
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              ) : null}
-            </aside>
-          </section>
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </div>
@@ -708,7 +758,7 @@ function TripCard({ trip, onOpen }: TripCardProps) {
     handleError: handleCardImageError,
   } = useCoverPhotoImage(cardImageSrc);
   return (
-    <Card className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
+    <Card className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
       <div className="relative aspect-video overflow-hidden">
         <div
           className="pointer-events-none absolute inset-0"
