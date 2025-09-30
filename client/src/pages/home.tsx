@@ -163,6 +163,16 @@ function getCountdownLabel(startDate: string, endDate: string): string {
   return `Ended ${diffFromEnd} days ago`;
 }
 
+function buildTripAriaLabel(
+  name: string | null | undefined,
+  destination: string | null | undefined,
+  startDate: string,
+  endDate: string,
+): string {
+  const tripTitle = name?.trim() ? name : destination?.trim() ? destination : "Trip";
+  return `Open trip: ${tripTitle} — ${formatDateRange(startDate, endDate)}`;
+}
+
 function getTravelersLabel(count: number): string {
   return count === 1 ? "1 traveler" : `${count} travelers`;
 }
@@ -668,13 +678,6 @@ export default function Home() {
     setLocation("/trips/new");
   }, [setLocation]);
 
-  const handleOpenTrip = useCallback(
-    (tripId: number) => {
-      setLocation(`/trip/${tripId}`);
-    },
-    [setLocation],
-  );
-
   const handleInviteMore = useCallback(() => {
     if (nextTrip) {
       setLocation(`/trip/${nextTrip.id}/members`);
@@ -889,9 +892,13 @@ export default function Home() {
                     <div className="space-y-4">
                       <div className="space-y-3">
                         {upcomingPreviewTrips.map((trip) => (
-                          <div
+                          <Link
                             key={`upcoming-preview-${trip.id}`}
-                            className="flex flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm"
+                            href={`/trip/${trip.id}`}
+                            aria-label={buildTripAriaLabel(trip.name, trip.destination, trip.startDate, trip.endDate)}
+                            data-analytics="trip_card_click"
+                            data-trip-id={trip.id}
+                            className="group flex cursor-pointer flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm transition duration-150 ease-out hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#7C5CFF] active:-translate-y-0.5"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-3">
                               <div>
@@ -900,13 +907,7 @@ export default function Home() {
                                   {formatDateRange(trip.startDate, trip.endDate)}
                                 </p>
                               </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleOpenTrip(trip.id)}
-                                className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-4 text-xs font-semibold text-white shadow-md transition-opacity hover:opacity-90"
-                              >
-                                Open trip
-                              </Button>
+                              <span className="text-xs font-semibold text-[#ff7e5f]">Open trip →</span>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 text-xs">
                               <Badge className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
@@ -922,7 +923,7 @@ export default function Home() {
                                 Planning {trip.progressPercent}%
                               </p>
                             </div>
-                          </div>
+                          </Link>
                         ))}
                       </div>
                       <button
@@ -979,41 +980,66 @@ export default function Home() {
 
                   return (
                     <div className="space-y-3">
-                      {destinationSummaries.map((destination) => (
-                        <div
-                          key={`destination-summary-${destination.key}`}
-                          className="flex flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{destination.city}</p>
-                              {destination.country ? (
-                                <p className="text-xs text-slate-500">{destination.country}</p>
-                              ) : null}
-                            </div>
-                            <Badge className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                              {destination.tripCount} {destination.tripCount === 1 ? "trip" : "trips"}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-slate-500">
-                            {destination.nextTrip
-                              ? `Next: ${formatDateRange(
-                                  toDateString(destination.nextTrip.startDate),
-                                  toDateString(destination.nextTrip.endDate),
-                                )}`
-                              : "Dates coming soon"}
-                          </p>
-                          {destination.nextTrip ? (
-                            <Button
-                              size="sm"
-                              onClick={() => handleOpenTrip(destination.nextTrip!.id)}
-                              className="self-start rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-4 text-xs font-semibold text-white shadow-md transition-opacity hover:opacity-90"
+                      {destinationSummaries.map((destination) => {
+                        const nextTrip = destination.nextTrip;
+                        const nextTripDateRange = nextTrip
+                          ? formatDateRange(
+                              toDateString(nextTrip.startDate),
+                              toDateString(nextTrip.endDate),
+                            )
+                          : null;
+                        if (!nextTrip) {
+                          return (
+                            <div
+                              key={`destination-summary-${destination.key}`}
+                              className="flex flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm"
                             >
-                              Open trip
-                            </Button>
-                          ) : null}
-                        </div>
-                      ))}
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">{destination.city}</p>
+                                  {destination.country ? (
+                                    <p className="text-xs text-slate-500">{destination.country}</p>
+                                  ) : null}
+                                </div>
+                                <Badge className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                  {destination.tripCount} {destination.tripCount === 1 ? "trip" : "trips"}
+                                </Badge>
+                              </div>
+                              <p className="text-xs text-slate-500">Dates coming soon</p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <Link
+                            key={`destination-summary-${destination.key}`}
+                            href={`/trip/${nextTrip.id}`}
+                            aria-label={buildTripAriaLabel(
+                              nextTrip.name,
+                              destination.city,
+                              toDateString(nextTrip.startDate),
+                              toDateString(nextTrip.endDate),
+                            )}
+                            data-analytics="trip_card_click"
+                            data-trip-id={nextTrip.id}
+                            className="group flex cursor-pointer flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm transition duration-150 ease-out hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#7C5CFF] active:-translate-y-0.5"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{destination.city}</p>
+                                {destination.country ? (
+                                  <p className="text-xs text-slate-500">{destination.country}</p>
+                                ) : null}
+                              </div>
+                              <Badge className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                {destination.tripCount} {destination.tripCount === 1 ? "trip" : "trips"}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-slate-500">Next: {nextTripDateRange}</p>
+                            <span className="text-xs font-semibold text-[#ff7e5f]">Open trip →</span>
+                          </Link>
+                        );
+                      })}
                     </div>
                   );
                 }}
@@ -1058,7 +1084,18 @@ export default function Home() {
                   );
 
                   return (
-                    <div className="space-y-4">
+                    <Link
+                      href={`/trip/${nextTrip.id}`}
+                      aria-label={buildTripAriaLabel(
+                        nextTrip.name,
+                        nextTrip.destination,
+                        toDateString(nextTrip.startDate),
+                        toDateString(nextTrip.endDate),
+                      )}
+                      data-analytics="trip_card_click"
+                      data-trip-id={nextTrip.id}
+                      className="group block cursor-pointer space-y-4 rounded-xl transition duration-150 ease-out hover:-translate-y-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#7C5CFF] active:-translate-y-0.5"
+                    >
                       <div className="space-y-1">
                         <p className="text-lg font-semibold text-slate-900">
                           {startsToday ? "Trip starts today 🎉" : nextTrip.name || nextTrip.destination}
@@ -1103,14 +1140,10 @@ export default function Home() {
                           </ul>
                         </div>
                       ) : null}
-                      <Button
-                        size="sm"
-                        onClick={() => handleOpenTrip(nextTrip.id)}
-                        className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-4 text-xs font-semibold text-white shadow-md transition-opacity hover:opacity-90"
-                      >
-                        Open trip
-                      </Button>
-                    </div>
+                      <span className="inline-flex items-center text-xs font-semibold text-[#ff7e5f]">
+                        Open trip →
+                      </span>
+                    </Link>
                   );
                 }}
                 testId="stat-next-days"
@@ -1249,7 +1282,7 @@ export default function Home() {
             ) : upcomingSummaries.length > 0 ? (
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {upcomingSummaries.map((trip) => (
-                  <TripCard key={trip.id} trip={trip} onOpen={() => handleOpenTrip(trip.id)} />
+                  <TripCard key={trip.id} trip={trip} />
                 ))}
               </div>
             ) : (
@@ -1322,10 +1355,9 @@ export default function Home() {
 
 type TripCardProps = {
   trip: TripSummary;
-  onOpen: () => void;
 };
 
-function TripCard({ trip, onOpen }: TripCardProps) {
+function TripCard({ trip }: TripCardProps) {
   const cardImageSrc = trip.coverPhotoCardUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null;
   const cardImageSrcSet = buildCoverPhotoSrcSet({
     full: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
@@ -1340,13 +1372,20 @@ function TripCard({ trip, onOpen }: TripCardProps) {
     handleError: handleCardImageError,
   } = useCoverPhotoImage(cardImageSrc);
   return (
-    <Card className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
-      <div className="relative aspect-video overflow-hidden">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{ backgroundImage: TRIP_COVER_GRADIENT }}
-          aria-hidden="true"
-        />
+    <Link
+      href={`/trip/${trip.id}`}
+      aria-label={buildTripAriaLabel(trip.name, trip.destination, trip.startDate, trip.endDate)}
+      data-analytics="trip_card_click"
+      data-trip-id={trip.id}
+      className="group block h-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#7C5CFF]"
+    >
+      <Card className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition duration-200 ease-out group-hover:-translate-y-1 group-hover:shadow-lg group-active:-translate-y-0.5">
+        <div className="relative aspect-video overflow-hidden">
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{ backgroundImage: TRIP_COVER_GRADIENT }}
+            aria-hidden="true"
+          />
         {showCardImage ? (
           <img
             src={cardImageSrc ?? undefined}
@@ -1362,44 +1401,42 @@ function TripCard({ trip, onOpen }: TripCardProps) {
             decoding="async"
           />
         ) : null}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
-        <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
-          <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
-            {formatDateRange(trip.startDate, trip.endDate)}
-          </Badge>
-          <Badge className="rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
-            {getTravelersLabel(trip.travelersCount)}
-          </Badge>
-        </div>
-      </div>
-      <div className="flex flex-1 flex-col gap-4 p-6">
-        <div className="space-y-2">
-          <h3 className="text-xl font-semibold text-slate-900" title={trip.name}>
-            {trip.name}
-          </h3>
-          <p className="text-sm text-slate-500">{getCountdownLabel(trip.startDate, trip.endDate)}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex -space-x-2">
-            {trip.travelers.slice(0, 3).map((traveler, index) => (
-              <Avatar key={`trip-${trip.id}-traveler-${index}`} className="h-8 w-8 border-2 border-white bg-slate-100">
-                <AvatarImage src={traveler.avatar ?? undefined} alt="" loading="lazy" />
-                <AvatarFallback>{traveler.initial}</AvatarFallback>
-              </Avatar>
-            ))}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
+          <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
+            <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+              {formatDateRange(trip.startDate, trip.endDate)}
+            </Badge>
+            <Badge className="rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+              {getTravelersLabel(trip.travelersCount)}
+            </Badge>
           </div>
-          <Badge variant="secondary" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-            Planning {trip.progressPercent}%
-          </Badge>
         </div>
-        <Progress value={trip.progressPercent} className="h-2 rounded-full bg-slate-100" />
-        <Button
-          onClick={onOpen}
-          className="mt-auto rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] text-white shadow-md hover:opacity-90"
-        >
-          Open trip
-        </Button>
-      </div>
-    </Card>
+        <div className="flex flex-1 flex-col gap-4 p-6">
+          <div className="space-y-2">
+            <h3 className="text-xl font-semibold text-slate-900" title={trip.name}>
+              {trip.name}
+            </h3>
+            <p className="text-sm text-slate-500">{getCountdownLabel(trip.startDate, trip.endDate)}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex -space-x-2">
+              {trip.travelers.slice(0, 3).map((traveler, index) => (
+                <Avatar key={`trip-${trip.id}-traveler-${index}`} className="h-8 w-8 border-2 border-white bg-slate-100">
+                  <AvatarImage src={traveler.avatar ?? undefined} alt="" loading="lazy" />
+                  <AvatarFallback>{traveler.initial}</AvatarFallback>
+                </Avatar>
+              ))}
+            </div>
+            <Badge variant="secondary" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+              Planning {trip.progressPercent}%
+            </Badge>
+          </div>
+          <Progress value={trip.progressPercent} className="h-2 rounded-full bg-slate-100" />
+          <span className="mt-auto inline-flex items-center font-semibold text-[#ff7e5f]">
+            Open trip →
+          </span>
+        </div>
+      </Card>
+    </Link>
   );
 }
