@@ -706,21 +706,12 @@ export function setupRoutes(app: Express) {
           : [];
       const allowedTypes = requestedTypes.length > 0 ? requestedTypes : null;
 
-      // This endpoint now only serves city lookups. Respect allowed type filters.
-      if (allowedTypes && !allowedTypes.includes('city')) {
+      const includeCities = !allowedTypes || allowedTypes.includes('city');
+      const includeAirports = !allowedTypes || allowedTypes.includes('airport');
+
+      if (!includeCities && !includeAirports) {
         return res.json([]);
       }
-
-      console.log(`🏙️ Searching local cities database for "${searchTerm}"`);
-
-      const dbResult = await query(
-        `SELECT geoname_id, name, country_code, latitude, longitude, population, timezone
-         FROM cities
-         WHERE name ILIKE $1 || '%'
-         ORDER BY population DESC
-         LIMIT 10;`,
-        [searchTerm],
-      );
 
       const parseNullableNumber = (value: unknown): number | null => {
         if (value === undefined || value === null) {
@@ -731,46 +722,219 @@ export function setupRoutes(app: Express) {
           return Number.isFinite(value) ? value : null;
         }
 
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : null;
+        if (typeof value === 'string') {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        return null;
       };
 
-      const results = dbResult.rows.map((row: any) => {
-        const geonameId = parseNullableNumber(row.geoname_id);
-        const latitude = parseNullableNumber(row.latitude);
-        const longitude = parseNullableNumber(row.longitude);
-        const population = parseNullableNumber(row.population);
-        const name = typeof row.name === 'string' ? row.name : '';
-        const countryCode = typeof row.country_code === 'string' ? row.country_code : '';
-        const timezone = typeof row.timezone === 'string' ? row.timezone : null;
+      const cityResults: any[] = [];
+      let primaryCity: {
+        latitude: number | null;
+        longitude: number | null;
+        name: string | null;
+        countryCode: string | null;
+      } | null = null;
 
-        const displayNameParts = [name, countryCode].filter(Boolean);
-        const displayName = displayNameParts.join(', ');
+      if (includeCities) {
+        console.log(`🏙️ Searching local cities database for "${searchTerm}"`);
 
-        return {
-          id: geonameId ?? row.geoname_id ?? name,
-          geonameId: geonameId ?? null,
+        const dbResult = await query(
+          `SELECT geoname_id, name, country_code, latitude, longitude, population, timezone
+           FROM cities
+           WHERE name ILIKE $1 || '%'
+           ORDER BY population DESC
+           LIMIT 10;`,
+          [searchTerm],
+        );
+
+        for (const row of dbResult.rows) {
+          const geonameId = parseNullableNumber(row.geoname_id);
+          const latitude = parseNullableNumber(row.latitude);
+          const longitude = parseNullableNumber(row.longitude);
+          const population = parseNullableNumber(row.population);
+          const name = typeof row.name === 'string' ? row.name : '';
+          const countryCode = typeof row.country_code === 'string' ? row.country_code : '';
+          const timezone = typeof row.timezone === 'string' ? row.timezone : null;
+
+          const displayNameParts = [name, countryCode].filter(Boolean);
+          const displayName = displayNameParts.join(', ');
+
+          const cityResult = {
+            id: geonameId ?? row.geoname_id ?? name,
+            geonameId: geonameId ?? null,
+            name,
+            displayName: displayName || name,
+            label: displayName || name,
+            type: 'city' as const,
+            code: geonameId ? String(geonameId) : name,
+            country: countryCode,
+            country_code: countryCode,
+            state: null,
+            cityName: name,
+            countryName: countryCode,
+            latitude,
+            longitude,
+            population,
+            timezone,
+            airports: [],
+            source: 'cities-db' as const,
+          };
+
+          cityResults.push(cityResult);
+
+          if (!primaryCity) {
+            primaryCity = {
+              latitude,
+              longitude,
+              name,
+              countryCode,
+            };
+          }
+        }
+
+        console.log(`✅ Returning ${cityResults.length} city matches for "${searchTerm}"`);
+      }
+
+      const airportResults: any[] = [];
+      const airportMap = new Map<string, any>();
+
+      const upsertAirportResult = (row: any, distanceKmOverride: number | null = null) => {
+        const iataRaw = row?.iata_code ?? row?.iata ?? null;
+        const icaoRaw = row?.icao_code ?? row?.icao ?? null;
+        const name = typeof row?.name === 'string' ? row.name : '';
+        const municipality = typeof row?.municipality === 'string' ? row.municipality : null;
+        const isoCountry = typeof row?.iso_country === 'string' ? row.iso_country : null;
+
+        const latitude = parseNullableNumber(row?.latitude);
+        const longitude = parseNullableNumber(row?.longitude);
+        const distanceKm = distanceKmOverride ?? parseNullableNumber(row?.distance_km);
+
+        if (!name) {
+          return;
+        }
+
+        const iata = typeof iataRaw === 'string' && iataRaw.trim().length > 0 ? iataRaw.toUpperCase() : null;
+        const icao = typeof icaoRaw === 'string' && icaoRaw.trim().length > 0 ? icaoRaw.toUpperCase() : null;
+        const identifier = iata ?? icao;
+
+        if (!identifier) {
+          return;
+        }
+
+        const existing = airportMap.get(identifier);
+        if (existing && existing.distanceKm != null && (distanceKm == null || distanceKm >= existing.distanceKm)) {
+          return;
+        }
+
+        const distanceLabel = typeof distanceKm === 'number' ? ` · ${distanceKm.toFixed(1)} km` : '';
+        const primaryLabel = iata ? `${name} (${iata})` : name;
+        const displayName = `${primaryLabel}${distanceLabel}`;
+
+        const airportResult = {
+          id: identifier,
+          type: 'airport' as const,
           name,
-          displayName: displayName || name,
-          label: displayName || name,
-          type: 'city' as const,
-          code: geonameId ? String(geonameId) : name,
-          country: countryCode,
-          country_code: countryCode,
-          state: null,
-          cityName: name,
-          countryName: countryCode,
+          code: identifier,
+          iata,
+          icao,
+          displayName,
+          label: displayName,
+          country: isoCountry ?? '',
+          countryName: isoCountry ?? null,
+          cityName: municipality,
           latitude,
           longitude,
-          population,
-          timezone,
-          airports: [],
-          source: 'cities-db' as const,
+          distanceKm,
+          source: 'airports-db' as const,
         };
-      });
 
-      console.log(`✅ Returning ${results.length} city matches for "${searchTerm}"`);
-      return res.json(results);
+        airportMap.set(identifier, airportResult);
+      };
+
+      if (includeAirports) {
+        console.log(`✈️ Searching local airports database for "${searchTerm}"`);
+
+        const codePattern = `${searchTerm}%`;
+        const containsPattern = `%${searchTerm}%`;
+        const uppercaseCodePattern = `${searchTerm.toUpperCase()}%`;
+
+        const airportDirectMatches = await query(
+          `SELECT iata_code, icao_code, name, municipality, iso_country, latitude, longitude
+           FROM airports
+           WHERE type IN ('large_airport','medium_airport')
+             AND (
+               iata_code ILIKE $1 OR
+               icao_code ILIKE $2 OR
+               name ILIKE $3 OR
+               municipality ILIKE $4
+             )
+           ORDER BY
+             CASE
+               WHEN iata_code ILIKE $1 THEN 0
+               WHEN icao_code ILIKE $2 THEN 1
+               WHEN name ILIKE $5 THEN 2
+               WHEN municipality ILIKE $5 THEN 3
+               ELSE 4
+             END,
+             name
+           LIMIT 15;`,
+          [uppercaseCodePattern, uppercaseCodePattern, containsPattern, containsPattern, codePattern],
+        );
+
+        for (const row of airportDirectMatches.rows) {
+          upsertAirportResult(row);
+        }
+
+        if (primaryCity && primaryCity.latitude != null && primaryCity.longitude != null) {
+          console.log(
+            `📍 Fetching nearest airports to ${primaryCity.name ?? 'selected city'} (${primaryCity.latitude}, ${primaryCity.longitude})`,
+          );
+
+          const nearestAirports = await query(
+            `SELECT iata_code, icao_code, name, municipality, iso_country, latitude, longitude,
+                    ( 6371 * acos( cos( radians($1) ) * cos( radians(latitude) )
+                    * cos( radians(longitude) - radians($2) ) + sin( radians($1) )
+                    * sin( radians(latitude) ) ) ) AS distance_km
+             FROM airports
+             WHERE type IN ('large_airport','medium_airport')
+               AND latitude IS NOT NULL
+               AND longitude IS NOT NULL
+             ORDER BY distance_km
+             LIMIT 5;`,
+            [primaryCity.latitude, primaryCity.longitude],
+          );
+
+          for (const row of nearestAirports.rows) {
+            upsertAirportResult(row);
+          }
+        }
+
+        for (const airport of airportMap.values()) {
+          airportResults.push(airport);
+        }
+      }
+
+      const combinedResults = includeCities ? [...cityResults] : [];
+      if (includeAirports) {
+        airportResults.sort((a, b) => {
+          if (a.distanceKm != null && b.distanceKm != null) {
+            return a.distanceKm - b.distanceKm;
+          }
+          if (a.distanceKm != null) {
+            return -1;
+          }
+          if (b.distanceKm != null) {
+            return 1;
+          }
+          return a.name.localeCompare(b.name);
+        });
+        combinedResults.push(...airportResults);
+      }
+
+      return res.json(combinedResults);
     } catch (error: unknown) {
       console.error('Location search error:', error);
       return res.status(500).json({ error: 'Location search failed' });
@@ -820,7 +984,7 @@ export function setupRoutes(app: Express) {
         WHERE iata_code IS NOT NULL
           AND type IN ('large_airport','medium_airport')
         ORDER BY distance_km
-        LIMIT 3;`,
+        LIMIT 5;`,
         [latitude, longitude],
       );
 

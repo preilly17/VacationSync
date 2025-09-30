@@ -17,12 +17,15 @@ export interface LocationResult {
   airports?: string[];
   id?: string | number;
   label?: string;
+  iata?: string | null;
+  icao?: string | null;
   geonameId?: number | string;
   cityName?: string | null;
   countryName?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   population?: number | null;
+  distanceKm?: number | null;
   source?: string;
 }
 
@@ -441,13 +444,35 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                   const safeLocation = {
                     ...location,
                     type: location.type || "city",
-                    name: location.name || "Unknown Location",
-                    code: location.code || "N/A",
+                    name: location.name || location.displayName || "Unknown Location",
+                    code: location.code || location.iata || location.icao || "N/A",
                     displayName: location.displayName || location.name || "Unknown Location",
                     label: location.label || location.displayName || location.name || "Unknown Location",
-                    country: location.country || "Unknown Country",
+                    country: location.country || location.countryName || "Unknown Country",
+                    countryName:
+                      typeof location.countryName === "string" && location.countryName.length > 0
+                        ? location.countryName
+                        : typeof location.country === "string" && location.country.length > 0
+                          ? location.country
+                          : null,
+                    cityName:
+                      typeof location.cityName === "string" && location.cityName.length > 0
+                        ? location.cityName
+                        : null,
                     state: location.state,
                     airports: Array.isArray(location.airports) ? location.airports : [],
+                    iata:
+                      typeof location.iata === "string" && location.iata.trim().length > 0
+                        ? location.iata.trim().toUpperCase()
+                        : null,
+                    icao:
+                      typeof location.icao === "string" && location.icao.trim().length > 0
+                        ? location.icao.trim().toUpperCase()
+                        : null,
+                    distanceKm:
+                      typeof location.distanceKm === "number" && Number.isFinite(location.distanceKm)
+                        ? location.distanceKm
+                        : null,
                   } satisfies LocationResult;
 
                   const isActive = index === activeIndex;
@@ -472,28 +497,33 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                         {getLocationIcon(safeLocation.type)}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{safeLocation.name}</span>
+                            <span className="font-medium">{safeLocation.displayName}</span>
                             <Badge variant="outline" className={getTypeColor(safeLocation.type)}>
                               {safeLocation.type === "metro" ? "metro area" : safeLocation.type}
                             </Badge>
                           </div>
                           <div className="text-sm text-gray-600">
-                            {safeLocation.country}
-                            {safeLocation.state && safeLocation.state !== safeLocation.country && `, ${safeLocation.state}`}
+                            {safeLocation.type === "airport"
+                              ? [safeLocation.cityName, safeLocation.countryName ?? safeLocation.country]
+                                  .filter(Boolean)
+                                  .join(", ")
+                              : safeLocation.countryName ?? safeLocation.country}
                             {safeLocation.type === "metro" && safeLocation.airports && (
                               <div className="mt-1 text-xs text-blue-600">
                                 Multiple airports: {safeLocation.airports.join(", ")}
                               </div>
                             )}
                           </div>
-                          {safeLocation.airports && safeLocation.airports.length > 0 && (
+                          {safeLocation.type === "city" && safeLocation.airports && safeLocation.airports.length > 0 && (
                             <div className="mt-1 text-xs text-gray-500">
                               Airports: {safeLocation.airports.slice(0, 3).join(", ")}
                               {safeLocation.airports.length > 3 && ` +${safeLocation.airports.length - 3} more`}
                             </div>
                           )}
                         </div>
-                        <div className="text-sm font-mono text-gray-600">{safeLocation.code}</div>
+                        <div className="text-sm font-mono text-gray-600">
+                          {safeLocation.iata ?? safeLocation.code}
+                        </div>
                       </div>
                     </div>
                   );
