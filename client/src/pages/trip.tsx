@@ -2361,17 +2361,17 @@ export default function Trip() {
             </DialogHeader>
             <DialogFooter className="gap-2 sm:flex-row">
               <Button
-                variant="outline"
-                className="sm:flex-1"
-                onClick={handleFlightReturnNo}
-              >
-                No
-              </Button>
-              <Button
                 className="sm:flex-1 bg-gradient-to-r from-primary via-rose-500 to-orange-500 text-white shadow-md hover:opacity-90"
                 onClick={handleFlightReturnYes}
               >
                 Yes
+              </Button>
+              <Button
+                variant="outline"
+                className="sm:flex-1 border border-neutral-200 bg-white text-neutral-700 hover:border-primary hover:text-primary"
+                onClick={handleFlightReturnNo}
+              >
+                No
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -2394,17 +2394,17 @@ export default function Trip() {
             </DialogHeader>
             <DialogFooter className="gap-2 sm:flex-row">
               <Button
-                variant="outline"
-                className="sm:flex-1"
-                onClick={handleHotelReturnNo}
-              >
-                No
-              </Button>
-              <Button
                 className="sm:flex-1 bg-gradient-to-r from-primary via-rose-500 to-orange-500 text-white shadow-md hover:opacity-90"
                 onClick={handleHotelReturnYes}
               >
                 Yes
+              </Button>
+              <Button
+                variant="outline"
+                className="sm:flex-1 border border-neutral-200 bg-white text-neutral-700 hover:border-primary hover:text-primary"
+                onClick={handleHotelReturnNo}
+              >
+                No
               </Button>
             </DialogFooter>
           </DialogContent>
