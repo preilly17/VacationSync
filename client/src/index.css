@@ -42,6 +42,12 @@
   --chart-4: hsl(340 75% 60%);
   --chart-5: hsl(226 83% 60%);
 
+  --header-gradient-start: hsl(200 88% 60%);
+  --header-gradient-end: hsl(278 82% 66%);
+  --on-header: #f8faff;
+  --on-header-muted: rgba(248, 250, 255, 0.65);
+  --header-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.35);
+
   /* Neutral tokens tuned for light UI */
   --neutral-900: hsl(222 47% 12%);
   --neutral-600: hsl(215 16% 45%);
@@ -71,6 +77,12 @@
   --destructive-foreground: hsl(210 40% 98%);
   --ring: hsl(199 89% 58%);
   --radius: 0.875rem;
+
+  --header-gradient-start: hsl(200 88% 55%);
+  --header-gradient-end: hsl(278 82% 62%);
+  --on-header: #f8faff;
+  --on-header-muted: rgba(248, 250, 255, 0.58);
+  --header-shadow: 0 10px 28px -14px rgba(15, 23, 42, 0.6);
 }
 
 @layer base {
@@ -197,6 +209,70 @@ body.dark .page-shell::after {
 .page-shell .border-slate-300,
 .page-shell .border-white {
   border-color: rgba(148, 163, 184, 0.45);
+}
+
+.dashboard-header {
+  background: linear-gradient(
+    90deg,
+    var(--header-gradient-start) 0%,
+    var(--header-gradient-end) 100%
+  );
+  color: var(--on-header);
+  box-shadow: var(--header-shadow);
+}
+
+.dashboard-header__link {
+  color: var(--on-header);
+  transition: color 0.2s ease;
+}
+
+.dashboard-header__link:hover {
+  color: color-mix(in srgb, var(--on-header) 90%, transparent);
+}
+
+.dashboard-header__link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--on-header) 85%, transparent);
+  outline-offset: 3px;
+}
+
+.dashboard-header__button {
+  color: var(--on-header);
+  border-color: var(--on-header-muted);
+  background-color: transparent;
+  transition: background-color 0.2s ease, border-color 0.2s ease,
+    color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-header__button:hover,
+.dashboard-header__button:focus-visible {
+  background-color: color-mix(in srgb, var(--on-header) 16%, transparent);
+  border-color: color-mix(in srgb, var(--on-header) 68%, transparent);
+}
+
+.dashboard-header__button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--on-header) 85%, transparent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+}
+
+.dashboard-quick-actions-menu {
+  color: var(--on-header);
+  border-color: color-mix(in srgb, var(--on-header) 42%, transparent);
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--header-shadow);
+}
+
+.dashboard-quick-actions-item {
+  color: var(--on-header);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dashboard-quick-actions-item[data-highlighted],
+.dashboard-quick-actions-item[data-state="open"] {
+  background-color: color-mix(in srgb, var(--on-header) 18%, transparent);
+  color: var(--on-header);
 }
 
 .page-shell .divide-slate-200,
