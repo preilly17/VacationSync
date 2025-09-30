@@ -5,10 +5,10 @@ interface LocationResult {
   id: string;
   name: string;
   type: 'AIRPORT' | 'CITY' | 'COUNTRY';
-  iataCode?: string;
-  icaoCode?: string;
-  cityCode?: string;
-  countryCode?: string;
+  iataCode?: string | null;
+  icaoCode?: string | null;
+  cityCode?: string | null;
+  countryCode?: string | null;
   latitude?: number;
   longitude?: number;
   detailedName: string;
@@ -19,6 +19,16 @@ interface LocationResult {
   currencyCode?: string;
   isPopular: boolean;
   alternativeNames: string[];
+  code?: string;
+  label?: string;
+  cityName?: string | null;
+  countryName?: string | null;
+  country?: string | null;
+  airports?: string[];
+  distanceKm?: number | null;
+  population?: number | null;
+  geonameId?: string | number | null;
+  source?: string | null;
 }
 
 interface LocationStats {
@@ -31,7 +41,8 @@ interface LocationStats {
 
 interface SearchOptions {
   query: string;
-  type?: 'AIRPORT' | 'CITY' | 'COUNTRY';
+  type?: LocationResult['type'];
+  types?: Array<LocationResult['type'] | string>;
   limit?: number;
   useApi?: boolean;
 }
@@ -101,6 +112,34 @@ class LocationUtils {
     }
 
     return undefined;
+  }
+
+  private static coerceNullableNumber(value: unknown): number | null {
+    const coerced = this.coerceNumber(value);
+    return typeof coerced === 'number' ? coerced : null;
+  }
+
+  private static toStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => this.coerceString(entry))
+        .filter((entry): entry is string => Boolean(entry));
+    }
+
+    if (typeof value === 'string') {
+      return value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.values(value as Record<string, unknown>)
+        .flatMap((entry) => this.toStringArray(entry))
+        .filter((entry, index, array) => array.indexOf(entry) === index);
+    }
+
+    return [];
   }
 
   private static normaliseAlternativeNames(
@@ -182,6 +221,8 @@ class LocationUtils {
         ? countryName.toUpperCase()
         : undefined;
 
+    const inferredCountry = countryName ?? countryCode ?? null;
+
     const label = this.coerceString(record.label);
     const displayNameRaw = this.coerceString(record.displayName)
       ?? this.coerceString(record.display_name)
@@ -201,10 +242,15 @@ class LocationUtils {
       ?? this.coerceString(record.detailed_name)
       ?? displayName;
 
-    const id = this.coerceString(record.id)
-      ?? this.coerceString(record.code)
+    const codeRaw = this.coerceString(record.code)
       ?? iataCode
       ?? icaoCode
+      ?? this.coerceString(record.cityCode)
+      ?? this.coerceString(record.city_code);
+    const code = codeRaw ? codeRaw.toUpperCase() : undefined;
+
+    const id = this.coerceString(record.id)
+      ?? code
       ?? (rawName ?? displayName);
 
     if (!id) {
@@ -214,6 +260,9 @@ class LocationUtils {
     const cityCodeRaw = this.coerceString(record.cityCode)
       ?? this.coerceString(record.city_code);
     const cityCode = cityCodeRaw ? cityCodeRaw.toUpperCase() : undefined;
+    const cityName = this.coerceString(record.cityName)
+      ?? this.coerceString(record.city_name)
+      ?? (type === 'CITY' ? rawName ?? displayName : undefined);
 
     const relevance = this.coerceNumber(record.relevance) ?? 0;
     const latitude = this.coerceNumber(record.latitude);
@@ -235,17 +284,33 @@ class LocationUtils {
 
     const alternativeNames = this.normaliseAlternativeNames(
       record.alternativeNames ?? record.alternative_names,
-      [label, displayName, detailedName, rawName, countryName, cityCode, iataCode, icaoCode],
+      [label, displayName, detailedName, rawName, countryName ?? undefined, cityCode, iataCode ?? undefined, icaoCode ?? undefined],
     );
+
+    const airports = this.toStringArray(record.airports ?? record.nearbyAirports ?? record.nearby_airports);
+    const distanceKm = this.coerceNullableNumber(record.distanceKm)
+      ?? this.coerceNullableNumber(record.distance_km)
+      ?? this.coerceNullableNumber(record.distance);
+    const population = this.coerceNullableNumber(record.population);
+
+    const geonameIdRaw = this.coerceString(record.geonameId)
+      ?? this.coerceString(record.geoNameId)
+      ?? this.coerceString(record.geoname_id);
+    const geonameIdNumber = this.coerceNumber(record.geonameId);
+    const geonameId = geonameIdRaw ?? (typeof geonameIdNumber === 'number' ? geonameIdNumber : null);
+
+    const source = this.coerceString(record.source)
+      ?? this.coerceString(record.dataSource)
+      ?? null;
 
     return {
       id,
       name: rawName ?? displayName,
       type,
-      iataCode,
-      icaoCode,
-      cityCode,
-      countryCode,
+      iataCode: iataCode ?? null,
+      icaoCode: icaoCode ?? null,
+      cityCode: cityCode ?? null,
+      countryCode: countryCode ?? null,
       latitude,
       longitude,
       detailedName,
@@ -256,6 +321,16 @@ class LocationUtils {
       currencyCode,
       isPopular,
       alternativeNames,
+      code: code ?? undefined,
+      label: label ?? undefined,
+      cityName: cityName ?? null,
+      countryName: countryName ?? inferredCountry,
+      country: inferredCountry,
+      airports,
+      distanceKm,
+      population,
+      geonameId,
+      source,
     };
   }
 
@@ -438,14 +513,27 @@ class LocationUtils {
 
   // Main search function with caching
   static async searchLocations(options: SearchOptions): Promise<LocationResult[]> {
-    const { query, type, limit = 10, useApi = false } = options;
+    const { query, type, types, limit = 10, useApi = false } = options;
 
     if (!query.trim()) {
       return [];
     }
 
+    const requestedTypes = [
+      ...(Array.isArray(types) ? types : []),
+      ...(type ? [type] : []),
+    ];
+
+    const normalisedTypes = requestedTypes
+      .map((entry) => this.normaliseType(entry))
+      .filter((entry, index, array) => array.indexOf(entry) === index);
+
+    const typeKey = normalisedTypes.length > 0
+      ? [...normalisedTypes].sort().join('-')
+      : 'all';
+
     // Generate cache key
-    const cacheKey = `search_${query}_${type || 'all'}_${limit}_${useApi}`;
+    const cacheKey = `search_${query}_${typeKey}_${limit}_${useApi}`;
 
     // Try cache first
     const cachedResult = await this.getCache(cacheKey);
@@ -456,8 +544,13 @@ class LocationUtils {
     // Make API request
     try {
       const params = new URLSearchParams({ q: query });
-      if (type) {
-        params.set('types', type.toLowerCase());
+      if (normalisedTypes.length > 0) {
+        params.set(
+          'types',
+          normalisedTypes
+            .map((value) => value.toLowerCase())
+            .join(','),
+        );
       }
 
       if (typeof limit === 'number') {

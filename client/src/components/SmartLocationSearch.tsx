@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Plane, Globe, Building, ChevronDown } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import LocationUtils from "@/lib/locationUtils";
 
 export interface LocationResult {
   type: 'airport' | 'city' | 'metro' | 'state' | 'country';
@@ -101,6 +101,20 @@ const normalizeAllowedTypes = (
   );
 
   return deduped.length > 0 ? deduped : null;
+};
+
+const mapToLocationUtilsType = (type: LocationResult['type']): 'AIRPORT' | 'CITY' | 'COUNTRY' => {
+  switch (type) {
+    case 'airport':
+      return 'AIRPORT';
+    case 'country':
+      return 'COUNTRY';
+    case 'state':
+    case 'metro':
+    case 'city':
+    default:
+      return 'CITY';
+  }
 };
 
 const getLowercaseTypeCandidate = (record: Record<string, unknown>): string | null => {
@@ -276,13 +290,14 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     [normalisedAllowedTypes],
   );
 
-  const buildSearchUrl = (searchQuery: string) => {
-    const params = new URLSearchParams({ q: searchQuery });
-    if (normalisedAllowedTypes) {
-      params.set('types', normalisedAllowedTypes.join(','));
+  const locationUtilsTypes = useMemo(() => {
+    if (!normalisedAllowedTypes) {
+      return null;
     }
-    return `/api/locations/search?${params.toString()}`;
-  };
+
+    const mapped = normalisedAllowedTypes.map((type) => mapToLocationUtilsType(type));
+    return Array.from(new Set(mapped));
+  }, [normalisedAllowedTypes]);
 
   useEffect(() => {
     const trimmedQuery = query.trim();
@@ -339,43 +354,42 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       }
 
       try {
-        const response = await apiFetch(buildSearchUrl(currentQuery));
-        if (response.ok) {
-          const data = await response.json();
-          // ROOT CAUSE 2 FIX: Ensure results is always an array and limit suggestions
-          const safeResults = Array.isArray(data) ? data.slice(0, 7) : [];
-          const processedResults = safeResults.reduce<Array<{ normalized: LocationResult; typeForFilter: LocationResult['type'] }>>(
-            (accumulator, rawLocation) => {
-              const normalized = normalizeFetchedLocation(rawLocation);
-              if (!normalized) {
-                return accumulator;
-              }
+        const rawResults = await LocationUtils.searchLocations({
+          query: currentQuery,
+          limit: 7,
+          types: locationUtilsTypes ?? undefined,
+        });
 
-              let typeForFilter: LocationResult['type'] = normalized.type;
-
-              if (rawLocation && typeof rawLocation === 'object') {
-                const candidate = getLowercaseTypeCandidate(rawLocation as Record<string, unknown>);
-                if (candidate && isValidLocationType(candidate)) {
-                  typeForFilter = candidate;
-                }
-              }
-
-              accumulator.push({ normalized, typeForFilter });
+        const safeResults = Array.isArray(rawResults) ? rawResults.slice(0, 7) : [];
+        const processedResults = safeResults.reduce<Array<{ normalized: LocationResult; typeForFilter: LocationResult['type'] }>>(
+          (accumulator, rawLocation) => {
+            const normalized = normalizeFetchedLocation(rawLocation);
+            if (!normalized) {
               return accumulator;
-            },
-            [],
-          );
+            }
 
-          const filteredResults = normalisedAllowedTypes
-            ? processedResults.filter(({ typeForFilter }) => normalisedAllowedTypes.includes(typeForFilter))
-            : processedResults;
+            let typeForFilter: LocationResult['type'] = normalized.type;
 
-          setResults(filteredResults.map(({ normalized }) => normalized));
-          lastFetchedQueryKeyRef.current = currentSearchKey;
-          // Keep dropdown state controlled by user intent
-        } else {
-          lastFetchedQueryKeyRef.current = "";
-        }
+            const rawRecord = rawLocation as unknown;
+            if (rawRecord && typeof rawRecord === 'object') {
+              const candidate = getLowercaseTypeCandidate(rawRecord as Record<string, unknown>);
+              if (candidate && isValidLocationType(candidate)) {
+                typeForFilter = candidate;
+              }
+            }
+
+            accumulator.push({ normalized, typeForFilter });
+            return accumulator;
+          },
+          [],
+        );
+
+        const filteredResults = normalisedAllowedTypes
+          ? processedResults.filter(({ typeForFilter }) => normalisedAllowedTypes.includes(typeForFilter))
+          : processedResults;
+
+        setResults(filteredResults.map(({ normalized }) => normalized));
+        lastFetchedQueryKeyRef.current = currentSearchKey;
       } catch (error) {
         console.error('Location search error:', error);
         setResults([]);
@@ -389,7 +403,13 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         }
       }
     }, 300);
-  }, [query, selectedLocation, normalisedAllowedTypes, allowedTypesKey]);
+  }, [
+    query,
+    selectedLocation,
+    normalisedAllowedTypes,
+    allowedTypesKey,
+    locationUtilsTypes,
+  ]);
 
   useEffect(() => () => {
     if (debounceRef.current) {
