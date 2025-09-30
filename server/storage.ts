@@ -108,6 +108,12 @@ const toNumberOrNull = (
   return toNumber(value);
 };
 
+const camelToSnakeCase = (value: string): string =>
+  value
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1_$2")
+    .toLowerCase();
+
 const toStringArray = (value: unknown): string[] => {
   if (!value) {
     return [];
@@ -6081,15 +6087,63 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return rows.map(mapFlightWithDetails);
   }
 
-  async createHotel(hotel: InsertHotel, userId: string): Promise<Hotel> {
-    const hotelRatingValue = toNumberOrNull(hotel.hotelRating as string | number | null | undefined);
-    const totalPriceValue = toNumberOrNull(hotel.totalPrice as string | number | null | undefined);
-    const pricePerNightValue = toNumberOrNull(
-      hotel.pricePerNight as string | number | null | undefined,
+  async createHotel(
+    hotel: InsertHotel | Record<string, unknown>,
+    userId: string,
+  ): Promise<Hotel> {
+    const record = hotel as Record<string, unknown>;
+
+    const getValue = (camelKey: string): unknown => {
+      if (record[camelKey] !== undefined) {
+        return record[camelKey];
+      }
+
+      const snakeKey = camelToSnakeCase(camelKey);
+      return record[snakeKey];
+    };
+
+    const requireValue = (camelKey: string): unknown => {
+      const value = getValue(camelKey);
+      if (value === undefined || value === null) {
+        throw new Error(`Missing required hotel field: ${camelKey}`);
+      }
+      return value;
+    };
+
+    const tripIdRaw = requireValue("tripId");
+    const tripId =
+      typeof tripIdRaw === "number" ? tripIdRaw : Number(tripIdRaw as string);
+    if (!Number.isFinite(tripId)) {
+      throw new Error("Invalid trip ID for hotel insert");
+    }
+
+    const hotelName = requireValue("hotelName") as string;
+    const address = requireValue("address") as string;
+    const city = requireValue("city") as string;
+    const country = requireValue("country") as string;
+    const checkInDate = requireValue("checkInDate");
+    const checkOutDate = requireValue("checkOutDate");
+
+    const hotelRatingValue = toNumberOrNull(
+      getValue("hotelRating") as string | number | null | undefined,
     );
-    const latitudeValue = toNumberOrNull(hotel.latitude as string | number | null | undefined);
+    const totalPriceValue = toNumberOrNull(
+      getValue("totalPrice") as string | number | null | undefined,
+    );
+    const pricePerNightValue = toNumberOrNull(
+      getValue("pricePerNight") as string | number | null | undefined,
+    );
+    const latitudeValue = toNumberOrNull(
+      getValue("latitude") as string | number | null | undefined,
+    );
     const longitudeValue = toNumberOrNull(
-      hotel.longitude as string | number | null | undefined,
+      getValue("longitude") as string | number | null | undefined,
+    );
+    const roomCountValue = toNumberOrNull(
+      getValue("roomCount") as string | number | null | undefined,
+    );
+    const guestCountValue = toNumberOrNull(
+      getValue("guestCount") as string | number | null | undefined,
     );
 
     const { rows } = await query<HotelRow>(
@@ -6170,37 +6224,37 @@ ${selectUserColumns("participant_user", "participant_user_")}
         updated_at
       `,
       [
-        hotel.tripId,
+        tripId,
         userId,
-        hotel.hotelName,
-        hotel.hotelChain ?? null,
+        hotelName,
+        (getValue("hotelChain") ?? null) as string | null,
         hotelRatingValue,
-        hotel.address,
-        hotel.city,
-        hotel.country,
-        hotel.zipCode ?? null,
+        address,
+        city,
+        country,
+        (getValue("zipCode") ?? null) as string | null,
         latitudeValue,
         longitudeValue,
-        hotel.checkInDate,
-        hotel.checkOutDate,
-        hotel.roomType ?? null,
-        hotel.roomCount ?? null,
-        hotel.guestCount ?? null,
-        hotel.bookingReference ?? null,
+        checkInDate,
+        checkOutDate,
+        (getValue("roomType") ?? null) as string | null,
+        roomCountValue,
+        guestCountValue,
+        (getValue("bookingReference") ?? null) as string | null,
         totalPriceValue,
         pricePerNightValue,
-        hotel.currency,
-        hotel.status,
-        hotel.bookingSource ?? null,
-        hotel.purchaseUrl ?? null,
-        hotel.amenities ?? null,
-        hotel.images ?? null,
-        hotel.policies ?? null,
-        hotel.contactInfo ?? null,
-        hotel.bookingPlatform ?? null,
-        hotel.bookingUrl ?? null,
-        hotel.cancellationPolicy ?? null,
-        hotel.notes ?? null,
+        (getValue("currency") ?? "USD") as string,
+        (getValue("status") ?? "confirmed") as string,
+        (getValue("bookingSource") ?? null) as string | null,
+        (getValue("purchaseUrl") ?? null) as string | null,
+        getValue("amenities") ?? null,
+        getValue("images") ?? null,
+        getValue("policies") ?? null,
+        getValue("contactInfo") ?? null,
+        (getValue("bookingPlatform") ?? null) as string | null,
+        (getValue("bookingUrl") ?? null) as string | null,
+        (getValue("cancellationPolicy") ?? null) as string | null,
+        (getValue("notes") ?? null) as string | null,
       ],
     );
 
@@ -7962,7 +8016,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return updated;
   }
   async addFlight(): Promise<Flight> { throw new Error("Not implemented"); }
-  async addHotel(hotel: InsertHotel, userId: string): Promise<Hotel> {
+  async addHotel(
+    hotel: InsertHotel | Record<string, unknown>,
+    userId: string,
+  ): Promise<Hotel> {
     return this.createHotel(hotel, userId);
   }
 
