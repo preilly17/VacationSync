@@ -225,6 +225,7 @@ type TripSummary = {
   travelersCount: number;
   travelers: { avatar?: string | null; initial: string }[];
   progressPercent: number;
+  coverImageUrl?: string | null;
   coverPhotoUrl?: string | null;
   coverPhotoCardUrl?: string | null;
   coverPhotoThumbUrl?: string | null;
@@ -320,9 +321,10 @@ export default function Home() {
       travelersCount: trip.memberCount,
       travelers: buildTravelerData(trip.members),
       progressPercent: calculatePlanningProgress(trip),
+      coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
       coverPhotoUrl: trip.coverPhotoUrl ?? null,
-      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? trip.coverPhotoUrl ?? null,
-      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? trip.coverPhotoCardUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? trip.coverPhotoCardUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? undefined,
     }));
   }, [upcomingTripsForDisplay]);
@@ -378,10 +380,10 @@ export default function Home() {
       )}`
     : null;
 
-  const heroCoverPhoto = primaryTrip?.coverPhotoUrl ?? null;
+  const heroCoverPhoto = primaryTrip?.coverImageUrl ?? primaryTrip?.coverPhotoUrl ?? null;
   const heroImageSrcSet = primaryTrip
     ? buildCoverPhotoSrcSet({
-        full: primaryTrip.coverPhotoUrl ?? null,
+        full: primaryTrip.coverImageUrl ?? primaryTrip.coverPhotoUrl ?? null,
         card: primaryTrip.coverPhotoCardUrl ?? null,
         thumb: primaryTrip.coverPhotoThumbUrl ?? null,
       })
@@ -692,9 +694,9 @@ type TripCardProps = {
 };
 
 function TripCard({ trip, onOpen }: TripCardProps) {
-  const cardImageSrc = trip.coverPhotoCardUrl ?? trip.coverPhotoUrl ?? null;
+  const cardImageSrc = trip.coverPhotoCardUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null;
   const cardImageSrcSet = buildCoverPhotoSrcSet({
-    full: trip.coverPhotoUrl ?? null,
+    full: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
     card: trip.coverPhotoCardUrl ?? null,
     thumb: trip.coverPhotoThumbUrl ?? null,
   });

@@ -125,6 +125,7 @@ export interface TripCalendar {
   latitude?: number | null;
   longitude?: number | null;
   population?: number | null;
+  coverImageUrl?: string | null;
   coverPhotoUrl?: string | null;
   coverPhotoCardUrl?: string | null;
   coverPhotoThumbUrl?: string | null;
@@ -152,6 +153,7 @@ export const insertTripCalendarSchema = z.object({
   latitude: nullableNumberInput("Latitude must be a number"),
   longitude: nullableNumberInput("Longitude must be a number"),
   population: nullableNumberInput("Population must be a number"),
+  coverImageUrl: imageUrlSchema.nullable().optional(),
   coverPhotoUrl: imageUrlSchema.nullable().optional(),
   coverPhotoCardUrl: imageUrlSchema.nullable().optional(),
   coverPhotoThumbUrl: imageUrlSchema.nullable().optional(),

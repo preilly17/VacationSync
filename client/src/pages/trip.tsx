@@ -44,12 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import {
-  TRIP_COVER_GRADIENT,
-  buildCoverPhotoAltText,
-  buildCoverPhotoSrcSet,
-  useCoverPhotoImage,
-} from "@/lib/tripCover";
+import { TRIP_COVER_GRADIENT, buildCoverPhotoSrcSet, useCoverPhotoImage } from "@/lib/tripCover";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { AddActivityModal } from "@/components/add-activity-modal";
 import { EditTripModal } from "@/components/edit-trip-modal";
@@ -688,11 +683,6 @@ export default function Trip() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showWeatherModal, setShowWeatherModal] = useState(false);
-  const coverCalloutKey = useMemo(
-    () => (id ? `trip-${id}-cover-callout-dismissed` : "trip-cover-callout"),
-    [id],
-  );
-  const [showCoverCallout, setShowCoverCallout] = useState(true);
   const [activeTab, setActiveTab] = useState<TripTab>("calendar");
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -721,23 +711,6 @@ export default function Trip() {
       setActiveTab(viewParam);
     }
   }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    const stored = window.localStorage.getItem(coverCalloutKey);
-    setShowCoverCallout(stored !== "true");
-  }, [coverCalloutKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (!showCoverCallout) {
-      window.localStorage.setItem(coverCalloutKey, "true");
-    }
-  }, [coverCalloutKey, showCoverCallout]);
 
   const evaluateExternalRedirects = useCallback(() => {
     if (typeof window === "undefined") {
@@ -1271,18 +1244,14 @@ export default function Trip() {
     ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
     : null;
   const isTripCreator = trip ? user?.id === trip.createdBy : false;
-  const heroCoverPhoto = trip?.coverPhotoUrl ?? null;
+  const heroCoverPhoto = trip?.coverImageUrl ?? trip?.coverPhotoUrl ?? null;
   const heroImageSrcSet = trip
     ? buildCoverPhotoSrcSet({
-        full: trip.coverPhotoUrl ?? null,
+        full: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
         card: trip.coverPhotoCardUrl ?? null,
         thumb: trip.coverPhotoThumbUrl ?? null,
       })
     : undefined;
-  const hasCustomCoverPhoto = Boolean(trip?.coverPhotoUrl);
-  const heroAltText = trip
-    ? buildCoverPhotoAltText(trip.name || trip.destination)
-    : "Trip cover photo";
   const {
     showImage: showHeroCover,
     isLoaded: heroCoverLoaded,
@@ -1551,7 +1520,8 @@ export default function Trip() {
                         src={heroCoverPhoto ?? undefined}
                         srcSet={heroImageSrcSet}
                         sizes="(max-width: 1024px) 100vw, 960px"
-                        alt={heroAltText}
+                        alt=""
+                        aria-hidden="true"
                         className={`pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
                           heroCoverLoaded ? "opacity-100" : "opacity-0"
                         }`}
@@ -1565,35 +1535,6 @@ export default function Trip() {
                       className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/80"
                       aria-hidden="true"
                     />
-                    {isTripCreator && !hasCustomCoverPhoto && showCoverCallout ? (
-                      <div className="absolute right-4 top-4 flex max-w-xs flex-col gap-2 rounded-2xl border border-white/30 bg-white/20 p-4 text-white shadow-lg backdrop-blur">
-                        <p className="text-sm font-semibold">Add a cover photo</p>
-                        <p className="text-xs text-white/80">
-                          Personalize this banner with a hero image for your group.
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            className="bg-white text-slate-900 hover:bg-white/90"
-                            onClick={() => {
-                              setShowEditTrip(true);
-                              setShowCoverCallout(false);
-                            }}
-                          >
-                            Add photo
-                          </Button>
-                          <button
-                            type="button"
-                            className="text-xs text-white/80 underline hover:text-white"
-                            onClick={() => setShowCoverCallout(false)}
-                          >
-                            Dismiss
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
                     <div className="relative p-6 sm:p-10">
                       <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
                         <div className="max-w-2xl space-y-5">

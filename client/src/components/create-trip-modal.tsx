@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,6 @@ import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
-import { CoverPhotoSection, type CoverPhotoValue } from "@/components/cover-photo-section";
 
 interface CreateTripModalProps {
   open: boolean;
@@ -45,11 +44,6 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
       latitude: null,
       longitude: null,
       population: null,
-      coverPhotoUrl: null,
-      coverPhotoCardUrl: null,
-      coverPhotoThumbUrl: null,
-      coverPhotoAlt: null,
-      coverPhotoAttribution: null,
     },
   });
 
@@ -107,25 +101,6 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
     createTripMutation.mutate(data);
   };
 
-  const handleCoverPhotoChange = useCallback(
-    (next: CoverPhotoValue) => {
-      form.setValue("coverPhotoUrl", next.coverPhotoUrl, { shouldDirty: true });
-      form.setValue("coverPhotoCardUrl", next.coverPhotoCardUrl, { shouldDirty: true });
-      form.setValue("coverPhotoThumbUrl", next.coverPhotoThumbUrl, { shouldDirty: true });
-      form.setValue("coverPhotoAlt", next.coverPhotoAlt, { shouldDirty: true });
-      form.setValue("coverPhotoAttribution", next.coverPhotoAttribution, { shouldDirty: true });
-    },
-    [form],
-  );
-
-  const coverPhotoValue: CoverPhotoValue = {
-    coverPhotoUrl: form.watch("coverPhotoUrl") ?? null,
-    coverPhotoCardUrl: form.watch("coverPhotoCardUrl") ?? null,
-    coverPhotoThumbUrl: form.watch("coverPhotoThumbUrl") ?? null,
-    coverPhotoAlt: form.watch("coverPhotoAlt") ?? null,
-    coverPhotoAttribution: form.watch("coverPhotoAttribution") ?? null,
-  };
-
   const handleDestinationSelect = (location: any) => {
     setSelectedDestination(location);
     form.setValue("destination", location.displayName || location.name);
@@ -173,11 +148,6 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <input type="hidden" {...form.register("coverPhotoUrl")} />
-          <input type="hidden" {...form.register("coverPhotoCardUrl")} />
-          <input type="hidden" {...form.register("coverPhotoThumbUrl")} />
-          <input type="hidden" {...form.register("coverPhotoAlt")} />
-          <input type="hidden" {...form.register("coverPhotoAttribution")} />
 
           <div>
             <Label htmlFor="name">Trip Name</Label>
@@ -228,12 +198,6 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
               )}
             </div>
           </div>
-
-          <CoverPhotoSection
-            value={coverPhotoValue}
-            onChange={handleCoverPhotoChange}
-            defaultAltText={`Cover photo for ${form.watch("name") || "this trip"}`}
-          />
 
           <div className="flex space-x-3 pt-4">
             <Button

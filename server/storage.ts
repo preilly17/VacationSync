@@ -998,6 +998,7 @@ const mapTrip = (row: TripRow): TripCalendar => ({
   latitude: toNumberOrNull(row.latitude),
   longitude: toNumberOrNull(row.longitude),
   population: toNumberOrNull(row.population),
+  coverImageUrl: row.cover_photo_url,
   coverPhotoUrl: row.cover_photo_url,
   coverPhotoCardUrl: row.cover_photo_card_url,
   coverPhotoThumbUrl: row.cover_photo_thumb_url,
@@ -2457,7 +2458,7 @@ export class DatabaseStorage implements IStorage {
         latitudeValue,
         longitudeValue,
         populationValue,
-        trip.coverPhotoUrl ?? null,
+        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
         trip.coverPhotoCardUrl ?? null,
         trip.coverPhotoThumbUrl ?? null,
         trip.coverPhotoAlt ?? null,
@@ -2910,7 +2911,11 @@ export class DatabaseStorage implements IStorage {
       index += 1;
     }
 
-    if (data.coverPhotoUrl !== undefined) {
+    if (data.coverImageUrl !== undefined) {
+      setClauses.push(`cover_photo_url = $${index}`);
+      values.push(data.coverImageUrl ?? null);
+      index += 1;
+    } else if (data.coverPhotoUrl !== undefined) {
       setClauses.push(`cover_photo_url = $${index}`);
       values.push(data.coverPhotoUrl ?? null);
       index += 1;
