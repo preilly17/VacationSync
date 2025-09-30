@@ -76,7 +76,7 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
       className = "",
       onQueryChange,
       types,
-      allowedTypes = DEFAULT_ALLOWED_TYPES,
+      allowedTypes,
     },
     ref,
   ) {
