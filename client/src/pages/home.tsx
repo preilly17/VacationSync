@@ -459,24 +459,6 @@ export default function Home() {
     setLastConversion(loadLastConversion());
   }, []);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      const dismissed = window.localStorage.getItem(HOW_IT_WORKS_DISMISSED_KEY);
-      if (!dismissed) {
-        setHowItWorksLoaded(true);
-        setIsHowItWorksOpen(true);
-      }
-    } catch (error) {
-      console.error("Failed to read how it works dismissal state", error);
-      setHowItWorksLoaded(true);
-      setIsHowItWorksOpen(true);
-    }
-  }, []);
-
   const {
     data: trips,
     isLoading,
@@ -925,14 +907,14 @@ export default function Home() {
           </nav>
 
           {isDesktop ? (
-            <Dialog open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
-              <DialogContent
-                className="w-full max-w-3xl gap-0 overflow-hidden rounded-[32px] border border-slate-200/80 bg-white p-0 shadow-2xl"
-                aria-labelledby={howItWorksTitleId}
-                aria-describedby={howItWorksDescriptionId}
-                onOpenAutoFocus={handleHowItWorksOpenAutoFocus}
-                onCloseAutoFocus={handleDialogCloseAutoFocus}
-              >
+              <Dialog open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
+                <DialogContent
+                  className="w-full max-w-3xl gap-0 overflow-hidden rounded-[32px] border border-slate-200/80 bg-white p-0 shadow-2xl max-h-[calc(100vh-4rem)] sm:max-h-[calc(100vh-6rem)]"
+                  aria-labelledby={howItWorksTitleId}
+                  aria-describedby={howItWorksDescriptionId}
+                  onOpenAutoFocus={handleHowItWorksOpenAutoFocus}
+                  onCloseAutoFocus={handleDialogCloseAutoFocus}
+                >
                 {howItWorksContent}
               </DialogContent>
             </Dialog>
