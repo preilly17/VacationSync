@@ -3286,9 +3286,9 @@ function FlightCoordination({
               <div className="space-y-2">
                 <Label>From</Label>
                 <SmartLocationSearch
-                  placeholder="Search departure city"
+                  placeholder="Search departure city or airport"
                   value={departureQuery}
-                  allowedTypes={['city']}
+                  allowedTypes={['city', 'airport']}
                   onQueryChange={handleDepartureQueryChange}
                   onLocationSelect={handleDepartureLocationSelect}
                 />
@@ -3323,9 +3323,9 @@ function FlightCoordination({
               <div className="space-y-2">
                 <Label>To</Label>
                 <SmartLocationSearch
-                  placeholder="Search arrival city"
+                  placeholder="Search arrival city or airport"
                   value={arrivalQuery}
-                  allowedTypes={['city']}
+                  allowedTypes={['city', 'airport']}
                   onQueryChange={handleArrivalQueryChange}
                   onLocationSelect={handleArrivalLocationSelect}
                 />

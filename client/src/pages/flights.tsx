@@ -692,9 +692,9 @@ function FlightSearchPanel({
                     <SmartLocationSearch
                       ref={fromInputRef}
                       id="departure"
-                      placeholder="Search departure city"
+                      placeholder="Search departure city or airport"
                       value={departureQuery}
-                      allowedTypes={['city']}
+                      allowedTypes={['city', 'airport']}
                       onQueryChange={handleDepartureQueryChange}
                       onLocationSelect={handleDepartureLocationSelect}
                     />
@@ -740,9 +740,9 @@ function FlightSearchPanel({
                     <Label htmlFor="arrival">To</Label>
                     <SmartLocationSearch
                       id="arrival"
-                      placeholder="Search arrival city"
+                      placeholder="Search arrival city or airport"
                       value={arrivalQuery}
-                      allowedTypes={['city']}
+                      allowedTypes={['city', 'airport']}
                       onQueryChange={handleArrivalQueryChange}
                       onLocationSelect={handleArrivalLocationSelect}
                     />
@@ -2585,6 +2585,7 @@ export default function FlightsPage() {
                       <SmartLocationSearch
                         placeholder="Departure airport (e.g., JFK, New York)"
                         value={flightFormData.departureAirport}
+                        allowedTypes={['airport', 'city']}
                         onQueryChange={(value) => {
                           setFlightFormData((prev) => ({
                             ...prev,
@@ -2610,6 +2611,7 @@ export default function FlightsPage() {
                       <SmartLocationSearch
                         placeholder="Arrival airport (e.g., LAX, Los Angeles)"
                         value={flightFormData.arrivalAirport}
+                        allowedTypes={['airport', 'city']}
                         onQueryChange={(value) => {
                           setFlightFormData((prev) => ({
                             ...prev,
