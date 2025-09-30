@@ -1,6 +1,11 @@
-import { type KeyboardEvent, type MouseEvent, type ReactNode, useMemo } from "react";
-import { useLocation } from "wouter";
-import { RefreshCw } from "lucide-react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { ChevronDown, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,11 +16,14 @@ export type StatCardProps = {
   label: string;
   description?: string;
   ariaLabel: string;
-  href?: string;
-  onClick?: () => void;
+  regionId: string;
+  regionLabel: string;
   onRetry?: () => void;
   isLoading?: boolean;
   isError?: boolean;
+  isExpanded: boolean;
+  onToggle: () => void;
+  renderExpanded?: () => ReactNode;
   testId: string;
 };
 
@@ -25,14 +33,17 @@ export function StatCard({
   label,
   description,
   ariaLabel,
-  href,
-  onClick,
+  regionId,
+  regionLabel,
   onRetry,
   isLoading = false,
   isError = false,
+  isExpanded,
+  onToggle,
+  renderExpanded,
   testId,
 }: StatCardProps) {
-  const [, setLocation] = useLocation();
+  const [hasRenderedExpanded, setHasRenderedExpanded] = useState(false);
 
   const formattedValue = useMemo(() => {
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -41,84 +52,96 @@ export function StatCard({
     return value;
   }, [value]);
 
-  const isInteractive = !isLoading && !isError && (!!href || typeof onClick === "function");
+  const isInteractive = !isLoading && !isError;
 
-  const handleNavigate = () => {
-    if (href) {
-      setLocation(href);
+  useEffect(() => {
+    if (isExpanded && !hasRenderedExpanded) {
+      setHasRenderedExpanded(true);
     }
-  };
+  }, [isExpanded, hasRenderedExpanded]);
 
-  const handleActivate = (event: MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
-    if (!isInteractive) {
-      event.preventDefault();
-      return;
+  const expandedContent = useMemo(() => {
+    if (!renderExpanded) {
+      return null;
     }
-
-    if (href) {
-      event.preventDefault();
-      handleNavigate();
+    if (!hasRenderedExpanded && !isExpanded) {
+      return null;
     }
+    return renderExpanded();
+  }, [renderExpanded, hasRenderedExpanded, isExpanded]);
 
-    onClick?.();
-  };
-
-  const sharedProps = {
-    "data-testid": testId,
-    "aria-label": ariaLabel,
-    className: cn(
-      "group relative flex h-full flex-col justify-between rounded-2xl border border-slate-200/70 bg-white p-6 text-left shadow-sm transition duration-200",
-      "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-2xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
-      isInteractive
-        ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]"
-        : "cursor-default",
-    ),
-    onClick: handleActivate,
-    onKeyDown: (event: KeyboardEvent<HTMLAnchorElement | HTMLButtonElement>) => {
-      if (!isInteractive) {
-        return;
-      }
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        handleNavigate();
-        onClick?.();
-      }
-    },
-    "aria-disabled": isInteractive ? undefined : true,
-  } as const;
-
-  if (href) {
-    return (
-      <a href={href} role="link" {...sharedProps}>
+  return (
+    <div
+      data-testid={testId}
+      className={cn(
+        "group relative flex flex-col rounded-2xl border border-slate-200/70 bg-white shadow-sm transition duration-200",
+        "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-2xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
+        isInteractive ? "focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#654ea3]" : "opacity-90",
+        isExpanded ? "shadow-lg" : "hover:-translate-y-0.5 hover:shadow-md",
+      )}
+    >
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-expanded={isExpanded}
+        aria-controls={regionId}
+        disabled={!isInteractive}
+        className={cn(
+          "flex w-full flex-col gap-6 rounded-2xl p-6 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]",
+          isInteractive ? "cursor-pointer" : "cursor-default",
+        )}
+        onClick={() => {
+          if (!isInteractive) {
+            return;
+          }
+          onToggle();
+        }}
+        onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+          if (!isInteractive) {
+            return;
+          }
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onToggle();
+          }
+          if (event.key === "Escape" && isExpanded) {
+            event.preventDefault();
+            onToggle();
+          }
+        }}
+      >
         <CardContents
           icon={icon}
           value={formattedValue}
           label={label}
           description={description}
-          href={href}
           isLoading={isLoading}
           isError={isError}
           onRetry={onRetry}
-          onNavigate={handleNavigate}
+          isExpanded={isExpanded}
         />
-      </a>
-    );
-  }
-
-  return (
-    <button type="button" disabled={!isInteractive} {...sharedProps}>
-      <CardContents
-        icon={icon}
-        value={formattedValue}
-        label={label}
-        description={description}
-        href={href}
-        isLoading={isLoading}
-        isError={isError}
-        onRetry={onRetry}
-        onNavigate={handleNavigate}
-      />
-    </button>
+      </button>
+      <div
+        id={regionId}
+        role="region"
+        aria-label={regionLabel}
+        aria-hidden={!isExpanded}
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-200 ease-in-out",
+          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {expandedContent ? (
+            <div className="px-6 pb-6">
+              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
+                {expandedContent}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -127,11 +150,10 @@ type CardContentsProps = {
   value: string | number;
   label: string;
   description?: string;
-  href?: string;
   isLoading: boolean;
   isError: boolean;
   onRetry?: () => void;
-  onNavigate?: () => void;
+  isExpanded: boolean;
 };
 
 function CardContents({
@@ -139,11 +161,10 @@ function CardContents({
   value,
   label,
   description,
-  href,
   isLoading,
   isError,
   onRetry,
-  onNavigate,
+  isExpanded,
 }: CardContentsProps) {
   if (isLoading) {
     return (
@@ -190,23 +211,13 @@ function CardContents({
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#ff7e5f]/15 via-[#feb47b]/10 to-[#654ea3]/15 text-[#ff7e5f]">
           {icon}
         </div>
-        {href ? (
-          <a
-            href={href}
-            aria-hidden="true"
-            tabIndex={-1}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onNavigate?.();
-            }}
-            className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 transition hover:text-slate-600"
-          >
-            View
-          </a>
-        ) : (
-          <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">View</span>
-        )}
+        <ChevronDown
+          className={cn(
+            "h-5 w-5 text-slate-400 transition-transform duration-200",
+            isExpanded ? "rotate-180" : "rotate-0",
+          )}
+          aria-hidden="true"
+        />
       </div>
       <div className="space-y-1.5">
         <div className="text-[30px] font-semibold leading-none text-slate-900">{value}</div>
