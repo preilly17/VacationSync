@@ -1,56 +1,20 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import {
+  differenceInCalendarDays,
+  isAfter,
+  isBefore,
+  isSameDay,
+  isWithinInterval,
+  parseISO,
+  startOfDay,
+} from "date-fns";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Calendar,
-  Clock,
-  Compass,
-  Heart,
-  Lightbulb,
-  ListChecks,
-  MapPin,
-  Plane,
-  Plus,
-  Settings,
-  Sparkles,
-  Trash2,
-  Users,
-  DollarSign,
-  type LucideIcon,
-} from "lucide-react";
-import { useAuth } from "@/hooks/useAuth";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { CreateTripModal } from "@/components/create-trip-modal";
-import { NotificationIcon } from "@/components/notification-icon";
-import { TravelLoading } from "@/components/LoadingSpinners";
-import { TravelMascot } from "@/components/TravelMascot";
-import { ManualRefreshButton } from "@/components/manual-refresh-button";
-import { Link } from "wouter";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import type { TripWithDetails } from "@shared/schema";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -58,1568 +22,1141 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
-} from "@/components/ui/carousel";
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { NotificationIcon } from "@/components/notification-icon";
+import { CreateTripModal } from "@/components/create-trip-modal";
+import { useAuth } from "@/hooks/useAuth";
+import { apiRequest } from "@/lib/queryClient";
+import type { LastConversion } from "@/components/dashboard/converter-types";
+import type {
+  ActivityWithDetails,
+  FlightWithDetails,
+  HotelWithDetails,
+  PackingItem,
+  PackingItemGroupStatus,
+  TripWithDetails,
+  User,
+} from "@shared/schema";
+import { Calendar, ChevronRight, Ellipsis, MapPin, Users } from "lucide-react";
+import { Link } from "wouter";
 
-const DEFAULT_DESTINATION_IMAGE =
-  "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80";
+const CurrencyConverterTool = lazy(() =>
+  import("@/components/dashboard/currency-converter-tool"),
+);
 
-const DESTINATION_BACKGROUNDS = [
-  {
-    keywords: ["paris", "france"],
-    image:
-      "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["new york", "nyc"],
-    image:
-      "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["tokyo", "japan"],
-    image:
-      "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["london", "england", "uk"],
-    image:
-      "https://images.unsplash.com/photo-1505761671935-60b3a7427bad?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["rome", "italy"],
-    image:
-      "https://images.unsplash.com/photo-1503264116251-35a269479413?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["beach", "island", "bali", "maldives"],
-    image:
-      "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["mountain", "alps", "swiss", "colorado"],
-    image:
-      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80",
-  },
-  {
-    keywords: ["desert", "morocco", "sahara"],
-    image:
-      "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1600&q=80",
-  },
-] as const;
-
-const DESTINATION_FUN_FACTS: { keywords: string[]; facts: string[] }[] = [
-  {
-    keywords: ["tokyo", "japan"],
-    facts: [
-      "Tokyo is home to more Michelin-starred restaurants than any other city on the planet.",
-      "Subways in Tokyo are so punctual that a delay of five minutes earns passengers a formal apology note.",
-    ],
-  },
-  {
-    keywords: ["paris", "france"],
-    facts: [
-      "The Eiffel Tower grows about 6 inches taller during summer as the metal expands in the heat.",
-      "Paris has more than 60 open-air markets, perfect for picnic supplies with your travel crew.",
-    ],
-  },
-  {
-    keywords: ["new york", "nyc", "manhattan"],
-    facts: [
-      "New York City's subway system spans more than 665 miles of track—perfect for spontaneous exploring.",
-      "Over 800 languages are spoken in New York, making it one of the most linguistically diverse cities in the world.",
-    ],
-  },
-  {
-    keywords: ["london", "england", "uk"],
-    facts: [
-      "In London, you’re never more than two miles from a spot associated with Sherlock Holmes.",
-      "The London Underground was the first metro system in the world, opening in 1863.",
-    ],
-  },
-  {
-    keywords: ["rome", "italy"],
-    facts: [
-      "Romans built a 53,000-mile road network—no wonder every path seems to lead to the next discovery.",
-      "Gelato was invented in Florence, but Romans eat more of it per capita than anywhere else in Italy.",
-    ],
-  },
-  {
-    keywords: ["beach", "island", "bali", "maldives", "hawaii"],
-    facts: [
-      "Packing sunscreen in reusable containers can save space and reduce plastic waste on beach trips.",
-      "Morning beach walks are proven to boost serotonin—schedule one for day one of your getaway.",
-    ],
-  },
-  {
-    keywords: ["mountain", "alps", "colorado", "hike", "rocky"],
-    facts: [
-      "At high altitudes you burn up to 30% more calories—perfect excuse for that extra campfire treat.",
-      "Layering is key: temperatures can swing 20°F or more between trailhead and summit in the mountains.",
-    ],
-  },
-];
-
-const DEFAULT_FUN_FACTS = [
-  "Packing cubes can free up 30% more luggage space for souvenirs.",
-  "Share live locations with your crew to make meetups stress-free.",
-  "A group playlist sets the vibe—queue songs before wheels up.",
-  "Snap photos of receipts as you go to make expense splitting painless.",
-];
-
-const getDestinationImage = (destination?: string | null) => {
-  if (!destination) return DEFAULT_DESTINATION_IMAGE;
-  const lowerDestination = destination.toLowerCase();
-  const match = DESTINATION_BACKGROUNDS.find(({ keywords }) =>
-    keywords.some((keyword) => lowerDestination.includes(keyword))
-  );
-  return match?.image ?? DEFAULT_DESTINATION_IMAGE;
+type TripSummary = {
+  id: number;
+  name: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  travelersCount: number;
+  travelers: { avatar?: string | null; initial: string }[];
+  progressPercent: number;
+  nextUp: NextUpAction | null;
 };
 
-const getFunFactsForDestination = (destination?: string | null) => {
-  if (!destination) {
-    return DEFAULT_FUN_FACTS;
-  }
-  const lowerDestination = destination.toLowerCase();
-  const match = DESTINATION_FUN_FACTS.find(({ keywords }) =>
-    keywords.some((keyword) => lowerDestination.includes(keyword))
-  );
-  return match?.facts ?? DEFAULT_FUN_FACTS;
-};
-
-const getTeamLabel = (trip?: TripWithDetails | null) => {
-  if (!trip) {
-    return null;
-  }
-  const primaryDestination = trip.destination
-    ?.split(",")[0]
-    ?.trim();
-  if (primaryDestination && primaryDestination.length > 0) {
-    return `Team ${primaryDestination}`;
-  }
-  const trimmedName = trip.name?.trim();
-  if (trimmedName && trimmedName.length > 0) {
-    return `${trimmedName} crew`;
-  }
-  return null;
-};
-
-const MS_IN_DAY = 1000 * 60 * 60 * 24;
-
-const getDaysUntilTrip = (startDate: string | Date) => {
-  const start = typeof startDate === "string" ? new Date(startDate) : startDate;
-  const now = new Date();
-  start.setHours(0, 0, 0, 0);
-  now.setHours(0, 0, 0, 0);
-  return Math.round((start.getTime() - now.getTime()) / MS_IN_DAY);
-};
-
-const calculatePlanningProgress = (trip: TripWithDetails) => {
-  const daysUntil = getDaysUntilTrip(trip.startDate);
-  const companionBoost = Math.min(30, Math.max(0, trip.memberCount - 1) * 12);
-  const photoBoost = Math.min(
-    15,
-    trip.members.filter((member) => !!member.user.profileImageUrl).length * 5,
-  );
-  const urgencyBoost =
-    daysUntil <= 3
-      ? 25
-      : daysUntil <= 7
-        ? 20
-        : daysUntil <= 14
-          ? 15
-          : daysUntil <= 30
-            ? 10
-            : 0;
-  const progress = 35 + companionBoost + photoBoost + urgencyBoost;
-  return Math.max(25, Math.min(progress, 96));
-};
-
-type TripTagDefinition = {
-  keywords: string[];
+type NextUpAction = {
   label: string;
+  href: string;
+  ariaLabel: string;
 };
 
-const TRIP_TAG_LIBRARY: TripTagDefinition[] = [
-  { keywords: ["beach", "island", "coast", "maldives", "bali"], label: "Beach" },
-  { keywords: ["mountain", "alps", "hike", "rocky", "trail"], label: "Adventure" },
-  { keywords: ["tokyo", "new york", "paris", "london", "city"], label: "City Escape" },
-  { keywords: ["wedding", "bachelor", "bachelorette", "celebration"], label: "Celebration" },
-  { keywords: ["conference", "business", "work"], label: "Business Trip" },
-  { keywords: ["family", "kids", "parents"], label: "Family Time" },
-];
+type Insight = {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  action: { label: string; href: string };
+};
 
-const getTripTags = (trip: TripWithDetails) => {
-  const lowerName = trip.name?.toLowerCase() ?? "";
-  const lowerDestination = trip.destination?.toLowerCase() ?? "";
-  const detected = new Set<string>();
+type ExpenseBalanceSummary = {
+  owes: number;
+  owed: number;
+  balance: number;
+};
 
-  TRIP_TAG_LIBRARY.forEach(({ keywords, label }) => {
-    if (
-      keywords.some(
-        (keyword) =>
-          lowerName.includes(keyword) || lowerDestination.includes(keyword),
-      )
-    ) {
-      detected.add(label);
+type PackingItemWithMeta = PackingItem & {
+  user: User;
+  groupStatus?: PackingItemGroupStatus;
+};
+
+type HeroTripDetails = {
+  flights: FlightWithDetails[];
+  hotels: HotelWithDetails[];
+  activities: ActivityWithDetails[];
+  expenseBalance: ExpenseBalanceSummary;
+  packingItems: PackingItemWithMeta[];
+};
+
+const LAST_CONVERSION_KEY = "dashboard.converter.last";
+const DISMISSED_INSIGHTS_KEY = "dashboard.dismissed";
+const DISMISS_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
     }
+    const mediaQuery = window.matchMedia(query);
+    const handler = (event: MediaQueryListEvent) => setMatches(event.matches);
+    mediaQuery.addEventListener("change", handler);
+    setMatches(mediaQuery.matches);
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, [query]);
+
+  return matches;
+}
+
+function formatDateRange(startDate: string, endDate: string): string {
+  const start = parseISO(startDate);
+  const end = parseISO(endDate);
+
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const sameMonth =
+    sameYear && start.getMonth() === end.getMonth();
+
+  const startFormatter = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
   });
 
-  if (detected.size === 0) {
-    if (trip.memberCount >= 4) {
-      detected.add("Crew Adventure");
+  const endFormatter = new Intl.DateTimeFormat(undefined, {
+    month: sameMonth ? undefined : "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+  });
+
+  const yearFormatter = new Intl.DateTimeFormat(undefined, { year: "numeric" });
+
+  const startPart = startFormatter.format(start);
+  const endPart = endFormatter.format(end);
+
+  if (sameYear) {
+    return `${startPart}–${endPart}, ${yearFormatter.format(start)}`;
+  }
+
+  const startYear = yearFormatter.format(start);
+  const endYear = yearFormatter.format(end);
+  return `${startPart}, ${startYear} – ${endPart}${endPart.includes(endYear) ? "" : `, ${endYear}`}`;
+}
+
+function getCountdownLabel(startDate: string, endDate: string): string {
+  const start = startOfDay(parseISO(startDate));
+  const end = startOfDay(parseISO(endDate));
+  const today = startOfDay(new Date());
+
+  if (isSameDay(start, today)) {
+    return "Starts today";
+  }
+
+  if (isAfter(start, today)) {
+    const diff = differenceInCalendarDays(start, today);
+    if (diff === 1) {
+      return "1 day to go";
     }
-    if (lowerDestination.includes("park") || lowerDestination.includes("trail")) {
-      detected.add("Outdoors");
-    }
+    return `${diff} days to go`;
   }
 
-  if (detected.size === 0) {
-    detected.add("Explorer");
+  if (isWithinInterval(today, { start, end })) {
+    return "In progress";
   }
 
-  return Array.from(detected).slice(0, 3);
-};
+  const diffFromEnd = differenceInCalendarDays(today, end);
+  if (diffFromEnd === 1) {
+    return "Ended 1 day ago";
+  }
+  return `Ended ${diffFromEnd} days ago`;
+}
 
-const getTripNextStep = (trip: TripWithDetails) => {
-  const daysUntil = getDaysUntilTrip(trip.startDate);
+function getTravelersLabel(count: number): string {
+  if (count === 1) {
+    return "1 traveler";
+  }
+  return `${count} travelers`;
+}
 
-  if (daysUntil <= 0) {
-    return "Share live updates while you're on the ground.";
-  }
-  if (daysUntil <= 2) {
-    return "Double-check check-in times and airport transfers.";
-  }
-  if (daysUntil <= 7) {
-    return "Confirm reservations and lock down the final schedule.";
-  }
-  if (daysUntil <= 14) {
-    return "Add one more standout activity to keep the crew excited.";
-  }
-  return "Start a conversation about everyone's must-do experiences.";
-};
+function toDateString(value: TripWithDetails["startDate"]): string {
+  return typeof value === "string" ? value : value.toISOString();
+}
 
-const getCountdownLabel = (startDate: string | Date) => {
-  const start = new Date(startDate);
-  const today = new Date();
-  start.setHours(0, 0, 0, 0);
-  today.setHours(0, 0, 0, 0);
-  const diffDays = Math.round(
-    (start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+function buildTravelerData(
+  members: TripWithDetails["members"],
+): { avatar?: string | null; initial: string }[] {
+  return members.map((member) => {
+    const firstName = member.user.firstName?.trim();
+    const email = member.user.email;
+    const initial =
+      firstName && firstName.length > 0
+        ? firstName[0]!.toUpperCase()
+        : email && email.length > 0
+          ? email[0]!.toUpperCase()
+          : "T";
+
+    return {
+      avatar: member.user.profileImageUrl,
+      initial,
+    };
+  });
+}
+
+function calculatePlanningProgress(
+  trip: TripWithDetails,
+  details?: Partial<HeroTripDetails>,
+): number {
+  const tasks = [
+    { id: "crew", complete: trip.memberCount > 1 },
+    {
+      id: "invitations",
+      complete: trip.members.every((member) => member.joinedAt != null),
+    },
+    {
+      id: "lodging",
+      complete: details ? (details.hotels?.length ?? 0) > 0 : false,
+    },
+    {
+      id: "flights",
+      complete: details ? (details.flights?.length ?? 0) > 0 : false,
+    },
+    {
+      id: "schedule",
+      complete: details
+        ? hasDayOneActivity(details.activities, toDateString(trip.startDate))
+        : false,
+    },
+    {
+      id: "expenses",
+      complete: details ? !hasUnsettledExpenses(details.expenseBalance) : false,
+    },
+    {
+      id: "packing",
+      complete: details ? (details.packingItems?.length ?? 0) > 0 : false,
+    },
+  ];
+
+  const completed = tasks.filter((task) => task.complete).length;
+  const progress = Math.round((completed / tasks.length) * 100);
+  return Math.min(95, Math.max(progress, completed > 0 ? 20 : 8));
+}
+
+function hasDayOneActivity(
+  activities: ActivityWithDetails[] | undefined,
+  startDate: string,
+) {
+  if (!activities || activities.length === 0) {
+    return false;
+  }
+  const start = startOfDay(parseISO(startDate));
+  return activities.some((activity) =>
+    isSameDay(
+      startOfDay(parseISO(toActivityDateString(activity.startTime))),
+      start,
+    ),
   );
-
-  if (diffDays > 1) {
-    return `${diffDays} days to go`;
-  }
-  if (diffDays === 1) {
-    return "1 day to go";
-  }
-  if (diffDays === 0) {
-    return "Happening today";
-  }
-  return "In progress";
-};
-
-const getMemberInitial = (firstName?: string | null, email?: string | null) => {
-  if (firstName && firstName.trim().length > 0) {
-    return firstName[0]?.toUpperCase();
-  }
-  if (email && email.includes("@")) {
-    return email[0]?.toUpperCase();
-  }
-  return "T";
-};
-
-const formatMemberName = (firstName?: string | null, email?: string | null) => {
-  if (firstName && firstName.trim().length > 0) {
-    return firstName;
-  }
-  if (email && email.includes("@")) {
-    return email.split("@")[0];
-  }
-  return "Traveler";
-};
-
-type StatType = "upcomingTrips" | "travelCompanions" | "destinations";
-
-interface StatDefinition {
-  type: StatType;
-  label: string;
-  value: number;
-  icon: LucideIcon;
-  accent: string;
 }
 
-interface CompanionDetail {
-  id: string;
-  name: string;
-  email: string | null;
-  trips: string[];
-  initial: string;
+function toActivityDateString(value: ActivityWithDetails["startTime"]): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return String(value);
 }
 
-interface DestinationDetail {
-  name: string;
-  totalTrips: number;
-  upcomingTrips: number;
+function hasUnsettledExpenses(balance?: ExpenseBalanceSummary) {
+  if (!balance) {
+    return false;
+  }
+  return balance.owes > 0 || balance.owed > 0;
+}
+
+function determineNextUp(
+  trip: TripWithDetails,
+  details: HeroTripDetails | null,
+): NextUpAction | null {
+  if (!details) {
+    return null;
+  }
+
+  const tripBasePath = `/trip/${trip.id}`;
+
+  const hasFlights = details.flights.length > 0;
+  const hasHotels = details.hotels.length > 0;
+  if (!hasFlights || !hasHotels) {
+    return {
+      label: "Next up: Confirm reservations",
+      href: `${tripBasePath}?view=${hasFlights ? "hotels" : "flights"}`,
+      ariaLabel: "Open reservations to confirm travel details",
+    };
+  }
+
+  if (!hasDayOneActivity(details.activities, toDateString(trip.startDate))) {
+    return {
+      label: "Next up: Add your day-one plans",
+      href: `${tripBasePath}?view=activities`,
+      ariaLabel: "Open activities to plan the first day",
+    };
+  }
+
+  if (hasUnsettledExpenses(details.expenseBalance)) {
+    return {
+      label: "Next up: Settle outstanding expenses",
+      href: `${tripBasePath}?view=expenses`,
+      ariaLabel: "Open expenses to settle outstanding balances",
+    };
+  }
+
+  const pendingMembers = trip.members.filter((member) => !member.joinedAt);
+  if (pendingMembers.length > 0) {
+    return {
+      label: "Next up: Follow up on invites",
+      href: `${tripBasePath}?view=members`,
+      ariaLabel: "Open members list to manage invitations",
+    };
+  }
+
+  const daysUntil = differenceInCalendarDays(
+    startOfDay(parseISO(toDateString(trip.startDate))),
+    startOfDay(new Date()),
+  );
+  if (daysUntil < 7 && details.packingItems.length === 0) {
+    return {
+      label: "Next up: Start your packing list",
+      href: `${tripBasePath}?view=packing`,
+      ariaLabel: "Open packing list to add items",
+    };
+  }
+
+  return null;
+}
+
+function buildInsights(
+  trip: TripWithDetails | null,
+  details: HeroTripDetails | null,
+  nextUp: NextUpAction | null,
+  dismissed: Record<string, number>,
+): Insight[] {
+  if (!trip || !details) {
+    return [];
+  }
+
+  const now = Date.now();
+  const shouldShow = (id: string) => {
+    const dismissedAt = dismissed[id];
+    if (!dismissedAt) {
+      return true;
+    }
+    return now - dismissedAt > DISMISS_COOLDOWN_MS;
+  };
+
+  const insights: Insight[] = [];
+
+  if (!details.hotels.length && shouldShow("add-hotel")) {
+    insights.push({
+      id: "add-hotel",
+      icon: "bed",
+      title: "Confirm your hotel",
+      description: "Lock in a stay so everyone knows where to meet on arrival.",
+      action: { label: "Add hotel", href: `/trip/${trip.id}?view=hotels` },
+    });
+  }
+
+  if (hasUnsettledExpenses(details.expenseBalance) && shouldShow("expenses")) {
+    insights.push({
+      id: "expenses",
+      icon: "wallet",
+      title: "Split an expense early",
+      description: "Log shared costs before takeoff so everyone stays aligned.",
+      action: { label: "Log expense", href: `/trip/${trip.id}?view=expenses` },
+    });
+  }
+
+  if (
+    !hasDayOneActivity(details.activities, toDateString(trip.startDate)) &&
+    shouldShow("day-one")
+  ) {
+    insights.push({
+      id: "day-one",
+      icon: "calendar",
+      title: "Fill day one",
+      description: "Add a standout activity to kick the trip off together.",
+      action: { label: "Add activity", href: `/trip/${trip.id}?view=activities` },
+    });
+  }
+
+  if (!details.packingItems.length && shouldShow("packing")) {
+    insights.push({
+      id: "packing",
+      icon: "checklist",
+      title: "Prep your packing",
+      description: "Start the shared packing list so teammates can contribute.",
+      action: { label: "View packing", href: `/trip/${trip.id}?view=packing` },
+    });
+  }
+
+  if (!insights.length && nextUp && shouldShow("next-up")) {
+    insights.push({
+      id: "next-up",
+      icon: "sparkle",
+      title: "Keep momentum",
+      description: "Stay on track by completing the highlighted next step.",
+      action: { label: "Go now", href: nextUp.href },
+    });
+  }
+
+  return insights.slice(0, 3);
+}
+
+async function fetchHeroTripDetails(tripId: number): Promise<HeroTripDetails> {
+  const [flightsRes, hotelsRes, activitiesRes, packingRes, balancesRes] = await Promise.all([
+    apiRequest(`/api/trips/${tripId}/flights`),
+    apiRequest(`/api/trips/${tripId}/hotels`),
+    apiRequest(`/api/trips/${tripId}/activities`),
+    apiRequest(`/api/trips/${tripId}/packing`),
+    apiRequest(`/api/trips/${tripId}/expenses/balances`),
+  ]);
+
+  const [flights, hotels, activities, packingItems, expenseBalance] = await Promise.all([
+    flightsRes.json() as Promise<FlightWithDetails[]>,
+    hotelsRes.json() as Promise<HotelWithDetails[]>,
+    activitiesRes.json() as Promise<ActivityWithDetails[]>,
+    packingRes.json() as Promise<PackingItemWithMeta[]>,
+    balancesRes.json() as Promise<ExpenseBalanceSummary>,
+  ]);
+
+  return {
+    flights,
+    hotels,
+    activities,
+    packingItems,
+    expenseBalance,
+  };
+}
+
+function loadDismissedInsights(): Record<string, number> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+  try {
+    const stored = window.localStorage.getItem(DISMISSED_INSIGHTS_KEY);
+    if (!stored) {
+      return {};
+    }
+    const parsed = JSON.parse(stored);
+    if (typeof parsed !== "object" || parsed === null) {
+      return {};
+    }
+    return parsed;
+  } catch (error) {
+    console.warn("Failed to parse dismissed insights", error);
+    return {};
+  }
+}
+
+function storeDismissedInsights(value: Record<string, number>) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(DISMISSED_INSIGHTS_KEY, JSON.stringify(value));
+  } catch (error) {
+    console.warn("Failed to store dismissed insights", error);
+  }
+}
+
+function loadLastConversion(): LastConversion | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const stored = window.localStorage.getItem(LAST_CONVERSION_KEY);
+    if (!stored) {
+      return null;
+    }
+    const parsed = JSON.parse(stored);
+    if (!parsed) {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    console.warn("Failed to parse last conversion", error);
+    return null;
+  }
+}
+
+function storeLastConversion(conversion: LastConversion) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(LAST_CONVERSION_KEY, JSON.stringify(conversion));
+  } catch (error) {
+    console.warn("Failed to store conversion", error);
+  }
+}
+
+function TripHeroSkeleton() {
+  return (
+    <Card className="relative overflow-hidden rounded-2xl border-0 bg-white/90 p-6 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-2 w-72 rounded-full" />
+        </div>
+        <Skeleton className="h-10 w-32 rounded-full" />
+      </div>
+    </Card>
+  );
+}
+
+function TripGridSkeleton() {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <Card key={index} className="rounded-2xl border border-slate-200/70 p-5 shadow-none">
+          <Skeleton className="mb-4 h-6 w-44" />
+          <Skeleton className="mb-3 h-4 w-32" />
+          <Skeleton className="h-2 w-full rounded-full" />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function InsightSkeleton() {
+  return (
+    <Card className="rounded-2xl border border-slate-200/70 p-5 shadow-none">
+      <Skeleton className="mb-3 h-5 w-32" />
+      <Skeleton className="mb-2 h-4 w-64" />
+      <Skeleton className="h-8 w-24 rounded-full" />
+    </Card>
+  );
+}
+
+function UpcomingTripCard({ trip }: { trip: TripSummary }) {
+  const [, setLocation] = useLocation();
+  const dateLabel = formatDateRange(trip.startDate, trip.endDate);
+  const countdown = getCountdownLabel(trip.startDate, trip.endDate);
+
+  const handleOpen = useCallback(() => {
+    setLocation(`/trip/${trip.id}`);
+  }, [setLocation, trip.id]);
+
+  return (
+    <Card
+      role="link"
+      tabIndex={0}
+      onClick={handleOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleOpen();
+        }
+      }}
+      className="group relative flex cursor-pointer flex-col gap-4 rounded-2xl border border-slate-200/80 bg-white/90 p-5 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-1">
+          <h3 className="line-clamp-1 text-lg font-semibold text-slate-900">{trip.name}</h3>
+          <p className="text-sm text-slate-500">{dateLabel}</p>
+        </div>
+        <ChevronRight className="mt-1 h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-1" />
+      </div>
+      <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
+        <span className="inline-flex items-center gap-1">
+          <Users className="h-4 w-4" aria-hidden="true" />
+          {getTravelersLabel(trip.travelersCount)}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Calendar className="h-4 w-4" aria-hidden="true" />
+          {countdown}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex -space-x-2">
+          {trip.travelers.slice(0, 3).map((traveler, index) => (
+            <Avatar
+              key={`${trip.id}-avatar-${index}`}
+              className="h-8 w-8 border-2 border-white bg-slate-100"
+            >
+              <AvatarImage
+                src={traveler.avatar ?? undefined}
+                loading="lazy"
+                alt="Traveler avatar"
+              />
+              <AvatarFallback>{traveler.initial}</AvatarFallback>
+            </Avatar>
+          ))}
+        </div>
+        <div className="flex flex-1 flex-col gap-1">
+          <div className="flex items-center justify-between text-xs text-slate-500">
+            <span>Planning {trip.progressPercent}%</span>
+          </div>
+          <Progress
+            value={trip.progressPercent}
+            aria-label={`Planning progress ${trip.progressPercent} percent`}
+            className="h-2 overflow-hidden rounded-full bg-slate-100"
+          />
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 export default function Home() {
   const { user } = useAuth();
+  const [, setLocation] = useLocation();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedStat, setSelectedStat] = useState<StatType | null>(null);
-  const [isStatsDialogOpen, setIsStatsDialogOpen] = useState(false);
-  const [factIndex, setFactIndex] = useState(0);
-  const { toast } = useToast();
+  const [isConverterOpen, setIsConverterOpen] = useState(false);
+  const [lastConversion, setLastConversion] = useState<LastConversion | null>(null);
+  const [dismissedInsights, setDismissedInsights] = useState<Record<string, number>>({});
 
-  const { data: trips, isLoading, error } = useQuery<TripWithDetails[]>({
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
+
+  useEffect(() => {
+    setLastConversion(loadLastConversion());
+    setDismissedInsights(loadDismissedInsights());
+  }, []);
+
+  const {
+    data: trips,
+    isLoading,
+    error,
+  } = useQuery<TripWithDetails[]>({
     queryKey: ["/api/trips"],
-    enabled: !!user,
+    enabled: Boolean(user),
     retry: false,
   });
 
-  const deleteTripMutation = useMutation({
-    mutationFn: async (tripId: number) => {
-      return apiRequest(`/api/trips/${tripId}`, {
-        method: "DELETE",
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
-      toast({
-        title: "Trip deleted",
-        description: "Your past trip has been successfully deleted.",
-      });
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Failed to delete trip",
-        description: error.message || "Something went wrong. Please try again.",
-        variant: "destructive",
-      });
-    },
+  const now = startOfDay(new Date());
+
+  const { upcomingTrips, primaryTrip, pastTrips } = useMemo(() => {
+    const allTrips = trips ?? [];
+    const futureTrips = allTrips
+      .filter((trip) => !isBefore(parseISO(toDateString(trip.endDate)), now))
+      .sort(
+        (a, b) =>
+          parseISO(toDateString(a.startDate)).getTime() -
+          parseISO(toDateString(b.startDate)).getTime(),
+      );
+    const selectedPrimary = futureTrips.length > 0 ? futureTrips[0] : null;
+    const remainingUpcoming = selectedPrimary
+      ? futureTrips.slice(1)
+      : futureTrips;
+    const previousTrips = allTrips
+      .filter((trip) => isBefore(parseISO(toDateString(trip.endDate)), now))
+      .sort(
+        (a, b) =>
+          parseISO(toDateString(b.startDate)).getTime() -
+          parseISO(toDateString(a.startDate)).getTime(),
+      );
+
+    return {
+      upcomingTrips: remainingUpcoming,
+      primaryTrip: selectedPrimary,
+      pastTrips: previousTrips,
+    };
+  }, [now, trips]);
+
+  const heroDetailsQuery = useQuery<HeroTripDetails>({
+    queryKey: ["dashboard", "hero", primaryTrip?.id],
+    queryFn: () => fetchHeroTripDetails(primaryTrip!.id),
+    enabled: Boolean(primaryTrip),
+    retry: false,
   });
 
-  const formatDateRange = (
-    startDate: string | Date,
-    endDate: string | Date,
-  ) => {
-    const start =
-      typeof startDate === "string" ? new Date(startDate) : startDate;
-    const end = typeof endDate === "string" ? new Date(endDate) : endDate;
-    return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
-  };
+  const heroDetails = heroDetailsQuery.data ?? null;
+  const heroNextUp = primaryTrip
+    ? determineNextUp(primaryTrip, heroDetails)
+    : null;
 
-  const getUpcomingTrips = () => {
-    if (!trips) return [];
-    const now = new Date();
-    return trips.filter((trip) => new Date(trip.startDate) >= now);
-  };
-
-  const getPastTrips = () => {
-    if (!trips) return [];
-    const now = new Date();
-    return trips.filter((trip) => new Date(trip.endDate) < now);
-  };
-
-  const handleStatClick = (statType: StatType) => {
-    setSelectedStat(statType);
-    setIsStatsDialogOpen(true);
-  };
-
-  const handleStatsDialogOpenChange = (open: boolean) => {
-    setIsStatsDialogOpen(open);
-    if (!open) {
-      setSelectedStat(null);
-    }
-  };
-
-  const handleLogout = async () => {
-    console.log("Logout button clicked");
-    localStorage.clear();
-    sessionStorage.clear();
-    try {
-      await apiRequest("/api/auth/logout", { method: "POST" });
-    } catch (logoutError) {
-      console.error("Error logging out:", logoutError);
-    } finally {
-      queryClient.clear();
-      window.location.href = "/login";
-    }
-  };
-
-  const upcomingTrips = getUpcomingTrips();
-  const pastTrips = getPastTrips();
-  const totalCompanions =
-    trips?.reduce((total, trip) => total + trip.memberCount, 0) ?? 0;
-  const uniqueDestinations = trips
-    ? new Set(trips.map((trip) => trip.destination)).size
-    : 0;
-  const sortedUpcomingTrips = [...upcomingTrips].sort(
-    (a, b) =>
-      new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
-  );
-  const highlightTrip = sortedUpcomingTrips[0];
-  const highlightCountdown = highlightTrip
-    ? getCountdownLabel(highlightTrip.startDate)
-    : undefined;
-  const highlightDestinationName = highlightTrip?.destination
-    ? highlightTrip.destination.split(",")[0]?.trim() || highlightTrip.destination
-    : undefined;
-  const teamLabel = getTeamLabel(highlightTrip);
-  const heroGreeting = `Welcome back, ${user?.firstName || "Traveler"} 👋`;
-  const heroHeadline = highlightTrip
-    ? `${
-        teamLabel ??
-        (highlightDestinationName
-          ? `Team ${highlightDestinationName}`
-          : highlightTrip.name)
-      } is almost ready!`
-    : "Your next adventure is waiting.";
-  const heroSubtitle = highlightTrip
-    ? highlightCountdown === "Happening today"
-      ? `It's go day for ${highlightDestinationName}! Check off your final details below.`
-      : highlightCountdown === "In progress"
-        ? `You're already exploring ${highlightDestinationName}. Keep everyone aligned with live updates.`
-        : `${highlightCountdown} until ${highlightDestinationName}. Let's make sure everything is locked in.`
-    : "Plan something unforgettable—start by creating your next itinerary.";
-  const funFacts = useMemo(
-    () => getFunFactsForDestination(highlightTrip?.destination),
-    [highlightTrip?.destination],
-  );
-  useEffect(() => {
-    setFactIndex(0);
-  }, [highlightTrip?.id, funFacts.length]);
-  useEffect(() => {
-    if (funFacts.length <= 1) {
-      return;
-    }
-    if (typeof window === "undefined") {
-      return;
-    }
-    const timer = window.setInterval(() => {
-      setFactIndex((prev) => (prev + 1) % funFacts.length);
-    }, 8000);
-
-    return () => window.clearInterval(timer);
-  }, [funFacts]);
-  const currentFunFact =
-    funFacts.length > 0 ? funFacts[factIndex % funFacts.length] : undefined;
-  const stats: StatDefinition[] = [
-    {
-      type: "upcomingTrips",
-      label: "Upcoming trips",
-      value: upcomingTrips.length,
-      icon: Calendar,
-      accent: "bg-sky-100 text-sky-600",
-    },
-    {
-      type: "travelCompanions",
-      label: "Travel companions",
-      value: totalCompanions,
-      icon: Users,
-      accent: "bg-emerald-100 text-emerald-600",
-    },
-    {
-      type: "destinations",
-      label: "Destinations",
-      value: uniqueDestinations,
-      icon: MapPin,
-      accent: "bg-violet-100 text-violet-600",
-    },
-  ];
-
-  const quickActions = [
-    {
-      title: "Currency toolkit",
-      description: "Live rates and quick conversions for the crew.",
-      href: "/currency-converter",
-      icon: DollarSign,
-      accent: "bg-emerald-100 text-emerald-600",
-    },
-    {
-      title: "Explore features",
-      description: "Discover collaborative tools you haven't tried yet.",
-      href: "/how-it-works",
-      icon: Compass,
-      accent: "bg-sky-100 text-sky-600",
-    },
-    {
-      title: "Profile & preferences",
-      description: "Tune notifications and travel details in seconds.",
-      href: "/profile",
-      icon: Settings,
-      accent: "bg-violet-100 text-violet-600",
-    },
-  ] as const;
-
-  const quickAddItems: { label: string; href: string; icon: LucideIcon }[] = highlightTrip
-    ? [
-        {
-          label: "Add activity",
-          href: `/trip/${highlightTrip.id}?view=activities`,
-          icon: Sparkles,
-        },
-        {
-          label: "Log an expense",
-          href: `/trip/${highlightTrip.id}?view=expenses`,
-          icon: DollarSign,
-        },
-        {
-          label: "Open packing list",
-          href: `/trip/${highlightTrip.id}?view=packing`,
-          icon: ListChecks,
-        },
-        {
-          label: "Add to wish list",
-          href: `/trip/${highlightTrip.id}?view=wish-list`,
-          icon: Heart,
-        },
-      ]
-    : [];
-
-  const companionMap = new Map<string, CompanionDetail>();
-  (trips ?? []).forEach((trip) => {
-    const tripName = trip.name?.trim() || "Unnamed trip";
-    (trip.members ?? []).forEach((member) => {
-      const user = member.user;
-      if (!user?.id) {
-        return;
-      }
-      const existingCompanion = companionMap.get(user.id);
-      const companionName = formatMemberName(user.firstName, user.email);
-      const companionInitial = getMemberInitial(user.firstName, user.email);
-      const email = user.email ?? null;
-
-      if (existingCompanion) {
-        if (!existingCompanion.trips.includes(tripName)) {
-          existingCompanion.trips.push(tripName);
-        }
-      } else {
-        companionMap.set(user.id, {
-          id: user.id,
-          name: companionName,
-          email,
-          trips: [tripName],
-          initial: companionInitial,
-        });
-      }
-    });
-  });
-  const companionDetails = Array.from(companionMap.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
+  const insights = useMemo(
+    () => buildInsights(primaryTrip ?? null, heroDetails, heroNextUp, dismissedInsights),
+    [dismissedInsights, heroDetails, heroNextUp, primaryTrip],
   );
 
-  const destinationMap = new Map<string, DestinationDetail>();
-  const currentDate = new Date();
-  (trips ?? []).forEach((trip) => {
-    const rawDestination = trip.destination ?? "Destination TBA";
-    const displayDestination =
-      rawDestination && rawDestination.trim().length > 0
-        ? rawDestination.trim()
-        : "Destination TBA";
-    const mapKey = rawDestination || "Destination TBA";
-    const existingDestination = destinationMap.get(mapKey);
-    const tripStart = new Date(trip.startDate);
-    const isUpcoming = tripStart >= currentDate;
-
-    if (existingDestination) {
-      existingDestination.totalTrips += 1;
-      if (isUpcoming) {
-        existingDestination.upcomingTrips += 1;
-      }
-    } else {
-      destinationMap.set(mapKey, {
-        name: displayDestination,
-        totalTrips: 1,
-        upcomingTrips: isUpcoming ? 1 : 0,
-      });
-    }
-  });
-  const destinationDetails = Array.from(destinationMap.values()).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-
-  const topCompanions = companionDetails.slice(0, 3);
-  const extraCompanionCount = Math.max(
-    companionDetails.length - topCompanions.length,
-    0,
-  );
-  const topDestinations = destinationDetails.slice(0, 3);
-  const extraDestinationCount = Math.max(
-    destinationDetails.length - topDestinations.length,
-    0,
-  );
-  const highlightNextStep = highlightTrip ? getTripNextStep(highlightTrip) : null;
-
-  type InsightCard = {
-    title: string;
-    description: string;
-    icon: LucideIcon;
-    accent: string;
-    actionLabel: string;
-    href?: string;
-    onClick?: () => void;
-  };
-
-  const insightCards: InsightCard[] = highlightTrip
-    ? [
-        {
-          title: "Add one more standout",
-          description:
-            teamLabel && highlightDestinationName
-              ? `${teamLabel} still has room for a can't-miss ${highlightDestinationName} moment.`
-              : "Drop an activity into the itinerary so everyone can react.",
-          icon: ListChecks,
-          accent: "bg-emerald-100 text-emerald-600",
-          actionLabel: "Add activity",
-          href: `/trip/${highlightTrip.id}?view=activities`,
-        },
-        {
-          title: "Split an expense early",
-          description: "Capture shared costs now to keep budgets aligned for the trip.",
-          icon: DollarSign,
-          accent: "bg-amber-100 text-amber-600",
-          actionLabel: "Log expense",
-          href: `/trip/${highlightTrip.id}?view=expenses`,
-        },
-        {
-          title: "Prep the packing list",
-          description: `Keep ${highlightTrip.memberCount} traveler${
-            highlightTrip.memberCount === 1 ? "" : "s"
-          } synced on essentials before departure.`,
-          icon: Plane,
-          accent: "bg-sky-100 text-sky-600",
-          actionLabel: "Open packing",
-          href: `/trip/${highlightTrip.id}?view=packing`,
-        },
-        {
-          title: "Get inspired",
-          description:
-            "Browse experiences near your destination and drop favorites into proposals.",
-          icon: Sparkles,
-          accent: "bg-rose-100 text-rose-500",
-          actionLabel: "Discover ideas",
-          href: "/activities",
-        },
-      ]
-    : [
-        {
-          title: "Create your first trip space",
-          description:
-            "Spin up an itinerary, invite friends, and start capturing plans together.",
-          icon: Sparkles,
-          accent: "bg-emerald-100 text-emerald-600",
-          actionLabel: "Start planning",
-          onClick: () => setShowCreateModal(true),
-        },
-        {
-          title: "Explore VacationSync tools",
-          description:
-            "See how shared calendars, polls, and budgets keep everyone aligned.",
-          icon: Compass,
-          accent: "bg-sky-100 text-sky-600",
-          actionLabel: "Tour features",
-          href: "/how-it-works",
-        },
-        {
-          title: "Save must-do ideas",
-          description:
-            "Browse activities and restaurants, then clip your favorites for later.",
-          icon: MapPin,
-          accent: "bg-violet-100 text-violet-600",
-          actionLabel: "Find inspiration",
-          href: "/activities",
-        },
-        {
-          title: "Personalize your profile",
-          description: "Add a photo and travel preferences so invites feel personal.",
-          icon: Users,
-          accent: "bg-amber-100 text-amber-600",
-          actionLabel: "Update profile",
-          href: "/profile",
-        },
-      ];
-
-  const statDescriptions: Record<StatType, string> = {
-    upcomingTrips:
-      "Preview names, dates, and destinations for each upcoming trip.",
-    travelCompanions:
-      "See who is joining you and which adventures you're sharing together.",
-    destinations:
-      "Review every destination you've saved across your journeys.",
-  };
-
-  const activeStat = selectedStat
-    ? stats.find((stat) => stat.type === selectedStat)
-    : undefined;
-
-  const renderSelectedStatContent = () => {
-    if (!selectedStat) {
+  const heroSummary: TripSummary | null = useMemo(() => {
+    if (!primaryTrip) {
       return null;
     }
+    const progress = calculatePlanningProgress(primaryTrip, heroDetails ?? undefined);
+    return {
+      id: primaryTrip.id,
+      name: primaryTrip.name || primaryTrip.destination,
+      destination: primaryTrip.destination,
+      startDate: toDateString(primaryTrip.startDate),
+      endDate: toDateString(primaryTrip.endDate),
+      travelersCount: primaryTrip.memberCount,
+      travelers: buildTravelerData(primaryTrip.members),
+      progressPercent: progress,
+      nextUp: heroNextUp,
+    };
+  }, [heroDetails, heroNextUp, primaryTrip]);
 
-    if (selectedStat === "upcomingTrips") {
-      if (sortedUpcomingTrips.length === 0) {
-        return (
-          <p className="text-sm text-slate-600">
-            You're all caught up! Create a new trip to see it here.
-          </p>
-        );
-      }
+  const upcomingSummaries: TripSummary[] = useMemo(() => {
+    return upcomingTrips.map((trip) => ({
+      id: trip.id,
+      name: trip.name || trip.destination,
+      destination: trip.destination,
+      startDate: toDateString(trip.startDate),
+      endDate: toDateString(trip.endDate),
+      travelersCount: trip.memberCount,
+      travelers: buildTravelerData(trip.members),
+      progressPercent: calculatePlanningProgress(trip),
+      nextUp: null,
+    }));
+  }, [upcomingTrips]);
 
-      return (
-        <div className="space-y-3">
-          {sortedUpcomingTrips.map((trip) => {
-            const countdown = getCountdownLabel(trip.startDate);
+  const handleOpenTrip = useCallback(
+    (tripId: number) => {
+      setLocation(`/trip/${tripId}`);
+    },
+    [setLocation],
+  );
 
-            return (
-              <div
-                key={trip.id}
-                className="rounded-2xl border border-slate-200 p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {trip.name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {trip.destination || "Destination TBA"}
-                    </p>
-                  </div>
-                  <Badge className="rounded-full bg-sky-100 px-3 py-1 text-xs font-medium text-sky-700">
-                    {countdown}
-                  </Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-600">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4 text-slate-500" />
-                    {formatDateRange(trip.startDate, trip.endDate)}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Users className="h-4 w-4 text-slate-500" />
-                    {trip.memberCount} companion{trip.memberCount === 1 ? "" : "s"}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
+  const handleDismissInsight = useCallback(
+    (id: string) => {
+      setDismissedInsights((prev) => {
+        const next = { ...prev, [id]: Date.now() };
+        storeDismissedInsights(next);
+        return next;
+      });
+    },
+    [],
+  );
 
-    if (selectedStat === "travelCompanions") {
-      if (companionDetails.length === 0) {
-        return (
-          <p className="text-sm text-slate-600">
-            Invite friends and family to your trips to see them listed here.
-          </p>
-        );
-      }
+  const handleConversionUpdate = useCallback((conversion: LastConversion) => {
+    setLastConversion(conversion);
+    storeLastConversion(conversion);
+  }, []);
 
-      return (
-        <div className="space-y-3">
-          {companionDetails.map((companion) => {
-            const tripNames = companion.trips;
-            const displayedTrips = tripNames.slice(0, 3).join(", ");
-            const remainingCount = Math.max(tripNames.length - 3, 0);
-            const tripLabel =
-              tripNames.length === 0
-                ? "No trips recorded yet"
-                : tripNames.length === 1
-                  ? `Trip: ${tripNames[0]}`
-                  : `Trips: ${displayedTrips}${
-                      remainingCount > 0 ? ` +${remainingCount} more` : ""
-                    }`;
-
-            return (
-              <div
-                key={companion.id}
-                className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4"
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
-                  {companion.initial}
-                </div>
-                <div className="space-y-1 text-sm">
-                  <p className="font-semibold text-slate-900">{companion.name}</p>
-                  {companion.email && (
-                    <p className="text-xs text-slate-500">{companion.email}</p>
-                  )}
-                  <p className="text-xs text-slate-500">{tripLabel}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
-
-    if (selectedStat === "destinations") {
-      if (destinationDetails.length === 0) {
-        return (
-          <p className="text-sm text-slate-600">
-            Plan a trip to start building your destination list.
-          </p>
-        );
-      }
-
-      return (
-        <div className="space-y-3">
-          {destinationDetails.map((destination) => (
-            <div
-              key={destination.name}
-              className="space-y-2 rounded-2xl border border-slate-200 p-4"
+  return (
+    <div className="relative min-h-screen">
+      <header className="sticky top-0 z-20 border-b border-slate-200/60 bg-white/85 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+          <Link href="/" className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500 text-white shadow-sm">
+              VS
+            </span>
+            <span className="hidden sm:inline">VacationSync</span>
+          </Link>
+          <h1 className="text-xl font-semibold text-slate-900 sm:text-2xl">Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <NotificationIcon />
+            <Link
+              href="/profile"
+              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              aria-label="Open profile"
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-violet-600" />
-                  <p className="text-sm font-semibold text-slate-900">
-                    {destination.name}
-                  </p>
-                </div>
-                <Badge className="rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-700">
-                  {destination.totalTrips} trip{destination.totalTrips === 1 ? "" : "s"}
-                </Badge>
-              </div>
-              <p className="text-xs text-slate-500">
-                {destination.upcomingTrips > 0
-                  ? `${destination.upcomingTrips} upcoming ${
-                      destination.upcomingTrips === 1 ? "adventure" : "adventures"
-                    } planned`
-                  : "No upcoming adventures planned"}
-              </p>
-            </div>
-          ))}
+              <Avatar className="h-10 w-10 border-2 border-white shadow-sm">
+                <AvatarImage src={user?.profileImageUrl ?? undefined} alt="Profile" />
+                <AvatarFallback>
+                  {user?.firstName?.[0]?.toUpperCase() ?? user?.email?.[0]?.toUpperCase() ?? "U"}
+                </AvatarFallback>
+              </Avatar>
+            </Link>
+          </div>
         </div>
-      );
-    }
+      </header>
 
-    return null;
-  };
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-8 lg:flex-row">
+        <div className="flex-1 space-y-10">
+          {isLoading ? (
+            <TripHeroSkeleton />
+          ) : error ? (
+            <Card className="rounded-2xl border border-amber-200 bg-amber-50/80 p-6 text-sm text-amber-800">
+              We’re having trouble loading your trips right now. Try refreshing the page.
+            </Card>
+          ) : heroSummary ? (
+            <section aria-labelledby="primary-trip-heading">
+              <Card
+                role="group"
+                className="relative overflow-hidden rounded-2xl border-0 bg-gradient-to-br from-white via-white to-sky-50 p-6 shadow-sm transition-shadow hover:shadow-md"
+              >
+                <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_60%)]" />
+                <div className="flex flex-col gap-6">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex-1 space-y-3">
+                      <h2
+                        id="primary-trip-heading"
+                        className="text-3xl font-semibold text-slate-900"
+                        title={heroSummary.name}
+                      >
+                        {heroSummary.name}
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                        <span className="inline-flex items-center gap-1">
+                          <Calendar className="h-4 w-4" aria-hidden="true" />
+                          {formatDateRange(heroSummary.startDate, heroSummary.endDate)}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Users className="h-4 w-4" aria-hidden="true" />
+                          {getTravelersLabel(heroSummary.travelersCount)}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-4 w-4" aria-hidden="true" />
+                          {getCountdownLabel(heroSummary.startDate, heroSummary.endDate)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 rounded-full bg-white/60 text-slate-500 hover:bg-white"
+                            aria-label="Open trip quick actions"
+                          >
+                            <Ellipsis className="h-5 w-5" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuItem onClick={() => setLocation(`/trip/${heroSummary.id}?view=packing`)}>
+                            View packing list
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setLocation(`/trip/${heroSummary.id}?view=activities`)}>
+                            Finalize activities
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setLocation(`/trip/${heroSummary.id}?view=expenses`)}>
+                            Log expense
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setLocation(`/trip/${heroSummary.id}?view=members`)}>
+                            Invite travelers
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      <Button
+                        onClick={() => handleOpenTrip(heroSummary.id)}
+                        className="rounded-full px-5"
+                      >
+                        Open trip
+                      </Button>
+                    </div>
+                  </div>
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <TravelLoading
-          variant="travel"
-          size="lg"
-          text="Loading your travel dashboard..."
+                  <div className="flex flex-col gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex -space-x-2">
+                          {heroSummary.travelers.slice(0, 3).map((traveler, index) => (
+                            <Avatar
+                              key={`hero-avatar-${index}`}
+                              className="h-10 w-10 border-2 border-white bg-slate-100"
+                            >
+                              <AvatarImage
+                                src={traveler.avatar ?? undefined}
+                                loading="lazy"
+                                alt="Traveler avatar"
+                              />
+                              <AvatarFallback>{traveler.initial}</AvatarFallback>
+                            </Avatar>
+                          ))}
+                        </div>
+                        <Badge variant="secondary" className="rounded-full bg-white/70 text-slate-600">
+                          Planning {heroSummary.progressPercent}%
+                        </Badge>
+                      </div>
+                      {heroSummary.nextUp ? (
+                        <Link
+                          href={heroSummary.nextUp.href}
+                          aria-label={heroSummary.nextUp.ariaLabel}
+                          className="inline-flex items-center gap-1 text-sm font-medium text-sky-600 hover:text-sky-700"
+                        >
+                          {heroSummary.nextUp.label}
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      ) : null}
+                    </div>
+                    <Progress
+                      value={heroSummary.progressPercent}
+                      aria-label={`Planning progress ${heroSummary.progressPercent} percent`}
+                      className="h-2 overflow-hidden rounded-full bg-white/60"
+                    />
+                    {isSameDay(startOfDay(parseISO(heroSummary.startDate)), startOfDay(new Date())) ? (
+                      <Link
+                        href={`/trip/${heroSummary.id}?view=schedule`}
+                        className="text-sm text-sky-600 hover:text-sky-700"
+                      >
+                        View today’s schedule
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              </Card>
+            </section>
+          ) : (
+            <section>
+              <Card className="flex flex-col items-center justify-center gap-4 rounded-2xl border-0 bg-white/90 p-10 text-center shadow-sm">
+                <div className="text-3xl">🧭</div>
+                <h2 className="text-2xl font-semibold text-slate-900">Plan your first trip</h2>
+                <p className="max-w-md text-sm text-slate-600">
+                  Create a trip to see it highlighted here with one clear next step to keep you moving.
+                </p>
+                <Button onClick={() => setShowCreateModal(true)} className="rounded-full px-6">
+                  Plan a trip
+                </Button>
+              </Card>
+            </section>
+          )}
+
+          <section className="space-y-4" aria-labelledby="upcoming-trips-heading">
+            <div className="flex items-center justify-between">
+              <h2 id="upcoming-trips-heading" className="text-xl font-semibold text-slate-900">
+                Upcoming trips
+              </h2>
+              {upcomingSummaries.length === 0 && primaryTrip && (
+                <p className="text-sm text-slate-500">You’re all set for now.</p>
+              )}
+            </div>
+            {isLoading ? (
+              <TripGridSkeleton />
+            ) : upcomingSummaries.length > 0 ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {upcomingSummaries.map((trip) => (
+                  <UpcomingTripCard key={trip.id} trip={trip} />
+                ))}
+              </div>
+            ) : !primaryTrip ? (
+              <Card className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
+                <p className="text-sm text-slate-500">
+                  Future plans will appear here once you’ve created a trip.
+                </p>
+              </Card>
+            ) : null}
+            {upcomingSummaries.length === 0 && primaryTrip ? (
+              <div className="flex justify-center pt-2">
+                <Button variant="ghost" onClick={() => setShowCreateModal(true)} className="rounded-full">
+                  Plan a trip
+                </Button>
+              </div>
+            ) : null}
+          </section>
+
+          {pastTrips.length > 0 ? (
+            <section className="space-y-4" aria-labelledby="past-trips-heading">
+              <div className="flex items-center justify-between">
+                <h2 id="past-trips-heading" className="text-xl font-semibold text-slate-900">
+                  Recent trips
+                </h2>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {pastTrips.slice(0, 4).map((trip) => (
+                  <Card
+                    key={trip.id}
+                    onClick={() => handleOpenTrip(trip.id)}
+                    className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-slate-200/80 bg-white/80 p-5 transition-shadow hover:shadow-md"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">{trip.name || trip.destination}</h3>
+                        <p className="text-sm text-slate-500">{formatDateRange(toDateString(trip.startDate), toDateString(trip.endDate))}</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      {differenceInCalendarDays(now, parseISO(toDateString(trip.endDate)))} days ago
+                    </p>
+                  </Card>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="space-y-4" aria-labelledby="insights-heading">
+            <div className="flex items-center justify-between">
+              <h2 id="insights-heading" className="text-xl font-semibold text-slate-900">
+                Helpful insights
+              </h2>
+              {heroDetailsQuery.isError ? (
+                <span className="text-xs text-amber-600">
+                  Some suggestions aren’t available right now. Try again later.
+                </span>
+              ) : null}
+            </div>
+            {heroDetailsQuery.isLoading ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {Array.from({ length: 2 }).map((_, index) => (
+                  <InsightSkeleton key={index} />
+                ))}
+              </div>
+            ) : insights.length > 0 ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {insights.map((insight) => (
+                  <Card key={insight.id} className="flex flex-col gap-3 rounded-2xl border border-slate-200/80 bg-white/90 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">{insight.title}</h3>
+                        <p className="text-sm text-slate-600">{insight.description}</p>
+                      </div>
+                      <button
+                        className="text-xs text-slate-400 hover:text-slate-500"
+                        onClick={() => handleDismissInsight(insight.id)}
+                        aria-label="Dismiss insight"
+                      >
+                        ×
+                      </button>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      className="w-fit rounded-full bg-slate-900 text-white hover:bg-slate-800"
+                      onClick={() => setLocation(insight.action.href)}
+                    >
+                      {insight.action.label}
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="rounded-2xl border border-slate-200/80 bg-white/80 p-6 text-sm text-slate-600">
+                We’ll surface new tips here as soon as we detect something that needs your attention.
+              </Card>
+            )}
+          </section>
+        </div>
+
+        <aside className="lg:w-[320px] lg:flex lg:flex-col lg:gap-6">
+          <section className="hidden lg:block">
+            <div className="rounded-2xl border border-slate-200/80 bg-white/80 p-5 shadow-sm">
+              <button
+                onClick={() => setIsConverterOpen(true)}
+                className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-200/60 bg-slate-50/70 px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                aria-expanded={isConverterOpen}
+              >
+                <span>Convert currency 💱</span>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  {lastConversion ? (
+                    <span className="hidden sm:inline">
+                      {formatMiniConversion(lastConversion)}
+                    </span>
+                  ) : null}
+                  <ChevronRight className="h-4 w-4" />
+                </div>
+              </button>
+              <div className="mt-4">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between rounded-xl border-slate-200 text-slate-600">
+                      <span>+ Add</span>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={() => primaryTrip && setLocation(`/trip/${primaryTrip.id}?view=activities`)}>
+                      Activity
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => primaryTrip && setLocation(`/trip/${primaryTrip.id}?view=expenses`)}>
+                      Expense
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => primaryTrip && setLocation(`/trip/${primaryTrip.id}?view=hotels`)}>
+                      Hotel
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => primaryTrip && setLocation(`/trip/${primaryTrip.id}?view=flights`)}>
+                      Flight
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </main>
+
+      {!isDesktop && (
+        <button
+          onClick={() => setIsConverterOpen(true)}
+          className="fixed bottom-6 right-6 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-sky-500 text-2xl text-white shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+          aria-label="Open currency converter"
+        >
+          💱
+        </button>
+      )}
+
+      <Suspense fallback={null}>
+        <CurrencyConverterSheet
+          open={isConverterOpen}
+          onOpenChange={setIsConverterOpen}
+          isDesktop={isDesktop}
+          lastConversion={lastConversion}
+          onConversion={handleConversionUpdate}
         />
-      </div>
-    );
+      </Suspense>
+
+      <CreateTripModal open={showCreateModal} onOpenChange={setShowCreateModal} />
+    </div>
+  );
+}
+
+type CurrencyConverterSheetProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  isDesktop: boolean;
+  lastConversion: LastConversion | null;
+  onConversion: (conversion: LastConversion) => void;
+};
+
+function CurrencyConverterSheet({
+  open,
+  onOpenChange,
+  isDesktop,
+  lastConversion,
+  onConversion,
+}: CurrencyConverterSheetProps) {
+  if (!open) {
+    return null;
   }
 
-  if (error) {
+  if (isDesktop) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
-        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-10 text-center shadow-xl">
-          <div className="mb-6 flex justify-center">
-            <TravelMascot type="plane" animated={false} className="text-primary" />
-          </div>
-          <h2 className="mb-3 text-xl font-bold text-slate-900">Session issue</h2>
-          <p className="mb-6 text-slate-600">
-            Your session has expired. Click the refresh button to log in again and continue using the app.
-          </p>
-          <ManualRefreshButton />
+      <div className="fixed inset-0 z-40 flex items-start justify-center bg-slate-900/30 p-6">
+        <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-xl">
+          <CurrencyConverterTool
+            onClose={() => onOpenChange(false)}
+            lastConversion={lastConversion}
+            onConversion={onConversion}
+          />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl space-y-12 px-4 py-12 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-r from-sky-50 via-white to-rose-100 p-8 shadow-sm sm:p-12">
-            <div className="absolute inset-0">
-              <img
-                src={getDestinationImage(highlightTrip?.destination)}
-                alt={
-                  highlightDestinationName
-                    ? `Scenic view of ${highlightDestinationName}`
-                    : "Colorful travel collage"
-                }
-                className="h-full w-full object-cover"
-                loading="lazy"
-              />
-              <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px]" />
-            </div>
-            <div className="relative z-10 flex h-full flex-col justify-between gap-8 text-slate-900">
-              <div className="space-y-6">
-                <div className="flex flex-wrap items-center gap-3">
-                  <Badge className="w-fit rounded-full bg-white/80 px-4 py-1 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur">
-                    <Sparkles className="mr-2 h-4 w-4 text-amber-500" />
-                    Next adventure awaits
-                  </Badge>
-                  {highlightCountdown && (
-                    <div className="flex items-center gap-2 rounded-full bg-white/80 px-4 py-1 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur">
-                      <Clock className="h-4 w-4 text-slate-500" />
-                      {highlightCountdown}
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                    {heroGreeting}
-                  </p>
-                  <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
-                    {heroHeadline}
-                  </h1>
-                  <p className="max-w-2xl text-lg text-slate-700">{heroSubtitle}</p>
-                </div>
-                {currentFunFact && (
-                  <div className="flex items-start gap-3 rounded-3xl bg-white/80 p-4 text-sm text-slate-700 shadow-sm backdrop-blur">
-                    <Lightbulb className="mt-0.5 h-4 w-4 text-amber-500" />
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Trip tidbit
-                      </p>
-                      <p>{currentFunFact}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-                <Button
-                  size="lg"
-                  className="bg-primary px-6 text-white shadow-md transition hover:shadow-lg"
-                  onClick={() => {
-                    console.log("Create trip button clicked, setting modal to true");
-                    setShowCreateModal(true);
-                  }}
-                  data-onboarding="create-trip"
-                >
-                  <Plus className="h-5 w-5" />
-                  Plan New Trip
-                </Button>
-                {highlightTrip && (
-                  <Button
-                    variant="secondary"
-                    size="lg"
-                    className="rounded-full px-6 text-slate-900 shadow-sm transition hover:shadow-md"
-                    asChild
-                  >
-                    <Link href={`/trip/${highlightTrip.id}?view=packing`}>
-                      Check packing list
-                    </Link>
-                  </Button>
-                )}
-                {highlightTrip && (
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="justify-start px-6 text-slate-700 hover:text-slate-900"
-                    asChild
-                  >
-                    <Link href={`/trip/${highlightTrip.id}?view=activities`}>
-                      Finalize activities
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  className="justify-start px-0 text-slate-700 hover:bg-transparent hover:text-slate-900"
-                  asChild
-                >
-                  <Link href="/how-it-works">
-                    Learn how VacationSync keeps everyone aligned
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              </div>
-            </div>
-            <div className="pointer-events-none absolute -bottom-3 -right-3 hidden lg:block">
-              <TravelMascot type="plane" size="lg" />
-            </div>
-          </div>
-
-          <Card className="rounded-3xl border-slate-200 shadow-sm">
-            <CardHeader className="space-y-1 pb-3">
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle className="text-lg font-semibold text-slate-900">
-                  Quick actions
-                </CardTitle>
-                <NotificationIcon />
-              </div>
-              <p className="text-sm text-slate-600">
-                Jump back into the tools you need most.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-3">
-                {quickActions.map((action) => {
-                  const ActionIcon = action.icon;
-                  return (
-                    <Link
-                      key={action.title}
-                      href={action.href}
-                      className="group flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`flex h-11 w-11 items-center justify-center rounded-2xl ${action.accent}`}
-                        >
-                          <ActionIcon className="h-5 w-5" />
-                        </span>
-                        <div>
-                          <p className="font-semibold text-slate-900">{action.title}</p>
-                          <p className="text-xs text-slate-500">{action.description}</p>
-                        </div>
-                      </div>
-                      <ArrowUpRight className="h-4 w-4 text-slate-400 transition group-hover:text-slate-600" />
-                    </Link>
-                  );
-                })}
-              </div>
-              {highlightTrip ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="w-full justify-center rounded-2xl bg-slate-900 py-5 text-base font-semibold text-white shadow-md transition hover:bg-slate-800">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add something
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-60 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-lg">
-                    {quickAddItems.map((item) => {
-                      const ItemIcon = item.icon;
-                      return (
-                        <DropdownMenuItem
-                          key={item.label}
-                          className="cursor-pointer rounded-xl px-3 py-2 text-sm text-slate-700 focus:bg-slate-100"
-                          asChild
-                        >
-                          <Link
-                            href={item.href}
-                            className="flex items-center gap-2"
-                          >
-                            <ItemIcon className="h-4 w-4 text-slate-500" />
-                            {item.label}
-                            <ArrowUpRight className="ml-auto h-3.5 w-3.5 text-slate-400" />
-                          </Link>
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Button
-                  className="w-full justify-center rounded-2xl bg-slate-900 py-5 text-base font-semibold text-white shadow-md transition hover:bg-slate-800"
-                  onClick={() => setShowCreateModal(true)}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add something
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                className="justify-start px-3 text-slate-500 hover:text-slate-900"
-                onClick={handleLogout}
-              >
-                Log out
-              </Button>
-            </CardContent>
-          </Card>
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="bottom" className="h-[85vh] rounded-t-3xl p-0">
+        <SheetHeader className="px-6 pt-6">
+          <SheetTitle className="text-lg font-semibold text-slate-900">
+            Convert currency
+          </SheetTitle>
+        </SheetHeader>
+        <div className="h-full overflow-y-auto px-4 pb-8">
+          <CurrencyConverterTool
+            onClose={() => onOpenChange(false)}
+            lastConversion={lastConversion}
+            onConversion={onConversion}
+            mobile
+          />
         </div>
-
-        <Card className="rounded-3xl border-slate-200 shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-stretch md:justify-between">
-              {stats.map((stat, index) => {
-                const Icon = stat.icon;
-                const showDivider = index < stats.length - 1;
-                let preview: ReactNode = null;
-
-                if (stat.type === "upcomingTrips") {
-                  preview = highlightTrip ? (
-                    <div className="mt-2 space-y-1 text-xs text-slate-500">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                        <span className="font-medium text-slate-700">
-                          {highlightTrip.name}
-                        </span>
-                        {highlightCountdown && (
-                          <span className="text-slate-400">• {highlightCountdown}</span>
-                        )}
-                      </div>
-                      {highlightNextStep && (
-                        <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                          <Clock className="h-3 w-3" />
-                          <span>{highlightNextStep}</span>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Start a plan to unlock smart trip previews.
-                    </p>
-                  );
-                } else if (stat.type === "travelCompanions") {
-                  preview = topCompanions.length > 0 ? (
-                    <div className="mt-2 flex items-center gap-3">
-                      <div className="flex -space-x-2">
-                        {topCompanions.map((companion) => (
-                          <div
-                            key={companion.id}
-                            className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-slate-100 text-[11px] font-semibold text-slate-600 shadow-sm"
-                          >
-                            {companion.initial}
-                          </div>
-                        ))}
-                        {extraCompanionCount > 0 && (
-                          <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white bg-slate-100 text-[11px] font-semibold text-slate-600 shadow-sm">
-                            +{extraCompanionCount}
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        {topCompanions
-                          .map((companion) => companion.name.split(" ")[0])
-                          .join(", ")}
-                        {extraCompanionCount > 0
-                          ? ` +${extraCompanionCount} more`
-                          : ""}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Invite friends to start planning together.
-                    </p>
-                  );
-                } else if (stat.type === "destinations") {
-                  preview = topDestinations.length > 0 ? (
-                    <p className="mt-2 text-xs text-slate-500">
-                      {topDestinations
-                        .map((destination) => destination.name.split(",")[0])
-                        .join(" • ")}
-                      {extraDestinationCount > 0
-                        ? ` +${extraDestinationCount}`
-                        : ""}
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-xs text-slate-500">
-                      Add destinations to track your travel map.
-                    </p>
-                  );
-                }
-
-                return (
-                  <button
-                    key={stat.label}
-                    type="button"
-                    onClick={() => handleStatClick(stat.type)}
-                    className={`group flex w-full items-stretch gap-3 rounded-2xl px-3 py-3 text-left transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-200 focus-visible:ring-offset-2 focus-visible:ring-offset-white ${
-                      showDivider ? "md:border-r md:border-slate-200 md:pr-6" : ""
-                    } md:w-auto`}
-                    aria-label={`View details for ${stat.label}`}
-                  >
-                    <div
-                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${stat.accent} transition group-hover:scale-105`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="flex flex-1 flex-col">
-                      <p className="text-2xl font-semibold text-slate-900">
-                        {stat.value}
-                      </p>
-                      <p className="text-sm capitalize text-slate-600 group-hover:text-slate-800">
-                        {stat.label}
-                      </p>
-                      {preview}
-                    </div>
-                    <ArrowRight className="mt-1 hidden h-4 w-4 text-slate-300 transition group-hover:text-slate-500 md:block" />
-                  </button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Dialog
-          open={isStatsDialogOpen}
-          onOpenChange={handleStatsDialogOpenChange}
-        >
-          <DialogContent className="max-w-xl">
-            <DialogHeader>
-              <DialogTitle>{activeStat?.label ?? "Details"}</DialogTitle>
-              {selectedStat && (
-                <DialogDescription>
-                  {statDescriptions[selectedStat]}
-                </DialogDescription>
-              )}
-            </DialogHeader>
-            <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
-              {renderSelectedStatContent()}
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        <section className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Upcoming adventures</h2>
-              <p className="text-sm text-slate-600">Keep tabs on what’s coming up next.</p>
-            </div>
-            {highlightTrip && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full border-slate-200"
-                asChild
-              >
-                <Link href={`/trip/${highlightTrip.id}`}>
-                  Open {highlightTrip.name}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            )}
-          </div>
-
-          {upcomingTrips.length === 0 ? (
-            <Card className="rounded-3xl border-dashed border-slate-200 bg-white shadow-sm">
-              <CardContent className="flex flex-col items-center gap-4 p-10 text-center">
-                <TravelMascot type="map" size="lg" animated={false} />
-                <h3 className="text-lg font-semibold text-slate-900">
-                  No upcoming trips yet
-                </h3>
-                <p className="max-w-md text-slate-600">
-                  Start planning your next getaway and invite your travel crew to collaborate.
-                </p>
-                <Button
-                  onClick={() => setShowCreateModal(true)}
-                  className="bg-primary text-white hover:bg-primary/90"
-                  data-onboarding="create-trip"
-                >
-                  <Plus className="h-4 w-4" />
-                  Plan your first trip
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2">
-              {sortedUpcomingTrips.map((trip) => {
-                const progress = calculatePlanningProgress(trip);
-                const tags = getTripTags(trip);
-                const nextStep = getTripNextStep(trip);
-
-                return (
-                  <Link
-                    key={trip.id}
-                    href={`/trip/${trip.id}`}
-                    aria-label={`Open trip ${trip.name}`}
-                    className="group block rounded-3xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                  >
-                    <Card className="h-full overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-lg">
-                    <div className="relative h-40 w-full overflow-hidden">
-                      <img
-                        src={getDestinationImage(trip.destination)}
-                        alt={`Scenic view of ${trip.destination}`}
-                        className="h-full w-full object-cover"
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900/70 via-slate-900/20 to-transparent" />
-                      <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white">
-                        <div>
-                          <p className="text-xs uppercase tracking-widest text-white/80">
-                            Adventure
-                          </p>
-                          <h3 className="text-lg font-semibold leading-tight">
-                            {trip.name}
-                          </h3>
-                        </div>
-                        <Badge className="flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white backdrop-blur">
-                          <Users className="h-3.5 w-3.5" />
-                          {trip.memberCount}
-                        </Badge>
-                      </div>
-                    </div>
-                    <CardContent className="space-y-5 p-6">
-                      <div className="space-y-3 text-sm text-slate-600">
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-600">
-                            <MapPin className="h-4 w-4" />
-                          </span>
-                          <span className="font-medium text-slate-900">
-                            {trip.destination}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-                            <Calendar className="h-4 w-4" />
-                          </span>
-                          <span>{formatDateRange(trip.startDate, trip.endDate)}</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
-                            <Clock className="h-4 w-4" />
-                          </span>
-                          <span className="font-medium text-slate-900">
-                            {getCountdownLabel(trip.startDate)}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap gap-2">
-                          {tags.map((tag) => (
-                            <Badge
-                              key={`${trip.id}-${tag}`}
-                              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                        <div>
-                          <div className="flex items-center justify-between text-xs text-slate-500">
-                            <span>Planning progress</span>
-                            <span className="font-semibold text-slate-700">
-                              {progress}%
-                            </span>
-                          </div>
-                          <Progress
-                            value={progress}
-                            className="mt-1 h-2 rounded-full bg-slate-100"
-                          />
-                        </div>
-                        <div className="flex items-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                          <ListChecks className="h-4 w-4 text-emerald-500" />
-                          <span>Next up: {nextStep}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4 pt-2">
-                        <div className="flex -space-x-2">
-                          {(trip.members || []).slice(0, 3).map((member) => (
-                            <div
-                              key={member.id}
-                              className="h-9 w-9 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
-                            >
-                              {member.user.profileImageUrl ? (
-                                <img
-                                  src={member.user.profileImageUrl}
-                                  alt={formatMemberName(
-                                    member.user.firstName,
-                                    member.user.email,
-                                  )}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
-                                  {getMemberInitial(
-                                    member.user.firstName,
-                                    member.user.email,
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                          {trip.memberCount > 3 && (
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
-                              +{trip.memberCount - 3}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">Helpful insights</h2>
-              <p className="text-sm text-slate-600">
-                Quick suggestions to keep momentum high for {teamLabel ?? "your travel plans"}.
-              </p>
-            </div>
-            {highlightTrip && teamLabel && (
-              <Badge className="w-fit rounded-full bg-white px-4 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                {teamLabel}
-              </Badge>
-            )}
-          </div>
-          <div className="relative">
-            <Carousel opts={{ align: "start" }} className="px-1">
-              <CarouselContent className="-ml-4">
-                {insightCards.map((insight) => {
-                  const InsightIcon = insight.icon;
-                  return (
-                    <CarouselItem
-                      key={insight.title}
-                      className="pl-4 sm:basis-1/2 lg:basis-1/3"
-                    >
-                      <Card className="h-full rounded-3xl border-slate-200 bg-white shadow-sm">
-                        <CardContent className="flex h-full flex-col justify-between gap-4 p-6">
-                          <div className="flex items-start gap-3">
-                            <span
-                              className={`flex h-10 w-10 items-center justify-center rounded-2xl ${insight.accent}`}
-                            >
-                              <InsightIcon className="h-5 w-5" />
-                            </span>
-                            <div>
-                              <h3 className="text-base font-semibold text-slate-900">
-                                {insight.title}
-                              </h3>
-                              <p className="text-sm text-slate-600">
-                                {insight.description}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between gap-3 pt-2">
-                {insight.href ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="rounded-full px-4"
-                    asChild
-                  >
-                    <Link href={insight.href}>{insight.actionLabel}</Link>
-                  </Button>
-                ) : (
-                  <Button
-                                variant="secondary"
-                                size="sm"
-                                className="rounded-full px-4"
-                                onClick={insight.onClick}
-                              >
-                                {insight.actionLabel}
-                              </Button>
-                            )}
-                            <ArrowRight className="h-4 w-4 text-slate-300" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </CarouselItem>
-                  );
-                })}
-              </CarouselContent>
-              <CarouselPrevious className="hidden sm:flex -left-6" />
-              <CarouselNext className="hidden sm:flex -right-6" />
-            </Carousel>
-          </div>
-        </section>
-
-        {pastTrips.length > 0 && (
-          <section className="space-y-4">
-            <h2 className="text-xl font-semibold text-slate-900">Past trips</h2>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {pastTrips.map((trip) => (
-                <Card
-                  key={trip.id}
-                  className="rounded-3xl border border-slate-200 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
-                >
-                  <CardContent className="space-y-4 p-6">
-                    <div className="flex items-start justify-between gap-4">
-                      <Link href={`/trip/${trip.id}`} className="flex-1">
-                        <h3 className="text-lg font-semibold text-slate-900 transition-colors hover:text-primary">
-                          {trip.name}
-                        </h3>
-                      </Link>
-                      <div className="flex items-center gap-2">
-                        <Badge className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                          Completed
-                        </Badge>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                              data-testid={`delete-trip-${trip.id}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Past Trip</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                Are you sure you want to delete "{trip.name}"? This action cannot be undone and will permanently remove all trip data including activities, expenses, and memories.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteTripMutation.mutate(trip.id)}
-                                disabled={deleteTripMutation.isPending}
-                                className="bg-red-600 hover:bg-red-700"
-                                data-testid={`confirm-delete-trip-${trip.id}`}
-                              >
-                                {deleteTripMutation.isPending
-                                  ? "Deleting..."
-                                  : "Delete Trip"}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </div>
-                    <Link href={`/trip/${trip.id}`}>
-                      <div className="space-y-3 text-sm text-slate-600">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-slate-500" />
-                          <span>{trip.destination}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-slate-500" />
-                          <span>{formatDateRange(trip.startDate, trip.endDate)}</span>
-                        </div>
-                      </div>
-                    </Link>
-                    <div className="flex -space-x-2">
-                      {(trip.members || []).slice(0, 3).map((member) => (
-                        <div
-                          key={member.id}
-                          className="h-8 w-8 overflow-hidden rounded-full border-2 border-white bg-slate-200 ring-1 ring-slate-200"
-                        >
-                          {member.user.profileImageUrl ? (
-                            <img
-                              src={member.user.profileImageUrl}
-                              alt={formatMemberName(
-                                member.user.firstName,
-                                member.user.email,
-                              )}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-slate-600">
-                              {getMemberInitial(
-                                member.user.firstName,
-                                member.user.email,
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {trip.memberCount > 3 && (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
-                          +{trip.memberCount - 3}
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </section>
-        )}
-      </div>
-
-      <CreateTripModal
-        open={showCreateModal}
-        onOpenChange={(open) => {
-          console.log("CreateTripModal onOpenChange called with:", open);
-          setShowCreateModal(open);
-        }}
-      />
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
+
+function formatMiniConversion(conversion: LastConversion) {
+  const amountFormatter = new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 2,
+  });
+  return `${amountFormatter.format(conversion.amount)} ${conversion.from} → ${amountFormatter.format(conversion.result)} ${conversion.to}`;
+}
+
