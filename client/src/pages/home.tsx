@@ -26,6 +26,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Avatar,
   AvatarFallback,
   AvatarImage,
@@ -42,6 +48,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { Link } from "wouter";
+import tripSyncLogo from "@/assets/tripsync-logo.svg";
 import { StatCard } from "@/components/dashboard/stat-card";
 import {
   selectAllDestinationsUnique,
@@ -356,14 +363,16 @@ export default function Home() {
   const travelersCardRegionId = useId();
   const howItWorksTitleId = useId();
   const howItWorksDescriptionId = useId();
-  const converterButtonRef = useRef<HTMLButtonElement | null>(null);
-  const howItWorksButtonRef = useRef<HTMLButtonElement | null>(null);
+  const converterButtonRef = useRef<HTMLElement | null>(null);
+  const howItWorksButtonRef = useRef<HTMLElement | null>(null);
   const howItWorksCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const converterCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const shouldRestoreHowItWorksFocus = useRef(true);
   const upcomingSectionRef = useRef<HTMLHeadingElement | null>(null);
+  const quickActionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isConverterOpen, setIsConverterOpen] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
   const [howItWorksLoaded, setHowItWorksLoaded] = useState(false);
   const [expandedCard, setExpandedCard] = useState<ExpandedCardKey | null>(null);
   const handleToggleCard = useCallback((card: ExpandedCardKey) => {
@@ -385,10 +394,16 @@ export default function Home() {
     setLocation("/profile");
   }, [setLocation]);
 
-  const handleHowItWorksButtonClick = useCallback(() => {
-    setHowItWorksLoaded(true);
-    setIsHowItWorksOpen(true);
-  }, []);
+  const handleHowItWorksButtonClick = useCallback(
+    (trigger?: HTMLElement | null) => {
+      if (trigger) {
+        howItWorksButtonRef.current = trigger;
+      }
+      setHowItWorksLoaded(true);
+      setIsHowItWorksOpen(true);
+    },
+    [],
+  );
 
   const focusElement = useCallback((element: HTMLElement | null) => {
     if (!element) {
@@ -421,6 +436,16 @@ export default function Home() {
       focusElement(converterCloseButtonRef.current);
     },
     [focusElement],
+  );
+
+  const handleConverterOpen = useCallback(
+    (trigger?: HTMLElement | null) => {
+      if (trigger) {
+        converterButtonRef.current = trigger;
+      }
+      handleConverterVisibilityChange(true);
+    },
+    [handleConverterVisibilityChange],
   );
 
   const handleHowItWorksOpenChange = useCallback(
@@ -458,6 +483,18 @@ export default function Home() {
   useEffect(() => {
     setLastConversion(loadLastConversion());
   }, []);
+
+  useEffect(() => {
+    if (isDesktop) {
+      setIsQuickActionsOpen(false);
+      return;
+    }
+
+    if (quickActionsButtonRef.current) {
+      howItWorksButtonRef.current = quickActionsButtonRef.current;
+      converterButtonRef.current = quickActionsButtonRef.current;
+    }
+  }, [isDesktop]);
 
   const {
     data: trips,
@@ -862,49 +899,126 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
-      <div className="mx-auto w-full max-w-[1240px] px-6 pb-20 pt-24">
-        <div className="flex flex-col gap-8">
-          <nav
-            aria-label="Dashboard quick actions"
-            className="rounded-full border border-slate-200/80 bg-white/90 px-4 py-2 text-sm shadow-sm backdrop-blur"
+      <header role="banner" className="dashboard-header sticky top-0 z-50">
+        <div className="mx-auto flex w-full max-w-[1240px] items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
+          <Link
+            href="/"
+            className="dashboard-header__link inline-flex items-center gap-3 rounded-full px-2 py-1 text-sm font-semibold tracking-tight sm:text-base"
           >
-            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-between">
-              <div className="flex flex-wrap items-center gap-2">
+            <img
+              src={tripSyncLogo}
+              alt="TripSync"
+              className="h-6 w-6 flex-shrink-0 sm:h-7 sm:w-7"
+              loading="lazy"
+              width={28}
+              height={28}
+            />
+            <span>TripSync</span>
+          </Link>
+          <div className="flex-1" />
+          {isDesktop ? (
+            <div className="flex items-center gap-3 sm:gap-4">
+              <Button
+                ref={(node) => {
+                  if (node) {
+                    howItWorksButtonRef.current = node;
+                  }
+                }}
+                type="button"
+                variant="outline"
+                className="dashboard-header__button h-10 rounded-full border bg-transparent px-4 text-sm font-medium text-[color:var(--on-header)] hover:text-[color:var(--on-header)] focus-visible:ring-0 focus-visible:ring-offset-0"
+                onClick={() => handleHowItWorksButtonClick()}
+                aria-controls={howItWorksTitleId}
+                aria-expanded={isHowItWorksOpen}
+                aria-haspopup="dialog"
+              >
+                How It Works
+              </Button>
+              <Button
+                ref={(node) => {
+                  if (node) {
+                    converterButtonRef.current = node;
+                  }
+                }}
+                type="button"
+                variant="outline"
+                className="dashboard-header__button h-10 rounded-full border bg-transparent px-4 text-sm font-medium text-[color:var(--on-header)] hover:text-[color:var(--on-header)] focus-visible:ring-0 focus-visible:ring-offset-0"
+                onClick={() => handleConverterOpen()}
+                aria-controls={converterDialogId}
+                aria-expanded={isConverterOpen}
+                aria-haspopup="dialog"
+              >
+                Currency Converter
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="dashboard-header__button h-10 rounded-full border bg-transparent px-4 text-sm font-medium text-[color:var(--on-header)] hover:text-[color:var(--on-header)] focus-visible:ring-0 focus-visible:ring-offset-0"
+                onClick={handleOpenProfile}
+              >
+                Profile & Preferences
+              </Button>
+            </div>
+          ) : (
+            <DropdownMenu open={isQuickActionsOpen} onOpenChange={setIsQuickActionsOpen}>
+              <DropdownMenuTrigger asChild>
                 <Button
-                  ref={howItWorksButtonRef}
+                  ref={quickActionsButtonRef}
                   type="button"
-                  variant="ghost"
-                  className="rounded-full px-4 text-sm font-medium text-slate-700 hover:text-slate-900"
-                  onClick={handleHowItWorksButtonClick}
+                  variant="outline"
+                  className="dashboard-header__button h-10 rounded-full border bg-transparent px-4 text-sm font-semibold text-[color:var(--on-header)] hover:text-[color:var(--on-header)] focus-visible:ring-0 focus-visible:ring-offset-0"
+                  aria-haspopup="menu"
+                  aria-expanded={isQuickActionsOpen}
+                >
+                  Quick actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={12}
+                className="dashboard-quick-actions-menu w-56 rounded-2xl border px-2 py-2 text-sm"
+                aria-label="Quick actions"
+              >
+                <DropdownMenuItem
+                  className="dashboard-quick-actions-item cursor-pointer rounded-xl px-3 py-2 text-sm focus:bg-transparent focus:text-inherit"
+                  onSelect={() => {
+                    setIsQuickActionsOpen(false);
+                    handleHowItWorksButtonClick(quickActionsButtonRef.current);
+                  }}
+                  aria-haspopup="dialog"
                   aria-controls={howItWorksTitleId}
                   aria-expanded={isHowItWorksOpen}
-                  aria-haspopup="dialog"
                 >
                   How It Works
-                </Button>
-                <Button
-                  ref={converterButtonRef}
-                  type="button"
-                  variant="ghost"
-                  className="rounded-full px-4 text-sm font-medium text-slate-700 hover:text-slate-900"
-                  onClick={() => handleConverterVisibilityChange(true)}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="dashboard-quick-actions-item cursor-pointer rounded-xl px-3 py-2 text-sm focus:bg-transparent focus:text-inherit"
+                  onSelect={() => {
+                    setIsQuickActionsOpen(false);
+                    handleConverterOpen(quickActionsButtonRef.current);
+                  }}
+                  aria-haspopup="dialog"
                   aria-controls={converterDialogId}
                   aria-expanded={isConverterOpen}
-                  aria-haspopup="dialog"
                 >
                   Currency Converter
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="rounded-full px-4 text-sm font-medium text-slate-700 hover:text-slate-900"
-                  onClick={handleOpenProfile}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="dashboard-quick-actions-item cursor-pointer rounded-xl px-3 py-2 text-sm focus:bg-transparent focus:text-inherit"
+                  onSelect={() => {
+                    setIsQuickActionsOpen(false);
+                    handleOpenProfile();
+                  }}
                 >
                   Profile & Preferences
-                </Button>
-              </div>
-            </div>
-          </nav>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </header>
+      <main className="mx-auto w-full max-w-[1240px] px-6 pb-20 pt-24 lg:pt-28">
+        <div className="flex flex-col gap-8">
 
           {isDesktop ? (
               <Dialog open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
@@ -1550,7 +1664,7 @@ export default function Home() {
             </section>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
