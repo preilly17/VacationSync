@@ -67,8 +67,8 @@ export function StatCard({
     "data-testid": testId,
     "aria-label": ariaLabel,
     className: cn(
-      "group relative flex h-full flex-col justify-between rounded-3xl border border-slate-200/70 bg-white/90 p-6 text-left shadow-sm transition duration-200",
-      "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-3xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
+      "group relative flex h-full flex-col justify-between rounded-2xl border border-slate-200/70 bg-white p-6 text-left shadow-sm transition duration-200",
+      "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-2xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
       isInteractive
         ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]"
         : "cursor-default",

@@ -69,6 +69,7 @@ type CurrencyConverterToolProps = {
   lastConversion: LastConversion | null;
   onConversion: (conversion: LastConversion) => void;
   mobile?: boolean;
+  autoFocusAmount?: boolean;
 };
 
 export default function CurrencyConverterTool({
@@ -76,6 +77,7 @@ export default function CurrencyConverterTool({
   lastConversion,
   onConversion,
   mobile = false,
+  autoFocusAmount = false,
 }: CurrencyConverterToolProps) {
   const { toast } = useToast();
   const [amount, setAmount] = useState(() =>
@@ -100,6 +102,28 @@ export default function CurrencyConverterTool({
   const [recents, setRecents] = useState<LastConversion[]>([]);
   const amountInputRef = useRef<HTMLInputElement>(null);
   const autoConvertedRef = useRef(false);
+
+  useEffect(() => {
+    if (!autoFocusAmount) {
+      return;
+    }
+    const input = amountInputRef.current;
+    if (!input) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      input.focus();
+      input.select();
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [autoFocusAmount]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
