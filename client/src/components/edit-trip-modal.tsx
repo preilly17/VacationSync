@@ -196,7 +196,7 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" onPointerDownOutside={(e) => e.preventDefault()}>
+      <DialogContent className="w-full max-w-xl max-h-[calc(100vh-3rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Edit Trip Details</DialogTitle>
           <DialogDescription>
