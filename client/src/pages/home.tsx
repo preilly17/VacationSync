@@ -23,13 +23,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import {
   Avatar,
   AvatarFallback,
@@ -66,7 +61,12 @@ const CurrencyConverterTool = lazy(() =>
   import("@/components/dashboard/currency-converter-tool"),
 );
 
+const HowItWorksPanel = lazy(() =>
+  import("@/components/dashboard/how-it-works-panel"),
+);
+
 const LAST_CONVERSION_KEY = "dashboard.converter.last";
+const HOW_IT_WORKS_DISMISSED_KEY = "dismissedHowItWorks";
 
 const HERO_OVERLAY_GRADIENT =
   "linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.55))";
@@ -346,10 +346,15 @@ export default function Home() {
   const destinationsCardRegionId = useId();
   const nextTripCardRegionId = useId();
   const travelersCardRegionId = useId();
+  const howItWorksTitleId = useId();
+  const howItWorksDescriptionId = useId();
   const converterButtonRef = useRef<HTMLButtonElement | null>(null);
+  const howItWorksButtonRef = useRef<HTMLButtonElement | null>(null);
+  const shouldRestoreHowItWorksFocus = useRef(true);
   const upcomingSectionRef = useRef<HTMLHeadingElement | null>(null);
   const [isConverterOpen, setIsConverterOpen] = useState(false);
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
+  const [howItWorksLoaded, setHowItWorksLoaded] = useState(false);
   const [expandedCard, setExpandedCard] = useState<ExpandedCardKey | null>(null);
   const handleToggleCard = useCallback((card: ExpandedCardKey) => {
     setExpandedCard((current) => (current === card ? null : card));
@@ -375,8 +380,63 @@ export default function Home() {
     setLocation("/profile");
   }, [setLocation]);
 
+  const handleHowItWorksButtonClick = useCallback(() => {
+    setHowItWorksLoaded(true);
+    setIsHowItWorksOpen(true);
+  }, []);
+
+  const handleHowItWorksOpenChange = useCallback(
+    (open: boolean) => {
+      setIsHowItWorksOpen(open);
+      if (open) {
+        setHowItWorksLoaded(true);
+      } else {
+        if (shouldRestoreHowItWorksFocus.current) {
+          howItWorksButtonRef.current?.focus();
+        }
+        shouldRestoreHowItWorksFocus.current = true;
+      }
+    },
+    [],
+  );
+
+  const closeHowItWorksWithoutFocus = useCallback(() => {
+    shouldRestoreHowItWorksFocus.current = false;
+    setIsHowItWorksOpen(false);
+  }, []);
+
+  const handleDismissHowItWorks = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(HOW_IT_WORKS_DISMISSED_KEY, "true");
+      } catch (error) {
+        console.error("Failed to persist how it works dismissal", error);
+      }
+    }
+    shouldRestoreHowItWorksFocus.current = true;
+    setIsHowItWorksOpen(false);
+  }, []);
+
   useEffect(() => {
     setLastConversion(loadLastConversion());
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const dismissed = window.localStorage.getItem(HOW_IT_WORKS_DISMISSED_KEY);
+      if (!dismissed) {
+        setHowItWorksLoaded(true);
+        setIsHowItWorksOpen(true);
+      }
+    } catch (error) {
+      console.error("Failed to read how it works dismissal state", error);
+      setHowItWorksLoaded(true);
+      setIsHowItWorksOpen(true);
+    }
   }, []);
 
   const {
@@ -419,6 +479,16 @@ export default function Home() {
   const nextTrip = useMemo(
     () => selectNextTrip(sortedTrips, today),
     [sortedTrips, today],
+  );
+
+  const actionableTrip = useMemo(
+    () =>
+      primaryTrip ??
+      nextTrip ??
+      upcomingTripsForStats[0] ??
+      sortedTrips.find((trip) => !isTripInactive(trip)) ??
+      null,
+    [primaryTrip, nextTrip, upcomingTripsForStats, sortedTrips],
   );
 
   const uniqueDestinations = useMemo(
@@ -690,10 +760,89 @@ export default function Home() {
     setLocation("/trips/new");
   }, [nextTrip, upcomingTripsForStats, setLocation]);
 
+  const navigateToTripView = useCallback(
+    (view: string) => {
+      if (actionableTrip) {
+        setLocation(`/trip/${actionableTrip.id}?view=${view}`);
+      } else {
+        setLocation("/trips/new");
+      }
+    },
+    [actionableTrip, setLocation],
+  );
+
+  const handleHowItWorksCreateTrip = useCallback(() => {
+    closeHowItWorksWithoutFocus();
+    handlePlanTrip();
+  }, [closeHowItWorksWithoutFocus, handlePlanTrip]);
+
+  const handleHowItWorksInviteMembers = useCallback(() => {
+    closeHowItWorksWithoutFocus();
+    handleInviteMore();
+  }, [closeHowItWorksWithoutFocus, handleInviteMore]);
+
+  const handleHowItWorksAddActivity = useCallback(() => {
+    closeHowItWorksWithoutFocus();
+    if (actionableTrip) {
+      setLocation(`/trip/${actionableTrip.id}?view=activities`);
+    } else {
+      setLocation("/trips/new");
+    }
+  }, [actionableTrip, closeHowItWorksWithoutFocus, setLocation]);
+
+  const handleHowItWorksBrowseDiscovery = useCallback(() => {
+    closeHowItWorksWithoutFocus();
+    if (actionableTrip) {
+      setLocation(`/trip/${actionableTrip.id}?view=activities`);
+    } else {
+      setLocation("/activities");
+    }
+  }, [actionableTrip, closeHowItWorksWithoutFocus, setLocation]);
+
+  const handleHowItWorksOpenExpenses = useCallback(() => {
+    closeHowItWorksWithoutFocus();
+    navigateToTripView("expenses");
+  }, [closeHowItWorksWithoutFocus, navigateToTripView]);
+
+  const handleHowItWorksOpenPacking = useCallback(() => {
+    closeHowItWorksWithoutFocus();
+    navigateToTripView("packing");
+  }, [closeHowItWorksWithoutFocus, navigateToTripView]);
+
+  const handleHowItWorksPreferences = useCallback(() => {
+    closeHowItWorksWithoutFocus();
+    handleOpenProfile();
+  }, [closeHowItWorksWithoutFocus, handleOpenProfile]);
+
   const handleConversionUpdate = (conversion: LastConversion) => {
     setLastConversion(conversion);
     storeLastConversion(conversion);
   };
+
+  const howItWorksFallback = (
+    <div className="flex min-h-[420px] items-center justify-center bg-white px-8 py-12">
+      <Skeleton className="h-72 w-full max-w-xl rounded-[28px]" />
+    </div>
+  );
+
+  const howItWorksContent = howItWorksLoaded ? (
+    <Suspense fallback={howItWorksFallback}>
+      <HowItWorksPanel
+        titleId={howItWorksTitleId}
+        descriptionId={howItWorksDescriptionId}
+        onDismiss={handleDismissHowItWorks}
+        onCreateTrip={handleHowItWorksCreateTrip}
+        onInviteMembers={handleHowItWorksInviteMembers}
+        onAddActivity={handleHowItWorksAddActivity}
+        onBrowseDiscovery={handleHowItWorksBrowseDiscovery}
+        onOpenExpenses={handleHowItWorksOpenExpenses}
+        onOpenPacking={handleHowItWorksOpenPacking}
+        onOpenPreferences={handleHowItWorksPreferences}
+      />
+    </Suspense>
+  ) : (
+    howItWorksFallback
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
@@ -706,10 +855,14 @@ export default function Home() {
             <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
                 <Button
+                  ref={howItWorksButtonRef}
                   type="button"
                   variant="ghost"
                   className="rounded-full px-4 text-sm font-medium text-slate-700 hover:text-slate-900"
-                  onClick={() => setIsHowItWorksOpen(true)}
+                  onClick={handleHowItWorksButtonClick}
+                  aria-controls={howItWorksTitleId}
+                  aria-expanded={isHowItWorksOpen}
+                  aria-haspopup="dialog"
                 >
                   How It Works
                 </Button>
@@ -737,17 +890,28 @@ export default function Home() {
             </div>
           </nav>
 
-          <Dialog open={isHowItWorksOpen} onOpenChange={setIsHowItWorksOpen}>
-            <DialogContent className="w-full max-w-xl rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl">
-              <DialogHeader>
-                <DialogTitle>How VacationSync Works</DialogTitle>
-                <DialogDescription className="text-left">
-                  VacationSync keeps your travel plans organized in one place. Plan new trips, invite your crew, and track every
-                  detail from flights to activities with collaborative tools designed for effortless group travel.
-                </DialogDescription>
-              </DialogHeader>
-            </DialogContent>
-          </Dialog>
+          {isDesktop ? (
+            <Dialog open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
+              <DialogContent
+                className="w-full max-w-3xl gap-0 overflow-hidden rounded-[32px] border border-slate-200/80 bg-white p-0 shadow-2xl"
+                aria-labelledby={howItWorksTitleId}
+                aria-describedby={howItWorksDescriptionId}
+              >
+                {howItWorksContent}
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Sheet open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
+              <SheetContent
+                side="bottom"
+                className="h-[100dvh] max-h-[100dvh] w-full max-w-full gap-0 overflow-hidden rounded-t-[32px] border-none bg-white p-0 shadow-2xl"
+                aria-labelledby={howItWorksTitleId}
+                aria-describedby={howItWorksDescriptionId}
+              >
+                {howItWorksContent}
+              </SheetContent>
+            </Sheet>
+          )}
 
           <Dialog open={isConverterOpen} onOpenChange={handleConverterVisibilityChange}>
             <DialogContent
