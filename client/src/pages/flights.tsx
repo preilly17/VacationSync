@@ -19,8 +19,7 @@ import { format } from "date-fns";
 import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TravelLoading } from "@/components/LoadingSpinners";
-import type { LocationResult } from "@/components/SmartLocationSearch";
-import FlightLocationSearch from "@/components/FlightLocationSearch";
+import LocationSearch, { type LocationResult } from "@/components/LocationSearch";
 import type {
   FlightWithDetails,
   InsertFlight,
@@ -413,55 +412,130 @@ function FlightSearchPanel({
   const { toast } = useToast();
   const fromInputRef = useRef<HTMLInputElement>(null);
   const hasAutoSearchedRef = useRef(false);
-  const [departureQuery, setDepartureQuery] = useState(
-    searchFormData.departureCity || searchFormData.departure || '',
-  );
-  const [arrivalQuery, setArrivalQuery] = useState(
-    searchFormData.arrivalCity || searchFormData.arrival || '',
-  );
-  const [hasSelectedDeparture, setHasSelectedDeparture] = useState(
-    () => Boolean(searchFormData.departureCity || searchFormData.departure),
-  );
-  const [hasSelectedArrival, setHasSelectedArrival] = useState(
-    () => Boolean(searchFormData.arrivalCity || searchFormData.arrival),
-  );
+  const [departureLocation, setDepartureLocation] = useState<LocationResult | null>(null);
+  const [arrivalLocation, setArrivalLocation] = useState<LocationResult | null>(null);
   const [departureAirports, setDepartureAirports] = useState<NearbyAirport[]>([]);
   const [arrivalAirports, setArrivalAirports] = useState<NearbyAirport[]>([]);
   const [isLoadingDepartureAirports, setIsLoadingDepartureAirports] = useState(false);
   const [isLoadingArrivalAirports, setIsLoadingArrivalAirports] = useState(false);
   const [selectedDepartureAirport, setSelectedDepartureAirport] = useState(searchFormData.departure);
   const [selectedArrivalAirport, setSelectedArrivalAirport] = useState(searchFormData.arrival);
-  useEffect(() => {
-    const nextQuery = searchFormData.departureCity || searchFormData.departure || '';
-    const nextSelectedAirport = searchFormData.departure || '';
 
-    if (!hasSelectedDeparture && nextQuery === '') {
-      setSelectedDepartureAirport(nextSelectedAirport);
-      return;
+  const createLocationFromForm = (direction: 'departure' | 'arrival'): LocationResult | null => {
+    const code = direction === 'departure' ? searchFormData.departure : searchFormData.arrival;
+    const city = direction === 'departure' ? searchFormData.departureCity : searchFormData.arrivalCity;
+    const latitude = direction === 'departure' ? searchFormData.departureLatitude : searchFormData.arrivalLatitude;
+    const longitude = direction === 'departure' ? searchFormData.departureLongitude : searchFormData.arrivalLongitude;
+
+    const name = city || code;
+    if (!name) {
+      return null;
     }
 
-    setDepartureQuery(nextQuery);
-    setSelectedDepartureAirport(nextSelectedAirport);
-    setHasSelectedDeparture(Boolean(nextQuery));
+    const normalizedCode = typeof code === 'string' && code.trim().length > 0 ? code.trim().toUpperCase() : undefined;
+    const type: LocationResult["type"] = normalizedCode ? 'AIRPORT' : 'CITY';
+
+    return {
+      id: `${direction}-${normalizedCode ?? name}`,
+      name,
+      type,
+      iataCode: normalizedCode,
+      icaoCode: undefined,
+      cityCode: undefined,
+      countryCode: undefined,
+      latitude: latitude ?? undefined,
+      longitude: longitude ?? undefined,
+      detailedName: name,
+      relevance: 0,
+      displayName: name,
+      region: undefined,
+      timeZone: undefined,
+      currencyCode: undefined,
+      isPopular: false,
+      alternativeNames: [],
+      code: normalizedCode,
+      label: undefined,
+      cityName: city ?? name,
+      countryName: null,
+      country: null,
+      airports: undefined,
+      distanceKm: null,
+    };
+  };
+
+  useEffect(() => {
+    const nextLocation = createLocationFromForm('departure');
+    setDepartureLocation((previous) => {
+      if (!nextLocation) {
+        return null;
+      }
+
+      if (previous) {
+        const previousCode = normaliseCode(previous.iataCode ?? previous.code ?? previous.cityCode);
+        const nextCode = normaliseCode(nextLocation.iataCode ?? nextLocation.code ?? nextLocation.cityCode);
+
+        if (previousCode && nextCode && previousCode === nextCode) {
+          return previous;
+        }
+
+        if (!previousCode && !nextCode) {
+          const prevName = (previous.displayName || previous.name || '').toLowerCase();
+          const nextName = (nextLocation.displayName || nextLocation.name || '').toLowerCase();
+          if (prevName && prevName === nextName) {
+            return previous;
+          }
+        }
+      }
+
+      return nextLocation;
+    });
   }, [
-    searchFormData.departureCity,
     searchFormData.departure,
-    hasSelectedDeparture,
+    searchFormData.departureCity,
+    searchFormData.departureLatitude,
+    searchFormData.departureLongitude,
   ]);
 
   useEffect(() => {
-    const nextQuery = searchFormData.arrivalCity || searchFormData.arrival || '';
-    const nextSelectedAirport = searchFormData.arrival || '';
+    const nextLocation = createLocationFromForm('arrival');
+    setArrivalLocation((previous) => {
+      if (!nextLocation) {
+        return null;
+      }
 
-    if (!hasSelectedArrival && nextQuery === '') {
-      setSelectedArrivalAirport(nextSelectedAirport);
-      return;
-    }
+      if (previous) {
+        const previousCode = normaliseCode(previous.iataCode ?? previous.code ?? previous.cityCode);
+        const nextCode = normaliseCode(nextLocation.iataCode ?? nextLocation.code ?? nextLocation.cityCode);
 
-    setArrivalQuery(nextQuery);
-    setSelectedArrivalAirport(nextSelectedAirport);
-    setHasSelectedArrival(Boolean(nextQuery));
-  }, [searchFormData.arrivalCity, searchFormData.arrival, hasSelectedArrival]);
+        if (previousCode && nextCode && previousCode === nextCode) {
+          return previous;
+        }
+
+        if (!previousCode && !nextCode) {
+          const prevName = (previous.displayName || previous.name || '').toLowerCase();
+          const nextName = (nextLocation.displayName || nextLocation.name || '').toLowerCase();
+          if (prevName && prevName === nextName) {
+            return previous;
+          }
+        }
+      }
+
+      return nextLocation;
+    });
+  }, [
+    searchFormData.arrival,
+    searchFormData.arrivalCity,
+    searchFormData.arrivalLatitude,
+    searchFormData.arrivalLongitude,
+  ]);
+
+  useEffect(() => {
+    setSelectedDepartureAirport(searchFormData.departure || '');
+  }, [searchFormData.departure]);
+
+  useEffect(() => {
+    setSelectedArrivalAirport(searchFormData.arrival || '');
+  }, [searchFormData.arrival]);
 
   useEffect(() => {
     if (!searchFormData.departureCity) {
@@ -483,62 +557,100 @@ function FlightSearchPanel({
     return `${airport.name} (${airport.iata})${distanceSegment}`;
   };
 
-  const handleDepartureLocationSelect = async (location: LocationResult) => {
+  const normaliseCode = (value?: string | null) =>
+    typeof value === 'string' && value.trim().length > 0 ? value.trim().toUpperCase() : '';
+
+  const resolveCityName = (location: LocationResult): string => {
+    if (location.cityName && location.cityName.trim().length > 0) {
+      return location.cityName.trim();
+    }
+    if (location.displayName && location.displayName.trim().length > 0) {
+      return location.displayName.trim();
+    }
+    if (location.name && location.name.trim().length > 0) {
+      return location.name.trim();
+    }
+    if (location.detailedName && location.detailedName.trim().length > 0) {
+      const parts = location.detailedName
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+      if (parts.length > 0) {
+        return parts[0];
+      }
+      return location.detailedName.trim();
+    }
+    return location.displayName || location.name || '';
+  };
+
+  const handleDepartureLocationChange = async (location: LocationResult | null) => {
+    if (!location) {
+      setDepartureLocation(null);
+      setDepartureAirports([]);
+      setSelectedDepartureAirport('');
+      setSearchFormData((prev) => ({
+        ...prev,
+        departure: '',
+        departureCity: '',
+        departureLatitude: null,
+        departureLongitude: null,
+      }));
+      return;
+    }
+
+    setDepartureLocation(location);
+
     const { latitude, longitude } = extractCoordinates(location);
-    setDepartureQuery(location.displayName);
-    setHasSelectedDeparture(true);
+    const selectedAirportCode =
+      normaliseCode(location.iataCode) ||
+      normaliseCode(location.icaoCode) ||
+      normaliseCode(location.code);
 
-    const selectedAirportCode = (location.iata ?? location.code ?? '').toUpperCase();
+    const fallbackCityName = resolveCityName(location);
+    const isoCountry =
+      normaliseCode(location.countryCode) ||
+      (location.countryName ? location.countryName : location.country ?? null);
 
-    const fallbackCityName = location.cityName ?? location.name ?? location.displayName;
-
-    const applyAirportSelection = (airports: NearbyAirport[]) => {
+    const applyAirportSelection = (airports: NearbyAirport[], cityNameOverride?: string) => {
       setDepartureAirports(airports);
       const defaultAirport = airports[0] ?? null;
       const defaultCode = defaultAirport?.iata ?? selectedAirportCode;
-      setSelectedDepartureAirport(defaultCode);
+      setSelectedDepartureAirport(defaultCode ?? '');
       setSearchFormData((prev) => ({
         ...prev,
         departure: defaultCode ?? '',
-        departureCity: fallbackCityName,
+        departureCity: cityNameOverride ?? fallbackCityName,
         departureLatitude: latitude,
         departureLongitude: longitude,
       }));
     };
 
-    if (location.type === 'airport') {
+    if (location.type === 'AIRPORT') {
       const airportDetails: NearbyAirport | null = selectedAirportCode
         ? {
             iata: selectedAirportCode,
             name: location.name,
-            municipality: location.cityName ?? null,
-            isoCountry: location.countryName ?? location.country ?? null,
+            municipality: fallbackCityName || null,
+            isoCountry: typeof isoCountry === 'string' && isoCountry.length === 2 ? isoCountry : null,
             latitude,
             longitude,
             distanceKm: typeof location.distanceKm === 'number' ? location.distanceKm : null,
           }
         : null;
 
-      if (airportDetails) {
-        applyAirportSelection([airportDetails]);
-      } else {
-        applyAirportSelection([]);
-      }
-
+      applyAirportSelection(airportDetails ? [airportDetails] : []);
       return;
     }
 
-    setSearchFormData((prev) => ({
-      ...prev,
-      departureCity: location.displayName,
-      departureLatitude: latitude,
-      departureLongitude: longitude,
-    }));
     setIsLoadingDepartureAirports(true);
 
     try {
-      const lookup = await fetchNearestAirportsForLocation(location);
-      applyAirportSelection(lookup.airports);
+      const lookup = await fetchNearestAirportsForLocation({
+        ...location,
+        cityName: fallbackCityName,
+        countryName: typeof isoCountry === 'string' ? isoCountry : location.countryName ?? null,
+      });
+      applyAirportSelection(lookup.airports, lookup.cityName ?? fallbackCityName);
 
       setSearchFormData((prev) => ({
         ...prev,
@@ -551,7 +663,7 @@ function FlightSearchPanel({
       if (lookup.airports.length === 0) {
         toast({
           title: 'No nearby airports found',
-          description: `We couldn't find commercial airports near ${lookup.cityName ?? location.displayName}. Try another city.`,
+          description: `We couldn't find commercial airports near ${lookup.cityName ?? (fallbackCityName || 'this city')}. Try another city.`,
         });
       }
     } catch (error) {
@@ -561,7 +673,7 @@ function FlightSearchPanel({
       setSearchFormData((prev) => ({
         ...prev,
         departure: '',
-        departureCity: location.displayName,
+        departureCity: fallbackCityName,
         departureLatitude: latitude,
         departureLongitude: longitude,
       }));
@@ -578,62 +690,74 @@ function FlightSearchPanel({
     }
   };
 
-  const handleArrivalLocationSelect = async (location: LocationResult) => {
+  const handleArrivalLocationChange = async (location: LocationResult | null) => {
+    if (!location) {
+      setArrivalLocation(null);
+      setArrivalAirports([]);
+      setSelectedArrivalAirport('');
+      setSearchFormData((prev) => ({
+        ...prev,
+        arrival: '',
+        arrivalCity: '',
+        arrivalLatitude: null,
+        arrivalLongitude: null,
+      }));
+      return;
+    }
+
+    setArrivalLocation(location);
+
     const { latitude, longitude } = extractCoordinates(location);
-    setArrivalQuery(location.displayName);
-    setHasSelectedArrival(true);
+    const selectedAirportCode =
+      normaliseCode(location.iataCode) ||
+      normaliseCode(location.icaoCode) ||
+      normaliseCode(location.code);
 
-    const selectedAirportCode = (location.iata ?? location.code ?? '').toUpperCase();
+    const fallbackCityName = resolveCityName(location);
+    const isoCountry =
+      normaliseCode(location.countryCode) ||
+      (location.countryName ? location.countryName : location.country ?? null);
 
-    const fallbackCityName = location.cityName ?? location.name ?? location.displayName;
-
-    const applyAirportSelection = (airports: NearbyAirport[]) => {
+    const applyAirportSelection = (airports: NearbyAirport[], cityNameOverride?: string) => {
       setArrivalAirports(airports);
       const defaultAirport = airports[0] ?? null;
       const defaultCode = defaultAirport?.iata ?? selectedAirportCode;
-      setSelectedArrivalAirport(defaultCode);
+      setSelectedArrivalAirport(defaultCode ?? '');
       setSearchFormData((prev) => ({
         ...prev,
         arrival: defaultCode ?? '',
-        arrivalCity: fallbackCityName,
+        arrivalCity: cityNameOverride ?? fallbackCityName,
         arrivalLatitude: latitude,
         arrivalLongitude: longitude,
       }));
     };
 
-    if (location.type === 'airport') {
+    if (location.type === 'AIRPORT') {
       const airportDetails: NearbyAirport | null = selectedAirportCode
         ? {
             iata: selectedAirportCode,
             name: location.name,
-            municipality: location.cityName ?? null,
-            isoCountry: location.countryName ?? location.country ?? null,
+            municipality: fallbackCityName || null,
+            isoCountry: typeof isoCountry === 'string' && isoCountry.length === 2 ? isoCountry : null,
             latitude,
             longitude,
             distanceKm: typeof location.distanceKm === 'number' ? location.distanceKm : null,
           }
         : null;
 
-      if (airportDetails) {
-        applyAirportSelection([airportDetails]);
-      } else {
-        applyAirportSelection([]);
-      }
-
+      applyAirportSelection(airportDetails ? [airportDetails] : []);
       return;
     }
 
-    setSearchFormData((prev) => ({
-      ...prev,
-      arrivalCity: location.displayName,
-      arrivalLatitude: latitude,
-      arrivalLongitude: longitude,
-    }));
     setIsLoadingArrivalAirports(true);
 
     try {
-      const lookup = await fetchNearestAirportsForLocation(location);
-      applyAirportSelection(lookup.airports);
+      const lookup = await fetchNearestAirportsForLocation({
+        ...location,
+        cityName: fallbackCityName,
+        countryName: typeof isoCountry === 'string' ? isoCountry : location.countryName ?? null,
+      });
+      applyAirportSelection(lookup.airports, lookup.cityName ?? fallbackCityName);
 
       setSearchFormData((prev) => ({
         ...prev,
@@ -646,7 +770,7 @@ function FlightSearchPanel({
       if (lookup.airports.length === 0) {
         toast({
           title: 'No nearby airports found',
-          description: `We couldn't find commercial airports near ${lookup.cityName ?? location.displayName}. Try another city.`,
+          description: `We couldn't find commercial airports near ${lookup.cityName ?? (fallbackCityName || 'this city')}. Try another city.`,
         });
       }
     } catch (error) {
@@ -656,7 +780,7 @@ function FlightSearchPanel({
       setSearchFormData((prev) => ({
         ...prev,
         arrival: '',
-        arrivalCity: location.displayName,
+        arrivalCity: fallbackCityName,
         arrivalLatitude: latitude,
         arrivalLongitude: longitude,
       }));
@@ -670,40 +794,6 @@ function FlightSearchPanel({
       });
     } finally {
       setIsLoadingArrivalAirports(false);
-    }
-  };
-
-  const handleDepartureQueryChange = (value: string) => {
-    setDepartureQuery(value);
-    const trimmed = value.trim();
-    if (hasSelectedDeparture || trimmed.length === 0) {
-      setHasSelectedDeparture(false);
-      setDepartureAirports([]);
-      setSelectedDepartureAirport('');
-      setSearchFormData((prev) => ({
-        ...prev,
-        departure: '',
-        departureCity: '',
-        departureLatitude: null,
-        departureLongitude: null,
-      }));
-    }
-  };
-
-  const handleArrivalQueryChange = (value: string) => {
-    setArrivalQuery(value);
-    const trimmed = value.trim();
-    if (hasSelectedArrival || trimmed.length === 0) {
-      setHasSelectedArrival(false);
-      setArrivalAirports([]);
-      setSelectedArrivalAirport('');
-      setSearchFormData((prev) => ({
-        ...prev,
-        arrival: '',
-        arrivalCity: '',
-        arrivalLatitude: null,
-        arrivalLongitude: null,
-      }));
     }
   };
 
@@ -790,14 +880,12 @@ function FlightSearchPanel({
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-2">
                     <Label htmlFor="departure">From</Label>
-                    <FlightLocationSearch
+                    <LocationSearch
                       ref={fromInputRef}
-                      id="departure"
                       placeholder="Search departure city or airport"
-                      value={departureQuery}
-                      allowedTypes={['city', 'airport']}
-                      onQueryChange={handleDepartureQueryChange}
-                      onLocationSelect={handleDepartureLocationSelect}
+                      value={departureLocation}
+                      onChange={handleDepartureLocationChange}
+                      type="CITY"
                     />
                     {isLoadingDepartureAirports && (
                       <p className="text-xs text-muted-foreground">Loading nearby airports…</p>
@@ -839,13 +927,11 @@ function FlightSearchPanel({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="arrival">To</Label>
-                    <FlightLocationSearch
-                      id="arrival"
+                    <LocationSearch
                       placeholder="Search arrival city or airport"
-                      value={arrivalQuery}
-                      allowedTypes={['city', 'airport']}
-                      onQueryChange={handleArrivalQueryChange}
-                      onLocationSelect={handleArrivalLocationSelect}
+                      value={arrivalLocation}
+                      onChange={handleArrivalLocationChange}
+                      type="CITY"
                     />
                     {isLoadingArrivalAirports && (
                       <p className="text-xs text-muted-foreground">Loading nearby airports…</p>

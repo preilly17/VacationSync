@@ -1,5 +1,17 @@
 import { apiFetch } from "@/lib/api";
-import type { LocationResult } from "@/components/SmartLocationSearch";
+
+type NullableString = string | null | undefined;
+
+interface LocationLike {
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  displayName?: string;
+  detailedName?: string;
+  name?: string;
+  cityName?: NullableString;
+  countryName?: NullableString;
+  countryCode?: NullableString;
+}
 
 export interface NearbyAirport {
   iata: string;
@@ -32,13 +44,47 @@ const parseNumeric = (value: unknown): number | null => {
   return null;
 };
 
-export const extractCoordinates = (location: LocationResult): { latitude: number | null; longitude: number | null } => {
+export const extractCoordinates = (
+  location: LocationLike,
+): { latitude: number | null; longitude: number | null } => {
   const latitude = parseNumeric(location.latitude);
   const longitude = parseNumeric(location.longitude);
   return { latitude, longitude };
 };
 
-export async function fetchNearestAirportsForLocation(location: LocationResult): Promise<NearestAirportResponse> {
+const inferCityName = (location: LocationLike): string | null => {
+  const directCity = location.cityName ?? location.name ?? location.displayName ?? location.detailedName;
+  if (typeof directCity === "string" && directCity.trim().length > 0) {
+    return directCity.trim();
+  }
+
+  return null;
+};
+
+const inferCountryName = (location: LocationLike): string | null => {
+  if (typeof location.countryName === "string" && location.countryName.trim().length > 0) {
+    return location.countryName.trim();
+  }
+
+  if (typeof location.countryCode === "string" && location.countryCode.trim().length > 0) {
+    return location.countryCode.trim();
+  }
+
+  const source = location.detailedName ?? location.displayName;
+  if (typeof source === "string") {
+    const parts = source
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    if (parts.length > 1) {
+      return parts[parts.length - 1];
+    }
+  }
+
+  return null;
+};
+
+export async function fetchNearestAirportsForLocation(location: LocationLike): Promise<NearestAirportResponse> {
   const { latitude, longitude } = extractCoordinates(location);
 
   if (latitude === null || longitude === null) {
@@ -50,12 +96,13 @@ export async function fetchNearestAirportsForLocation(location: LocationResult):
     longitude: longitude.toString(),
   });
 
-  const cityName = location.cityName ?? location.name ?? location.displayName;
+  const cityName = inferCityName(location);
   if (cityName) {
     params.set("city_name", cityName);
   }
-  if (location.countryName) {
-    params.set("country_name", location.countryName);
+  const countryName = inferCountryName(location);
+  if (countryName) {
+    params.set("country_name", countryName);
   }
 
   const response = await apiFetch(`/api/flights/airports?${params.toString()}`);
