@@ -215,7 +215,16 @@ export function CalendarGrid({
                         currentUserId
                           && (activity.postedBy === currentUserId || activity.poster?.id === currentUserId),
                       );
-                      const showProposedChip = Boolean(highlightPersonalProposals && isProposal && isCreator);
+                      const showPersonalProposalChip = Boolean(
+                        highlightPersonalProposals && isProposal && isCreator,
+                      );
+                      const showGlobalProposalChip = Boolean(isProposal && !showPersonalProposalChip);
+                      const rawCategoryColor =
+                        categoryColors[activity.category as keyof typeof categoryColors]
+                        || categoryColors.other;
+                      const [bgClass = "", textClass = "", borderClass = ""] = rawCategoryColor.split(" ");
+                      const resolvedBorderClass = isProposal ? "border border-dashed border-blue-400" : borderClass;
+                      const proposalEnhancements = isProposal ? "bg-blue-50/40 text-blue-900" : "";
 
                       return (
                       <Tooltip key={activity.id}>
@@ -227,7 +236,9 @@ export function CalendarGrid({
                               onActivityClick?.(activity);
                             }}
                             className={`group flex w-full items-center gap-2 rounded-md border px-2 py-1 text-[12px] leading-5 font-medium shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${
-                              categoryColors[activity.category as keyof typeof categoryColors] || categoryColors.other
+                              [bgClass, textClass, resolvedBorderClass, proposalEnhancements]
+                                .filter(Boolean)
+                                .join(" ")
                             }`}
                             aria-label={formatActivityAriaLabel(activity, day)}
                           >
@@ -237,8 +248,14 @@ export function CalendarGrid({
                             <span className="flex-1 truncate text-left">
                               {activity.name}
                             </span>
-                            {showProposedChip && (
-                              <span className="shrink-0 rounded-sm bg-white/80 px-1 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
+                            {(showPersonalProposalChip || showGlobalProposalChip) && (
+                              <span
+                                className={`shrink-0 rounded-sm px-1 text-[10px] font-semibold uppercase tracking-wide ${
+                                  showPersonalProposalChip
+                                    ? "bg-white/80 text-blue-700"
+                                    : "bg-blue-100 text-blue-800"
+                                }`}
+                              >
                                 Proposed
                               </span>
                             )}
