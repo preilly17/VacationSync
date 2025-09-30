@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,7 @@ import { Separator } from '@/components/ui/separator';
 import { Loader2, Search, MapPin, Plane, Building, Globe, X, Star, Clock, DollarSign } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
-interface LocationResult {
+export interface LocationResult {
   id: string;
   name: string;
   type: 'AIRPORT' | 'CITY' | 'COUNTRY';
@@ -25,9 +25,16 @@ interface LocationResult {
   currencyCode?: string;
   isPopular: boolean;
   alternativeNames: string[];
+  code?: string;
+  label?: string;
+  cityName?: string | null;
+  countryName?: string | null;
+  country?: string | null;
+  airports?: string[];
+  distanceKm?: number | null;
 }
 
-interface LocationSearchProps {
+export interface LocationSearchProps {
   value?: LocationResult | null;
   onChange?: (location: LocationResult | null) => void;
   placeholder?: string;
@@ -41,48 +48,335 @@ interface LocationSearchProps {
   maxResults?: number;
 }
 
-const toTypeParam = (value?: LocationSearchProps["type"]): string | null => {
-  if (!value) {
+const determineSearchType = (
+  query: string,
+  preferredType?: LocationSearchProps["type"],
+): LocationSearchProps["type"] | undefined => {
+  if (!preferredType) {
+    return undefined;
+  }
+
+  if (preferredType === 'CITY') {
+    const trimmed = query.trim();
+    if (/^[a-z]{3}$/i.test(trimmed)) {
+      return 'AIRPORT';
+    }
+  }
+
+  return preferredType;
+};
+
+const coerceString = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return undefined;
+};
+
+const coerceNumber = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  return undefined;
+};
+
+const toUpper = (value?: string): string | undefined =>
+  value ? value.toUpperCase() : undefined;
+
+const toStringArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => coerceString(entry))
+      .filter((entry): entry is string => Boolean(entry));
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>)
+      .flatMap((entry) => toStringArray(entry))
+      .filter((entry, index, array) => array.indexOf(entry) === index);
+  }
+
+  return [];
+};
+
+const inferCityNameFromDetailedName = (detailedName?: string): string | undefined => {
+  if (!detailedName) {
+    return undefined;
+  }
+
+  const parts = detailedName
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  if (parts.length === 0) {
+    return undefined;
+  }
+
+  return parts[0];
+};
+
+const inferCountryNameFromDetailedName = (detailedName?: string): string | undefined => {
+  if (!detailedName) {
+    return undefined;
+  }
+
+  const parts = detailedName
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  if (parts.length < 2) {
+    return undefined;
+  }
+
+  return parts[parts.length - 1];
+};
+
+const normalizeLocationResult = (raw: unknown): LocationResult | null => {
+  if (!raw || typeof raw !== 'object') {
     return null;
   }
 
-  switch (value) {
-    case 'AIRPORT':
-      return 'airport';
-    case 'CITY':
-      return 'city';
-    case 'COUNTRY':
-      return 'country';
-    default:
-      return null;
+  const record = raw as Record<string, unknown>;
+
+  const typeCandidate = coerceString(record.type) ?? coerceString(record.subType);
+  const rawType = typeCandidate ? typeCandidate.toUpperCase() : 'CITY';
+  const normalizedType = (rawType === 'AIRPORTS' ? 'AIRPORT' : rawType) as LocationResult["type"];
+
+  const name =
+    coerceString(record.name) ||
+    coerceString(record.cityName) ||
+    coerceString(record.city_name) ||
+    coerceString(record.displayName) ||
+    coerceString(record.display_name);
+
+  if (!name) {
+    return null;
   }
+
+  const displayName =
+    coerceString(record.displayName) ||
+    coerceString(record.display_name) ||
+    coerceString(record.label) ||
+    name;
+
+  const detailedName =
+    coerceString(record.detailedName) ||
+    coerceString(record.detailed_name) ||
+    displayName;
+
+  const iataCode = toUpper(
+    coerceString(record.iataCode) ||
+    coerceString(record.iata) ||
+    coerceString(record.code),
+  );
+  const icaoCode = toUpper(coerceString(record.icaoCode) || coerceString(record.icao));
+  const cityCode = toUpper(coerceString(record.cityCode) || coerceString(record.city_code));
+  const countryCode = toUpper(
+    coerceString(record.countryCode) ||
+    coerceString(record.country_code) ||
+    (coerceString(record.country) && coerceString(record.country)!.length === 2
+      ? coerceString(record.country)
+      : undefined),
+  );
+
+  const code =
+    toUpper(coerceString(record.code)) ||
+    iataCode ||
+    icaoCode ||
+    cityCode ||
+    undefined;
+
+  const latitude = coerceNumber(record.latitude);
+  const longitude = coerceNumber(record.longitude);
+  const relevance = coerceNumber(record.relevance) ?? 0;
+  const region =
+    coerceString(record.region) ||
+    coerceString(record.state) ||
+    coerceString(record.stateCode) ||
+    coerceString(record.state_code);
+  const timeZone =
+    coerceString(record.timeZone) ||
+    coerceString(record.timezone) ||
+    coerceString(record.time_zone);
+  const currencyCode = toUpper(
+    coerceString(record.currencyCode) ||
+    coerceString(record.currency_code) ||
+    coerceString(record.currency),
+  );
+  const isPopular = typeof record.isPopular === 'boolean' ? record.isPopular : Boolean(record.popular);
+  const distanceKm = coerceNumber(record.distanceKm) ?? coerceNumber(record.distance_km) ?? null;
+
+  const rawCityName = coerceString(record.cityName) ?? coerceString(record.city_name);
+  const rawCountryName =
+    coerceString(record.countryName) ??
+    coerceString(record.country_name) ??
+    coerceString(record.country);
+
+  const alternativeNames = [
+    ...toStringArray(record.alternativeNames ?? record.alternative_names ?? record.keywords ?? []),
+    coerceString(record.label),
+    displayName,
+    detailedName,
+    iataCode,
+    icaoCode,
+    cityCode,
+  ]
+    .filter((entry): entry is string => Boolean(entry))
+    .reduce<string[]>((accumulator, entry) => {
+      if (!accumulator.includes(entry)) {
+        accumulator.push(entry);
+      }
+      return accumulator;
+    }, []);
+
+  const airports = toStringArray(record.airports);
+
+  const id =
+    coerceString(record.id) ||
+    code ||
+    iataCode ||
+    icaoCode ||
+    cityCode ||
+    name;
+
+  const inferredCityName =
+    rawCityName ??
+    (normalizedType === 'CITY' ? name : inferCityNameFromDetailedName(detailedName));
+  const inferredCountryName = rawCountryName ?? inferCountryNameFromDetailedName(detailedName);
+
+  return {
+    id,
+    name,
+    type: normalizedType,
+    iataCode,
+    icaoCode,
+    cityCode,
+    countryCode,
+    latitude,
+    longitude,
+    detailedName,
+    relevance,
+    displayName,
+    region,
+    timeZone,
+    currencyCode,
+    isPopular,
+    alternativeNames,
+    code: code ?? id,
+    label: coerceString(record.label),
+    cityName: inferredCityName ?? null,
+    countryName: inferredCountryName ?? null,
+    country: (rawCountryName ?? inferredCountryName ?? countryCode) ?? null,
+    airports,
+    distanceKm,
+  };
 };
 
-const buildSearchUrl = (
+const fetchLocations = async (
   query: string,
   options: {
     type?: LocationSearchProps["type"];
-    limit?: number;
-  } = {},
-) => {
-  const params = new URLSearchParams({ q: query });
-  const typeParam = toTypeParam(options.type);
+    limit: number;
+    useApi?: boolean;
+  },
+): Promise<LocationResult[]> => {
+  const payload: Record<string, unknown> = {
+    query,
+    limit: options.limit,
+    useApi: options.useApi ?? true,
+  };
+
+  const searchType = determineSearchType(query, options.type);
+  const typeParam = searchType ? searchType.toUpperCase() : undefined;
   if (typeParam) {
-    params.set('types', typeParam);
+    payload.type = typeParam;
   }
 
-  if (typeof options.limit === 'number') {
-    params.set('limit', options.limit.toString());
+  const response = await apiFetch('/api/locations/search', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Location search failed (${response.status})`);
   }
 
-  return `/api/locations/search?${params.toString()}`;
+  const data = await response.json();
+
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data
+    .map((item) => normalizeLocationResult(item))
+    .filter((item): item is LocationResult => Boolean(item));
 };
 
-export default function LocationSearch({ 
-  value = null, 
-  onChange, 
-  placeholder = 'Search for a location...', 
-  type, 
+const mergeWithAdditionalAirports = async (
+  results: LocationResult[],
+  maxAirportsPerCity = 3,
+) => {
+  const enhancedResults: LocationResult[] = [];
+
+  for (const result of results) {
+    enhancedResults.push(result);
+
+    if (result.type && result.type.toUpperCase() === 'CITY') {
+      try {
+        const airports = await fetchLocations(result.name, {
+          type: 'AIRPORT',
+          limit: 5,
+          useApi: true,
+        });
+
+        for (const airport of airports.slice(0, maxAirportsPerCity)) {
+          if (!enhancedResults.find((existing) => existing.id === airport.id)) {
+            enhancedResults.push(airport);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to find airports for city:', result.name, error);
+      }
+    }
+  }
+
+  return enhancedResults;
+};
+
+const fetchPopularDestinations = async (
+  type: LocationSearchProps["type"] | undefined,
+  limit: number,
+) => fetchLocations('popular', { type, limit, useApi: false });
+
+const LocationSearch = forwardRef<HTMLInputElement, LocationSearchProps>(function LocationSearch({
+  value = null,
+  onChange,
+  placeholder = 'Search for a location...',
+  type,
   className = '',
   disabled = false,
   showClearButton = true,
@@ -90,7 +384,7 @@ export default function LocationSearch({
   showRegionalGroups = false,
   showMultipleAirports = true,
   maxResults = 10
-}: LocationSearchProps) {
+}, ref) {
   const [query, setQuery] = useState(value?.name || '');
   const [isOpen, setIsOpen] = useState(false);
   const [results, setResults] = useState<LocationResult[]>([]);
@@ -99,18 +393,26 @@ export default function LocationSearch({
   const [popularDestinations, setPopularDestinations] = useState<LocationResult[]>([]);
   const [regionalGroups, setRegionalGroups] = useState<Record<string, LocationResult[]>>({});
   const [showingPopular, setShowingPopular] = useState(false);
-  
+
   const searchRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout>();
 
+  useImperativeHandle(ref, () => inputRef.current!);
+
   // Initialize selected location from value
   useEffect(() => {
-    if (value && !selectedLocation) {
-      setSelectedLocation(value);
-      setQuery(value.name || '');
+    if (value) {
+      const hasChanged = selectedLocation?.id !== value.id;
+      if (hasChanged) {
+        setSelectedLocation(value);
+        setQuery(value.displayName || value.name || '');
+      }
+    } else if (!value && selectedLocation) {
+      setSelectedLocation(null);
+      setQuery('');
     }
-  }, [value]);
+  }, [value, selectedLocation]);
 
   // Load popular destinations when component mounts
   useEffect(() => {
@@ -133,27 +435,21 @@ export default function LocationSearch({
 
   const loadPopularDestinations = async () => {
     try {
-      const response = await apiFetch(
-        buildSearchUrl('popular', { type, limit: 20 }),
-      );
+      const results = await fetchPopularDestinations(type, 20);
+      const popular = results.filter((r: LocationResult) => r.isPopular);
+      setPopularDestinations(popular);
 
-      if (response.ok) {
-        const results = await response.json();
-        const popular = results.filter((r: LocationResult) => r.isPopular);
-        setPopularDestinations(popular);
-        
-        // Group by region if requested
-        if (showRegionalGroups) {
-          const groups: Record<string, LocationResult[]> = {};
-          popular.forEach((location: LocationResult) => {
-            const region = location.region || 'Other';
-            if (!groups[region]) {
-              groups[region] = [];
-            }
-            groups[region].push(location);
-          });
-          setRegionalGroups(groups);
-        }
+      // Group by region if requested
+      if (showRegionalGroups) {
+        const groups: Record<string, LocationResult[]> = {};
+        popular.forEach((location: LocationResult) => {
+          const region = location.region || 'Other';
+          if (!groups[region]) {
+            groups[region] = [];
+          }
+          groups[region].push(location);
+        });
+        setRegionalGroups(groups);
       }
     } catch (error) {
       console.error('Failed to load popular destinations:', error);
@@ -177,69 +473,46 @@ export default function LocationSearch({
     setShowingPopular(false);
     
     try {
-      const response = await apiFetch(
-        buildSearchUrl(searchQuery, { type, limit: maxResults }),
-      );
+      const searchResults = await fetchLocations(searchQuery, {
+        type,
+        limit: maxResults,
+        useApi: true,
+      });
 
-      if (response.ok) {
-        const searchResults = await response.json();
-        
-        // Show multiple airports for cities if requested
-        let processedResults = searchResults;
-        if (showMultipleAirports && type === 'AIRPORT') {
-          processedResults = await enhanceWithMultipleAirports(searchResults);
-        }
-        
-        setResults(processedResults);
-        
-        // If this is initial load and we have an exact match, select it
-        if (isInitial && searchResults.length > 0) {
-          const exactMatch = searchResults.find((r: LocationResult) => 
-            r.name.toLowerCase() === searchQuery.toLowerCase() ||
-            r.iataCode?.toLowerCase() === searchQuery.toLowerCase() ||
-            r.icaoCode?.toLowerCase() === searchQuery.toLowerCase()
+      let processedResults = searchResults;
+      if (showMultipleAirports) {
+        processedResults = await mergeWithAdditionalAirports(searchResults);
+      }
+
+      setResults(processedResults);
+
+      // If this is initial load and we have an exact match, select it
+      if (isInitial && searchResults.length > 0) {
+        const exactMatch = searchResults.find((r: LocationResult) => {
+          const loweredQuery = searchQuery.toLowerCase();
+          return (
+            r.name.toLowerCase() === loweredQuery ||
+            r.displayName.toLowerCase() === loweredQuery ||
+            r.iataCode?.toLowerCase() === loweredQuery ||
+            r.icaoCode?.toLowerCase() === loweredQuery ||
+            r.code?.toLowerCase() === loweredQuery
           );
-          if (exactMatch) {
-            setSelectedLocation(exactMatch);
-            onChange?.(exactMatch);
-          }
+        });
+
+        if (exactMatch) {
+          setSelectedLocation(exactMatch);
+          onChange?.(exactMatch);
         }
-        
-        if (!isInitial) {
-          setIsOpen(true);
-        }
+      }
+
+      if (!isInitial) {
+        setIsOpen(true);
       }
     } catch (error) {
       console.error('Location search failed:', error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const enhanceWithMultipleAirports = async (results: LocationResult[]): Promise<LocationResult[]> => {
-    // For cities, find all airports in that city
-    const enhanced: LocationResult[] = [];
-    
-    for (const result of results) {
-      enhanced.push(result);
-      
-      if (result.type && result.type.toUpperCase() === 'CITY') {
-        try {
-          const airportResponse = await apiFetch(
-            buildSearchUrl(result.name, { type: 'AIRPORT', limit: 5 }),
-          );
-
-          if (airportResponse.ok) {
-            const airports = await airportResponse.json();
-            enhanced.push(...airports.slice(0, 3)); // Limit to 3 airports per city
-          }
-        } catch (error) {
-          console.error('Failed to find airports for city:', result.name);
-        }
-      }
-    }
-    
-    return enhanced;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -547,4 +820,6 @@ export default function LocationSearch({
       )}
     </div>
   );
-}
+});
+
+export default LocationSearch;
