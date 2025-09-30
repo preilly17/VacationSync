@@ -11,12 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, ChevronDown, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2 } from "lucide-react";
+import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import type { LocationResult } from "@/components/SmartLocationSearch";
@@ -82,6 +82,23 @@ const formatPriceDisplay = (
   }
 
   return fallback;
+};
+
+const parseApiErrorResponse = (
+  error: unknown,
+): { status: number; data: unknown } | null => {
+  if (error instanceof Error) {
+    const match = error.message.match(/^(\d{3}):\s*(.*)$/);
+    if (match) {
+      const status = Number.parseInt(match[1], 10);
+      try {
+        return { status, data: JSON.parse(match[2]) };
+      } catch {
+        return { status, data: match[2] };
+      }
+    }
+  }
+  return null;
 };
 
 // Helper function to get flight status color
@@ -181,43 +198,41 @@ const getSearchFlightKey = (flight: any): string => {
   return identifierParts.join("-");
 };
 
-// Helper function to get airline name from code
-function getAirlineName(airlineCode: string): string {
-  const airlineMap: Record<string, string> = {
-    'AA': 'American Airlines',
-    'DL': 'Delta Air Lines',
-    'UA': 'United Airlines',
-    'SW': 'Southwest Airlines',
-    'AS': 'Alaska Airlines',
-    'B6': 'JetBlue Airways',
-    'F9': 'Frontier Airlines',
-    'NK': 'Spirit Airlines',
-    'G4': 'Allegiant Air',
-    'SY': 'Sun Country Airlines',
-    'WN': 'Southwest Airlines',
-    'VS': 'Virgin Atlantic',
-    'BA': 'British Airways',
-    'LH': 'Lufthansa',
-    'AF': 'Air France',
-    'KL': 'KLM',
-    'IB': 'Iberia',
-    'LX': 'Swiss International',
-    'OS': 'Austrian Airlines',
-    'SK': 'SAS',
-    'AY': 'Finnair',
-    'TP': 'TAP Air Portugal',
-    'EI': 'Aer Lingus',
-    'EY': 'Etihad Airways',
-    'QR': 'Qatar Airways',
-    'EK': 'Emirates',
-    'TK': 'Turkish Airlines',
-    'SV': 'Saudi Arabian Airlines',
-    'MS': 'EgyptAir',
-    'ET': 'Ethiopian Airlines',
-    'KE': 'Korean Air',
-    'SA': 'South African Airways',
-    'JL': 'Japan Airlines',
-    'NH': 'All Nippon Airways',
+const AIRLINE_IATA_MAP: Record<string, string> = {
+  'AA': 'American Airlines',
+  'DL': 'Delta Air Lines',
+  'UA': 'United Airlines',
+  'SW': 'Southwest Airlines',
+  'AS': 'Alaska Airlines',
+  'B6': 'JetBlue Airways',
+  'F9': 'Frontier Airlines',
+  'NK': 'Spirit Airlines',
+  'G4': 'Allegiant Air',
+  'SY': 'Sun Country Airlines',
+  'WN': 'Southwest Airlines',
+  'VS': 'Virgin Atlantic',
+  'BA': 'British Airways',
+  'LH': 'Lufthansa',
+  'AF': 'Air France',
+  'KL': 'KLM',
+  'IB': 'Iberia',
+  'LX': 'Swiss International',
+  'OS': 'Austrian Airlines',
+  'SK': 'SAS',
+  'AY': 'Finnair',
+  'TP': 'TAP Air Portugal',
+  'EI': 'Aer Lingus',
+  'EY': 'Etihad Airways',
+  'QR': 'Qatar Airways',
+  'EK': 'Emirates',
+  'TK': 'Turkish Airlines',
+  'SV': 'Saudi Arabian Airlines',
+  'MS': 'EgyptAir',
+  'ET': 'Ethiopian Airlines',
+  'KE': 'Korean Air',
+  'SA': 'South African Airways',
+  'JL': 'Japan Airlines',
+  'NH': 'All Nippon Airways',
     'CX': 'Cathay Pacific',
     'SQ': 'Singapore Airlines',
     'TG': 'Thai Airways',
@@ -247,9 +262,11 @@ function getAirlineName(airlineCode: string): string {
     'AV': 'Avianca',
     'AC': 'Air Canada',
     'WS': 'WestJet'
-  };
-  
-  return airlineMap[airlineCode] || airlineCode;
+};
+
+// Helper function to get airline name from code
+function getAirlineName(airlineCode: string): string {
+  return AIRLINE_IATA_MAP[airlineCode] || airlineCode;
 }
 
 type TripType = "oneway" | "roundtrip";
@@ -358,6 +375,13 @@ interface FlightSearchPanelProps {
   isAddingFlight: boolean;
   addingFlightKey: string | null;
 }
+
+type ManualFlightPayload = InsertFlight & {
+  departureTimeIso: string;
+  arrivalTimeIso: string;
+  priceCents: number | null;
+  direction: 'OUTBOUND' | 'RETURN';
+};
 
 function FlightSearchPanel({
   searchFormData,
@@ -1740,14 +1764,20 @@ export default function FlightsPage() {
     arrivalCode: '',
     arrivalTime: '',
     price: '',
-    seatClass: 'economy',
-    flightType: 'outbound',
+    seatClass: 'ECONOMY',
+    flightType: 'OUTBOUND',
     bookingReference: '',
     aircraft: '',
     status: 'confirmed'
   });
-  const [manualDepartureHasSelected, setManualDepartureHasSelected] = useState(false);
-  const [manualArrivalHasSelected, setManualArrivalHasSelected] = useState(false);
+  const [flightFormErrors, setFlightFormErrors] = useState<{
+    flightNumber?: string;
+    airlineCode?: string;
+    departureCode?: string;
+    arrivalCode?: string;
+    departureTime?: string;
+    arrivalTime?: string;
+  }>({});
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -2166,26 +2196,93 @@ export default function FlightsPage() {
   }, [user, trip, hasPrefilledSearch]); // FIXED: Removed searchFormData to prevent circular dependency
 
   const createFlightMutation = useMutation({
-    mutationFn: async (flightData: InsertFlight) => {
-      return apiRequest(`/api/trips/${tripId}/flights`, {
+    mutationFn: async (flightData: ManualFlightPayload) => {
+      const res = await apiRequest(`/api/trips/${tripId}/flights`, {
         method: "POST",
         body: flightData,
       });
+      return (await res.json()) as FlightWithDetails;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flights"] });
+    onSuccess: (newFlight) => {
+      const upsertFlights = (existing: unknown) => {
+        const flightsList = Array.isArray(existing) ? existing : [];
+        const filtered = flightsList.filter((flight: any) => flight.id !== newFlight.id);
+        return [newFlight, ...filtered];
+      };
+
+      queryClient.setQueryData([`/api/trips/${tripId}/flights`, activeFilter], upsertFlights);
+      queryClient.setQueryData([`/api/trips/${tripId}/flights`], upsertFlights);
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] });
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          Array.isArray(query.queryKey) &&
+          query.queryKey.some(
+            (key) => typeof key === 'string' && key.toLowerCase().includes('schedule'),
+          ),
+      });
+
       setIsAddFlightOpen(false);
       setEditingFlight(null);
       resetFlightForm();
       toast({
-        title: "Success",
-        description: "Flight added successfully!",
+        title: "Flight added",
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const parsed = parseApiErrorResponse(error);
+
+      if (parsed?.status === 400) {
+        const nextErrors: typeof flightFormErrors = {};
+        const errorDetails = (parsed.data as any)?.errors;
+        if (Array.isArray(errorDetails)) {
+          for (const detail of errorDetails) {
+            const field = Array.isArray(detail?.path) ? detail.path[0] : undefined;
+            if (field === 'airlineCode') {
+              nextErrors.airlineCode = "Use a valid 2-letter airline IATA code (e.g., DL, AA).";
+            }
+            if (field === 'departureCode') {
+              nextErrors.departureCode = "Use a valid IATA code (e.g., LAX, JFK).";
+            }
+            if (field === 'arrivalCode') {
+              nextErrors.arrivalCode = "Use a valid IATA code (e.g., LAX, JFK).";
+            }
+          }
+        }
+
+        const rawMessage =
+          typeof parsed.data === 'string'
+            ? parsed.data
+            : typeof (parsed.data as any)?.message === 'string'
+              ? (parsed.data as any).message
+              : '';
+
+        if (typeof rawMessage === 'string' && rawMessage) {
+          const normalized = rawMessage.toLowerCase();
+          if (normalized.includes('airlinecode') || normalized.includes('airline code')) {
+            nextErrors.airlineCode = "Use a valid 2-letter airline IATA code (e.g., DL, AA).";
+          }
+          if (normalized.includes('departurecode') || normalized.includes('departure code')) {
+            nextErrors.departureCode = "Use a valid IATA code (e.g., LAX, JFK).";
+          }
+          if (normalized.includes('arrivalcode') || normalized.includes('arrival code')) {
+            nextErrors.arrivalCode = "Use a valid IATA code (e.g., LAX, JFK).";
+          }
+        }
+
+        if (Object.keys(nextErrors).length > 0) {
+          setFlightFormErrors((prev) => ({ ...prev, ...nextErrors }));
+        }
+
+        toast({
+          title: "Couldn't add flight. Fix the highlighted fields.",
+        });
+        return;
+      }
+
       toast({
         title: "Error",
-        description: error?.message || "Failed to add flight",
+        description: error instanceof Error ? error.message : "Failed to add flight",
         variant: "destructive",
       });
     },
@@ -2344,14 +2441,13 @@ export default function FlightsPage() {
       arrivalCode: '',
       arrivalTime: '',
       price: '',
-      seatClass: 'economy',
-      flightType: 'outbound',
+      seatClass: 'ECONOMY',
+      flightType: 'OUTBOUND',
       bookingReference: '',
       aircraft: '',
       status: 'confirmed'
     });
-    setManualDepartureHasSelected(false);
-    setManualArrivalHasSelected(false);
+    setFlightFormErrors({});
   };
 
   const openManualFlightDialog = () => {
@@ -2529,56 +2625,120 @@ export default function FlightsPage() {
     setFlightFormData({
       flightNumber: flight.flightNumber || '',
       airline: flight.airline || '',
-      airlineCode: flight.airlineCode || '',
+      airlineCode: (flight.airlineCode || '').toUpperCase(),
       departureAirport: flight.departureAirport || '',
-      departureCode: flight.departureCode || '',
+      departureCode: (flight.departureCode || '').toUpperCase(),
       departureTime: flight.departureTime ? new Date(flight.departureTime).toISOString().slice(0, 16) : '',
       arrivalAirport: flight.arrivalAirport || '',
-      arrivalCode: flight.arrivalCode || '',
+      arrivalCode: (flight.arrivalCode || '').toUpperCase(),
       arrivalTime: flight.arrivalTime ? new Date(flight.arrivalTime).toISOString().slice(0, 16) : '',
       price: flight.price?.toString() || '',
-      seatClass: flight.seatClass || 'economy',
-      flightType: flight.flightType || 'outbound',
+      seatClass: (flight.seatClass || 'ECONOMY').toUpperCase(),
+      flightType: (flight.flightType || 'OUTBOUND').toUpperCase(),
       bookingReference: flight.bookingReference || '',
       aircraft: flight.aircraft || '',
       status: flight.status || 'confirmed'
     });
-    setManualDepartureHasSelected(Boolean(flight.departureAirport || flight.departureCode));
-    setManualArrivalHasSelected(Boolean(flight.arrivalAirport || flight.arrivalCode));
   };
 
   const handleFlightSubmit = () => {
-    if (!flightFormData.flightNumber || !flightFormData.airline || !flightFormData.departureAirport || !flightFormData.arrivalAirport) {
+    if (!tripId) {
       toast({
-        title: "Missing Information",
-        description: "Please fill in all required fields",
+        title: "Trip required",
+        description: "Select a trip before adding flights.",
         variant: "destructive",
       });
       return;
     }
 
-    const submitData: InsertFlight = {
-      ...flightFormData,
-      tripId: parseInt(tripId!, 10),
-      departureTime: new Date(flightFormData.departureTime),
-      arrivalTime: new Date(flightFormData.arrivalTime),
-      price: flightFormData.price ? Number(flightFormData.price) : null,
-      currency: "USD",
+    const errors: typeof flightFormErrors = {};
+    const flightNumber = flightFormData.flightNumber.trim();
+    const airlineCode = flightFormData.airlineCode.trim().toUpperCase();
+    const departureCode = flightFormData.departureCode.trim().toUpperCase();
+    const arrivalCode = flightFormData.arrivalCode.trim().toUpperCase();
+    const departureTimeValue = flightFormData.departureTime;
+    const arrivalTimeValue = flightFormData.arrivalTime;
+
+    if (!flightNumber) {
+      errors.flightNumber = "Flight number is required.";
+    }
+
+    if (!/^[A-Z]{2}$/.test(airlineCode)) {
+      errors.airlineCode = "Use a valid 2-letter airline IATA code (e.g., DL, AA).";
+    }
+
+    if (!/^[A-Z]{3}$/.test(departureCode)) {
+      errors.departureCode = "Use a valid IATA code (e.g., LAX, JFK).";
+    }
+
+    if (!/^[A-Z]{3}$/.test(arrivalCode)) {
+      errors.arrivalCode = "Use a valid IATA code (e.g., LAX, JFK).";
+    }
+
+    if (!departureTimeValue) {
+      errors.departureTime = "Departure date & time is required.";
+    }
+
+    if (!arrivalTimeValue) {
+      errors.arrivalTime = "Arrival date & time is required.";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFlightFormErrors(errors);
+      return;
+    }
+
+    setFlightFormErrors({});
+
+    const departureTimeIso = new Date(departureTimeValue).toISOString();
+    const arrivalTimeIso = new Date(arrivalTimeValue).toISOString();
+    const seatClassNormalized = flightFormData.seatClass ? flightFormData.seatClass.toUpperCase() : '';
+    const direction: 'OUTBOUND' | 'RETURN' =
+      flightFormData.flightType === 'RETURN' ? 'RETURN' : 'OUTBOUND';
+    const airlineName = flightFormData.airline?.trim() || getAirlineName(airlineCode);
+
+    const insertPayload: InsertFlight = {
+      tripId: parseInt(tripId, 10),
+      flightNumber,
+      airline: airlineName,
+      airlineCode,
+      departureAirport: flightFormData.departureAirport || departureCode,
+      departureCode,
+      departureTime: departureTimeIso,
+      arrivalAirport: flightFormData.arrivalAirport || arrivalCode,
+      arrivalCode,
+      arrivalTime: arrivalTimeIso,
+      seatClass: seatClassNormalized ? seatClassNormalized : null,
+      price: flightFormData.price ? Number.parseFloat(flightFormData.price) : null,
+      currency: 'USD',
+      flightType: direction.toLowerCase(),
+      status: flightFormData.status || 'confirmed',
+      aircraft: flightFormData.aircraft || null,
+      bookingReference: flightFormData.bookingReference || null,
+    };
+
+    const manualPayload = {
+      ...insertPayload,
+      departureTimeIso,
+      arrivalTimeIso,
+      priceCents: insertPayload.price != null ? Math.round(insertPayload.price * 100) : null,
+      direction,
     };
 
     if (editingFlight) {
       updateFlightMutation.mutate({
         id: editingFlight.id,
-        updates: submitData
+        updates: insertPayload,
       });
     } else {
-      createFlightMutation.mutate(submitData);
+      createFlightMutation.mutate(manualPayload);
     }
   };
 
   const handleEditFlight = (flight: any) => {
     setEditingFlight(flight);
     populateFlightForm(flight);
+    setFlightFormErrors({});
     setIsAddFlightOpen(true);
   };
 
@@ -2622,13 +2782,17 @@ export default function FlightsPage() {
               <Search className="mr-2 h-4 w-4" />
               Add Flight
             </Button>
-            <Dialog open={isAddFlightOpen} onOpenChange={setIsAddFlightOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" onClick={openManualFlightDialog}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Log Flight Manually
-                </Button>
-              </DialogTrigger>
+            <Dialog
+              open={isAddFlightOpen}
+              onOpenChange={(open) => {
+                setIsAddFlightOpen(open);
+                if (!open) {
+                  setFlightFormErrors({});
+                  setEditingFlight(null);
+                  resetFlightForm();
+                }
+              }}
+            >
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle>
@@ -2636,113 +2800,150 @@ export default function FlightsPage() {
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <Label htmlFor="flightNumber">Flight Number *</Label>
                       <Input
                         id="flightNumber"
-                        placeholder="e.g., AA123"
+                        placeholder="e.g., DL1234"
                         value={flightFormData.flightNumber}
-                        onChange={(e) => setFlightFormData((prev) => ({ ...prev, flightNumber: e.target.value }))}
+                        aria-invalid={flightFormErrors.flightNumber ? 'true' : 'false'}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setFlightFormData((prev) => ({ ...prev, flightNumber: value }));
+                          setFlightFormErrors((prev) => ({ ...prev, flightNumber: undefined }));
+                        }}
                       />
+                      {flightFormErrors.flightNumber && (
+                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.flightNumber}</p>
+                      )}
                     </div>
                     <div>
-                      <Label htmlFor="airline">Airline *</Label>
+                      <Label htmlFor="airlineCode">Airline (IATA code) *</Label>
                       <Input
-                        id="airline"
-                        placeholder="e.g., American Airlines"
-                        value={flightFormData.airline}
-                        onChange={(e) => setFlightFormData((prev) => ({ ...prev, airline: e.target.value }))}
+                        id="airlineCode"
+                        placeholder="e.g., DL"
+                        value={flightFormData.airlineCode}
+                        aria-invalid={flightFormErrors.airlineCode ? 'true' : 'false'}
+                        list="manual-flight-airline-codes"
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2);
+                          setFlightFormData((prev) => ({
+                            ...prev,
+                            airlineCode: value,
+                            airline: value ? getAirlineName(value) : '',
+                          }));
+                          setFlightFormErrors((prev) => ({ ...prev, airlineCode: undefined }));
+                        }}
                       />
+                      <datalist id="manual-flight-airline-codes">
+                        {Object.entries(AIRLINE_IATA_MAP).map(([code, name]) => (
+                          <option key={code} value={code}>
+                            {name}
+                          </option>
+                        ))}
+                      </datalist>
+                      {flightFormData.airline && (
+                        <p className="mt-1 text-xs text-muted-foreground">{flightFormData.airline}</p>
+                      )}
+                      {flightFormErrors.airlineCode && (
+                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.airlineCode}</p>
+                      )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <Label htmlFor="departureAirport">From *</Label>
-                      <FlightLocationSearch
-                        placeholder="Departure airport (e.g., JFK, New York)"
-                        value={flightFormData.departureAirport}
-                        types="city,airport"
-                        onQueryChange={(value) => {
+                      <Label htmlFor="departureCode">From (IATA code) *</Label>
+                      <Input
+                        id="departureCode"
+                        placeholder="e.g., ATL"
+                        value={flightFormData.departureCode}
+                        aria-invalid={flightFormErrors.departureCode ? 'true' : 'false'}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 3);
                           setFlightFormData((prev) => ({
                             ...prev,
-                            departureAirport: value,
-                            departureCode: manualDepartureHasSelected ? '' : prev.departureCode,
+                            departureCode: value,
+                            departureAirport: value ? value : '',
                           }));
-                          if (manualDepartureHasSelected) {
-                            setManualDepartureHasSelected(false);
-                          }
-                        }}
-                        onLocationSelect={(location) => {
-                          setManualDepartureHasSelected(true);
-                          setFlightFormData((prev) => ({
-                            ...prev,
-                            departureAirport: location.displayName,
-                            departureCode: location.code,
-                          }));
+                          setFlightFormErrors((prev) => ({ ...prev, departureCode: undefined }));
                         }}
                       />
+                      {flightFormErrors.departureCode && (
+                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.departureCode}</p>
+                      )}
                     </div>
                     <div>
-                      <Label htmlFor="arrivalAirport">To *</Label>
-                      <FlightLocationSearch
-                        placeholder="Arrival airport (e.g., LAX, Los Angeles)"
-                        value={flightFormData.arrivalAirport}
-                        types="city,airport"
-                        onQueryChange={(value) => {
+                      <Label htmlFor="arrivalCode">To (IATA code) *</Label>
+                      <Input
+                        id="arrivalCode"
+                        placeholder="e.g., LAX"
+                        value={flightFormData.arrivalCode}
+                        aria-invalid={flightFormErrors.arrivalCode ? 'true' : 'false'}
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 3);
                           setFlightFormData((prev) => ({
                             ...prev,
-                            arrivalAirport: value,
-                            arrivalCode: manualArrivalHasSelected ? '' : prev.arrivalCode,
+                            arrivalCode: value,
+                            arrivalAirport: value ? value : '',
                           }));
-                          if (manualArrivalHasSelected) {
-                            setManualArrivalHasSelected(false);
-                          }
-                        }}
-                        onLocationSelect={(location) => {
-                          setManualArrivalHasSelected(true);
-                          setFlightFormData((prev) => ({
-                            ...prev,
-                            arrivalAirport: location.displayName,
-                            arrivalCode: location.code,
-                          }));
+                          setFlightFormErrors((prev) => ({ ...prev, arrivalCode: undefined }));
                         }}
                       />
+                      {flightFormErrors.arrivalCode && (
+                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.arrivalCode}</p>
+                      )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <Label htmlFor="departureTime">Departure Time *</Label>
+                      <Label htmlFor="departureTime">Departure date &amp; time (local) *</Label>
                       <Input
                         id="departureTime"
                         type="datetime-local"
                         value={flightFormData.departureTime}
-                        onChange={(e) => setFlightFormData((prev) => ({ ...prev, departureTime: e.target.value }))}
+                        aria-invalid={flightFormErrors.departureTime ? 'true' : 'false'}
+                        onChange={(e) => {
+                          setFlightFormData((prev) => ({ ...prev, departureTime: e.target.value }));
+                          setFlightFormErrors((prev) => ({ ...prev, departureTime: undefined }));
+                        }}
                       />
+                      {flightFormErrors.departureTime && (
+                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.departureTime}</p>
+                      )}
                     </div>
                     <div>
-                      <Label htmlFor="arrivalTime">Arrival Time *</Label>
+                      <Label htmlFor="arrivalTime">Arrival date &amp; time (local) *</Label>
                       <Input
                         id="arrivalTime"
                         type="datetime-local"
                         value={flightFormData.arrivalTime}
-                        onChange={(e) => setFlightFormData((prev) => ({ ...prev, arrivalTime: e.target.value }))}
+                        aria-invalid={flightFormErrors.arrivalTime ? 'true' : 'false'}
+                        onChange={(e) => {
+                          setFlightFormData((prev) => ({ ...prev, arrivalTime: e.target.value }));
+                          setFlightFormErrors((prev) => ({ ...prev, arrivalTime: undefined }));
+                        }}
                       />
+                      {flightFormErrors.arrivalTime && (
+                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.arrivalTime}</p>
+                      )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <Label htmlFor="price">Price ($)</Label>
                       <Input
                         id="price"
                         type="number"
+                        min="0"
+                        step="0.01"
                         placeholder="0.00"
                         value={flightFormData.price}
                         onChange={(e) => setFlightFormData((prev) => ({ ...prev, price: e.target.value }))}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="seatClass">Seat Class</Label>
+                      <Label htmlFor="seatClass">Seat class</Label>
                       <Select
                         value={flightFormData.seatClass}
                         onValueChange={(value) => setFlightFormData((prev) => ({ ...prev, seatClass: value }))}
@@ -2751,33 +2952,34 @@ export default function FlightsPage() {
                           <SelectValue placeholder="Select class" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="economy">Economy</SelectItem>
-                          <SelectItem value="premium">Premium Economy</SelectItem>
-                          <SelectItem value="business">Business</SelectItem>
-                          <SelectItem value="first">First</SelectItem>
+                          <SelectItem value="ECONOMY">Economy</SelectItem>
+                          <SelectItem value="PREMIUM_ECONOMY">Premium Economy</SelectItem>
+                          <SelectItem value="BUSINESS">Business</SelectItem>
+                          <SelectItem value="FIRST">First</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <Label htmlFor="flightType">Flight Type</Label>
+                      <Label htmlFor="flightType">Flight type</Label>
                       <Select
                         value={flightFormData.flightType}
-                        onValueChange={(value) => setFlightFormData((prev) => ({ ...prev, flightType: value }))}
+                        onValueChange={(value) =>
+                          setFlightFormData((prev) => ({ ...prev, flightType: value as 'OUTBOUND' | 'RETURN' }))
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="outbound">Outbound</SelectItem>
-                          <SelectItem value="return">Return</SelectItem>
-                          <SelectItem value="connecting">Connecting</SelectItem>
+                          <SelectItem value="OUTBOUND">Outbound</SelectItem>
+                          <SelectItem value="RETURN">Return</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="bookingReference">Booking Reference</Label>
+                      <Label htmlFor="bookingReference">Booking reference</Label>
                       <Input
                         id="bookingReference"
                         placeholder="e.g., ABC123"
@@ -2841,14 +3043,43 @@ export default function FlightsPage() {
         />
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            Group Flights
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="space-y-6">
+        <div className="rounded-lg border border-dashed bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-neutral-900">Manual entry</p>
+              <p className="text-sm text-muted-foreground">
+                Record a flight that isn't imported from the flight search results.
+              </p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="w-full justify-between sm:w-auto sm:justify-center">
+                  <span>Add a Flight</span>
+                  <span aria-hidden="true" className="ml-2 text-base leading-none">▾</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onSelect={() => {
+                    openManualFlightDialog();
+                  }}
+                >
+                  Single flight
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Group Flights
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
           {flightsArray.length === 0 ? (
             <div className="py-8 text-center">
               <Plane className="mx-auto mb-4 h-12 w-12 text-gray-400" />
@@ -2920,7 +3151,7 @@ export default function FlightsPage() {
           )}
         </CardContent>
       </Card>
-
     </div>
-  );
+  </div>
+);
 }
