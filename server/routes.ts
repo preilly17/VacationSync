@@ -3127,7 +3127,22 @@ export function setupRoutes(app: Express) {
         tripId,
       });
 
-      const hotel = await storage.addHotel(validatedData, userId);
+      const normalizedValidatedHotelData = normalizeHotelRequestBody(
+        validatedData,
+        tripId,
+      );
+
+      const hotelInsertData: Record<string, unknown> = {
+        ...normalizedValidatedHotelData,
+      };
+
+      for (const key of Object.keys(hotelInsertData)) {
+        if (hotelInsertData[key] === undefined) {
+          hotelInsertData[key] = null;
+        }
+      }
+
+      const hotel = await storage.addHotel(hotelInsertData, userId);
       res.json(hotel);
     } catch (error: unknown) {
       console.error("Error adding hotel:", error);
