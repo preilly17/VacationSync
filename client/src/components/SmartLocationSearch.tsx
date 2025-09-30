@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useId, useRef, useState } from "react";
+import { forwardRef, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MutableRefObject } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,167 @@ const VALID_LOCATION_TYPES: Array<LocationResult['type']> = [
   'state',
   'country',
 ];
+
+const isValidLocationType = (value: string): value is LocationResult['type'] =>
+  VALID_LOCATION_TYPES.includes(value as LocationResult['type']);
+
+const toTrimmedString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  return trimmedValue.length > 0 ? trimmedValue : null;
+};
+
+const toFiniteNumber = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
+const toOptionalId = (value: unknown): string | number | undefined => {
+  if (typeof value === 'string') {
+    const trimmedValue = value.trim();
+    return trimmedValue.length > 0 ? trimmedValue : undefined;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  return undefined;
+};
+
+const toStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : null))
+    .filter((item): item is string => Boolean(item && item.length > 0));
+};
+
+const normalizeAllowedTypes = (
+  allowedTypes?: Array<LocationResult['type']>,
+): Array<LocationResult['type']> | null => {
+  if (!allowedTypes || allowedTypes.length === 0) {
+    return null;
+  }
+
+  const deduped = Array.from(
+    new Set(
+      allowedTypes
+        .map((type) => type.toLowerCase())
+        .filter((type): type is LocationResult['type'] => isValidLocationType(type)),
+    ),
+  );
+
+  return deduped.length > 0 ? deduped : null;
+};
+
+const getLowercaseTypeCandidate = (record: Record<string, unknown>): string | null => {
+  const rawType = toTrimmedString(record.type);
+  if (rawType) {
+    return rawType.toLowerCase();
+  }
+
+  const rawSubType = toTrimmedString(record.subType);
+  return rawSubType ? rawSubType.toLowerCase() : null;
+};
+
+const normalizeFetchedLocation = (rawLocation: unknown): LocationResult | null => {
+  if (!rawLocation || typeof rawLocation !== 'object') {
+    return null;
+  }
+
+  const record = rawLocation as Record<string, unknown>;
+  const lowerCaseType = getLowercaseTypeCandidate(record);
+  const type: LocationResult['type'] = lowerCaseType && isValidLocationType(lowerCaseType)
+    ? lowerCaseType
+    : 'city';
+
+  const rawName = toTrimmedString(record.name);
+  const rawDisplayName = toTrimmedString(record.displayName);
+  const name = rawName ?? rawDisplayName ?? 'Unknown Location';
+  const displayName = rawDisplayName ?? name;
+  const label = toTrimmedString(record.label) ?? displayName;
+
+  const rawCountryName = toTrimmedString(record.countryName);
+  const rawCountry = toTrimmedString(record.country);
+  const countryName = rawCountryName ?? rawCountry ?? null;
+  const country = rawCountry ?? countryName ?? 'Unknown Country';
+
+  const cityName = toTrimmedString(record.cityName);
+  const state = toTrimmedString(record.state) ?? undefined;
+
+  const airports = toStringArray(record.airports);
+
+  const codeCandidates = [
+    record.code,
+    record.iata,
+    record.iataCode,
+    record.icao,
+    record.icaoCode,
+  ]
+    .map((value) => toTrimmedString(value)?.toUpperCase())
+    .filter((value): value is string => Boolean(value));
+
+  const iata = [record.iata, record.iataCode]
+    .map((value) => toTrimmedString(value)?.toUpperCase())
+    .find((value): value is string => Boolean(value)) ?? null;
+
+  const icao = [record.icao, record.icaoCode]
+    .map((value) => toTrimmedString(value)?.toUpperCase())
+    .find((value): value is string => Boolean(value)) ?? null;
+
+  const code = codeCandidates.length > 0 ? codeCandidates[0] : '';
+
+  const latitude = toFiniteNumber(record.latitude);
+  const longitude = toFiniteNumber(record.longitude);
+  const population = toFiniteNumber(record.population);
+  const distanceKm = toFiniteNumber(record.distanceKm);
+
+  const geonameIdRaw = record.geonameId ?? record.geoNameId ?? record.geoname_id;
+  const geonameId =
+    typeof geonameIdRaw === 'string'
+      ? geonameIdRaw.trim()
+      : typeof geonameIdRaw === 'number' && Number.isFinite(geonameIdRaw)
+        ? geonameIdRaw
+        : undefined;
+
+  const source = toTrimmedString(record.source) ?? undefined;
+
+  return {
+    type,
+    name,
+    code,
+    displayName,
+    country,
+    state,
+    airports,
+    id: toOptionalId(record.id),
+    label,
+    iata,
+    icao,
+    geonameId,
+    cityName: cityName ?? null,
+    countryName,
+    latitude,
+    longitude,
+    population,
+    distanceKm,
+    source,
+  } satisfies LocationResult;
+};
 
 interface SmartLocationSearchProps {
   id?: string;
@@ -105,15 +266,15 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
   }, [value]);
 
-  const normalisedAllowedTypes = allowedTypes && allowedTypes.length > 0
-    ? Array.from(
-        new Set(
-          allowedTypes.filter((type): type is LocationResult['type'] =>
-            VALID_LOCATION_TYPES.includes(type),
-          ),
-        ),
-      )
-    : null;
+  const normalisedAllowedTypes = useMemo(
+    () => normalizeAllowedTypes(allowedTypes),
+    [allowedTypes],
+  );
+
+  const allowedTypesKey = useMemo(
+    () => (normalisedAllowedTypes ? normalisedAllowedTypes.join(",") : "all"),
+    [normalisedAllowedTypes],
+  );
 
   const buildSearchUrl = (searchQuery: string) => {
     const params = new URLSearchParams({ q: searchQuery });
@@ -163,8 +324,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         return;
       }
 
-      const currentAllowedTypesKey = normalisedAllowedTypes?.join(",") ?? "all";
-      const currentSearchKey = `${currentQuery}|${currentAllowedTypesKey}`;
+      const currentSearchKey = `${currentQuery}|${allowedTypesKey}`;
 
       if (lastFetchedQueryKeyRef.current === currentSearchKey) {
         return;
@@ -184,10 +344,33 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           const data = await response.json();
           // ROOT CAUSE 2 FIX: Ensure results is always an array and limit suggestions
           const safeResults = Array.isArray(data) ? data.slice(0, 7) : [];
+          const processedResults = safeResults.reduce<Array<{ normalized: LocationResult; typeForFilter: LocationResult['type'] }>>(
+            (accumulator, rawLocation) => {
+              const normalized = normalizeFetchedLocation(rawLocation);
+              if (!normalized) {
+                return accumulator;
+              }
+
+              let typeForFilter: LocationResult['type'] = normalized.type;
+
+              if (rawLocation && typeof rawLocation === 'object') {
+                const candidate = getLowercaseTypeCandidate(rawLocation as Record<string, unknown>);
+                if (candidate && isValidLocationType(candidate)) {
+                  typeForFilter = candidate;
+                }
+              }
+
+              accumulator.push({ normalized, typeForFilter });
+              return accumulator;
+            },
+            [],
+          );
+
           const filteredResults = normalisedAllowedTypes
-            ? safeResults.filter((location) => normalisedAllowedTypes.includes(location.type))
-            : safeResults;
-          setResults(filteredResults);
+            ? processedResults.filter(({ typeForFilter }) => normalisedAllowedTypes.includes(typeForFilter))
+            : processedResults;
+
+          setResults(filteredResults.map(({ normalized }) => normalized));
           lastFetchedQueryKeyRef.current = currentSearchKey;
           // Keep dropdown state controlled by user intent
         } else {
@@ -206,7 +389,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         }
       }
     }, 300);
-  }, [query, selectedLocation, normalisedAllowedTypes]);
+  }, [query, selectedLocation, normalisedAllowedTypes, allowedTypesKey]);
 
   useEffect(() => () => {
     if (debounceRef.current) {
@@ -441,45 +624,11 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                     return null;
                   }
 
-                  const safeLocation = {
-                    ...location,
-                    type: location.type || "city",
-                    name: location.name || location.displayName || "Unknown Location",
-                    code: location.code || location.iata || location.icao || "N/A",
-                    displayName: location.displayName || location.name || "Unknown Location",
-                    label: location.label || location.displayName || location.name || "Unknown Location",
-                    country: location.country || location.countryName || "Unknown Country",
-                    countryName:
-                      typeof location.countryName === "string" && location.countryName.length > 0
-                        ? location.countryName
-                        : typeof location.country === "string" && location.country.length > 0
-                          ? location.country
-                          : null,
-                    cityName:
-                      typeof location.cityName === "string" && location.cityName.length > 0
-                        ? location.cityName
-                        : null,
-                    state: location.state,
-                    airports: Array.isArray(location.airports) ? location.airports : [],
-                    iata:
-                      typeof location.iata === "string" && location.iata.trim().length > 0
-                        ? location.iata.trim().toUpperCase()
-                        : null,
-                    icao:
-                      typeof location.icao === "string" && location.icao.trim().length > 0
-                        ? location.icao.trim().toUpperCase()
-                        : null,
-                    distanceKm:
-                      typeof location.distanceKm === "number" && Number.isFinite(location.distanceKm)
-                        ? location.distanceKm
-                        : null,
-                  } satisfies LocationResult;
-
                   const isActive = index === activeIndex;
 
                   return (
                     <div
-                      key={`${safeLocation.type}-${safeLocation.code}-${index}`}
+                      key={`${location.type}-${location.code}-${index}`}
                       id={`${listboxId}-option-${index}`}
                       role="option"
                       aria-selected={isActive}
@@ -490,39 +639,39 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                         // Prevent blur before click handler executes
                         event.preventDefault();
                       }}
-                      onClick={() => handleLocationClick(safeLocation)}
+                      onClick={() => handleLocationClick(location)}
                       onMouseEnter={() => setActiveIndex(index)}
                     >
                       <div className="flex items-center gap-2">
-                        {getLocationIcon(safeLocation.type)}
+                        {getLocationIcon(location.type)}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{safeLocation.displayName}</span>
-                            <Badge variant="outline" className={getTypeColor(safeLocation.type)}>
-                              {safeLocation.type === "metro" ? "metro area" : safeLocation.type}
+                            <span className="font-medium">{location.displayName}</span>
+                            <Badge variant="outline" className={getTypeColor(location.type)}>
+                              {location.type === "metro" ? "metro area" : location.type}
                             </Badge>
                           </div>
                           <div className="text-sm text-gray-600">
-                            {safeLocation.type === "airport"
-                              ? [safeLocation.cityName, safeLocation.countryName ?? safeLocation.country]
+                            {location.type === "airport"
+                              ? [location.cityName, location.countryName ?? location.country]
                                   .filter(Boolean)
                                   .join(", ")
-                              : safeLocation.countryName ?? safeLocation.country}
-                            {safeLocation.type === "metro" && safeLocation.airports && (
+                              : location.countryName ?? location.country}
+                            {location.type === "metro" && location.airports && (
                               <div className="mt-1 text-xs text-blue-600">
-                                Multiple airports: {safeLocation.airports.join(", ")}
+                                Multiple airports: {location.airports.join(", ")}
                               </div>
                             )}
                           </div>
-                          {safeLocation.type === "city" && safeLocation.airports && safeLocation.airports.length > 0 && (
+                          {location.type === "city" && location.airports && location.airports.length > 0 && (
                             <div className="mt-1 text-xs text-gray-500">
-                              Airports: {safeLocation.airports.slice(0, 3).join(", ")}
-                              {safeLocation.airports.length > 3 && ` +${safeLocation.airports.length - 3} more`}
+                              Airports: {location.airports.slice(0, 3).join(", ")}
+                              {location.airports.length > 3 && ` +${location.airports.length - 3} more`}
                             </div>
                           )}
                         </div>
                         <div className="text-sm font-mono text-gray-600">
-                          {safeLocation.iata ?? safeLocation.code}
+                          {location.iata ?? location.code}
                         </div>
                       </div>
                     </div>
