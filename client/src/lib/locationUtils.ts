@@ -49,9 +49,232 @@ class LocationUtils {
   private static readonly CACHE_STORE_NAME = 'locations';
   private static readonly CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
   private static readonly BROWSER_STORAGE_KEY = 'location_cache';
-  
+  private static readonly NORMALISED_TYPES = new Set<LocationResult['type']>([
+    'AIRPORT',
+    'CITY',
+    'COUNTRY',
+  ]);
+
   private static db: IDBDatabase | null = null;
   private static indexedDBSupported = typeof indexedDB !== 'undefined';
+
+  private static normaliseType(value: unknown): LocationResult['type'] {
+    if (typeof value === 'string') {
+      const upper = value.trim().toUpperCase();
+      if (this.NORMALISED_TYPES.has(upper as LocationResult['type'])) {
+        return upper as LocationResult['type'];
+      }
+
+      if (upper === 'AIRPORTS') {
+        return 'AIRPORT';
+      }
+
+      if (upper === 'METRO' || upper === 'METROPOLITAN') {
+        return 'CITY';
+      }
+    }
+
+    return 'CITY';
+  }
+
+  private static coerceString(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+
+    return undefined;
+  }
+
+  private static coerceNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+  }
+
+  private static normaliseAlternativeNames(
+    rawNames: unknown,
+    additional: Array<string | undefined>,
+  ): string[] {
+    const collected: string[] = [];
+
+    const pushName = (name?: string) => {
+      if (!name) {
+        return;
+      }
+      const trimmed = name.trim();
+      if (trimmed.length > 0) {
+        collected.push(trimmed);
+      }
+    };
+
+    if (Array.isArray(rawNames)) {
+      for (const value of rawNames) {
+        if (typeof value === 'string') {
+          pushName(value);
+        }
+      }
+    } else if (rawNames && typeof rawNames === 'object') {
+      for (const value of Object.values(rawNames)) {
+        if (typeof value === 'string') {
+          pushName(value);
+        } else if (Array.isArray(value)) {
+          for (const nested of value) {
+            if (typeof nested === 'string') {
+              pushName(nested);
+            }
+          }
+        }
+      }
+    } else if (typeof rawNames === 'string') {
+      pushName(rawNames);
+    }
+
+    for (const value of additional) {
+      pushName(value);
+    }
+
+    const unique = new Set(collected);
+    return Array.from(unique);
+  }
+
+  private static mapToLocationResult(raw: unknown): LocationResult | null {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+
+    const record = raw as Record<string, unknown>;
+
+    const type = this.normaliseType(record.type);
+    const rawName = this.coerceString(record.name)
+      ?? this.coerceString(record.cityName)
+      ?? this.coerceString(record.city_name);
+
+    const iataRaw = this.coerceString(record.iata)
+      ?? this.coerceString(record.iataCode)
+      ?? this.coerceString(record.iata_code);
+    const icaoRaw = this.coerceString(record.icao)
+      ?? this.coerceString(record.icaoCode)
+      ?? this.coerceString(record.icao_code);
+
+    const iataCode = iataRaw ? iataRaw.toUpperCase() : undefined;
+    const icaoCode = icaoRaw ? icaoRaw.toUpperCase() : undefined;
+
+    const countryCodeRaw = this.coerceString(record.countryCode)
+      ?? this.coerceString(record.country_code)
+      ?? this.coerceString(record.country);
+    const countryName = this.coerceString(record.countryName)
+      ?? this.coerceString(record.country_name);
+    const countryCode = countryCodeRaw
+      ? countryCodeRaw.toUpperCase()
+      : countryName && countryName.length === 2
+        ? countryName.toUpperCase()
+        : undefined;
+
+    const label = this.coerceString(record.label);
+    const displayNameRaw = this.coerceString(record.displayName)
+      ?? this.coerceString(record.display_name)
+      ?? label;
+    const defaultDisplayName = [rawName, countryCode ?? countryName]
+      .filter((value): value is string => Boolean(value))
+      .join(', ');
+    const displayName = displayNameRaw
+      ?? (type === 'AIRPORT' && iataCode ? `${rawName ?? ''} (${iataCode})`.trim() : undefined)
+      ?? defaultDisplayName
+      ?? rawName
+      ?? iataCode
+      ?? icaoCode
+      ?? '';
+
+    const detailedName = this.coerceString(record.detailedName)
+      ?? this.coerceString(record.detailed_name)
+      ?? displayName;
+
+    const id = this.coerceString(record.id)
+      ?? this.coerceString(record.code)
+      ?? iataCode
+      ?? icaoCode
+      ?? (rawName ?? displayName);
+
+    if (!id) {
+      return null;
+    }
+
+    const cityCodeRaw = this.coerceString(record.cityCode)
+      ?? this.coerceString(record.city_code);
+    const cityCode = cityCodeRaw ? cityCodeRaw.toUpperCase() : undefined;
+
+    const relevance = this.coerceNumber(record.relevance) ?? 0;
+    const latitude = this.coerceNumber(record.latitude);
+    const longitude = this.coerceNumber(record.longitude);
+    const region = this.coerceString(record.region)
+      ?? this.coerceString(record.state)
+      ?? this.coerceString(record.stateCode)
+      ?? this.coerceString(record.state_code);
+    const timeZone = this.coerceString(record.timeZone)
+      ?? this.coerceString(record.timezone)
+      ?? this.coerceString(record.time_zone);
+    const currencyCodeRaw = this.coerceString(record.currencyCode)
+      ?? this.coerceString(record.currency_code)
+      ?? this.coerceString(record.currency);
+    const currencyCode = currencyCodeRaw ? currencyCodeRaw.toUpperCase() : undefined;
+    const isPopular = typeof record.isPopular === 'boolean'
+      ? record.isPopular
+      : Boolean(record.popular);
+
+    const alternativeNames = this.normaliseAlternativeNames(
+      record.alternativeNames ?? record.alternative_names,
+      [label, displayName, detailedName, rawName, countryName, cityCode, iataCode, icaoCode],
+    );
+
+    return {
+      id,
+      name: rawName ?? displayName,
+      type,
+      iataCode,
+      icaoCode,
+      cityCode,
+      countryCode,
+      latitude,
+      longitude,
+      detailedName,
+      relevance,
+      displayName,
+      region,
+      timeZone,
+      currencyCode,
+      isPopular,
+      alternativeNames,
+    };
+  }
+
+  private static normaliseSearchResults(data: unknown): LocationResult[] {
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    const results: LocationResult[] = [];
+
+    for (const item of data) {
+      const normalised = this.mapToLocationResult(item);
+      if (normalised) {
+        results.push(normalised);
+      }
+    }
+
+    return results;
+  }
 
   // Initialize IndexedDB for client-side caching
   private static async initDB(): Promise<IDBDatabase> {
@@ -227,7 +450,7 @@ class LocationUtils {
     // Try cache first
     const cachedResult = await this.getCache(cacheKey);
     if (cachedResult) {
-      return cachedResult;
+      return this.normaliseSearchResults(cachedResult);
     }
 
     // Make API request
@@ -252,11 +475,12 @@ class LocationUtils {
       }
 
       const results = await response.json();
-      
+      const normalisedResults = this.normaliseSearchResults(results);
+
       // Cache the results for 1 hour
-      await this.setCache(cacheKey, results, Date.now() + (60 * 60 * 1000));
-      
-      return results;
+      await this.setCache(cacheKey, normalisedResults, Date.now() + (60 * 60 * 1000));
+
+      return normalisedResults;
     } catch (error) {
       console.error('Location search failed:', error);
       return [];

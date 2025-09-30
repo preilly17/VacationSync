@@ -223,12 +223,12 @@ export default function LocationSearch({
     for (const result of results) {
       enhanced.push(result);
       
-      if (result.type === 'CITY') {
+      if (result.type && result.type.toUpperCase() === 'CITY') {
         try {
           const airportResponse = await apiFetch(
             buildSearchUrl(result.name, { type: 'AIRPORT', limit: 5 }),
           );
-          
+
           if (airportResponse.ok) {
             const airports = await airportResponse.json();
             enhanced.push(...airports.slice(0, 3)); // Limit to 3 airports per city
