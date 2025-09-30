@@ -86,6 +86,16 @@ interface LocationSearchResult {
   currencyCode?: string;
   isPopular: boolean;
   alternativeNames: string[];
+  code?: string;
+  label?: string;
+  countryName?: string | null;
+  country?: string | null;
+  cityName?: string | null;
+  state?: string | null;
+  source?: string | null;
+  distanceKm?: number | null;
+  geonameId?: string | number | null;
+  population?: number | null;
 }
 
 class LocationService {
@@ -161,6 +171,272 @@ class LocationService {
     } catch (error) {
       console.error('Failed to create cache directory:', error);
     }
+  }
+
+  private normalizeString(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value);
+    }
+
+    return undefined;
+  }
+
+  private normalizeCode(value: unknown): string | undefined {
+    const normalized = this.normalizeString(value);
+    return normalized ? normalized.toUpperCase() : undefined;
+  }
+
+  private normalizeNumber(value: unknown): number | undefined {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    }
+
+    return undefined;
+  }
+
+  private normalizeBoolean(value: unknown): boolean | undefined {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+        return true;
+      }
+      if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
+        return false;
+      }
+    }
+
+    return undefined;
+  }
+
+  private normalizeId(value: unknown): string | number | undefined {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    return undefined;
+  }
+
+  private normalizeLocationType(value: unknown): 'AIRPORT' | 'CITY' | 'COUNTRY' | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim().toUpperCase();
+
+    if (normalized === 'AIRPORT' || normalized === 'AIRPORTS') {
+      return 'AIRPORT';
+    }
+
+    if (normalized === 'COUNTRY' || normalized === 'COUNTRIES') {
+      return 'COUNTRY';
+    }
+
+    if (
+      normalized === 'CITY' ||
+      normalized === 'CITIES' ||
+      normalized === 'METRO' ||
+      normalized === 'METROPOLITAN' ||
+      normalized === 'STATE' ||
+      normalized === 'STATES'
+    ) {
+      return 'CITY';
+    }
+
+    return undefined;
+  }
+
+  private ensureLocationType(value: unknown, fallback: 'AIRPORT' | 'CITY' | 'COUNTRY' = 'CITY'): 'AIRPORT' | 'CITY' | 'COUNTRY' {
+    return this.normalizeLocationType(value) ?? fallback;
+  }
+
+  private normalizeRequestedTypes(
+    type?: unknown,
+    types?: Array<unknown> | unknown,
+  ): Array<'AIRPORT' | 'CITY' | 'COUNTRY'> {
+    const collected: unknown[] = [];
+
+    if (Array.isArray(types)) {
+      collected.push(...types);
+    } else if (typeof types !== 'undefined') {
+      collected.push(types);
+    }
+
+    if (typeof type !== 'undefined') {
+      collected.push(type);
+    }
+
+    const normalized = collected
+      .flatMap((entry) => {
+        if (typeof entry === 'string') {
+          return entry.split(',');
+        }
+
+        return [entry];
+      })
+      .map((entry) => this.normalizeLocationType(entry))
+      .filter((entry): entry is 'AIRPORT' | 'CITY' | 'COUNTRY' => Boolean(entry));
+
+    return Array.from(new Set(normalized));
+  }
+
+  private normalizeAlternativeNames(raw: any, extras: Array<string | undefined>): string[] {
+    const collected = new Set<string>();
+
+    const push = (value: unknown) => {
+      const normalized = this.normalizeString(value);
+      if (normalized) {
+        collected.add(normalized);
+      }
+    };
+
+    if (Array.isArray(raw?.alternativeNames)) {
+      raw.alternativeNames.forEach(push);
+    }
+
+    if (Array.isArray(raw?.alternative_names)) {
+      raw.alternative_names.forEach(push);
+    }
+
+    if (raw?.nicknames) {
+      if (Array.isArray(raw.nicknames)) {
+        raw.nicknames.forEach(push);
+      } else if (typeof raw.nicknames === 'object') {
+        Object.values(raw.nicknames).forEach(push);
+      } else {
+        push(raw.nicknames);
+      }
+    }
+
+    extras.forEach(push);
+
+    return Array.from(collected);
+  }
+
+  private normalizeResultShape(raw: Partial<LocationSearchResult> & Record<string, any>): LocationSearchResult {
+    const type = this.ensureLocationType(raw.type ?? raw.subType);
+    const name = this.normalizeString(raw.name)
+      ?? this.normalizeString(raw.displayName)
+      ?? this.normalizeString(raw.detailedName)
+      ?? this.normalizeString(raw.cityName)
+      ?? this.normalizeString(raw.label)
+      ?? 'Unknown Location';
+
+    const iataCode = this.normalizeCode(raw.iataCode ?? raw.iata);
+    const icaoCode = this.normalizeCode(raw.icaoCode ?? raw.icao);
+    const cityCode = this.normalizeCode(raw.cityCode ?? raw.address?.cityCode);
+    const countryCode = this.normalizeCode(raw.countryCode ?? raw.address?.countryCode ?? raw.country_code ?? raw.country);
+    const region = this.normalizeString(raw.region ?? raw.address?.stateCode ?? raw.state ?? raw.regionCode);
+    const latitude = this.normalizeNumber(
+      raw.latitude ?? raw.geoCode?.latitude ?? raw.coordinates?.lat ?? raw.lat ?? raw.latitudeDegrees,
+    );
+    const longitude = this.normalizeNumber(
+      raw.longitude ?? raw.geoCode?.longitude ?? raw.coordinates?.lng ?? raw.lon ?? raw.lng ?? raw.longitudeDegrees,
+    );
+
+    const resolvedDisplayName = this.normalizeString(raw.displayName ?? raw.label)
+      ?? (iataCode ? `${name} (${iataCode})` : name);
+    const detailedName = this.normalizeString(raw.detailedName) ?? resolvedDisplayName;
+    const currencyCode = this.normalizeCode(raw.currencyCode);
+    const timeZone = this.normalizeString(raw.timeZone ?? raw.timezone ?? raw.time_zone);
+
+    const relevance = this.normalizeNumber(raw.relevance ?? raw.score ?? raw.population ?? raw.rank) ?? 0;
+    const popularityFlag = this.normalizeBoolean(raw.isPopular);
+
+    const id = this.normalizeId(raw.id ?? raw.geonameId ?? raw.geoNameId ?? raw.code ?? iataCode ?? icaoCode ?? name)
+      ?? `${type}-${name}`;
+
+    const alternativeNames = this.normalizeAlternativeNames(raw, [iataCode, icaoCode, cityCode, raw.code]);
+
+    const result: LocationSearchResult = {
+      id: typeof id === 'number' ? String(id) : id,
+      name,
+      type,
+      iataCode: iataCode ?? undefined,
+      icaoCode: icaoCode ?? undefined,
+      cityCode: cityCode ?? undefined,
+      countryCode: countryCode ?? undefined,
+      latitude: latitude ?? undefined,
+      longitude: longitude ?? undefined,
+      detailedName,
+      relevance,
+      displayName: resolvedDisplayName,
+      region: region ?? undefined,
+      timeZone: timeZone ?? undefined,
+      currencyCode: currencyCode ?? undefined,
+      isPopular: popularityFlag ?? this.POPULAR_DESTINATIONS.includes(name),
+      alternativeNames,
+    };
+
+    const enrichedResult = result as LocationSearchResult & Record<string, any>;
+
+    const code = this.normalizeCode(raw.code ?? iataCode ?? icaoCode ?? cityCode ?? countryCode);
+    if (code) {
+      enrichedResult.code = code;
+    }
+
+    enrichedResult.label = this.normalizeString(raw.label) ?? resolvedDisplayName;
+    const countryName = this.normalizeString(raw.countryName ?? raw.address?.countryName ?? raw.country);
+    if (countryName) {
+      enrichedResult.countryName = countryName;
+      enrichedResult.country = countryName;
+    } else if (countryCode) {
+      enrichedResult.countryName = countryCode;
+      enrichedResult.country = countryCode;
+    } else {
+      enrichedResult.countryName = null;
+      enrichedResult.country = null;
+    }
+
+    const cityName = this.normalizeString(raw.cityName ?? raw.address?.cityName ?? raw.city)
+      ?? (type === 'CITY' ? name : undefined);
+    enrichedResult.cityName = cityName ?? null;
+
+    const state = this.normalizeString(raw.state ?? raw.address?.stateCode ?? raw.stateCode ?? region);
+    enrichedResult.state = state ?? null;
+
+    const source = this.normalizeString(raw.source ?? raw.origin ?? raw.provider);
+    enrichedResult.source = source ?? null;
+
+    const distanceKm = this.normalizeNumber(raw.distanceKm ?? raw.distance_km);
+    enrichedResult.distanceKm = typeof distanceKm === 'number' ? distanceKm : null;
+
+    const geonameId = this.normalizeId(raw.geonameId ?? raw.geoNameId ?? raw.geoname_id);
+    enrichedResult.geonameId = typeof geonameId !== 'undefined' ? geonameId : null;
+
+    const population = this.normalizeNumber(raw.population);
+    enrichedResult.population = typeof population === 'number' ? population : null;
+
+    return result;
+  }
+
+  private normalizeLimit(value: unknown, fallback = 10, max = 50): number {
+    const normalized = this.normalizeNumber(value);
+
+    if (!normalized) {
+      return fallback;
+    }
+
+    const bounded = Math.max(1, Math.min(max, Math.floor(normalized)));
+    return Number.isFinite(bounded) ? bounded : fallback;
   }
 
   private async getAmadeusToken(): Promise<string> {
@@ -643,16 +919,17 @@ class LocationService {
       { name: 'Chicago', code: 'ORD', type: 'AIRPORT' }
     ];
 
-    return popularDestinations.slice(0, limit).map(dest => ({
+    return popularDestinations.slice(0, limit).map(dest => this.normalizeResultShape({
       id: `popular-${dest.code}`,
       name: dest.name,
-      type: dest.type as 'AIRPORT' | 'CITY' | 'COUNTRY',
+      type: dest.type,
       iataCode: dest.code,
       detailedName: `${dest.name} (${dest.code})`,
       displayName: `${dest.name} (${dest.code})`,
       relevance: 100,
       isPopular: true,
-      alternativeNames: [dest.code]
+      alternativeNames: [dest.code],
+      source: 'popular-destinations'
     }));
   }
 
@@ -744,14 +1021,16 @@ class LocationService {
           displayName: `${dest.name} (${dest.code})`,
           relevance: maxScore,
           isPopular: true,
-          alternativeNames: [dest.code]
+          alternativeNames: [dest.code],
+          source: 'fallback-dataset'
         });
       }
     }
 
     return results
       .sort((a, b) => b.relevance - a.relevance)
-      .slice(0, limit);
+      .slice(0, limit)
+      .map(result => this.normalizeResultShape(result));
   }
 
   async searchLocations(
@@ -760,15 +1039,17 @@ class LocationService {
     limit = 10,
     useApi = false
   ): Promise<LocationSearchResult[]> {
+    const normalizedLimit = this.normalizeLimit(limit);
+
     if (!query || query.trim().length < 2) {
       return [];
     }
-    
+
     // Handle popular destinations request
     if (query.toLowerCase() === 'popular') {
-      return this.getPopularDestinations(limit);
+      return this.getPopularDestinations(normalizedLimit);
     }
-    
+
     // Handle nickname expansion
     const normalizedQuery = this.normalizeForSearch(query);
     const expandedQuery = this.expandQueryWithNicknames(query);
@@ -812,7 +1093,7 @@ class LocationService {
     
     // If no cached data available, use fallback destinations
     if (allLocations.length === 0) {
-      return this.searchFallbackDestinations(query, type, limit);
+      return this.searchFallbackDestinations(query, type, normalizedLimit);
     }
     
     // Filter by type if specified
@@ -887,16 +1168,48 @@ class LocationService {
     return scoredResults
       .filter(item => item.score > 0)
       .sort((a, b) => b.score - a.score)
+      .slice(0, normalizedLimit)
+      .map(item => this.normalizeResultShape(item.result));
+  }
+
+  async searchLocationsForApi(params: {
+    query: string;
+    type?: unknown;
+    types?: Array<unknown> | unknown;
+    limit?: unknown;
+    useApi?: unknown;
+  }): Promise<LocationSearchResult[]> {
+    const query = this.normalizeString(params.query)?.trim();
+
+    if (!query || query.length < 2) {
+      return [];
+    }
+
+    const limit = this.normalizeLimit(params.limit ?? 10);
+    const useApi = this.normalizeBoolean(params.useApi) ?? false;
+    const normalizedTypes = this.normalizeRequestedTypes(params.type, params.types);
+
+    const needsAllTypes = normalizedTypes.length !== 1;
+    const searchType = needsAllTypes ? undefined : normalizedTypes[0];
+    const searchLimit = needsAllTypes ? Math.max(limit * (normalizedTypes.length || 1), limit) : limit;
+
+    const baseResults = await this.searchLocations(query, searchType, searchLimit, useApi);
+
+    const filteredResults = normalizedTypes.length > 0
+      ? baseResults.filter(result => normalizedTypes.includes(result.type))
+      : baseResults;
+
+    return filteredResults
       .slice(0, limit)
-      .map(item => item.result);
+      .map(result => this.normalizeResultShape(result));
   }
 
   private mapLocationToResult(location: AmadeusLocation, relevance?: number): LocationSearchResult {
     const countryCode = location.address?.countryCode;
-    const displayName = location.address?.countryName 
+    const displayName = location.address?.countryName
       ? `${location.name} (${location.address.countryName})`
       : location.name;
-    
+
     return {
       id: location.id,
       name: location.name,
@@ -914,7 +1227,12 @@ class LocationService {
       timeZone: this.getTimeZoneForLocation(location),
       currencyCode: countryCode ? this.getCurrencyForCountry(countryCode) : undefined,
       isPopular: this.POPULAR_DESTINATIONS.includes(location.name),
-      alternativeNames: this.getAlternativeNames(location)
+      alternativeNames: this.getAlternativeNames(location),
+      countryName: location.address?.countryName ?? null,
+      country: location.address?.countryName ?? null,
+      cityName: location.address?.cityName ?? null,
+      state: location.address?.stateCode ?? null,
+      source: 'amadeus'
     };
   }
 
