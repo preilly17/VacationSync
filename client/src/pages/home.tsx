@@ -358,6 +358,8 @@ export default function Home() {
   const howItWorksDescriptionId = useId();
   const converterButtonRef = useRef<HTMLButtonElement | null>(null);
   const howItWorksButtonRef = useRef<HTMLButtonElement | null>(null);
+  const howItWorksCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const converterCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const shouldRestoreHowItWorksFocus = useRef(true);
   const upcomingSectionRef = useRef<HTMLHeadingElement | null>(null);
   const [isConverterOpen, setIsConverterOpen] = useState(false);
@@ -379,11 +381,6 @@ export default function Home() {
     },
     [converterButtonRef, setIsConverterOpen],
   );
-  const handleConverterClose = useCallback(() => {
-    setIsConverterOpen(false);
-    converterButtonRef.current?.focus();
-  }, [converterButtonRef, setIsConverterOpen]);
-
   const handleOpenProfile = useCallback(() => {
     setLocation("/profile");
   }, [setLocation]);
@@ -392,6 +389,39 @@ export default function Home() {
     setHowItWorksLoaded(true);
     setIsHowItWorksOpen(true);
   }, []);
+
+  const focusElement = useCallback((element: HTMLElement | null) => {
+    if (!element) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      element.focus();
+      return;
+    }
+    window.requestAnimationFrame(() => {
+      element.focus();
+    });
+  }, []);
+
+  const handleHowItWorksOpenAutoFocus = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+      focusElement(howItWorksCloseButtonRef.current);
+    },
+    [focusElement],
+  );
+
+  const handleDialogCloseAutoFocus = useCallback((event: Event) => {
+    event.preventDefault();
+  }, []);
+
+  const handleConverterOpenAutoFocus = useCallback(
+    (event: Event) => {
+      event.preventDefault();
+      focusElement(converterCloseButtonRef.current);
+    },
+    [focusElement],
+  );
 
   const handleHowItWorksOpenChange = useCallback(
     (open: boolean) => {
@@ -839,6 +869,9 @@ export default function Home() {
         onOpenExpenses={handleHowItWorksOpenExpenses}
         onOpenPacking={handleHowItWorksOpenPacking}
         onOpenPreferences={handleHowItWorksPreferences}
+        onClose={() => handleHowItWorksOpenChange(false)}
+        closeButtonRef={howItWorksCloseButtonRef}
+        mobile={!isDesktop}
       />
     </Suspense>
   ) : (
@@ -897,6 +930,8 @@ export default function Home() {
                 className="w-full max-w-3xl gap-0 overflow-hidden rounded-[32px] border border-slate-200/80 bg-white p-0 shadow-2xl"
                 aria-labelledby={howItWorksTitleId}
                 aria-describedby={howItWorksDescriptionId}
+                onOpenAutoFocus={handleHowItWorksOpenAutoFocus}
+                onCloseAutoFocus={handleDialogCloseAutoFocus}
               >
                 {howItWorksContent}
               </DialogContent>
@@ -905,29 +940,54 @@ export default function Home() {
             <Sheet open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
               <SheetContent
                 side="bottom"
-                className="h-[100dvh] max-h-[100dvh] w-full max-w-full gap-0 overflow-hidden rounded-t-[32px] border-none bg-white p-0 shadow-2xl"
+                className="flex h-[100dvh] max-h-[100dvh] w-full max-w-full flex-col gap-0 overflow-hidden rounded-t-[32px] border-none bg-white p-0 shadow-2xl"
                 aria-labelledby={howItWorksTitleId}
                 aria-describedby={howItWorksDescriptionId}
+                onOpenAutoFocus={handleHowItWorksOpenAutoFocus}
+                onCloseAutoFocus={handleDialogCloseAutoFocus}
               >
                 {howItWorksContent}
               </SheetContent>
             </Sheet>
           )}
 
-          <Dialog open={isConverterOpen} onOpenChange={handleConverterVisibilityChange}>
-            <DialogContent
-              id={converterDialogId}
-              className="w-full max-w-[560px] rounded-3xl border border-slate-200/80 bg-white p-6 shadow-2xl"
-            >
-              <CurrencyConverterTool
-                onClose={handleConverterClose}
-                lastConversion={lastConversion}
-                onConversion={handleConversionUpdate}
-                mobile={!isDesktop}
-                autoFocusAmount={isConverterOpen}
-              />
-            </DialogContent>
-          </Dialog>
+          {isDesktop ? (
+            <Dialog open={isConverterOpen} onOpenChange={handleConverterVisibilityChange}>
+              <DialogContent
+                id={converterDialogId}
+                className="w-full max-w-[560px] gap-0 overflow-hidden rounded-3xl border border-slate-200/80 bg-white p-0 shadow-2xl"
+                onOpenAutoFocus={handleConverterOpenAutoFocus}
+                onCloseAutoFocus={handleDialogCloseAutoFocus}
+              >
+                <CurrencyConverterTool
+                  onClose={() => handleConverterVisibilityChange(false)}
+                  lastConversion={lastConversion}
+                  onConversion={handleConversionUpdate}
+                  mobile={!isDesktop}
+                  autoFocusAmount={isConverterOpen}
+                  closeButtonRef={converterCloseButtonRef}
+                />
+              </DialogContent>
+            </Dialog>
+          ) : (
+            <Sheet open={isConverterOpen} onOpenChange={handleConverterVisibilityChange}>
+              <SheetContent
+                side="bottom"
+                className="flex h-[100dvh] max-h-[100dvh] w-full max-w-full flex-col gap-0 overflow-hidden rounded-t-[32px] border-none bg-white p-0 shadow-2xl"
+                onOpenAutoFocus={handleConverterOpenAutoFocus}
+                onCloseAutoFocus={handleDialogCloseAutoFocus}
+              >
+                <CurrencyConverterTool
+                  onClose={() => handleConverterVisibilityChange(false)}
+                  lastConversion={lastConversion}
+                  onConversion={handleConversionUpdate}
+                  mobile={!isDesktop}
+                  autoFocusAmount={isConverterOpen}
+                  closeButtonRef={converterCloseButtonRef}
+                />
+              </SheetContent>
+            </Sheet>
+          )}
 
           <section
             aria-labelledby="dashboard-hero"

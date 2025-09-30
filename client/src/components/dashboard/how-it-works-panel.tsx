@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, type RefObject } from "react";
 import {
   ArrowUpRight,
   CalendarDays,
@@ -8,10 +8,12 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import ModalLayout from "@/components/dashboard/modal-layout";
 
 interface HowItWorksPanelProps {
   titleId: string;
   descriptionId: string;
+  onClose: () => void;
   onDismiss: () => void;
   onCreateTrip: () => void;
   onInviteMembers: () => void;
@@ -20,6 +22,8 @@ interface HowItWorksPanelProps {
   onOpenExpenses: () => void;
   onOpenPacking: () => void;
   onOpenPreferences: () => void;
+  closeButtonRef?: RefObject<HTMLButtonElement>;
+  mobile?: boolean;
 }
 
 type Benefit = {
@@ -70,6 +74,7 @@ const benefits: Benefit[] = [
 export default function HowItWorksPanel({
   titleId,
   descriptionId,
+  onClose,
   onDismiss,
   onCreateTrip,
   onInviteMembers,
@@ -78,6 +83,8 @@ export default function HowItWorksPanel({
   onOpenExpenses,
   onOpenPacking,
   onOpenPreferences,
+  closeButtonRef,
+  mobile = false,
 }: HowItWorksPanelProps) {
   const flowSteps: FlowStep[] = [
     {
@@ -127,24 +134,57 @@ export default function HowItWorksPanel({
   ];
 
   return (
-    <div className="flex h-full flex-col bg-white">
-      <div className="flex-1 overflow-y-auto px-6 pb-28 pt-10 sm:px-10">
-        <header className="space-y-4">
+    <ModalLayout
+      onClose={onClose}
+      closeButtonRef={closeButtonRef}
+      closeLabel="Close how it works"
+      headerClassName={`px-6 ${mobile ? "pt-6" : "pt-8"} pb-4 sm:px-10 ${mobile ? "sm:pt-8" : "sm:pt-10"}`}
+      bodyClassName={`px-6 pb-10 pt-2 sm:px-10 ${mobile ? "sm:pb-10" : "sm:pb-12"}`}
+      footerClassName="border-t border-slate-200 bg-white/95 px-6 py-5 backdrop-blur sm:px-10"
+      header={
+        <div className="space-y-4">
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.2em] text-slate-600">
             <Sparkles className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
             How it works
           </div>
           <div className="space-y-3">
-            <h1 id={titleId} className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
+            <h1
+              id={titleId}
+              className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl"
+            >
               How TripSync Works
             </h1>
-            <p id={descriptionId} className="max-w-2xl text-base text-slate-600 sm:text-lg">
+            <p
+              id={descriptionId}
+              className="max-w-2xl text-base text-slate-600 sm:text-lg"
+            >
               Plan amazing group trips with collaborative tools — all in one place.
             </p>
           </div>
-        </header>
-
-        <section aria-labelledby="how-it-works-why" className="mt-10 space-y-4">
+        </div>
+      }
+      footer={
+        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-11 rounded-full px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-900"
+            onClick={onCreateTrip}
+          >
+            Create a trip
+          </Button>
+          <Button
+            type="button"
+            className="h-11 rounded-full bg-sky-600 px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+            onClick={onDismiss}
+          >
+            Got it
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-12">
+        <section aria-labelledby="how-it-works-why" className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <h2 id="how-it-works-why" className="text-lg font-semibold text-slate-900">
               Why TripSync
@@ -165,7 +205,7 @@ export default function HowItWorksPanel({
           </div>
         </section>
 
-        <section aria-labelledby="how-it-works-flow" className="mt-12 space-y-5">
+        <section aria-labelledby="how-it-works-flow" className="space-y-5">
           <div className="space-y-2">
             <h2 id="how-it-works-flow" className="text-lg font-semibold text-slate-900">
               The flow
@@ -202,7 +242,7 @@ export default function HowItWorksPanel({
           </div>
         </section>
 
-        <section aria-labelledby="how-it-works-tips" className="mt-12 space-y-4">
+        <section aria-labelledby="how-it-works-tips" className="space-y-4">
           <h2 id="how-it-works-tips" className="text-lg font-semibold text-slate-900">
             Tips
           </h2>
@@ -229,26 +269,6 @@ export default function HowItWorksPanel({
           </div>
         </section>
       </div>
-
-      <footer className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-6 py-5 backdrop-blur sm:px-10">
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-11 rounded-full px-5 text-sm font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-            onClick={onCreateTrip}
-          >
-            Create a trip
-          </Button>
-          <Button
-            type="button"
-            className="h-11 rounded-full bg-sky-600 px-6 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
-            onClick={onDismiss}
-          >
-            Got it
-          </Button>
-        </div>
-      </footer>
-    </div>
+    </ModalLayout>
   );
 }
