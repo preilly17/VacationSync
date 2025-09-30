@@ -19,7 +19,8 @@ import { format } from "date-fns";
 import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, ChevronDown, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { TravelLoading } from "@/components/LoadingSpinners";
-import SmartLocationSearch, { type LocationResult } from "@/components/SmartLocationSearch";
+import type { LocationResult } from "@/components/SmartLocationSearch";
+import FlightLocationSearch from "@/components/FlightLocationSearch";
 import type {
   FlightWithDetails,
   InsertFlight,
@@ -765,12 +766,11 @@ function FlightSearchPanel({
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <div className="space-y-2">
                     <Label htmlFor="departure">From</Label>
-                    <SmartLocationSearch
+                    <FlightLocationSearch
                       ref={fromInputRef}
                       id="departure"
                       placeholder="Search departure city or airport"
                       value={departureQuery}
-                      allowedTypes={['city', 'airport']}
                       onQueryChange={handleDepartureQueryChange}
                       onLocationSelect={handleDepartureLocationSelect}
                     />
@@ -814,11 +814,10 @@ function FlightSearchPanel({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="arrival">To</Label>
-                    <SmartLocationSearch
+                    <FlightLocationSearch
                       id="arrival"
                       placeholder="Search arrival city or airport"
                       value={arrivalQuery}
-                      allowedTypes={['city', 'airport']}
                       onQueryChange={handleArrivalQueryChange}
                       onLocationSelect={handleArrivalLocationSelect}
                     />
@@ -2658,10 +2657,10 @@ export default function FlightsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="departureAirport">From *</Label>
-                      <SmartLocationSearch
+                      <FlightLocationSearch
                         placeholder="Departure airport (e.g., JFK, New York)"
                         value={flightFormData.departureAirport}
-                        allowedTypes={['airport', 'city']}
+                        types="city,airport"
                         onQueryChange={(value) => {
                           setFlightFormData((prev) => ({
                             ...prev,
@@ -2684,10 +2683,10 @@ export default function FlightsPage() {
                     </div>
                     <div>
                       <Label htmlFor="arrivalAirport">To *</Label>
-                      <SmartLocationSearch
+                      <FlightLocationSearch
                         placeholder="Arrival airport (e.g., LAX, Los Angeles)"
                         value={flightFormData.arrivalAirport}
-                        allowedTypes={['airport', 'city']}
+                        types="city,airport"
                         onQueryChange={(value) => {
                           setFlightFormData((prev) => ({
                             ...prev,
