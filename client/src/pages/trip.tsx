@@ -710,14 +710,51 @@ export default function Trip() {
     }
   }, []);
 
-  useEffect(() => {
-    if (hasExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY)) {
-      setShouldShowFlightReturnPrompt(true);
+  const evaluateExternalRedirects = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
     }
+
+    if (hasExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY)) {
+      clearExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
+      setShouldShowFlightReturnPrompt(true);
+      setShouldShowHotelReturnPrompt(false);
+      return;
+    }
+
     if (hasExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY)) {
+      clearExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY);
       setShouldShowHotelReturnPrompt(true);
+      setShouldShowFlightReturnPrompt(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleFocus = () => {
+      evaluateExternalRedirects();
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        evaluateExternalRedirects();
+      }
+    };
+
+    evaluateExternalRedirects();
+
+    window.addEventListener("focus", handleFocus);
+    const doc = typeof document === "undefined" ? null : document;
+    doc?.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      doc?.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [evaluateExternalRedirects]);
 
   useEffect(() => {
     if (shouldShowFlightReturnPrompt) {
@@ -736,14 +773,16 @@ export default function Trip() {
   const handleFlightReturnNo = useCallback(() => {
     clearExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
     setShouldShowFlightReturnPrompt(false);
-  }, []);
+    evaluateExternalRedirects();
+  }, [evaluateExternalRedirects]);
 
   const handleFlightReturnYes = useCallback(() => {
     clearExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
     setShouldShowFlightReturnPrompt(false);
     setActiveTab("flights");
     setFlightManualOpenSignal((value) => value + 1);
-  }, []);
+    evaluateExternalRedirects();
+  }, [evaluateExternalRedirects]);
 
   const handleHotelReturnNo = useCallback(() => {
     clearExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY);
