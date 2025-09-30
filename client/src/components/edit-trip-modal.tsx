@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
+import { CoverPhotoSection, type CoverPhotoValue } from "@/components/cover-photo-section";
 
 interface EditTripModalProps {
   open: boolean;
@@ -50,6 +51,11 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+      coverPhotoAlt: trip.coverPhotoAlt ?? null,
+      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
     },
   });
 
@@ -61,6 +67,11 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         destination: trip.destination,
         startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
         endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+        coverPhotoUrl: trip.coverPhotoUrl ?? null,
+        coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+        coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+        coverPhotoAlt: trip.coverPhotoAlt ?? null,
+        coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
       });
       // Set destination for SmartLocationSearch
       setSelectedDestination({ 
@@ -128,6 +139,25 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     updateTripMutation.mutate(submitData);
   };
 
+  const handleCoverPhotoChange = useCallback(
+    (next: CoverPhotoValue) => {
+      form.setValue("coverPhotoUrl", next.coverPhotoUrl, { shouldDirty: true });
+      form.setValue("coverPhotoCardUrl", next.coverPhotoCardUrl, { shouldDirty: true });
+      form.setValue("coverPhotoThumbUrl", next.coverPhotoThumbUrl, { shouldDirty: true });
+      form.setValue("coverPhotoAlt", next.coverPhotoAlt, { shouldDirty: true });
+      form.setValue("coverPhotoAttribution", next.coverPhotoAttribution, { shouldDirty: true });
+    },
+    [form],
+  );
+
+  const coverPhotoValue: CoverPhotoValue = {
+    coverPhotoUrl: form.watch("coverPhotoUrl") ?? null,
+    coverPhotoCardUrl: form.watch("coverPhotoCardUrl") ?? null,
+    coverPhotoThumbUrl: form.watch("coverPhotoThumbUrl") ?? null,
+    coverPhotoAlt: form.watch("coverPhotoAlt") ?? null,
+    coverPhotoAttribution: form.watch("coverPhotoAttribution") ?? null,
+  };
+
   const handleDestinationSelect = (location: any) => {
     setSelectedDestination(location);
     // Don't update form state immediately - only on submit
@@ -160,6 +190,12 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <input type="hidden" {...form.register("coverPhotoUrl")} />
+          <input type="hidden" {...form.register("coverPhotoCardUrl")} />
+          <input type="hidden" {...form.register("coverPhotoThumbUrl")} />
+          <input type="hidden" {...form.register("coverPhotoAlt")} />
+          <input type="hidden" {...form.register("coverPhotoAttribution")} />
+
           <div>
             <Label htmlFor="name">Trip Name</Label>
             <Input
@@ -212,6 +248,12 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
               )}
             </div>
           </div>
+
+          <CoverPhotoSection
+            value={coverPhotoValue}
+            onChange={handleCoverPhotoChange}
+            defaultAltText={`Cover photo for ${form.watch("name") || trip.name}`}
+          />
 
           <div className="flex space-x-3 pt-4">
             <Button

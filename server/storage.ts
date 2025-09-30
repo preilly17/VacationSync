@@ -307,6 +307,11 @@ type TripRow = {
   latitude: string | number | null;
   longitude: string | number | null;
   population: string | number | null;
+  cover_photo_url: string | null;
+  cover_photo_card_url: string | null;
+  cover_photo_thumb_url: string | null;
+  cover_photo_alt: string | null;
+  cover_photo_attribution: string | null;
 };
 
 type TripMemberRow = {
@@ -993,6 +998,11 @@ const mapTrip = (row: TripRow): TripCalendar => ({
   latitude: toNumberOrNull(row.latitude),
   longitude: toNumberOrNull(row.longitude),
   population: toNumberOrNull(row.population),
+  coverPhotoUrl: row.cover_photo_url,
+  coverPhotoCardUrl: row.cover_photo_card_url,
+  coverPhotoThumbUrl: row.cover_photo_thumb_url,
+  coverPhotoAlt: row.cover_photo_alt,
+  coverPhotoAttribution: row.cover_photo_attribution,
 });
 
 const mapTripMember = (row: TripMemberRow): TripMember => ({
@@ -1552,6 +1562,11 @@ const mapFlightWithDetails = (row: FlightWithDetailsRow): FlightWithDetails => {
     latitude: null,
     longitude: null,
     population: null,
+    cover_photo_url: null,
+    cover_photo_card_url: null,
+    cover_photo_thumb_url: null,
+    cover_photo_alt: null,
+    cover_photo_attribution: null,
   };
 
   return {
@@ -1624,6 +1639,11 @@ const mapHotelWithDetails = (row: HotelWithDetailsRow): HotelWithDetails => {
     latitude: null,
     longitude: null,
     population: null,
+    cover_photo_url: null,
+    cover_photo_card_url: null,
+    cover_photo_thumb_url: null,
+    cover_photo_alt: null,
+    cover_photo_attribution: null,
   };
 
   return {
@@ -1679,6 +1699,11 @@ const mapRestaurantWithDetails = (
     latitude: null,
     longitude: null,
     population: null,
+    cover_photo_url: null,
+    cover_photo_card_url: null,
+    cover_photo_thumb_url: null,
+    cover_photo_alt: null,
+    cover_photo_attribution: null,
   };
 
   return {
@@ -1839,6 +1864,10 @@ export class DatabaseStorage implements IStorage {
   private packingInitPromise: Promise<void> | null = null;
 
   private packingInitialized = false;
+
+  private coverPhotoInitPromise: Promise<void> | null = null;
+
+  private coverPhotoColumnsInitialized = false;
 
   private async ensureWishListStructures(): Promise<void> {
     if (this.wishListInitialized) {
@@ -2068,6 +2097,32 @@ export class DatabaseStorage implements IStorage {
     } finally {
       this.packingInitPromise = null;
     }
+  }
+
+  private async ensureCoverPhotoColumns(): Promise<void> {
+    if (this.coverPhotoColumnsInitialized) {
+      return;
+    }
+
+    if (this.coverPhotoInitPromise) {
+      await this.coverPhotoInitPromise;
+      return;
+    }
+
+    this.coverPhotoInitPromise = (async () => {
+      await query(`
+        ALTER TABLE trip_calendars
+          ADD COLUMN IF NOT EXISTS cover_photo_url TEXT,
+          ADD COLUMN IF NOT EXISTS cover_photo_card_url TEXT,
+          ADD COLUMN IF NOT EXISTS cover_photo_thumb_url TEXT,
+          ADD COLUMN IF NOT EXISTS cover_photo_alt TEXT,
+          ADD COLUMN IF NOT EXISTS cover_photo_attribution TEXT
+      `);
+
+      this.coverPhotoColumnsInitialized = true;
+    })();
+
+    await this.coverPhotoInitPromise;
   }
 
   private async upsertActivityInvites(
@@ -2319,6 +2374,8 @@ export class DatabaseStorage implements IStorage {
     trip: InsertTripCalendar,
     userId: string,
   ): Promise<TripCalendar> {
+    await this.ensureCoverPhotoColumns();
+
     let shareCode = "";
     let attempts = 0;
 
@@ -2358,9 +2415,14 @@ export class DatabaseStorage implements IStorage {
         country_name,
         latitude,
         longitude,
-        population
+        population,
+        cover_photo_url,
+        cover_photo_card_url,
+        cover_photo_thumb_url,
+        cover_photo_alt,
+        cover_photo_attribution
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING
         id,
         name,
@@ -2375,7 +2437,12 @@ export class DatabaseStorage implements IStorage {
         country_name,
         latitude,
         longitude,
-        population
+        population,
+        cover_photo_url,
+        cover_photo_card_url,
+        cover_photo_thumb_url,
+        cover_photo_alt,
+        cover_photo_attribution
       `,
       [
         trip.name,
@@ -2390,6 +2457,11 @@ export class DatabaseStorage implements IStorage {
         latitudeValue,
         longitudeValue,
         populationValue,
+        trip.coverPhotoUrl ?? null,
+        trip.coverPhotoCardUrl ?? null,
+        trip.coverPhotoThumbUrl ?? null,
+        trip.coverPhotoAlt ?? null,
+        trip.coverPhotoAttribution ?? null,
       ],
     );
 
@@ -2747,6 +2819,8 @@ export class DatabaseStorage implements IStorage {
     data: Partial<InsertTripCalendar>,
     userId: string,
   ): Promise<TripCalendar> {
+    await this.ensureCoverPhotoColumns();
+
     const existing = await this.fetchTripWithCreatorById(tripId);
     if (!existing) {
       throw new Error("Trip not found");
@@ -2836,6 +2910,36 @@ export class DatabaseStorage implements IStorage {
       index += 1;
     }
 
+    if (data.coverPhotoUrl !== undefined) {
+      setClauses.push(`cover_photo_url = $${index}`);
+      values.push(data.coverPhotoUrl ?? null);
+      index += 1;
+    }
+
+    if (data.coverPhotoCardUrl !== undefined) {
+      setClauses.push(`cover_photo_card_url = $${index}`);
+      values.push(data.coverPhotoCardUrl ?? null);
+      index += 1;
+    }
+
+    if (data.coverPhotoThumbUrl !== undefined) {
+      setClauses.push(`cover_photo_thumb_url = $${index}`);
+      values.push(data.coverPhotoThumbUrl ?? null);
+      index += 1;
+    }
+
+    if (data.coverPhotoAlt !== undefined) {
+      setClauses.push(`cover_photo_alt = $${index}`);
+      values.push(data.coverPhotoAlt ?? null);
+      index += 1;
+    }
+
+    if (data.coverPhotoAttribution !== undefined) {
+      setClauses.push(`cover_photo_attribution = $${index}`);
+      values.push(data.coverPhotoAttribution ?? null);
+      index += 1;
+    }
+
     if (setClauses.length === 0) {
       return mapTrip(existing);
     }
@@ -2858,7 +2962,12 @@ export class DatabaseStorage implements IStorage {
         country_name,
         latitude,
         longitude,
-        population
+        population,
+        cover_photo_url,
+        cover_photo_card_url,
+        cover_photo_thumb_url,
+        cover_photo_alt,
+        cover_photo_attribution
     `;
 
     values.push(tripId);
@@ -2934,6 +3043,8 @@ export class DatabaseStorage implements IStorage {
   private async fetchTripWithCreatorById(
     tripId: number,
   ): Promise<TripWithCreatorRow | undefined> {
+    await this.ensureCoverPhotoColumns();
+
     const { rows } = await query<TripWithCreatorRow>(
       `
       SELECT
@@ -2951,6 +3062,11 @@ export class DatabaseStorage implements IStorage {
         tc.latitude,
         tc.longitude,
         tc.population,
+        tc.cover_photo_url,
+        tc.cover_photo_card_url,
+        tc.cover_photo_thumb_url,
+        tc.cover_photo_alt,
+        tc.cover_photo_attribution,
         creator.id AS creator_id,
         creator.email AS creator_email,
         creator.username AS creator_username,
@@ -2990,6 +3106,8 @@ export class DatabaseStorage implements IStorage {
   private async fetchTripWithCreatorByShareCode(
     shareCode: string,
   ): Promise<TripWithCreatorRow | undefined> {
+    await this.ensureCoverPhotoColumns();
+
     const { rows } = await query<TripWithCreatorRow>(
       `
       SELECT
@@ -3007,6 +3125,11 @@ export class DatabaseStorage implements IStorage {
         tc.latitude,
         tc.longitude,
         tc.population,
+        tc.cover_photo_url,
+        tc.cover_photo_card_url,
+        tc.cover_photo_thumb_url,
+        tc.cover_photo_alt,
+        tc.cover_photo_attribution,
         creator.id AS creator_id,
         creator.email AS creator_email,
         creator.username AS creator_username,
@@ -4816,6 +4939,11 @@ export class DatabaseStorage implements IStorage {
           latitude: null,
           longitude: null,
           population: null,
+          cover_photo_url: null,
+          cover_photo_card_url: null,
+          cover_photo_thumb_url: null,
+          cover_photo_alt: null,
+          cover_photo_attribution: null,
         };
         result.trip = mapTrip(tripRow);
       }

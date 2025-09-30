@@ -618,11 +618,14 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
                   onAddComment={(comment) => handleAddMealComment(meal.id, comment)}
                   onMergeIngredients={() => handleMergeIngredients(meal)}
                   canDecide={canDecideMeals}
-                  getUserName={(userId) =>
-                    userId === user?.id
+                  getUserName={(userId) => {
+                    if (!userId) {
+                      return "Trip member";
+                    }
+                    return userId === user?.id
                       ? currentUserName
-                      : getUserDisplayName(memberLookup.get(userId) ?? null)
-                  }
+                      : getUserDisplayName(memberLookup.get(userId) ?? null);
+                  }}
                   existingItemNames={existingItemNames}
                 />
               ))}
@@ -647,11 +650,14 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
                       onAddComment={(comment) => handleAddMealComment(meal.id, comment)}
                       onMergeIngredients={() => handleMergeIngredients(meal)}
                       canDecide={canDecideMeals}
-                      getUserName={(userId) =>
-                        userId === user?.id
+                      getUserName={(userId) => {
+                        if (!userId) {
+                          return "Trip member";
+                        }
+                        return userId === user?.id
                           ? currentUserName
-                          : getUserDisplayName(memberLookup.get(userId) ?? null)
-                      }
+                          : getUserDisplayName(memberLookup.get(userId) ?? null);
+                      }}
                       existingItemNames={existingItemNames}
                     />
                   ))}

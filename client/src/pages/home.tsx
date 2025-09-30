@@ -221,6 +221,10 @@ type TripSummary = {
   travelersCount: number;
   travelers: { avatar?: string | null; initial: string }[];
   progressPercent: number;
+  coverPhotoUrl?: string | null;
+  coverPhotoCardUrl?: string | null;
+  coverPhotoThumbUrl?: string | null;
+  coverPhotoAlt?: string | null;
 };
 
 type Insight = {
@@ -305,6 +309,10 @@ export default function Home() {
       travelersCount: trip.memberCount,
       travelers: buildTravelerData(trip.members),
       progressPercent: calculatePlanningProgress(trip),
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? trip.coverPhotoCardUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoAlt: trip.coverPhotoAlt ?? undefined,
     }));
   }, [upcomingTrips]);
 
@@ -339,7 +347,7 @@ export default function Home() {
   }, [primaryTrip]);
 
   const heroBackground = primaryTrip
-    ? buildDestinationImageUrl(primaryTrip.destination)
+    ? primaryTrip.coverPhotoUrl ?? buildDestinationImageUrl(primaryTrip.destination)
     : null;
 
   const nextTripChip = primaryTrip
@@ -629,11 +637,17 @@ type TripCardProps = {
 };
 
 function TripCard({ trip, onOpen }: TripCardProps) {
-  const imageUrl = buildDestinationImageUrl(trip.destination);
+  const imageUrl = trip.coverPhotoCardUrl ?? buildDestinationImageUrl(trip.destination);
+  const altText = trip.coverPhotoAlt ?? `${trip.destination} travel inspiration`;
   return (
     <Card className="group flex h-full flex-col overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-transform hover:-translate-y-1 hover:shadow-lg">
       <div className="relative aspect-video overflow-hidden">
-        <img src={imageUrl} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+        <img
+          src={imageUrl}
+          alt={altText}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+          loading="lazy"
+        />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
         <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
           <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">

@@ -26,7 +26,7 @@ import {
   DollarSign,
   ExternalLink,
   Users,
-  Calendar,
+  Calendar as CalendarGlyph,
   ShoppingCart,
   CalendarIcon,
   X
@@ -814,7 +814,7 @@ export default function Activities() {
                     <div className="flex items-center justify-between text-sm text-neutral-600">
                       <div className="flex items-center gap-3">
                         <div className="flex items-center">
-                          <Calendar className="w-4 h-4 mr-1" />
+                          <CalendarGlyph className="w-4 h-4 mr-1" />
                           <span>
                             {activity.startTime
                               ? new Date(activity.startTime).toLocaleDateString()

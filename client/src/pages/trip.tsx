@@ -86,6 +86,7 @@ import type {
   HotelProposalWithDetails,
   HotelSearchResult,
   HotelWithDetails,
+  TripWithDates,
 } from "@shared/schema";
 import {
   format,
@@ -156,6 +157,11 @@ const isTripTab = (value: string): value is TripTab =>
   TRIP_TAB_KEYS.includes(value as TripTab);
 
 type SummaryPanel = "activities" | "rsvps" | "next";
+
+const buildTripCoverFallback = (destination: string): string => {
+  const query = encodeURIComponent(`${destination} travel landscape`);
+  return `https://source.unsplash.com/2400x1350/?${query}`;
+};
 
 const inviteStatusLabelMap: Record<ActivityInviteStatus, string> = {
   accepted: "Accepted",
@@ -675,12 +681,17 @@ export default function Trip() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
   const [showAddActivity, setShowAddActivity] = useState(false);
   const [showEditTrip, setShowEditTrip] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showWeatherModal, setShowWeatherModal] = useState(false);
+  const coverCalloutKey = useMemo(
+    () => (id ? `trip-${id}-cover-callout-dismissed` : "trip-cover-callout"),
+    [id],
+  );
+  const [showCoverCallout, setShowCoverCallout] = useState(true);
   const [activeTab, setActiveTab] = useState<TripTab>("calendar");
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -709,6 +720,23 @@ export default function Trip() {
       setActiveTab(viewParam);
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const stored = window.localStorage.getItem(coverCalloutKey);
+    setShowCoverCallout(stored !== "true");
+  }, [coverCalloutKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (!showCoverCallout) {
+      window.localStorage.setItem(coverCalloutKey, "true");
+    }
+  }, [coverCalloutKey, showCoverCallout]);
 
   const evaluateExternalRedirects = useCallback(() => {
     if (typeof window === "undefined") {
@@ -1241,6 +1269,10 @@ export default function Trip() {
   const tripDurationDays = trip?.startDate && trip?.endDate
     ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
     : null;
+  const isTripCreator = trip ? user?.id === trip.createdBy : false;
+  const heroImage = trip ? trip.coverPhotoUrl ?? buildTripCoverFallback(trip.destination) : "";
+  const hasCustomCoverPhoto = Boolean(trip?.coverPhotoUrl);
+  const heroAltText = trip ? trip.coverPhotoAlt ?? `Cover photo for ${trip.name}` : "Trip cover photo";
 
   const upcomingActivities = useMemo(() => {
     const now = new Date();
@@ -1316,7 +1348,7 @@ export default function Trip() {
         {/* Mobile Navigation */}
         <MobileNav
           trip={trip}
-          user={user}
+          user={user ?? undefined}
         />
 
         {/* Main Content Container */}
@@ -1492,11 +1524,46 @@ export default function Trip() {
                 
                 {/* Trip Header */}
                 <div className="mb-10 space-y-6">
-                  <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-rose-500 to-orange-400 text-white shadow-xl">
+                  <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-900 text-white shadow-xl">
+                    <img
+                      src={heroImage}
+                      alt={heroAltText}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      loading="lazy"
+                    />
                     <div
-                      className="pointer-events-none absolute inset-0 opacity-30 [background:radial-gradient(circle_at_top_left,rgba(255,255,255,0.6),transparent_55%)]"
+                      className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/80"
                       aria-hidden="true"
                     />
+                    {isTripCreator && !hasCustomCoverPhoto && showCoverCallout ? (
+                      <div className="absolute right-4 top-4 flex max-w-xs flex-col gap-2 rounded-2xl border border-white/30 bg-white/20 p-4 text-white shadow-lg backdrop-blur">
+                        <p className="text-sm font-semibold">Add a cover photo</p>
+                        <p className="text-xs text-white/80">
+                          Personalize this banner with a hero image for your group.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            className="bg-white text-slate-900 hover:bg-white/90"
+                            onClick={() => {
+                              setShowEditTrip(true);
+                              setShowCoverCallout(false);
+                            }}
+                          >
+                            Add photo
+                          </Button>
+                          <button
+                            type="button"
+                            className="text-xs text-white/80 underline hover:text-white"
+                            onClick={() => setShowCoverCallout(false)}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="relative p-6 sm:p-10">
                       <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
                         <div className="max-w-2xl space-y-5">
@@ -1543,11 +1610,11 @@ export default function Trip() {
                           </div>
                         </div>
                         <div className="w-full max-w-sm lg:max-w-md">
-                          <div className="space-y-4 rounded-2xl bg-white/90 p-5 text-neutral-900 shadow-lg backdrop-blur">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <NotificationIcon />
-                              <Button
-                                onClick={() => setShowWeatherModal(true)}
+                      <div className="space-y-4 rounded-2xl bg-white/90 p-5 text-neutral-900 shadow-lg backdrop-blur">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <NotificationIcon />
+                          <Button
+                            onClick={() => setShowWeatherModal(true)}
                                 variant="outline"
                                 size="sm"
                                 data-testid="button-weather"
@@ -1574,13 +1641,16 @@ export default function Trip() {
                               >
                                 <Users className="mr-2 h-4 w-4" />
                                 Invite
-                              </Button>
-                            </div>
-                          </div>
+                          </Button>
                         </div>
                       </div>
                     </div>
                   </div>
+                  {trip.coverPhotoAttribution ? (
+                    <p className="mt-6 text-xs text-white/70">{trip.coverPhotoAttribution}</p>
+                  ) : null}
+                </div>
+              </div>
                   {activeTab === "calendar" && (
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       <div
@@ -1915,19 +1985,19 @@ export default function Trip() {
                 )}
 
                 {activeTab === "expenses" && (
-                  <ExpenseTracker tripId={parseInt(id || "0")} user={user} />
+                  <ExpenseTracker tripId={parseInt(id || "0")} user={user ?? undefined} />
                 )}
 
                 {activeTab === "activities" && (
                   <div className="p-6">
-                    <ActivitySearch tripId={parseInt(id || "0")} trip={trip} user={user} />
+                    <ActivitySearch tripId={parseInt(id || "0")} trip={trip} user={user ?? undefined} />
                   </div>
                 )}
 
                 {activeTab === "groceries" && (
                   <GroceryList
                     tripId={parseInt(id || "0")}
-                    user={user}
+                    user={user ?? undefined}
                     members={trip?.members ?? []}
                   />
                 )}
@@ -1947,7 +2017,7 @@ export default function Trip() {
                 {activeTab === "flights" && (
                   <FlightCoordination
                     tripId={parseInt(id || "0")}
-                    user={user}
+                    user={user ?? undefined}
                     trip={trip}
                     manualDialogOpenSignal={flightManualOpenSignal}
                   />
@@ -1956,14 +2026,14 @@ export default function Trip() {
                 {activeTab === "hotels" && (
                   <HotelBooking
                     tripId={parseInt(id || "0")}
-                    user={user}
+                    user={user ?? undefined}
                     trip={trip}
                     manualFormOpenSignal={hotelManualOpenSignal}
                   />
                 )}
                 
                 {activeTab === "restaurants" && (
-                  <RestaurantBooking tripId={parseInt(id || "0")} user={user} trip={trip as TripWithDetails | undefined} />
+                  <RestaurantBooking tripId={parseInt(id || "0")} user={user ?? undefined} trip={trip as TripWithDetails | undefined} />
                 )}
 
 
@@ -1979,7 +2049,7 @@ export default function Trip() {
                             : "No longer able to join this trip? You can leave the group, but you won't be able to rejoin without a new invitation."
                           }
                         </p>
-                        <LeaveTripButton trip={trip} user={user} />
+                        <LeaveTripButton trip={trip} user={user ?? undefined} />
                       </div>
                     </div>
                   </div>
@@ -4226,7 +4296,20 @@ function HotelBooking({
         <HotelSearchPanel
           ref={searchPanelRef}
           tripId={tripId}
-          trip={trip ?? null}
+          trip={
+            trip
+              ? {
+                  id: trip.id,
+                  name: trip.name,
+                  destination: trip.destination,
+                  startDate: trip.startDate,
+                  endDate: trip.endDate,
+                  shareCode: trip.shareCode,
+                  createdBy: trip.createdBy,
+                  createdAt: trip.createdAt ?? undefined,
+                }
+              : null
+          }
           onLogHotelManually={openManualForm}
           onShareHotelWithGroup={shareHotelWithGroup}
           storeBookingIntent={storeBookingIntent}
@@ -4345,7 +4428,7 @@ function RestaurantBooking({
         ref={searchPanelRef}
         tripId={tripId}
         trip={trip}
-        user={user}
+        user={user ?? undefined}
         onBookingLinkClick={handleBookingLinkClick}
         onLogRestaurantManually={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
       />
