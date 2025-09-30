@@ -1990,7 +1990,7 @@ export default function Trip() {
                     tripId={parseInt(id || "0")}
                     user={user ?? undefined}
                     trip={trip}
-                    manualDialogOpenSignal={flightManualOpenSignal}
+                    manualFormOpenSignal={flightManualOpenSignal}
                   />
                 )}
 
@@ -2556,12 +2556,12 @@ function FlightCoordination({
   tripId,
   user,
   trip,
-  manualDialogOpenSignal = 0,
+  manualFormOpenSignal = 0,
 }: {
   tripId: number;
   user: any;
   trip?: TripWithDetails | null;
-  manualDialogOpenSignal?: number;
+  manualFormOpenSignal?: number;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -2592,7 +2592,7 @@ function FlightCoordination({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [isManualDialogOpen, setIsManualDialogOpen] = useState(false);
+  const [isManualFlightFormOpen, setIsManualFlightFormOpen] = useState(false);
   const [departureQuery, setDepartureQuery] = useState('');
   const [arrivalQuery, setArrivalQuery] = useState('');
   const [hasSelectedDeparture, setHasSelectedDeparture] = useState(false);
@@ -3151,23 +3151,21 @@ function FlightCoordination({
     setManualArrivalHasSelected(false);
   }, []);
 
-  const handleManualDialogOpen = useCallback(() => {
+  const openManualFlightForm = useCallback(() => {
     resetManualFlightForm();
-    setIsManualDialogOpen(true);
+    setIsManualFlightFormOpen(true);
+  }, [resetManualFlightForm]);
+
+  const closeManualFlightForm = useCallback(() => {
+    resetManualFlightForm();
+    setIsManualFlightFormOpen(false);
   }, [resetManualFlightForm]);
 
   useEffect(() => {
-    if (manualDialogOpenSignal > 0) {
-      handleManualDialogOpen();
+    if (manualFormOpenSignal > 0) {
+      openManualFlightForm();
     }
-  }, [handleManualDialogOpen, manualDialogOpenSignal]);
-
-  const handleManualDialogChange = (open: boolean) => {
-    if (!open) {
-      resetManualFlightForm();
-    }
-    setIsManualDialogOpen(open);
-  };
+  }, [manualFormOpenSignal, openManualFlightForm]);
 
   const createFlightMutation = useMutation({
     mutationFn: async (flightData: InsertFlight) => {
@@ -3182,8 +3180,7 @@ function FlightCoordination({
         title: "Flight added",
         description: "Your flight has been saved to the trip.",
       });
-      setIsManualDialogOpen(false);
-      resetManualFlightForm();
+      closeManualFlightForm();
     },
     onError: (error: any) => {
       toast({
@@ -3535,14 +3532,6 @@ function FlightCoordination({
                   </>
                 )}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={handleManualDialogOpen}
-              >
-                Log Flight Manually
-              </Button>
             </div>
           </form>
 
@@ -3657,12 +3646,37 @@ function FlightCoordination({
         </Card>
       )}
 
-      <Dialog open={isManualDialogOpen} onOpenChange={handleManualDialogChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Log Flight Manually</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
+      <Collapsible
+        open={isManualFlightFormOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            openManualFlightForm();
+          } else {
+            closeManualFlightForm();
+          }
+        }}
+      >
+        <div className="rounded-lg border border-dashed bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-neutral-900">Manual entry</p>
+              <p className="text-sm text-muted-foreground">
+                Record a flight that isn't imported from the search results.
+              </p>
+            </div>
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full justify-between sm:w-auto sm:justify-center"
+              >
+                <span>{isManualFlightFormOpen ? "Close" : "Log Flight Manually"}</span>
+                <ChevronDown
+                  className={`ml-2 h-4 w-4 transition-transform ${isManualFlightFormOpen ? "rotate-180" : ""}`}
+                />
+              </Button>
+            </CollapsibleTrigger>
+          </div>
+          <CollapsibleContent className="space-y-4 p-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="manual-flight-number">Flight Number *</Label>
@@ -3824,7 +3838,7 @@ function FlightCoordination({
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" type="button" onClick={() => handleManualDialogChange(false)}>
+              <Button variant="outline" type="button" onClick={closeManualFlightForm}>
                 Cancel
               </Button>
               <Button
@@ -3842,9 +3856,9 @@ function FlightCoordination({
                 )}
               </Button>
             </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
     </div>
   );
 }
