@@ -493,7 +493,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     setIsDropdownOpen(false);
     setResults([]); // Clear results to prevent "No locations found" message
     setActiveIndex(-1);
-    onLocationSelect(location);
+    const result = location;
+    console.log("🧩 SmartLocationSearch: normalized result", result);
+    onLocationSelect(result);
   };
 
   const getLocationIcon = (type: LocationResult['type']) => {

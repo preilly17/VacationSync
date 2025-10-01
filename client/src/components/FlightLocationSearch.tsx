@@ -137,7 +137,10 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
           setQuery(nextValue);
           onQueryChange?.(nextValue);
         }}
-        onLocationSelect={onLocationSelect}
+        onLocationSelect={(result) => {
+          console.log("✈️ FlightLocationSearch: selected result", result);
+          onLocationSelect(result);
+        }}
       />
     );
   },
