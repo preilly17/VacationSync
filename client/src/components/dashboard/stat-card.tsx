@@ -1,10 +1,4 @@
-import {
-  type KeyboardEvent,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { forwardRef, type KeyboardEvent, type ReactNode, useMemo } from "react";
 import { ChevronDown, RefreshCw } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -16,155 +10,128 @@ export type StatCardProps = {
   label: string;
   description?: string;
   ariaLabel: string;
-  regionId: string;
-  regionLabel: string;
+  controlsId: string;
+  labelId: string;
   onRetry?: () => void;
   isLoading?: boolean;
   isError?: boolean;
-  isExpanded: boolean;
+  isSelected: boolean;
   onToggle: () => void;
-  renderExpanded?: () => ReactNode;
   testId: string;
 };
 
-export function StatCard({
-  icon,
-  value,
-  label,
-  description,
-  ariaLabel,
-  regionId,
-  regionLabel,
-  onRetry,
-  isLoading = false,
-  isError = false,
-  isExpanded,
-  onToggle,
-  renderExpanded,
-  testId,
-}: StatCardProps) {
-  const [hasRenderedExpanded, setHasRenderedExpanded] = useState(false);
+export const StatCard = forwardRef<HTMLButtonElement, StatCardProps>(
+  (
+    {
+      icon,
+      value,
+      label,
+      description,
+      ariaLabel,
+      controlsId,
+      labelId,
+      onRetry,
+      isLoading = false,
+      isError = false,
+      isSelected,
+      onToggle,
+      testId,
+    },
+    ref,
+  ) => {
+    const formattedValue = useMemo(() => {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        return value.toLocaleString();
+      }
+      return value;
+    }, [value]);
 
-  const formattedValue = useMemo(() => {
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value.toLocaleString();
-    }
-    return value;
-  }, [value]);
+    const isInteractive = !isLoading && !isError;
 
-  const isInteractive = !isLoading && !isError;
-
-  useEffect(() => {
-    if (isExpanded && !hasRenderedExpanded) {
-      setHasRenderedExpanded(true);
-    }
-  }, [isExpanded, hasRenderedExpanded]);
-
-  const expandedContent = useMemo(() => {
-    if (!renderExpanded) {
-      return null;
-    }
-    if (!hasRenderedExpanded && !isExpanded) {
-      return null;
-    }
-    return renderExpanded();
-  }, [renderExpanded, hasRenderedExpanded, isExpanded]);
-
-  return (
-    <div
-      data-testid={testId}
-      className={cn(
-        "group relative flex flex-col rounded-2xl border border-slate-200/70 bg-white shadow-sm transition duration-200",
-        "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-2xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
-        isInteractive ? "focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#654ea3]" : "opacity-90",
-        isExpanded ? "shadow-lg" : "hover:-translate-y-0.5 hover:shadow-md",
-      )}
-    >
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        aria-expanded={isExpanded}
-        aria-controls={regionId}
-        disabled={!isInteractive}
-        className={cn(
-          "flex w-full flex-col gap-6 rounded-2xl p-6 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]",
-          isInteractive ? "cursor-pointer" : "cursor-default",
-        )}
-        onClick={() => {
-          if (!isInteractive) {
-            return;
-          }
-          onToggle();
-        }}
-        onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
-          if (!isInteractive) {
-            return;
-          }
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onToggle();
-          }
-          if (event.key === "Escape" && isExpanded) {
-            event.preventDefault();
-            onToggle();
-          }
-        }}
-      >
-        <CardContents
-          icon={icon}
-          value={formattedValue}
-          label={label}
-          description={description}
-          isLoading={isLoading}
-          isError={isError}
-          onRetry={onRetry}
-          isExpanded={isExpanded}
-        />
-      </button>
+    return (
       <div
-        id={regionId}
-        role="region"
-        aria-label={regionLabel}
-        aria-hidden={!isExpanded}
+        data-testid={testId}
         className={cn(
-          "grid transition-[grid-template-rows,opacity] duration-200 ease-in-out",
-          isExpanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+          "group relative flex flex-col rounded-2xl border border-slate-200/70 bg-white shadow-sm transition duration-200",
+          "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-2xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
+          isInteractive
+            ? "focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#654ea3]"
+            : "opacity-90",
+          isSelected
+            ? "shadow-lg ring-2 ring-[#654ea3]/25"
+            : "hover:-translate-y-0.5 hover:shadow-md",
         )}
       >
-        <div className="min-h-0 overflow-hidden">
-          {expandedContent ? (
-            <div className="px-6 pb-6">
-              <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-sm">
-                {expandedContent}
-              </div>
-            </div>
-          ) : null}
-        </div>
+        <button
+          ref={ref}
+          type="button"
+          aria-label={ariaLabel}
+          aria-expanded={isSelected}
+          aria-controls={controlsId}
+          disabled={!isInteractive}
+          className={cn(
+            "flex w-full flex-col gap-6 rounded-2xl p-6 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]",
+            isInteractive ? "cursor-pointer" : "cursor-default",
+          )}
+          onClick={() => {
+            if (!isInteractive) {
+              return;
+            }
+            onToggle();
+          }}
+          onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+            if (!isInteractive) {
+              return;
+            }
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onToggle();
+            }
+            if (event.key === "Escape" && isSelected) {
+              event.preventDefault();
+              onToggle();
+            }
+          }}
+        >
+          <CardContents
+            icon={icon}
+            value={formattedValue}
+            label={label}
+            labelId={labelId}
+            description={description}
+            isLoading={isLoading}
+            isError={isError}
+            onRetry={onRetry}
+            isSelected={isSelected}
+          />
+        </button>
       </div>
-    </div>
-  );
-}
+    );
+  },
+);
 
 type CardContentsProps = {
   icon: ReactNode;
   value: string | number;
   label: string;
+  labelId: string;
   description?: string;
   isLoading: boolean;
   isError: boolean;
   onRetry?: () => void;
-  isExpanded: boolean;
+  isSelected: boolean;
 };
 
 function CardContents({
   icon,
   value,
   label,
+  labelId,
   description,
   isLoading,
   isError,
   onRetry,
-  isExpanded,
+  isSelected,
 }: CardContentsProps) {
   if (isLoading) {
     return (
@@ -214,14 +181,16 @@ function CardContents({
         <ChevronDown
           className={cn(
             "h-5 w-5 text-slate-400 transition-transform duration-200",
-            isExpanded ? "rotate-180" : "rotate-0",
+            isSelected ? "rotate-180" : "rotate-0",
           )}
           aria-hidden="true"
         />
       </div>
       <div className="space-y-1.5">
         <div className="text-[30px] font-semibold leading-none text-slate-900">{value}</div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
+        <p id={labelId} className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+          {label}
+        </p>
         {description ? (
           <p className="text-sm text-slate-500">{description}</p>
         ) : null}
@@ -229,3 +198,5 @@ function CardContents({
     </div>
   );
 }
+
+StatCard.displayName = "StatCard";
