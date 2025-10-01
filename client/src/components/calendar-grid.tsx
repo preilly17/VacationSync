@@ -240,7 +240,7 @@ export function CalendarGrid({
               const hiddenCount = Math.max(dayActivities.length - visibleActivities.length, 0);
 
               const dayClasses = cn(
-                "group/day relative flex h-32 flex-col overflow-hidden rounded-2xl border border-transparent bg-[var(--calendar-surface)]/95 p-3 shadow-[0_6px_18px_-14px_rgba(15,23,42,0.35)] transition-all duration-200 ease-out dark:shadow-[0_10px_24px_-16px_rgba(2,6,23,0.7)] lg:h-40",
+                "group/day relative flex h-32 flex-col overflow-hidden rounded-2xl border border-transparent bg-[var(--calendar-surface)]/95 p-2.5 shadow-[0_6px_18px_-14px_rgba(15,23,42,0.35)] transition-all duration-200 ease-out dark:shadow-[0_10px_24px_-16px_rgba(2,6,23,0.7)] lg:h-40",
                 isTripActive
                   ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-canvas)] hover:-translate-y-0.5 hover:shadow-[0_14px_32px_-18px_rgba(16,24,40,0.28)] dark:hover:shadow-[0_18px_36px_-18px_rgba(2,6,23,0.85)]"
                   : "cursor-default",
@@ -299,7 +299,7 @@ export function CalendarGrid({
                   )}
 
                   {dayActivities.length > 0 && (
-                    <div className="mt-1.5 flex-1 space-y-1 overflow-hidden">
+                    <div className="mt-1 flex-1 space-y-0.5 overflow-hidden">
                       {visibleActivities.map(activity => {
                         const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
                         const isProposal = activityType === "PROPOSE";
@@ -340,7 +340,7 @@ export function CalendarGrid({
                                 }}
                                 style={style}
                                 className={cn(
-                                  "group/chip relative flex w-full items-start gap-1.5 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-1.5 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                                  "group/chip relative flex w-full items-start gap-1.5 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-[0.35rem] text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
                                   showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : "",
                                   "border-[var(--chip-border)]",
                                   isProposal ? "border-dashed" : null,
@@ -375,7 +375,7 @@ export function CalendarGrid({
                                       </span>
                                     )}
                                   </div>
-                                  <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.1] text-[color:var(--calendar-muted)]">
+                                  <div className="mt-0.25 flex items-center gap-1 text-[11px] font-medium leading-[1.05] text-[color:var(--calendar-muted)]">
                                     <span className="truncate">
                                       {metadata.join(" • ")}
                                     </span>
