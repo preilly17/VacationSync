@@ -383,10 +383,19 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       }
 
       try {
+        const normalizedTypesForSearch = locationUtilsTypes?.map((type) => type.toUpperCase());
+
+        console.log(
+          "🔎 Sending search with query:",
+          currentQuery,
+          "types:",
+          normalizedTypesForSearch,
+        );
+
         const rawResults = await LocationUtils.searchLocations({
           query: currentQuery,
           limit: 7,
-          types: locationUtilsTypes ?? undefined,
+          ...(normalizedTypesForSearch ? { types: normalizedTypesForSearch } : {}),
         });
 
         console.log("🔎 SmartLocationSearch: rawResults from API", rawResults);
