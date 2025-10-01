@@ -906,7 +906,11 @@ class LocationService {
   }
 
   private getPopularDestinations(limit = 10): LocationSearchResult[] {
-    const popularDestinations = [
+    const popularDestinations: {
+      name: string;
+      code: string;
+      type: 'AIRPORT' | 'CITY' | 'COUNTRY';
+    }[] = [
       { name: 'New York', code: 'JFK', type: 'AIRPORT' },
       { name: 'Los Angeles', code: 'LAX', type: 'AIRPORT' },
       { name: 'London', code: 'LHR', type: 'AIRPORT' },
