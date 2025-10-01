@@ -3130,6 +3130,76 @@ export default function FlightsPage() {
       )}
 
       <div className="space-y-6">
+        {flightsArray.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Group Flights
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {flightsArray.map((flight: any) => (
+                  <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <Plane className="h-4 w-4 text-blue-600" />
+                          <span className="font-semibold">{flight.airline}</span>
+                          <span className="text-gray-500">{flight.flightNumber}</span>
+                        </div>
+                        <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => deleteFlightMutation.mutate(flight.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+                      <div className="flex items-center gap-2">
+                        <PlaneTakeoff className="h-4 w-4 text-green-600" />
+                        <div>
+                          <div className="font-medium">{flight.departureAirport}</div>
+                          <div className="text-gray-500">
+                            {flight.departureTime ? format(new Date(flight.departureTime), 'MMM d, h:mm a') : 'Time TBD'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-center">
+                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                        <div className="mx-2 text-xs text-gray-500">
+                          {flight.flightDuration ? formatDuration(flight.flightDuration) : 'Duration TBD'}
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <PlaneLanding className="h-4 w-4 text-red-600" />
+                        <div>
+                          <div className="font-medium">{flight.arrivalAirport}</div>
+                          <div className="text-gray-500">
+                            {flight.arrivalTime ? format(new Date(flight.arrivalTime), 'MMM d, h:mm a') : 'Time TBD'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {flight.price != null && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        Price: {formatPriceDisplay(flight.price, flight.currency)}
+                        {flight.seatClass && ` • ${flight.seatClass}`}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="rounded-lg border border-dashed bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -3157,87 +3227,7 @@ export default function FlightsPage() {
             </DropdownMenu>
           </div>
         </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Group Flights
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-          {flightsArray.length === 0 ? (
-            <div className="py-8 text-center">
-              <Plane className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-              <h3 className="mb-2 text-lg font-medium text-gray-900">No flights added yet</h3>
-              <p className="mb-4 text-gray-500">Start by adding flight information for your group members.</p>
-              <Button onClick={openManualFlightDialog}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add First Flight
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {flightsArray.map((flight: any) => (
-                <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <Plane className="h-4 w-4 text-blue-600" />
-                        <span className="font-semibold">{flight.airline}</span>
-                        <span className="text-gray-500">{flight.flightNumber}</span>
-                      </div>
-                      <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => deleteFlightMutation.mutate(flight.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
-                    <div className="flex items-center gap-2">
-                      <PlaneTakeoff className="h-4 w-4 text-green-600" />
-                      <div>
-                        <div className="font-medium">{flight.departureAirport}</div>
-                        <div className="text-gray-500">
-                          {flight.departureTime ? format(new Date(flight.departureTime), 'MMM d, h:mm a') : 'Time TBD'}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-center">
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                      <div className="mx-2 text-xs text-gray-500">
-                        {flight.flightDuration ? formatDuration(flight.flightDuration) : 'Duration TBD'}
-                      </div>
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <PlaneLanding className="h-4 w-4 text-red-600" />
-                      <div>
-                        <div className="font-medium">{flight.arrivalAirport}</div>
-                        <div className="text-gray-500">
-                          {flight.arrivalTime ? format(new Date(flight.arrivalTime), 'MMM d, h:mm a') : 'Time TBD'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {flight.price != null && (
-                    <div className="mt-2 text-sm text-gray-600">
-                      Price: {formatPriceDisplay(flight.price, flight.currency)}
-                      {flight.seatClass && ` • ${flight.seatClass}`}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+      </div>
   </div>
 );
 }
