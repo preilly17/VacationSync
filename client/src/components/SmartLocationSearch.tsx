@@ -365,14 +365,6 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       return;
     }
 
-    if (!isUserEditingRef.current && lastSelectedQueryRef.current === trimmedQuery) {
-      console.log(
-        "⛔ Skipping search, query matches last selected while not editing:",
-        trimmedQuery,
-      );
-      return;
-    }
-
     if (selectedLocation) {
       setSelectedLocation(null);
     }
@@ -382,14 +374,6 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       const currentQuery = internalInputRef.current?.value?.trim() ?? "";
       if (currentQuery.length < 2) {
         console.log("⛔ Skipping debounced search, query too short:", currentQuery);
-        return;
-      }
-
-      if (!isUserEditingRef.current && lastSelectedQueryRef.current === currentQuery) {
-        console.log(
-          "⛔ Skipping debounced search, query matches last selected while not editing:",
-          currentQuery,
-        );
         return;
       }
 
