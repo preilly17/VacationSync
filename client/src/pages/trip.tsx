@@ -3622,6 +3622,7 @@ function FlightCoordination({
                   placeholder="Search departure city or airport"
                   value={departureQuery}
                   allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={handleDepartureQueryChange}
                   onLocationSelect={(loc) => {
                     console.log("🔍 trip.tsx: Flight FROM selected", loc);
@@ -3662,6 +3663,7 @@ function FlightCoordination({
                   placeholder="Search arrival city or airport"
                   value={arrivalQuery}
                   allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={handleArrivalQueryChange}
                   onLocationSelect={(loc) => {
                     console.log("🔍 trip.tsx: Flight TO selected", loc);
@@ -4008,6 +4010,8 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Departure airport"
                   value={manualFlightData.departureAirport}
+                  allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={(value) => {
                     setManualFlightData((prev) => ({
                       ...prev,
@@ -4033,6 +4037,8 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Arrival airport"
                   value={manualFlightData.arrivalAirport}
+                  allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={(value) => {
                     setManualFlightData((prev) => ({
                       ...prev,
