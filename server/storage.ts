@@ -8394,7 +8394,239 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     return updated;
   }
-  async addFlight(): Promise<Flight> { throw new Error("Not implemented"); }
+  async addFlight(
+    flight: InsertFlight | Record<string, unknown>,
+    userId: string,
+  ): Promise<Flight> {
+    const record = flight as Record<string, unknown>;
+
+    const getValue = (camelKey: string): unknown => {
+      if (record[camelKey] !== undefined) {
+        return record[camelKey];
+      }
+
+      const snakeKey = camelToSnakeCase(camelKey);
+      return record[snakeKey];
+    };
+
+    const requireValue = (camelKey: string): unknown => {
+      const value = getValue(camelKey);
+      if (value === undefined || value === null) {
+        throw new Error(`Missing required flight field: ${camelKey}`);
+      }
+      return value;
+    };
+
+    const requireString = (camelKey: string): string => {
+      const value = requireValue(camelKey);
+      const str =
+        typeof value === "string" ? value.trim() : String(value).trim();
+      if (!str) {
+        throw new Error(`Missing required flight field: ${camelKey}`);
+      }
+      return str;
+    };
+
+    const optionalTrimmedString = (camelKey: string): string | null => {
+      const value = getValue(camelKey);
+      if (value === undefined || value === null) {
+        return null;
+      }
+
+      const str =
+        typeof value === "string" ? value.trim() : String(value).trim();
+      return str.length > 0 ? str : null;
+    };
+
+    const parseTimestamp = (value: unknown, field: string): Date => {
+      if (value instanceof Date) {
+        return value;
+      }
+
+      if (typeof value === "string" || typeof value === "number") {
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      }
+
+      throw new Error(`Invalid date for flight field: ${field}`);
+    };
+
+    const parseJsonValue = (value: unknown): unknown | null => {
+      if (value === undefined || value === null) {
+        return null;
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+
+        try {
+          return JSON.parse(trimmed);
+        } catch {
+          return null;
+        }
+      }
+
+      return value;
+    };
+
+    const tripIdRaw = requireValue("tripId");
+    const tripId =
+      typeof tripIdRaw === "number" ? tripIdRaw : Number(tripIdRaw as string);
+    if (!Number.isFinite(tripId)) {
+      throw new Error("Invalid trip ID for flight insert");
+    }
+
+    const normalizedUserId =
+      normalizeUserId(optionalTrimmedString("userId")) ??
+      normalizeUserId(userId);
+    if (!normalizedUserId) {
+      throw new Error("Missing user ID for flight insert");
+    }
+
+    const flightNumber = requireString("flightNumber");
+    const airline = requireString("airline");
+    const airlineCode = requireString("airlineCode");
+    const departureAirport = requireString("departureAirport");
+    const departureCode = requireString("departureCode");
+    const arrivalAirport = requireString("arrivalAirport");
+    const arrivalCode = requireString("arrivalCode");
+    const flightType = requireString("flightType");
+
+    const departureTime = parseTimestamp(
+      requireValue("departureTime"),
+      "departureTime",
+    );
+    const arrivalTime = parseTimestamp(
+      requireValue("arrivalTime"),
+      "arrivalTime",
+    );
+
+    const priceValue = toNumberOrNull(
+      getValue("price") as string | number | null | undefined,
+    );
+    const flightDurationValue = toNumberOrNull(
+      getValue("flightDuration") as string | number | null | undefined,
+    );
+
+    const layoversValue = parseJsonValue(getValue("layovers"));
+    const baggageValue = parseJsonValue(getValue("baggage"));
+
+    const { rows } = await query<FlightRow>(
+      `
+      INSERT INTO flights (
+        trip_id,
+        user_id,
+        flight_number,
+        airline,
+        airline_code,
+        departure_airport,
+        departure_code,
+        departure_time,
+        departure_terminal,
+        departure_gate,
+        arrival_airport,
+        arrival_code,
+        arrival_time,
+        arrival_terminal,
+        arrival_gate,
+        booking_reference,
+        seat_number,
+        seat_class,
+        price,
+        currency,
+        flight_type,
+        status,
+        layovers,
+        booking_source,
+        purchase_url,
+        aircraft,
+        flight_duration,
+        baggage,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
+        $21, $22, $23, $24, $25, $26, $27, $28, NOW(), NOW()
+      )
+      RETURNING
+        id,
+        trip_id,
+        user_id,
+        flight_number,
+        airline,
+        airline_code,
+        departure_airport,
+        departure_code,
+        departure_time,
+        departure_terminal,
+        departure_gate,
+        arrival_airport,
+        arrival_code,
+        arrival_time,
+        arrival_terminal,
+        arrival_gate,
+        booking_reference,
+        seat_number,
+        seat_class,
+        price,
+        currency,
+        flight_type,
+        status,
+        layovers,
+        booking_source,
+        purchase_url,
+        aircraft,
+        flight_duration,
+        baggage,
+        created_at,
+        updated_at
+      `,
+      [
+        tripId,
+        normalizedUserId,
+        flightNumber,
+        airline,
+        airlineCode,
+        departureAirport,
+        departureCode,
+        departureTime,
+        optionalTrimmedString("departureTerminal"),
+        optionalTrimmedString("departureGate"),
+        arrivalAirport,
+        arrivalCode,
+        arrivalTime,
+        optionalTrimmedString("arrivalTerminal"),
+        optionalTrimmedString("arrivalGate"),
+        optionalTrimmedString("bookingReference"),
+        optionalTrimmedString("seatNumber"),
+        optionalTrimmedString("seatClass"),
+        priceValue,
+        optionalTrimmedString("currency") ?? "USD",
+        flightType,
+        optionalTrimmedString("status") ?? "confirmed",
+        layoversValue,
+        optionalTrimmedString("bookingSource") ?? "manual",
+        optionalTrimmedString("purchaseUrl"),
+        optionalTrimmedString("aircraft"),
+        flightDurationValue,
+        baggageValue,
+      ],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Failed to create flight");
+    }
+
+    return mapFlight(row);
+  }
   async addHotel(
     hotel: InsertHotel | Record<string, unknown>,
     userId: string,
