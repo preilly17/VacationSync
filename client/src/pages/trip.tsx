@@ -45,7 +45,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { TRIP_COVER_GRADIENT, buildCoverPhotoSrcSet, useCoverPhotoImage } from "@/lib/tripCover";
-import { CalendarGrid } from "@/components/calendar-grid";
+import { CalendarGrid, type DayOverflowClickContext } from "@/components/calendar-grid";
 import { AddActivityModal } from "@/components/add-activity-modal";
 import { EditTripModal } from "@/components/edit-trip-modal";
 import { InviteLinkModal } from "@/components/invite-link-modal";
@@ -237,6 +237,7 @@ interface DayViewProps {
   onSubmitRsvp?: (activity: ActivityWithDetails, action: ActivityRsvpAction) => void;
   isRsvpPending?: boolean;
   viewMode?: "group" | "personal";
+  showNavigation?: boolean;
 }
 
 const getParticipantDisplayName = (user: User) => {
@@ -297,6 +298,7 @@ function DayView({
   onSubmitRsvp,
   isRsvpPending,
   viewMode = "group",
+  showNavigation = true,
 }: DayViewProps) {
   const dayActivities = activities
     .filter((activity) => isSameDay(new Date(activity.startTime), date))
@@ -309,36 +311,38 @@ function DayView({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onPreviousDay}
-            disabled={!canGoPrevious}
-            aria-label="Previous day"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <div className="text-left">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-              Viewing day
-            </p>
-            <p className="text-lg font-semibold text-neutral-900">
-              {format(date, "EEEE, MMMM d, yyyy")}
-            </p>
+      {showNavigation && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onPreviousDay}
+              disabled={!canGoPrevious}
+              aria-label="Previous day"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="text-left">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                Viewing day
+              </p>
+              <p className="text-lg font-semibold text-neutral-900">
+                {format(date, "EEEE, MMMM d, yyyy")}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onNextDay}
+              disabled={!canGoNext}
+              aria-label="Next day"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onNextDay}
-            disabled={!canGoNext}
-            aria-label="Next day"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
         </div>
-      </div>
+      )}
 
       {dayActivities.length === 0 ? (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
@@ -671,6 +675,15 @@ function DayView({
   );
 }
 
+type DayDetailsSource = "group" | "personal";
+
+interface ExpandedDayState {
+  date: Date;
+  source: DayDetailsSource;
+  trigger: HTMLButtonElement | null;
+  hiddenCount: number;
+}
+
 export default function Trip() {
   const { id } = useParams();
   const [, setLocation] = useLocation();
@@ -692,6 +705,7 @@ export default function Trip() {
   const [scheduleCalendarView, setScheduleCalendarView] = useState<"month" | "day">("month");
   const [groupViewDate, setGroupViewDate] = useState<Date | null>(null);
   const [scheduleViewDate, setScheduleViewDate] = useState<Date | null>(null);
+  const [expandedDay, setExpandedDay] = useState<ExpandedDayState | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [summaryPanel, setSummaryPanel] = useState<SummaryPanel | null>(null);
@@ -700,6 +714,7 @@ export default function Trip() {
   const [activeRedirectModal, setActiveRedirectModal] = useState<"flight" | "hotel" | null>(null);
   const [flightManualOpenSignal, setFlightManualOpenSignal] = useState(0);
   const [hotelManualOpenSignal, setHotelManualOpenSignal] = useState(0);
+  const dayDetailsTitleRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -903,6 +918,25 @@ export default function Trip() {
     setIsActivityDialogOpen(true);
   }, []);
 
+  const trackDayOverflowExpansion = useCallback(
+    (date: Date, hiddenCount: number, source: DayDetailsSource) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+
+      const analyticsWindow = window as typeof window & {
+        analytics?: { track?: (eventName: string, payload?: Record<string, unknown>) => void };
+      };
+
+      analyticsWindow.analytics?.track?.("calendar_day_expanded", {
+        date: date.toISOString(),
+        hiddenCount,
+        source,
+      });
+    },
+    [],
+  );
+
   const submitRsvpAction = useCallback(
     (activityId: number, action: ActivityRsvpAction) => {
       respondToInviteMutation.mutate({ activityId, action });
@@ -921,6 +955,45 @@ export default function Trip() {
     },
     [selectedActivity, submitRsvpAction],
   );
+
+  const handleGroupOverflowClick = useCallback(
+    (day: Date, context: DayOverflowClickContext) => {
+      trackDayOverflowExpansion(day, context.hiddenCount, "group");
+
+      setSelectedDate(day);
+      setExpandedDay({
+        date: day,
+        source: "group",
+        trigger: context.trigger ?? null,
+        hiddenCount: context.hiddenCount,
+      });
+    },
+    [trackDayOverflowExpansion],
+  );
+
+  const handlePersonalOverflowClick = useCallback(
+    (day: Date, context: DayOverflowClickContext) => {
+      trackDayOverflowExpansion(day, context.hiddenCount, "personal");
+
+      setSelectedDate(day);
+      setExpandedDay({
+        date: day,
+        source: "personal",
+        trigger: context.trigger ?? null,
+        hiddenCount: context.hiddenCount,
+      });
+    },
+    [trackDayOverflowExpansion],
+  );
+
+  const handleCloseExpandedDay = useCallback(() => {
+    setExpandedDay((previous) => {
+      if (previous?.trigger) {
+        previous.trigger.focus();
+      }
+      return null;
+    });
+  }, []);
 
   const openSummaryPanel = (panel: SummaryPanel) => {
     setSummaryPanel(panel);
@@ -1113,6 +1186,22 @@ export default function Trip() {
       return true;
     });
   }, [activities, user]);
+
+  const expandedDayActivities = useMemo(() => {
+    if (!expandedDay) {
+      return [] as ActivityWithDetails[];
+    }
+
+    const sourceActivities = expandedDay.source === "group"
+      ? filteredActivities
+      : myScheduleActivities;
+
+    return sourceActivities
+      .filter((activity) => isSameDay(new Date(activity.startTime), expandedDay.date))
+      .sort(
+        (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+      );
+  }, [expandedDay, filteredActivities, myScheduleActivities]);
 
   const filteredMyInvitedActivities = useMemo(() => {
     if (!user) return [];
@@ -1827,6 +1916,7 @@ export default function Trip() {
                                 openAddActivityModal(clampDateToTrip(date));
                               }}
                               onActivityClick={handleActivityClick}
+                              onOverflowClick={handleGroupOverflowClick}
                             />
                             {filteredActivities.length === 0 && (
                               <div className="relative mt-6 overflow-hidden rounded-[24px] border border-[color:var(--calendar-line)]/60 bg-[var(--calendar-canvas)]/90 py-12 text-center shadow-[0_22px_60px_-28px_rgba(16,24,40,0.35)]">
@@ -1958,6 +2048,7 @@ export default function Trip() {
                               openAddActivityModal(clampDateToTrip(date));
                             }}
                             onActivityClick={handleActivityClick}
+                            onOverflowClick={handlePersonalOverflowClick}
                           />
                         ) : currentScheduleDay ? (
                           <DayView
@@ -2537,6 +2628,61 @@ export default function Trip() {
             trip={trip}
           />
         )}
+
+        <Dialog
+          open={Boolean(expandedDay)}
+          onOpenChange={(open) => {
+            if (!open) {
+              handleCloseExpandedDay();
+            }
+          }}
+        >
+          <DialogContent
+            className="max-w-4xl max-h-[85vh] overflow-y-auto"
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              dayDetailsTitleRef.current?.focus();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle
+                ref={dayDetailsTitleRef}
+                tabIndex={-1}
+                className="rounded-md px-1 text-xl font-semibold text-[color:var(--calendar-ink)] outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                {expandedDay ? format(expandedDay.date, "EEEE, MMMM d, yyyy") : ""}
+              </DialogTitle>
+              <DialogDescription>
+                {expandedDay
+                  ? expandedDayActivities.length === 1
+                    ? "Showing 1 scheduled item."
+                    : `Showing ${expandedDayActivities.length} scheduled items.`
+                  : ""}
+              </DialogDescription>
+            </DialogHeader>
+            {expandedDay ? (
+              <DayView
+                date={expandedDay.date}
+                activities={expandedDayActivities}
+                onPreviousDay={() => {}}
+                onNextDay={() => {}}
+                canGoPrevious={false}
+                canGoNext={false}
+                emptyStateMessage={
+                  expandedDay.source === "personal"
+                    ? "No activities you're going to or created for this day yet."
+                    : "No activities scheduled for this day yet."
+                }
+                onActivityClick={handleActivityClick}
+                currentUser={user}
+                onSubmitRsvp={(activity, action) => submitRsvpAction(activity.id, action)}
+                isRsvpPending={respondToInviteMutation.isPending}
+                viewMode={expandedDay.source === "personal" ? "personal" : "group"}
+                showNavigation={false}
+              />
+            ) : null}
+          </DialogContent>
+        </Dialog>
 
         <ActivityDetailsDialog
           activity={selectedActivity}
