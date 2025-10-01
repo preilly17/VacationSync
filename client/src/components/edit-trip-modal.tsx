@@ -10,6 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertTripCalendarSchema } from "@shared/schema";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
+import { buildApiUrl } from "@/lib/api";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
@@ -43,6 +44,11 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
+  const [pendingCoverPhotoFile, setPendingCoverPhotoFile] = useState<File | null>(null);
+  const [pendingCoverPhotoMeta, setPendingCoverPhotoMeta] = useState<
+    { size: number; type: string } | null
+  >(null);
+  const [saveState, setSaveState] = useState<"idle" | "uploading" | "saving">("idle");
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -57,6 +63,15 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? null,
       coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
+      coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
+      coverPhotoOriginalUrl:
+        trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoFocalX:
+        typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
+      coverPhotoFocalY:
+        typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
+      coverPhotoUploadSize: null,
+      coverPhotoUploadType: null,
     },
   });
 
@@ -74,6 +89,15 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
         coverPhotoAlt: trip.coverPhotoAlt ?? null,
         coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
+        coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
+        coverPhotoOriginalUrl:
+          trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+        coverPhotoFocalX:
+          typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
+        coverPhotoFocalY:
+          typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
+        coverPhotoUploadSize: null,
+        coverPhotoUploadType: null,
       });
       // Set destination for SmartLocationSearch
       setSelectedDestination({
@@ -83,29 +107,74 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     }
   }, [open, trip, form]);
 
+  useEffect(() => {
+    if (!open) {
+      setPendingCoverPhotoFile(null);
+      setPendingCoverPhotoMeta(null);
+      setSaveState("idle");
+    }
+  }, [open]);
+
   const updateTripMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const response = await apiRequest(`/api/trips/${trip.id}`, {
-        method: 'PUT',
+        method: "PUT",
         body: JSON.stringify(data),
       });
       return response.json();
     },
     onSuccess: async (updatedTrip) => {
-      // Invalidate related queries
+      const version = Date.now();
+      const withCacheBuster = (input?: string | null) => {
+        if (!input) {
+          return null;
+        }
+        const separator = input.includes("?") ? "&" : "?";
+        return `${input}${separator}v=${version}`;
+      };
+
+      const updatedTripWithCache = {
+        ...updatedTrip,
+        coverImageUrl: withCacheBuster(
+          updatedTrip.coverImageUrl ??
+            updatedTrip.coverPhotoUrl ??
+            updatedTrip.coverPhotoOriginalUrl ??
+            null,
+        ),
+        coverPhotoUrl: withCacheBuster(
+          updatedTrip.coverPhotoUrl ??
+            updatedTrip.coverImageUrl ??
+            updatedTrip.coverPhotoOriginalUrl ??
+            null,
+        ),
+        coverPhotoCardUrl: withCacheBuster(updatedTrip.coverPhotoCardUrl ?? null),
+        coverPhotoThumbUrl: withCacheBuster(updatedTrip.coverPhotoThumbUrl ?? null),
+      };
+
       await queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
       await queryClient.invalidateQueries({ queryKey: [`/api/trips/${trip.id}`] });
-      
-      // Update the specific trip cache immediately
+
       queryClient.setQueryData([`/api/trips/${trip.id}`], (oldData: any) => {
         if (oldData) {
-          return { ...oldData, ...updatedTrip };
+          return { ...oldData, ...updatedTripWithCache };
         }
-        return updatedTrip;
+        return updatedTripWithCache;
       });
-      
-      const originalCover = trip.coverImageUrl ?? trip.coverPhotoUrl ?? null;
-      const updatedCover = updatedTrip.coverImageUrl ?? updatedTrip.coverPhotoUrl ?? null;
+
+      setPendingCoverPhotoFile(null);
+      setPendingCoverPhotoMeta(null);
+      setSaveState("idle");
+
+      const originalCover =
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        trip.coverPhotoOriginalUrl ??
+        null;
+      const updatedCover =
+        updatedTrip.coverImageUrl ??
+        updatedTrip.coverPhotoUrl ??
+        updatedTrip.coverPhotoOriginalUrl ??
+        null;
       const coverChanged = originalCover !== updatedCover;
 
       toast({
@@ -116,48 +185,237 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       });
       onOpenChange(false);
     },
-    onError: (error: any) => {
-      console.error("Trip update error:", error);
-      let errorMessage = "Failed to update trip. Please try again.";
-      
-      if (error.message === "Unauthorized" || error.message.includes("401")) {
-        errorMessage = "Your session has expired. Redirecting to login...";
-        return;
-      }
-      
-      if (error.message.includes("Only the trip creator")) {
-        errorMessage = "Only the trip creator can edit trip details.";
-      }
-      
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    },
   });
 
-  const onSubmit = (data: FormData) => {
-    // Use selected destination if available, otherwise use form data
-    const submitData = {
-      ...data,
-      destination: selectedDestination?.displayName || selectedDestination?.name || data.destination
-    };
-    console.log("Submitting trip update data:", submitData);
-    updateTripMutation.mutate(submitData);
+  type UploadResponse = {
+    storageKey: string;
+    publicUrl: string;
+    size: number;
+    mimeType: string;
+  };
+
+  const uploadCoverPhoto = useCallback(
+    async (file: File): Promise<UploadResponse> => {
+      const response = await fetch(buildApiUrl("/api/uploads/cover-photo"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Filename": file.name,
+          "X-Content-Type": file.type,
+        },
+        body: file,
+        credentials: "include",
+      });
+
+      const text = await response.text();
+      if (!response.ok) {
+        let message = text || "We couldn’t upload that image. Try JPG/PNG/WebP under the size limit.";
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed?.message) {
+            message = parsed.message;
+          }
+        } catch (parseError) {
+          console.warn("Failed to parse upload error response", parseError);
+        }
+        throw new Error(message);
+      }
+
+      try {
+        const payload = JSON.parse(text);
+        return {
+          storageKey: payload.storageKey,
+          publicUrl: payload.publicUrl,
+          size: payload.size,
+          mimeType: payload.mimeType,
+        };
+      } catch (parseError) {
+        console.error("Unexpected upload response", parseError, text);
+        throw new Error("We couldn’t upload that image. Please try again.");
+      }
+    },
+    [],
+  );
+
+  const deleteUploadedFile = useCallback(async (storageKey: string) => {
+    if (!storageKey) {
+      return;
+    }
+    try {
+      await fetch(
+        buildApiUrl(`/api/uploads/cover-photo/${encodeURIComponent(storageKey)}`),
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+    } catch (cleanupError) {
+      console.warn("Failed to clean up uploaded cover photo", cleanupError);
+    }
+  }, []);
+
+  const extractServerMessage = (error: unknown): string => {
+    if (error instanceof Error) {
+      const message = error.message ?? "";
+      const jsonMatch = message.match(/\{.*\}$/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed?.message) {
+            return parsed.message;
+          }
+        } catch (parseError) {
+          console.warn("Failed to parse server error", parseError);
+        }
+      }
+      return message;
+    }
+    if (typeof error === "string") {
+      return error;
+    }
+    return "Unknown error";
+  };
+
+  const onSubmit = async (_data: FormData) => {
+    const destinationValue =
+      selectedDestination?.displayName ||
+      selectedDestination?.name ||
+      form.getValues("destination") ||
+      trip.destination;
+
+    let uploadResult: UploadResponse | null = null;
+
+    try {
+      if (pendingCoverPhotoFile) {
+        setSaveState("uploading");
+        try {
+          uploadResult = await uploadCoverPhoto(pendingCoverPhotoFile);
+        } catch (uploadError) {
+          setSaveState("idle");
+          const message = extractServerMessage(uploadError);
+          toast({
+            title: "Error",
+            description: message,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
+      setSaveState("saving");
+
+      const currentValues = form.getValues();
+      const normalizeFocal = (value: unknown) => {
+        if (typeof value === "number") {
+          return value;
+        }
+        if (typeof value === "string" && value !== "") {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      };
+
+      const submitData: FormData = {
+        ...currentValues,
+        destination: destinationValue,
+        coverPhotoFocalX: normalizeFocal(currentValues.coverPhotoFocalX),
+        coverPhotoFocalY: normalizeFocal(currentValues.coverPhotoFocalY),
+        coverPhotoUploadSize: pendingCoverPhotoMeta?.size ?? null,
+        coverPhotoUploadType: pendingCoverPhotoMeta?.type ?? null,
+      };
+
+      if (uploadResult) {
+        submitData.coverPhotoUrl = uploadResult.publicUrl;
+        submitData.coverImageUrl = uploadResult.publicUrl;
+        submitData.coverPhotoOriginalUrl = uploadResult.publicUrl;
+        submitData.coverPhotoStorageKey = uploadResult.storageKey;
+        submitData.coverPhotoCardUrl = null;
+        submitData.coverPhotoThumbUrl = null;
+        submitData.coverPhotoUploadSize = uploadResult.size;
+        submitData.coverPhotoUploadType = uploadResult.mimeType;
+      }
+
+      await updateTripMutation.mutateAsync(submitData);
+    } catch (error) {
+      if (uploadResult) {
+        await deleteUploadedFile(uploadResult.storageKey);
+      }
+      setSaveState("idle");
+
+      if (
+        error instanceof Error &&
+        (error.message === "Unauthorized" || error.message.includes("401"))
+      ) {
+        toast({
+          title: "Session expired",
+          description: "Your session has expired. Please refresh and sign in again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reason = extractServerMessage(error);
+      const description = reason.includes("Only the trip creator")
+        ? reason
+        : `We couldn’t save this photo to your trip. Reason: ${reason}`;
+
+      toast({
+        title: "Error",
+        description,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCoverPhotoChange = useCallback(
     (next: CoverPhotoValue) => {
-      form.setValue("coverImageUrl", next.coverPhotoUrl, { shouldDirty: true });
-      form.setValue("coverPhotoUrl", next.coverPhotoUrl, { shouldDirty: true });
-      form.setValue("coverPhotoCardUrl", next.coverPhotoCardUrl, { shouldDirty: true });
-      form.setValue("coverPhotoThumbUrl", next.coverPhotoThumbUrl, { shouldDirty: true });
-      form.setValue("coverPhotoAlt", next.coverPhotoAlt, { shouldDirty: true });
-      form.setValue("coverPhotoAttribution", next.coverPhotoAttribution, { shouldDirty: true });
+      form.setValue("coverImageUrl", next.coverPhotoUrl ?? null, { shouldDirty: true });
+      form.setValue("coverPhotoUrl", next.coverPhotoUrl ?? null, { shouldDirty: true });
+      form.setValue("coverPhotoCardUrl", next.coverPhotoCardUrl ?? null, { shouldDirty: true });
+      form.setValue("coverPhotoThumbUrl", next.coverPhotoThumbUrl ?? null, { shouldDirty: true });
+      form.setValue("coverPhotoAlt", next.coverPhotoAlt ?? null, { shouldDirty: true });
+      form.setValue("coverPhotoAttribution", next.coverPhotoAttribution ?? null, { shouldDirty: true });
+      form.setValue("coverPhotoStorageKey", next.coverPhotoStorageKey ?? null, { shouldDirty: true });
+      form.setValue("coverPhotoOriginalUrl", next.coverPhotoOriginalUrl ?? null, { shouldDirty: true });
+      if (typeof next.coverPhotoFocalX === "number") {
+        form.setValue("coverPhotoFocalX", next.coverPhotoFocalX, { shouldDirty: true });
+      }
+      if (typeof next.coverPhotoFocalY === "number") {
+        form.setValue("coverPhotoFocalY", next.coverPhotoFocalY, { shouldDirty: true });
+      }
     },
     [form],
   );
+
+  const handlePendingFileChange = useCallback(
+    (file: File | null, _previewUrl: string | null) => {
+      setPendingCoverPhotoFile(file);
+      if (file) {
+        setPendingCoverPhotoMeta({ size: file.size, type: file.type });
+        form.setValue("coverPhotoUploadSize", file.size, { shouldDirty: true });
+        form.setValue("coverPhotoUploadType", file.type, { shouldDirty: true });
+        form.setValue("coverPhotoStorageKey", null, { shouldDirty: true });
+      } else {
+        setPendingCoverPhotoMeta(null);
+        form.setValue("coverPhotoUploadSize", null, { shouldDirty: true });
+        form.setValue("coverPhotoUploadType", null, { shouldDirty: true });
+        form.setValue("coverPhotoStorageKey", null, { shouldDirty: true });
+      }
+    },
+    [form],
+  );
+
+  const toNumericOrNull = (value: unknown) => {
+    if (typeof value === "number") {
+      return value;
+    }
+    if (typeof value === "string" && value !== "") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
 
   const coverPhotoValue: CoverPhotoValue = {
     coverPhotoUrl: form.watch("coverPhotoUrl") ?? null,
@@ -165,6 +423,10 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     coverPhotoThumbUrl: form.watch("coverPhotoThumbUrl") ?? null,
     coverPhotoAlt: form.watch("coverPhotoAlt") ?? null,
     coverPhotoAttribution: form.watch("coverPhotoAttribution") ?? null,
+    coverPhotoStorageKey: form.watch("coverPhotoStorageKey") ?? null,
+    coverPhotoOriginalUrl: form.watch("coverPhotoOriginalUrl") ?? null,
+    coverPhotoFocalX: toNumericOrNull(form.watch("coverPhotoFocalX")),
+    coverPhotoFocalY: toNumericOrNull(form.watch("coverPhotoFocalY")),
   };
 
   const handleDestinationSelect = (location: any) => {
@@ -191,12 +453,24 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       name: trip.destination,
       displayName: trip.destination
     });
+    setPendingCoverPhotoFile(null);
+    setPendingCoverPhotoMeta(null);
+    setSaveState("idle");
     onOpenChange(false);
   };
 
+  const isUploadingCoverPhoto = saveState === "uploading";
+  const isSavingTrip = saveState === "saving" || updateTripMutation.isPending;
+  const isCoverPhotoBusy = isUploadingCoverPhoto || isSavingTrip;
+  const saveButtonLabel = isUploadingCoverPhoto
+    ? "Uploading…"
+    : isSavingTrip
+      ? "Saving…"
+      : "Save Changes";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-full max-w-xl max-h-[calc(100vh-3rem)] overflow-y-auto">
+      <DialogContent className="w-full max-w-xl max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-h-[85vh]">
         <DialogHeader>
           <DialogTitle>Edit Trip Details</DialogTitle>
           <DialogDescription>
@@ -211,6 +485,12 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
           <input type="hidden" {...form.register("coverPhotoThumbUrl")} />
           <input type="hidden" {...form.register("coverPhotoAlt")} />
           <input type="hidden" {...form.register("coverPhotoAttribution")} />
+          <input type="hidden" {...form.register("coverPhotoStorageKey")} />
+          <input type="hidden" {...form.register("coverPhotoOriginalUrl")} />
+          <input type="hidden" {...form.register("coverPhotoFocalX", { valueAsNumber: true })} />
+          <input type="hidden" {...form.register("coverPhotoFocalY", { valueAsNumber: true })} />
+          <input type="hidden" {...form.register("coverPhotoUploadSize", { valueAsNumber: true })} />
+          <input type="hidden" {...form.register("coverPhotoUploadType")} />
 
           <div>
             <Label htmlFor="name">Trip Name</Label>
@@ -269,6 +549,8 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
             value={coverPhotoValue}
             onChange={handleCoverPhotoChange}
             defaultAltText={`Cover photo for ${form.watch("name") || trip.name}`}
+            onPendingFileChange={handlePendingFileChange}
+            isBusy={isCoverPhotoBusy}
           />
 
           <div className="flex space-x-3 pt-4">
@@ -284,10 +566,10 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
             <Button
               type="submit"
               className="flex-1 bg-primary hover:bg-red-600 text-white"
-              disabled={updateTripMutation.isPending}
+              disabled={isCoverPhotoBusy}
               data-testid="button-save-trip"
             >
-              {updateTripMutation.isPending ? "Updating..." : "Save Changes"}
+              {saveButtonLabel}
             </Button>
           </div>
         </form>

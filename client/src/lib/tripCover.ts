@@ -53,3 +53,21 @@ export const useCoverPhotoImage = (src: string | null | undefined): CoverPhotoIm
 };
 
 export const buildCoverPhotoAltText = (tripName: string): string => `Trip cover photo for ${tripName}`;
+
+export const getCoverPhotoObjectPosition = (
+  focalX?: number | null,
+  focalY?: number | null,
+) => {
+  const normalizedX = typeof focalX === "number" ? focalX : 0.5;
+  const normalizedY = typeof focalY === "number" ? focalY : 0.5;
+  const xPercent = clampPercent(normalizedX * 100);
+  const yPercent = clampPercent(normalizedY * 100);
+  return `${xPercent}% ${yPercent}%`;
+};
+
+const clampPercent = (value: number) => {
+  if (Number.isNaN(value)) {
+    return 50;
+  }
+  return Math.min(Math.max(value, 0), 100);
+};

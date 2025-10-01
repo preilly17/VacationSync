@@ -44,7 +44,12 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import { TRIP_COVER_GRADIENT, buildCoverPhotoSrcSet, useCoverPhotoImage } from "@/lib/tripCover";
+import {
+  TRIP_COVER_GRADIENT,
+  buildCoverPhotoSrcSet,
+  getCoverPhotoObjectPosition,
+  useCoverPhotoImage,
+} from "@/lib/tripCover";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { AddActivityModal } from "@/components/add-activity-modal";
 import { EditTripModal } from "@/components/edit-trip-modal";
@@ -1244,14 +1249,23 @@ export default function Trip() {
     ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
     : null;
   const isTripCreator = trip ? user?.id === trip.createdBy : false;
-  const heroCoverPhoto = trip?.coverImageUrl ?? trip?.coverPhotoUrl ?? null;
+  const heroCoverPhoto =
+    trip?.coverPhotoUrl ?? trip?.coverPhotoOriginalUrl ?? trip?.coverImageUrl ?? null;
   const heroImageSrcSet = trip
     ? buildCoverPhotoSrcSet({
-        full: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-        card: trip.coverPhotoCardUrl ?? null,
-        thumb: trip.coverPhotoThumbUrl ?? null,
+        full: trip.coverPhotoUrl ?? trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? null,
+        card: trip.coverPhotoCardUrl ?? trip.coverPhotoOriginalUrl ?? null,
+        thumb:
+          trip.coverPhotoThumbUrl ??
+          trip.coverPhotoCardUrl ??
+          trip.coverPhotoOriginalUrl ??
+          null,
       })
     : undefined;
+  const heroObjectPosition = getCoverPhotoObjectPosition(
+    trip?.coverPhotoFocalX,
+    trip?.coverPhotoFocalY,
+  );
   const {
     showImage: showHeroCover,
     isLoaded: heroCoverLoaded,
@@ -1529,6 +1543,7 @@ export default function Trip() {
                         onError={handleHeroCoverError}
                         loading="eager"
                         decoding="async"
+                        style={{ objectPosition: heroObjectPosition }}
                       />
                     ) : null}
                     <div

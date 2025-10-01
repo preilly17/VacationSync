@@ -312,6 +312,10 @@ type TripRow = {
   cover_photo_thumb_url: string | null;
   cover_photo_alt: string | null;
   cover_photo_attribution: string | null;
+  cover_photo_storage_key: string | null;
+  cover_photo_original_url: string | null;
+  cover_photo_focal_x: string | number | null;
+  cover_photo_focal_y: string | number | null;
 };
 
 type TripMemberRow = {
@@ -1004,6 +1008,12 @@ const mapTrip = (row: TripRow): TripCalendar => ({
   coverPhotoThumbUrl: row.cover_photo_thumb_url,
   coverPhotoAlt: row.cover_photo_alt,
   coverPhotoAttribution: row.cover_photo_attribution,
+  coverPhotoStorageKey: row.cover_photo_storage_key,
+  coverPhotoOriginalUrl: row.cover_photo_original_url,
+  coverPhotoFocalX: safeNumberOrNull(row.cover_photo_focal_x),
+  coverPhotoFocalY: safeNumberOrNull(row.cover_photo_focal_y),
+  coverPhotoUploadSize: null,
+  coverPhotoUploadType: null,
 });
 
 const mapTripMember = (row: TripMemberRow): TripMember => ({
@@ -1602,6 +1612,10 @@ const mapFlightWithDetails = (row: FlightWithDetailsRow): FlightWithDetails => {
     cover_photo_thumb_url: null,
     cover_photo_alt: null,
     cover_photo_attribution: null,
+    cover_photo_storage_key: null,
+    cover_photo_original_url: null,
+    cover_photo_focal_x: null,
+    cover_photo_focal_y: null,
   };
 
   return {
@@ -1679,6 +1693,10 @@ const mapHotelWithDetails = (row: HotelWithDetailsRow): HotelWithDetails => {
     cover_photo_thumb_url: null,
     cover_photo_alt: null,
     cover_photo_attribution: null,
+    cover_photo_storage_key: null,
+    cover_photo_original_url: null,
+    cover_photo_focal_x: null,
+    cover_photo_focal_y: null,
   };
 
   return {
@@ -1739,6 +1757,10 @@ const mapRestaurantWithDetails = (
     cover_photo_thumb_url: null,
     cover_photo_alt: null,
     cover_photo_attribution: null,
+    cover_photo_storage_key: null,
+    cover_photo_original_url: null,
+    cover_photo_focal_x: null,
+    cover_photo_focal_y: null,
   };
 
   return {
@@ -2151,7 +2173,11 @@ export class DatabaseStorage implements IStorage {
           ADD COLUMN IF NOT EXISTS cover_photo_card_url TEXT,
           ADD COLUMN IF NOT EXISTS cover_photo_thumb_url TEXT,
           ADD COLUMN IF NOT EXISTS cover_photo_alt TEXT,
-          ADD COLUMN IF NOT EXISTS cover_photo_attribution TEXT
+          ADD COLUMN IF NOT EXISTS cover_photo_attribution TEXT,
+          ADD COLUMN IF NOT EXISTS cover_photo_storage_key TEXT,
+          ADD COLUMN IF NOT EXISTS cover_photo_original_url TEXT,
+          ADD COLUMN IF NOT EXISTS cover_photo_focal_x DOUBLE PRECISION,
+          ADD COLUMN IF NOT EXISTS cover_photo_focal_y DOUBLE PRECISION
       `);
 
       this.coverPhotoColumnsInitialized = true;
@@ -2455,9 +2481,34 @@ export class DatabaseStorage implements IStorage {
         cover_photo_card_url,
         cover_photo_thumb_url,
         cover_photo_alt,
-        cover_photo_attribution
+        cover_photo_attribution,
+        cover_photo_storage_key,
+        cover_photo_original_url,
+        cover_photo_focal_x,
+        cover_photo_focal_y
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8,
+        $9,
+        $10,
+        $11,
+        $12,
+        $13,
+        $14,
+        $15,
+        $16,
+        $17,
+        $18,
+        $19,
+        $20
+      )
       RETURNING
         id,
         name,
@@ -2477,7 +2528,11 @@ export class DatabaseStorage implements IStorage {
         cover_photo_card_url,
         cover_photo_thumb_url,
         cover_photo_alt,
-        cover_photo_attribution
+        cover_photo_attribution,
+        cover_photo_storage_key,
+        cover_photo_original_url,
+        cover_photo_focal_x,
+        cover_photo_focal_y
       `,
       [
         trip.name,
@@ -2497,6 +2552,14 @@ export class DatabaseStorage implements IStorage {
         trip.coverPhotoThumbUrl ?? null,
         trip.coverPhotoAlt ?? null,
         trip.coverPhotoAttribution ?? null,
+        trip.coverPhotoStorageKey ?? null,
+        trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+        typeof trip.coverPhotoFocalX === "number" && Number.isFinite(trip.coverPhotoFocalX)
+          ? trip.coverPhotoFocalX
+          : null,
+        typeof trip.coverPhotoFocalY === "number" && Number.isFinite(trip.coverPhotoFocalY)
+          ? trip.coverPhotoFocalY
+          : null,
       ],
     );
 
@@ -2979,6 +3042,38 @@ export class DatabaseStorage implements IStorage {
       index += 1;
     }
 
+    if (data.coverPhotoStorageKey !== undefined) {
+      setClauses.push(`cover_photo_storage_key = $${index}`);
+      values.push(data.coverPhotoStorageKey ?? null);
+      index += 1;
+    }
+
+    if (data.coverPhotoOriginalUrl !== undefined) {
+      setClauses.push(`cover_photo_original_url = $${index}`);
+      values.push(data.coverPhotoOriginalUrl ?? null);
+      index += 1;
+    }
+
+    if (data.coverPhotoFocalX !== undefined) {
+      const normalized =
+        data.coverPhotoFocalX === null || data.coverPhotoFocalX === undefined
+          ? null
+          : Number(data.coverPhotoFocalX);
+      setClauses.push(`cover_photo_focal_x = $${index}`);
+      values.push(Number.isFinite(normalized as number) ? normalized : null);
+      index += 1;
+    }
+
+    if (data.coverPhotoFocalY !== undefined) {
+      const normalized =
+        data.coverPhotoFocalY === null || data.coverPhotoFocalY === undefined
+          ? null
+          : Number(data.coverPhotoFocalY);
+      setClauses.push(`cover_photo_focal_y = $${index}`);
+      values.push(Number.isFinite(normalized as number) ? normalized : null);
+      index += 1;
+    }
+
     if (setClauses.length === 0) {
       return mapTrip(existing);
     }
@@ -3006,7 +3101,11 @@ export class DatabaseStorage implements IStorage {
         cover_photo_card_url,
         cover_photo_thumb_url,
         cover_photo_alt,
-        cover_photo_attribution
+        cover_photo_attribution,
+        cover_photo_storage_key,
+        cover_photo_original_url,
+        cover_photo_focal_x,
+        cover_photo_focal_y
     `;
 
     values.push(tripId);
@@ -3106,6 +3205,14 @@ export class DatabaseStorage implements IStorage {
         tc.cover_photo_thumb_url,
         tc.cover_photo_alt,
         tc.cover_photo_attribution,
+        tc.cover_photo_storage_key,
+        tc.cover_photo_original_url,
+        tc.cover_photo_focal_x,
+        tc.cover_photo_focal_y,
+        tc.cover_photo_storage_key,
+        tc.cover_photo_original_url,
+        tc.cover_photo_focal_x,
+        tc.cover_photo_focal_y,
         creator.id AS creator_id,
         creator.email AS creator_email,
         creator.username AS creator_username,
@@ -5084,6 +5191,10 @@ export class DatabaseStorage implements IStorage {
           cover_photo_thumb_url: null,
           cover_photo_alt: null,
           cover_photo_attribution: null,
+          cover_photo_storage_key: null,
+          cover_photo_original_url: null,
+          cover_photo_focal_x: null,
+          cover_photo_focal_y: null,
         };
         result.trip = mapTrip(tripRow);
       }

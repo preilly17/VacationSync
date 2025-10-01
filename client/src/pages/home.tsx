@@ -64,6 +64,7 @@ import {
   TRIP_COVER_GRADIENT,
   buildCoverPhotoAltText,
   buildCoverPhotoSrcSet,
+  getCoverPhotoObjectPosition,
   useCoverPhotoImage,
 } from "@/lib/tripCover";
 
@@ -310,6 +311,9 @@ type TripSummary = {
   coverPhotoUrl?: string | null;
   coverPhotoCardUrl?: string | null;
   coverPhotoThumbUrl?: string | null;
+  coverPhotoOriginalUrl?: string | null;
+  coverPhotoFocalX?: number | null;
+  coverPhotoFocalY?: number | null;
   coverPhotoAlt?: string | null;
 };
 
@@ -626,10 +630,28 @@ export default function Home() {
       travelersCount: trip.memberCount,
       travelers: buildTravelerData(trip.members),
       progressPercent: calculatePlanningProgress(trip),
-      coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverImageUrl:
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        trip.coverPhotoOriginalUrl ??
+        null,
       coverPhotoUrl: trip.coverPhotoUrl ?? null,
-      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? trip.coverPhotoCardUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl:
+        trip.coverPhotoCardUrl ??
+        trip.coverPhotoOriginalUrl ??
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        null,
+      coverPhotoThumbUrl:
+        trip.coverPhotoThumbUrl ??
+        trip.coverPhotoCardUrl ??
+        trip.coverPhotoOriginalUrl ??
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        null,
+      coverPhotoOriginalUrl: trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoFocalX: trip.coverPhotoFocalX ?? null,
+      coverPhotoFocalY: trip.coverPhotoFocalY ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? undefined,
     }));
   }, [upcomingTripsForDisplay]);
@@ -846,17 +868,36 @@ export default function Home() {
       )}`
     : null;
 
-  const heroCoverPhoto = primaryTrip?.coverImageUrl ?? primaryTrip?.coverPhotoUrl ?? null;
+  const heroCoverPhoto =
+    primaryTrip?.coverPhotoUrl ??
+    primaryTrip?.coverPhotoOriginalUrl ??
+    primaryTrip?.coverImageUrl ??
+    null;
   const heroImageSrcSet = primaryTrip
     ? buildCoverPhotoSrcSet({
-        full: primaryTrip.coverImageUrl ?? primaryTrip.coverPhotoUrl ?? null,
-        card: primaryTrip.coverPhotoCardUrl ?? null,
-        thumb: primaryTrip.coverPhotoThumbUrl ?? null,
+        full:
+          primaryTrip.coverPhotoUrl ??
+          primaryTrip.coverPhotoOriginalUrl ??
+          primaryTrip.coverImageUrl ??
+          null,
+        card:
+          primaryTrip.coverPhotoCardUrl ??
+          primaryTrip.coverPhotoOriginalUrl ??
+          null,
+        thumb:
+          primaryTrip.coverPhotoThumbUrl ??
+          primaryTrip.coverPhotoCardUrl ??
+          primaryTrip.coverPhotoOriginalUrl ??
+          null,
       })
     : undefined;
   const heroAltText = primaryTrip
     ? buildCoverPhotoAltText(primaryTrip.name || primaryTrip.destination)
     : "Trip cover photo";
+  const heroObjectPosition = getCoverPhotoObjectPosition(
+    primaryTrip?.coverPhotoFocalX,
+    primaryTrip?.coverPhotoFocalY,
+  );
   const {
     showImage: showHeroCover,
     isLoaded: heroCoverLoaded,
@@ -1481,6 +1522,7 @@ export default function Home() {
                 onError={handleHeroCoverError}
                 loading="eager"
                 decoding="async"
+                style={{ objectPosition: heroObjectPosition }}
               />
             ) : null}
             <div
@@ -1774,13 +1816,27 @@ type TripCardProps = {
 };
 
 function TripCard({ trip }: TripCardProps) {
-  const cardImageSrc = trip.coverPhotoCardUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null;
+  const cardImageSrc =
+    trip.coverPhotoCardUrl ??
+    trip.coverPhotoOriginalUrl ??
+    trip.coverImageUrl ??
+    trip.coverPhotoUrl ??
+    null;
   const cardImageSrcSet = buildCoverPhotoSrcSet({
-    full: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-    card: trip.coverPhotoCardUrl ?? null,
-    thumb: trip.coverPhotoThumbUrl ?? null,
+    full:
+      trip.coverPhotoUrl ??
+      trip.coverPhotoOriginalUrl ??
+      trip.coverImageUrl ??
+      null,
+    card: trip.coverPhotoCardUrl ?? trip.coverPhotoOriginalUrl ?? null,
+    thumb:
+      trip.coverPhotoThumbUrl ??
+      trip.coverPhotoCardUrl ??
+      trip.coverPhotoOriginalUrl ??
+      null,
   });
   const altText = buildCoverPhotoAltText(trip.name);
+  const objectPosition = getCoverPhotoObjectPosition(trip.coverPhotoFocalX, trip.coverPhotoFocalY);
   const {
     showImage: showCardImage,
     isLoaded: cardImageLoaded,
@@ -1802,21 +1858,22 @@ function TripCard({ trip }: TripCardProps) {
             style={{ backgroundImage: TRIP_COVER_GRADIENT }}
             aria-hidden="true"
           />
-        {showCardImage ? (
-          <img
-            src={cardImageSrc ?? undefined}
-            srcSet={cardImageSrcSet}
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            alt={altText}
-            className={`absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${
-              cardImageLoaded ? "opacity-100" : "opacity-0"
-            } transition-opacity duration-700`}
-            onLoad={handleCardImageLoad}
-            onError={handleCardImageError}
-            loading="lazy"
-            decoding="async"
-          />
-        ) : null}
+          {showCardImage ? (
+            <img
+              src={cardImageSrc ?? undefined}
+              srcSet={cardImageSrcSet}
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              alt={altText}
+              className={`absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+                cardImageLoaded ? "opacity-100" : "opacity-0"
+              } transition-opacity duration-700`}
+              onLoad={handleCardImageLoad}
+              onError={handleCardImageError}
+              loading="lazy"
+              decoding="async"
+              style={{ objectPosition }}
+            />
+          ) : null}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
           <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
             <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
