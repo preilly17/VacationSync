@@ -90,6 +90,8 @@ const promoteWaitlistedInviteIfNeeded = async (
   return nextInvite.userId;
 };
 
+let broadcastToTrip = (_tripId: number, _message: any) => {};
+
 const applyActivityResponse = async (
   activityId: number,
   userId: string,
@@ -132,14 +134,18 @@ const applyActivityResponse = async (
         ? `${responderName} accepted ${activity.name}.`
         : `${responderName} declined ${activity.name}.`;
 
-    await storage.createNotification({
-      userId: activity.postedBy,
-      type: "activity_rsvp",
-      title: "RSVP update",
-      message,
-      tripId: activity.tripCalendarId,
-      activityId: activity.id,
-    });
+    try {
+      await storage.createNotification({
+        userId: activity.postedBy,
+        type: "activity_rsvp",
+        title: "RSVP update",
+        message,
+        tripId: activity.tripCalendarId,
+        activityId: activity.id,
+      });
+    } catch (notificationError) {
+      console.error("Failed to persist RSVP notification:", notificationError);
+    }
   }
 
   broadcastToTrip(activity.tripCalendarId, {
@@ -166,14 +172,21 @@ const applyActivityResponse = async (
       );
 
       if (promotedMember) {
-        await storage.createNotification({
-          userId: promotedUserId,
-          type: "activity_waitlist",
-          title: "You're in!",
-          message: `A spot opened up for ${activity.name}.`,
-          tripId: activity.tripCalendarId,
-          activityId: activity.id,
-        });
+        try {
+          await storage.createNotification({
+            userId: promotedUserId,
+            type: "activity_waitlist",
+            title: "You're in!",
+            message: `A spot opened up for ${activity.name}.`,
+            tripId: activity.tripCalendarId,
+            activityId: activity.id,
+          });
+        } catch (notificationError) {
+          console.error(
+            "Failed to persist waitlist promotion notification:",
+            notificationError,
+          );
+        }
       }
 
       broadcastToTrip(activity.tripCalendarId, {
@@ -200,6 +213,10 @@ const applyActivityResponse = async (
     updatedActivity,
     promotedUserId,
   } as const;
+};
+
+export const __testables = {
+  applyActivityResponse,
 };
 
 const hotelSearchSchema = z.object({
@@ -2076,13 +2093,13 @@ export function setupRoutes(app: Express) {
     });
   });
 
-  function broadcastToTrip(tripId: number, message: any) {
+  broadcastToTrip = (tripId: number, message: any) => {
     clients.forEach((clientInfo, ws) => {
       if (clientInfo.tripId === tripId && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(message));
       }
     });
-  }
+  };
 
   // Delete trip route
   app.delete('/api/trips/:id', async (req: any, res) => {

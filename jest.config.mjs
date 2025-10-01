@@ -1,12 +1,12 @@
-import type { Config } from 'jest';
-
-const config: Config = {
+/** @type {import('jest').Config} */
+const config = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  roots: ['<rootDir>/shared'],
+  roots: ['<rootDir>/shared', '<rootDir>/server'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/client/src/$1',
     '^@shared/(.*)$': '<rootDir>/shared/$1',
+    '^\.\/vite$': '<rootDir>/server/__mocks__/vite.ts',
   },
   transform: {
     '^.+\\.(ts|tsx)$': [
@@ -14,6 +14,7 @@ const config: Config = {
       {
         useESM: true,
         tsconfig: 'tsconfig.jest.json',
+        diagnostics: false,
       },
     ],
   },
