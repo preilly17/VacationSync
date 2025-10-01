@@ -9,22 +9,22 @@ const app = express();
 app.set("trust proxy", 1);
 
 const defaultClientUrl = process.env.CLIENT_URL ?? "http://localhost:3000";
-const allowedOrigins = Array.from(
-  new Set(
-    [
-      process.env.CORS_ORIGINS,
-      process.env.CORS_ORIGIN,
-      defaultClientUrl,
-      "https://vacation-sync-urgg.vercel.app",
-      "http://localhost:3000",
-      "https://www.tripsyncbeta.com",
-    ]
-      .filter(Boolean)
-      .flatMap((originString) => originString!.split(","))
-      .map((origin) => origin.trim())
-      .filter(Boolean)
-  )
-);
+
+const parseOrigins = (value?: string | null) =>
+  value
+    ?.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean) ?? [];
+
+const envConfiguredOrigins = [
+  ...parseOrigins(process.env.CORS_ORIGINS),
+  ...parseOrigins(process.env.CORS_ORIGIN),
+  ...parseOrigins(process.env.CLIENT_URL),
+];
+
+const allowedOrigins = envConfiguredOrigins.length
+  ? Array.from(new Set(envConfiguredOrigins))
+  : Array.from(new Set([defaultClientUrl, "http://localhost:3000"]));
 
 const corsOptions: CorsOptions = {
   origin: allowedOrigins,
