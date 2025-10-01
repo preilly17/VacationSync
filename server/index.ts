@@ -25,6 +25,7 @@ const envConfiguredOrigins = new Set([
 const defaultOrigins = new Set([
   "http://localhost:3000",
   "https://www.tripsyncbeta.com",
+  "https://tripsyncbeta.com"
 ]);
 
 if (defaultClientUrl) {
