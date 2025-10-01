@@ -389,6 +389,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           types: locationUtilsTypes ?? undefined,
         });
 
+        console.log("🔎 SmartLocationSearch: rawResults from API", rawResults);
+        console.log("🔎 Query:", currentQuery, "Allowed types:", locationUtilsTypes);
+
         const safeResults = Array.isArray(rawResults) ? rawResults.slice(0, 7) : [];
         const processedResults = safeResults.reduce<
           Array<{ normalized: LocationResult; typeForFilter: LocationTypeUpper }>
@@ -396,8 +399,11 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           (accumulator, rawLocation) => {
             const normalized = normalizeFetchedLocation(rawLocation);
             if (!normalized) {
+              console.log("⚠️ Skipped rawLocation", rawLocation);
               return accumulator;
             }
+
+            console.log("✅ Normalized result:", normalized);
 
             let typeForFilter = toUpperLocationType(normalized.type);
 
@@ -426,6 +432,9 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
               return normalisedAllowedTypes.includes(typeForFilter);
             })
           : processedResults;
+
+        console.log("📊 Processed results before filtering:", processedResults);
+        console.log("📊 Filtered results (by allowedTypes):", filteredResults);
 
         setResults(
           filteredResults.map(({ normalized, typeForFilter }) => ({
@@ -684,6 +693,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                   </div>
                 ) : null}
                 {results.map((rawLocation, index) => {
+                  console.log("🎨 Rendering result:", rawLocation);
                   if (!rawLocation || typeof rawLocation !== "object") {
                     return null;
                   }
