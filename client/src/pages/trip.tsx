@@ -3391,17 +3391,129 @@ function FlightCoordination({
       return;
     }
 
-    const payload: InsertFlight = {
-      ...manualFlightData,
-      tripId,
-      departureTime: new Date(manualFlightData.departureTime),
-      arrivalTime: new Date(manualFlightData.arrivalTime),
-      price: manualFlightData.price ? Number(manualFlightData.price) : null,
-      currency: "USD",
+    if (!user?.id) {
+      toast({
+        title: "Authentication required",
+        description: "You need to be signed in to save flights.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const normalizedFlightNumber = manualFlightData.flightNumber.trim().toUpperCase();
+    const normalizedAirline = manualFlightData.airline.trim();
+    const deriveAirlineCode = (): string | null => {
+      const fromState = manualFlightData.airlineCode?.trim().toUpperCase();
+      if (fromState && /^[A-Z0-9]{2,3}$/.test(fromState)) {
+        return fromState;
+      }
+
+      const fromFlightNumber = normalizedFlightNumber.match(/^([A-Z]{2,3})\d+/);
+      if (fromFlightNumber) {
+        return fromFlightNumber[1];
+      }
+
+      return null;
     };
 
-    createFlightMutation.mutate(payload);
-  }, [createFlightMutation, manualFlightData, toast, tripId]);
+    const airlineCode = deriveAirlineCode();
+    if (!airlineCode) {
+      toast({
+        title: "Airline code required",
+        description: "Add a valid flight number (e.g., AA123) or airline code before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const deriveAirportCode = (value?: string | null): string | null => {
+      const direct = value?.trim().toUpperCase() ?? "";
+      if (/^[A-Z0-9]{3}$/.test(direct)) {
+        return direct;
+      }
+
+      return extractAirportCode(value ?? undefined);
+    };
+
+    const departureCode =
+      deriveAirportCode(manualFlightData.departureCode) ??
+      deriveAirportCode(manualFlightData.departureAirport);
+    const arrivalCode =
+      deriveAirportCode(manualFlightData.arrivalCode) ??
+      deriveAirportCode(manualFlightData.arrivalAirport);
+
+    if (!departureCode || !/^[A-Z0-9]{3}$/.test(departureCode)) {
+      toast({
+        title: "Departure airport code required",
+        description: "Select a departure airport with a valid 3-letter IATA code.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!arrivalCode || !/^[A-Z0-9]{3}$/.test(arrivalCode)) {
+      toast({
+        title: "Arrival airport code required",
+        description: "Select an arrival airport with a valid 3-letter IATA code.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const normalizeAirportName = (value: string) => value.trim();
+
+    const departureTime = new Date(manualFlightData.departureTime);
+    const arrivalTime = new Date(manualFlightData.arrivalTime);
+
+    if (Number.isNaN(departureTime.getTime()) || Number.isNaN(arrivalTime.getTime())) {
+      toast({
+        title: "Invalid date",
+        description: "Enter valid departure and arrival dates before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const parsedPrice = manualFlightData.price ? Number(manualFlightData.price) : null;
+    const normalizedPrice = parsedPrice !== null && Number.isFinite(parsedPrice) ? parsedPrice : null;
+
+    const basePayload: InsertFlight = {
+      tripId,
+      flightNumber: normalizedFlightNumber,
+      airline: normalizedAirline,
+      airlineCode,
+      departureAirport: normalizeAirportName(manualFlightData.departureAirport),
+      departureCode,
+      departureTime,
+      arrivalAirport: normalizeAirportName(manualFlightData.arrivalAirport),
+      arrivalCode,
+      arrivalTime,
+      flightType: manualFlightData.flightType,
+      status: manualFlightData.status || "confirmed",
+      bookingReference: manualFlightData.bookingReference?.trim() || null,
+      seatClass: manualFlightData.seatClass?.trim() || null,
+      price: normalizedPrice,
+      currency: "USD",
+      aircraft: manualFlightData.aircraft?.trim() || null,
+      departureGate: null,
+      departureTerminal: null,
+      arrivalGate: null,
+      arrivalTerminal: null,
+      seatNumber: null,
+      layovers: null,
+      bookingSource: null,
+      purchaseUrl: null,
+      flightDuration: null,
+      baggage: null,
+    };
+
+    const payloadWithUser = {
+      ...basePayload,
+      userId: user.id,
+    };
+
+    createFlightMutation.mutate(payloadWithUser as InsertFlight);
+  }, [createFlightMutation, manualFlightData, toast, tripId, user]);
 
   const handleFlightSearch = useCallback(async () => {
     if (!searchFormData.departure || !searchFormData.arrival || !searchFormData.departureDate) {
