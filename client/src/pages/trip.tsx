@@ -3443,7 +3443,7 @@ function FlightCoordination({
 
     const deriveAirportCode = (value?: string | null): string | null => {
       const direct = value?.trim().toUpperCase() ?? "";
-      if (/^[A-Z0-9]{3}$/.test(direct)) {
+      if (/^[A-Z0-9]{3,4}$/.test(direct)) {
         return direct;
       }
 
@@ -3457,19 +3457,19 @@ function FlightCoordination({
       deriveAirportCode(manualFlightData.arrivalCode) ??
       deriveAirportCode(manualFlightData.arrivalAirport);
 
-    if (!departureCode || !/^[A-Z0-9]{3}$/.test(departureCode)) {
+    if (!departureCode || !/^[A-Z0-9]{3,4}$/.test(departureCode)) {
       toast({
         title: "Departure airport code required",
-        description: "Select a departure airport with a valid 3-letter IATA code.",
+        description: "Select a departure airport with a valid IATA or ICAO code.",
         variant: "destructive",
       });
       return;
     }
 
-    if (!arrivalCode || !/^[A-Z0-9]{3}$/.test(arrivalCode)) {
+    if (!arrivalCode || !/^[A-Z0-9]{3,4}$/.test(arrivalCode)) {
       toast({
         title: "Arrival airport code required",
-        description: "Select an arrival airport with a valid 3-letter IATA code.",
+        description: "Select an arrival airport with a valid IATA or ICAO code.",
         variant: "destructive",
       });
       return;
@@ -4025,7 +4025,7 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Departure airport"
                   value={manualFlightData.departureAirport}
-                  allowedTypes={['city', 'airport']}
+                  allowedTypes={['airport']}
                   enrichWithNearbyAirports
                   onQueryChange={(value) => {
                     setManualFlightData((prev) => ({
@@ -4037,12 +4037,14 @@ function FlightCoordination({
                       setManualDepartureHasSelected(false);
                     }
                   }}
-                  onLocationSelect={(location) => {
+                  onLocationSelect={(location: LocationResult) => {
                     setManualDepartureHasSelected(true);
+                    const selectedDepartureCode =
+                      (location.iata ?? location.icao ?? location.code ?? '').toUpperCase();
                     setManualFlightData((prev) => ({
                       ...prev,
                       departureAirport: location.displayName,
-                      departureCode: location.code,
+                      departureCode: selectedDepartureCode,
                     }));
                   }}
                 />
@@ -4052,7 +4054,7 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Arrival airport"
                   value={manualFlightData.arrivalAirport}
-                  allowedTypes={['city', 'airport']}
+                  allowedTypes={['airport']}
                   enrichWithNearbyAirports
                   onQueryChange={(value) => {
                     setManualFlightData((prev) => ({
@@ -4064,12 +4066,14 @@ function FlightCoordination({
                       setManualArrivalHasSelected(false);
                     }
                   }}
-                  onLocationSelect={(location) => {
+                  onLocationSelect={(location: LocationResult) => {
                     setManualArrivalHasSelected(true);
+                    const selectedArrivalCode =
+                      (location.iata ?? location.icao ?? location.code ?? '').toUpperCase();
                     setManualFlightData((prev) => ({
                       ...prev,
                       arrivalAirport: location.displayName,
-                      arrivalCode: location.code,
+                      arrivalCode: selectedArrivalCode,
                     }));
                   }}
                 />
@@ -4345,11 +4349,11 @@ function extractAirportCode(value?: string | null): string | null {
   }
 
   const trimmed = value.trim();
-  if (trimmed.length === 3) {
+  if (/^[A-Z0-9]{3,4}$/.test(trimmed)) {
     return trimmed.toUpperCase();
   }
 
-  const match = trimmed.match(/\(([A-Z]{3})\)/);
+  const match = trimmed.match(/\(([A-Z0-9]{3,4})\)/);
   return match ? match[1] : null;
 }
 
@@ -4358,7 +4362,7 @@ function extractAirportName(value?: string | null): string | null {
     return null;
   }
 
-  const match = value.match(/^(.*)\s+\([A-Z]{3}\)$/);
+  const match = value.match(/^(.*)\s+\([A-Z0-9]{3,4}\)$/);
   if (match) {
     return match[1].trim();
   }
