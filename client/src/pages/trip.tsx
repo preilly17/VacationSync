@@ -3511,7 +3511,10 @@ function FlightCoordination({
                   value={departureQuery}
                   allowedTypes={['city', 'airport']}
                   onQueryChange={handleDepartureQueryChange}
-                  onLocationSelect={handleDepartureLocationSelect}
+                  onLocationSelect={(loc) => {
+                    console.log("🔍 trip.tsx: Flight FROM selected", loc);
+                    handleDepartureLocationSelect(loc);
+                  }}
                 />
                 {isLoadingDepartureAirports && (
                   <p className="text-xs text-muted-foreground">Loading nearby airports…</p>
@@ -3548,7 +3551,10 @@ function FlightCoordination({
                   value={arrivalQuery}
                   allowedTypes={['city', 'airport']}
                   onQueryChange={handleArrivalQueryChange}
-                  onLocationSelect={handleArrivalLocationSelect}
+                  onLocationSelect={(loc) => {
+                    console.log("🔍 trip.tsx: Flight TO selected", loc);
+                    handleArrivalLocationSelect(loc);
+                  }}
                 />
                 {isLoadingArrivalAirports && (
                   <p className="text-xs text-muted-foreground">Loading nearby airports…</p>
