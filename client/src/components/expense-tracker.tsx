@@ -231,7 +231,15 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     onMutate: (expenseId: number) => {
       setDeletingId(expenseId);
     },
-    onSuccess: () => {
+    onSuccess: (_, expenseId) => {
+      setActiveExpenseId((current) => (current === expenseId ? null : current));
+      queryClient.setQueryData<ExpenseWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/expenses`],
+        (current) =>
+          Array.isArray(current)
+            ? current.filter((expense) => expense.id !== expenseId)
+            : current,
+      );
       queryClient.invalidateQueries({
         queryKey: [`/api/trips/${tripId}/expenses`],
       });
@@ -563,6 +571,26 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                   <CheckCircle2 className="mr-1 h-4 w-4" />
                 )}
                 Mark paid
+              </Button>
+            ) : null}
+            {expense.paidBy.id === user?.id ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                disabled={deletingId === expense.id}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  deleteExpenseMutation.mutate(expense.id);
+                }}
+                aria-label="Delete expense"
+              >
+                {deletingId === expense.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
               </Button>
             ) : null}
             <span className="text-right text-sm font-medium text-muted-foreground tabular-nums">
