@@ -2176,7 +2176,7 @@ export function setupRoutes(app: Express) {
     try {
       const itemId = parseInt(req.params.id);
       let userId = getRequestUserId(req);
-      
+
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
         userId = 'demo-user';
@@ -2202,6 +2202,100 @@ export function setupRoutes(app: Express) {
       res.status(500).json({ message: "Failed to toggle packing item" });
     }
   });
+
+  app.post(
+    '/api/trips/:tripId/packing/group-items/:itemId/handled',
+    async (req: any, res) => {
+      try {
+        const tripId = parseInt(req.params.tripId);
+        const itemId = parseInt(req.params.itemId);
+        if (Number.isNaN(tripId) || Number.isNaN(itemId)) {
+          return res.status(400).json({ message: "Invalid packing item" });
+        }
+
+        let userId = getRequestUserId(req);
+
+        if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
+          userId = 'demo-user';
+        }
+
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const packingItem = await storage.getPackingItemById(itemId);
+        if (!packingItem || packingItem.tripId !== tripId) {
+          return res.status(404).json({ message: "Packing item not found" });
+        }
+
+        if (packingItem.itemType !== "group") {
+          return res.status(400).json({ message: "Only group items support handled status" });
+        }
+
+        const isMember = await storage.isTripMember(tripId, userId);
+        if (!isMember) {
+          return res.status(403).json({ message: "You are not allowed to update this item" });
+        }
+
+        const updatedItem = await storage.markGroupItemHandled(
+          itemId,
+          tripId,
+          userId,
+        );
+        res.json(updatedItem);
+      } catch (error: unknown) {
+        console.error("Error marking group item handled:", error);
+        res.status(500).json({ message: "Failed to update group item status" });
+      }
+    },
+  );
+
+  app.delete(
+    '/api/trips/:tripId/packing/group-items/:itemId/handled',
+    async (req: any, res) => {
+      try {
+        const tripId = parseInt(req.params.tripId);
+        const itemId = parseInt(req.params.itemId);
+        if (Number.isNaN(tripId) || Number.isNaN(itemId)) {
+          return res.status(400).json({ message: "Invalid packing item" });
+        }
+
+        let userId = getRequestUserId(req);
+
+        if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
+          userId = 'demo-user';
+        }
+
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const packingItem = await storage.getPackingItemById(itemId);
+        if (!packingItem || packingItem.tripId !== tripId) {
+          return res.status(404).json({ message: "Packing item not found" });
+        }
+
+        if (packingItem.itemType !== "group") {
+          return res.status(400).json({ message: "Only group items support handled status" });
+        }
+
+        const isMember = await storage.isTripMember(tripId, userId);
+        if (!isMember) {
+          return res.status(403).json({ message: "You are not allowed to update this item" });
+        }
+
+        const updatedItem = await storage.markGroupItemUnhandled(
+          itemId,
+          tripId,
+          userId,
+        );
+        res.json(updatedItem);
+      } catch (error: unknown) {
+        console.error("Error marking group item unhandled:", error);
+        res.status(500).json({ message: "Failed to update group item status" });
+      }
+    },
+  );
 
   app.delete('/api/packing/:id', async (req: any, res) => {
     try {
