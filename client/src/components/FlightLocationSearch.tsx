@@ -110,6 +110,11 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
     },
     ref,
   ) {
+    console.log("✈️ FlightLocationSearch mounted with props:", {
+      types,
+      value,
+      placeholder,
+    });
     const [query, setQuery] = useState(value);
 
     useEffect(() => {
@@ -134,11 +139,12 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
         className={className}
         allowedTypes={activeTypes}
         onQueryChange={(nextValue) => {
+          console.log("⌨️ FlightLocationSearch query changed:", nextValue);
           setQuery(nextValue);
           onQueryChange?.(nextValue);
         }}
         onLocationSelect={(result) => {
-          console.log("✈️ FlightLocationSearch: selected result", result);
+          console.log("📌 FlightLocationSearch forwarding selected location:", result);
           onLocationSelect(result);
         }}
       />
