@@ -3402,19 +3402,34 @@ function FlightCoordination({
 
     const normalizedFlightNumber = manualFlightData.flightNumber.trim().toUpperCase();
     const normalizedAirline = manualFlightData.airline.trim();
+    const airlineCodeFromFlightNumber = (value: string): string | null => {
+      const match = value.match(/^([A-Z0-9]{2,3})\d+/);
+      return match ? match[1] : null;
+    };
+
     const deriveAirlineCode = (): string | null => {
       const fromState = manualFlightData.airlineCode?.trim().toUpperCase();
       if (fromState && /^[A-Z0-9]{2,3}$/.test(fromState)) {
         return fromState;
       }
 
-      const fromFlightNumber = normalizedFlightNumber.match(/^([A-Z]{2,3})\d+/);
+      const fromFlightNumber = airlineCodeFromFlightNumber(normalizedFlightNumber);
       if (fromFlightNumber) {
-        return fromFlightNumber[1];
+        return fromFlightNumber;
       }
 
       return null;
     };
+
+    if (process.env.NODE_ENV !== "production") {
+      const sampleMatches = {
+        AA: airlineCodeFromFlightNumber("AA123"),
+        DL: airlineCodeFromFlightNumber("DL4567"),
+        B6: airlineCodeFromFlightNumber("B61234"),
+        U2: airlineCodeFromFlightNumber("U21234"),
+      };
+      console.debug("[Flights] Airline code parsing samples", sampleMatches);
+    }
 
     const airlineCode = deriveAirlineCode();
     if (!airlineCode) {
@@ -3622,6 +3637,7 @@ function FlightCoordination({
                   placeholder="Search departure city or airport"
                   value={departureQuery}
                   allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={handleDepartureQueryChange}
                   onLocationSelect={(loc) => {
                     console.log("🔍 trip.tsx: Flight FROM selected", loc);
@@ -3662,6 +3678,7 @@ function FlightCoordination({
                   placeholder="Search arrival city or airport"
                   value={arrivalQuery}
                   allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={handleArrivalQueryChange}
                   onLocationSelect={(loc) => {
                     console.log("🔍 trip.tsx: Flight TO selected", loc);
@@ -4008,6 +4025,8 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Departure airport"
                   value={manualFlightData.departureAirport}
+                  allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={(value) => {
                     setManualFlightData((prev) => ({
                       ...prev,
@@ -4033,6 +4052,8 @@ function FlightCoordination({
                 <SmartLocationSearch
                   placeholder="Arrival airport"
                   value={manualFlightData.arrivalAirport}
+                  allowedTypes={['city', 'airport']}
+                  enrichWithNearbyAirports
                   onQueryChange={(value) => {
                     setManualFlightData((prev) => ({
                       ...prev,

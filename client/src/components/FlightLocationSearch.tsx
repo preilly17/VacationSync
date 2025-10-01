@@ -20,7 +20,7 @@ interface FlightLocationSearchProps {
   allowedTypes?: Array<LocationType>;
 }
 
-const CITY_SEARCH_TYPES: LocationType[] = ["city"];
+const DEFAULT_FLIGHT_TYPES: LocationType[] = ["city", "airport"];
 const AIRPORT_SEARCH_TYPES: LocationType[] = ["airport"];
 const VALID_TYPES = new Set<LocationType>([
   "airport",
@@ -34,7 +34,7 @@ const IATA_PATTERN = /^[A-Za-z]{3}$/;
 
 const parseTypes = (value?: string): LocationType[] => {
   if (!value) {
-    return CITY_SEARCH_TYPES;
+    return DEFAULT_FLIGHT_TYPES;
   }
 
   const parsed = value
@@ -43,7 +43,7 @@ const parseTypes = (value?: string): LocationType[] => {
     .filter((type): type is LocationType => VALID_TYPES.has(type as LocationType));
 
   if (parsed.length === 0) {
-    return CITY_SEARCH_TYPES;
+    return DEFAULT_FLIGHT_TYPES;
   }
 
   return parsed;
@@ -75,7 +75,7 @@ const resolveBaseTypes = (
     return parsedLegacy;
   }
 
-  return CITY_SEARCH_TYPES;
+  return DEFAULT_FLIGHT_TYPES;
 };
 
 const shouldUseAirportSearch = (query: string): boolean => {
@@ -138,6 +138,7 @@ const FlightLocationSearch = forwardRef<HTMLInputElement, FlightLocationSearchPr
         value={query}
         className={className}
         allowedTypes={activeTypes}
+        enrichWithNearbyAirports
         onQueryChange={(nextValue) => {
           console.log("⌨️ FlightLocationSearch query changed:", nextValue);
           setQuery(nextValue);

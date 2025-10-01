@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useId, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MutableRefObject } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { MapPin, Plane, Globe, Building, ChevronDown } from "lucide-react";
 import LocationUtils from "@/lib/locationUtils";
+import { fetchNearestAirportsForLocation, type NearbyAirport } from "@/lib/nearestAirports";
 
 type LocationTypeLower = 'airport' | 'city' | 'metro' | 'state' | 'country';
 type LocationTypeUpper = Uppercase<LocationTypeLower>;
@@ -158,6 +159,59 @@ const getLowercaseTypeCandidate = (record: Record<string, unknown>): string | nu
   return rawSubType ? rawSubType.toLowerCase() : null;
 };
 
+const sanitizeAirportCode = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(trimmed) ? trimmed : null;
+};
+
+const sanitizeAirportCodeList = (values?: string[]): string[] => {
+  if (!values) {
+    return [];
+  }
+
+  const sanitized = values
+    .map((value) => sanitizeAirportCode(value))
+    .filter((value): value is string => Boolean(value));
+
+  return Array.from(new Set(sanitized));
+};
+
+const mergeAirportLists = (
+  existing: string[] | undefined,
+  fetched: NearbyAirport[],
+): string[] => {
+  const fromExisting = sanitizeAirportCodeList(existing);
+  const fromFetched = fetched
+    .map((airport) => sanitizeAirportCode(airport?.iata))
+    .filter((code): code is string => Boolean(code));
+
+  const merged: string[] = [...fromExisting];
+  for (const code of fromFetched) {
+    if (!merged.includes(code)) {
+      merged.push(code);
+    }
+  }
+
+  return merged;
+};
+
+const ensureLocationDisplayName = (location: LocationResult): string => {
+  const candidates = [location.displayName, location.label, location.name, location.code, location.iata];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+  }
+  return 'Selected location';
+};
+
 const normalizeFetchedLocation = (rawLocation: unknown): LocationResult | null => {
   if (!rawLocation || typeof rawLocation !== 'object') {
     return null;
@@ -249,6 +303,7 @@ interface SmartLocationSearchProps {
   className?: string;
   allowedTypes?: Array<LocationResult['type']>;
   onQueryChange?: (value: string) => void;
+  enrichWithNearbyAirports?: boolean;
 }
 
 const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProps>(function SmartLocationSearch({
@@ -259,11 +314,13 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   className = "",
   allowedTypes,
   onQueryChange,
+  enrichWithNearbyAirports = false,
 }, ref) {
   console.log("🧩 SmartLocationSearch mounted with props:", {
     allowedTypes,
     value,
     placeholder,
+    enrichWithNearbyAirports,
   });
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<LocationResult[]>([]);
@@ -314,9 +371,21 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
   }, [value]);
 
+  const effectiveAllowedTypes = useMemo(() => {
+    if (allowedTypes && allowedTypes.length > 0) {
+      return allowedTypes;
+    }
+
+    if (enrichWithNearbyAirports) {
+      return ['city', 'airport'] as Array<LocationResult['type']>;
+    }
+
+    return allowedTypes;
+  }, [allowedTypes, enrichWithNearbyAirports]);
+
   const normalisedAllowedTypes = useMemo(
-    () => normalizeAllowedTypes(allowedTypes),
-    [allowedTypes],
+    () => normalizeAllowedTypes(effectiveAllowedTypes),
+    [effectiveAllowedTypes],
   );
 
   const allowedTypesKey = useMemo(
@@ -508,23 +577,99 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
   }, []);
 
+  const resolveLocationSelection = useCallback(
+    async (rawLocation: LocationResult): Promise<LocationResult> => {
+      const upperType = toUpperLocationType(rawLocation.type);
+      const sanitizedAirports = sanitizeAirportCodeList(rawLocation.airports);
+      const baseCodeCandidate =
+        sanitizeAirportCode(rawLocation.code)
+        ?? sanitizeAirportCode(rawLocation.iata)
+        ?? sanitizeAirportCode(rawLocation.icao)
+        ?? sanitizedAirports[0]
+        ?? null;
+
+      const baseDisplayName = ensureLocationDisplayName(rawLocation);
+
+      const baseLocation: LocationResult = {
+        ...rawLocation,
+        type: upperType,
+        displayName: baseDisplayName,
+        code: baseCodeCandidate ?? '',
+        airports: sanitizedAirports,
+        iata: sanitizeAirportCode(rawLocation.iata) ?? (baseCodeCandidate ?? null),
+      };
+
+      if (upperType !== 'CITY') {
+        const airportCode = baseCodeCandidate ?? '';
+        return {
+          ...baseLocation,
+          code: airportCode,
+          iata: airportCode.length > 0 ? airportCode : baseLocation.iata ?? null,
+        };
+      }
+
+      if (!enrichWithNearbyAirports) {
+        const airportCode = sanitizedAirports[0] ?? baseCodeCandidate ?? '';
+        return {
+          ...baseLocation,
+          code: airportCode,
+          iata: airportCode.length > 0 ? airportCode : baseLocation.iata ?? null,
+        };
+      }
+
+      try {
+        const lookup = await fetchNearestAirportsForLocation(baseLocation);
+        const mergedAirports = mergeAirportLists(baseLocation.airports, lookup.airports);
+        const airportCode = mergedAirports[0] ?? baseCodeCandidate ?? '';
+
+        return {
+          ...baseLocation,
+          airports: mergedAirports,
+          code: airportCode,
+          iata: airportCode.length > 0 ? airportCode : baseLocation.iata ?? null,
+        };
+      } catch (error) {
+        console.error('SmartLocationSearch: failed to resolve airport for city selection', error);
+        const airportCode = sanitizedAirports[0] ?? baseCodeCandidate ?? '';
+
+        return {
+          ...baseLocation,
+          code: airportCode,
+          iata: airportCode.length > 0 ? airportCode : baseLocation.iata ?? null,
+        };
+      }
+    },
+    [enrichWithNearbyAirports],
+  );
+
+  const processLocationSelection = useCallback(
+    async (location: LocationResult) => {
+      try {
+        const resolved = await resolveLocationSelection(location);
+        setSelectedLocation(resolved);
+        const displayValue = ensureLocationDisplayName(resolved);
+        lastSelectedQueryRef.current = displayValue.length > 0 ? displayValue : null;
+        setQuery(displayValue);
+        onQueryChange?.(displayValue);
+        console.log("🧩 SmartLocationSearch: normalized result", resolved);
+        onLocationSelect(resolved);
+      } catch (error) {
+        console.error('SmartLocationSearch: failed to process selected location', error);
+      }
+    },
+    [onLocationSelect, onQueryChange, resolveLocationSelection],
+  );
+
   const handleLocationClick = (location: LocationResult) => {
     pendingUserSearchCountRef.current = 0;
     userInitiatedSearchRef.current = false;
     isUserEditingRef.current = false;
     lastFetchedQueryKeyRef.current = "";
     setIsLoading(false);
-    setSelectedLocation(location);
-    const displayValue = location.displayName.trim();
-    lastSelectedQueryRef.current = displayValue.length > 0 ? displayValue : null;
-    setQuery(displayValue);
-    onQueryChange?.(displayValue);
     setIsDropdownOpen(false);
     setResults([]); // Clear results to prevent "No locations found" message
     setActiveIndex(-1);
-    const result = location;
-    console.log("🧩 SmartLocationSearch: normalized result", result);
-    onLocationSelect(result);
+    void processLocationSelection(location);
   };
 
   const getLocationIcon = (type: LocationResult['type']) => {
