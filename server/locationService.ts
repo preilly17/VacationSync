@@ -2,6 +2,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 
+import { query } from './db';
+
 interface AmadeusLocation {
   type: 'location';
   subType: 'AIRPORT' | 'CITY' | 'COUNTRY';
@@ -98,11 +100,17 @@ interface LocationSearchResult {
   population?: number | null;
 }
 
+interface ScoredResult {
+  result: LocationSearchResult;
+  score: number;
+}
+
 class LocationService {
   private cacheDir = path.join(process.cwd(), 'cache');
   private cacheFile = path.join(this.cacheDir, 'amadeus-locations.json');
   private compressedCacheFile = path.join(this.cacheDir, 'amadeus-locations.gz');
   private cachedData: CachedLocationData | null = null;
+  private columnPresenceCache = new Map<string, boolean>();
   private readonly CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
   private readonly RATE_LIMIT_DELAY = 250; // 250ms between requests
   private readonly BATCH_SIZE = 50;
@@ -220,6 +228,35 @@ class LocationService {
     }
 
     return undefined;
+  }
+
+  private async tableHasColumn(table: string, column: string): Promise<boolean> {
+    const key = `${table}.${column}`.toLowerCase();
+
+    if (this.columnPresenceCache.has(key)) {
+      return this.columnPresenceCache.get(key)!;
+    }
+
+    try {
+      const { rows } = await query<{ exists: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1
+           FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = $1
+             AND column_name = $2
+         ) AS exists;`,
+        [table.toLowerCase(), column.toLowerCase()],
+      );
+
+      const exists = rows?.[0]?.exists === true;
+      this.columnPresenceCache.set(key, exists);
+      return exists;
+    } catch (error) {
+      console.error('Failed to determine column presence', { table, column, error });
+      this.columnPresenceCache.set(key, false);
+      return false;
+    }
   }
 
   private normalizeId(value: unknown): string | number | undefined {
@@ -1033,6 +1070,423 @@ class LocationService {
       .map(result => this.normalizeResultShape(result));
   }
 
+  private buildQueryVariants(query: string): {
+    searchTerms: string[];
+    codeTerms: string[];
+    fuzzyTerms: string[];
+  } {
+    const trimmed = this.normalizeString(query) ?? '';
+    const expanded = this.expandQueryWithNicknames(query);
+    const normalizedExpanded = this.normalizeString(expanded) ?? '';
+    const normalized = trimmed ? this.normalizeForSearch(trimmed) : '';
+
+    const searchSet = new Set<string>();
+    [query, expanded, normalized, normalizedExpanded]
+      .map(value => (typeof value === 'string' ? value.trim() : ''))
+      .filter(value => value.length > 0)
+      .forEach(value => searchSet.add(value));
+
+    if (searchSet.size === 0 && trimmed.length > 0) {
+      searchSet.add(trimmed);
+    }
+
+    const searchTerms = Array.from(searchSet);
+
+    const codeSet = new Set<string>();
+    const addCodeTerm = (value: string) => {
+      const cleaned = value.trim();
+      if (!cleaned) {
+        return;
+      }
+      const upper = cleaned.toUpperCase();
+      codeSet.add(upper);
+      codeSet.add(upper.replace(/\s+/g, ''));
+    };
+
+    searchTerms.forEach(addCodeTerm);
+
+    if (codeSet.size === 0 && trimmed) {
+      addCodeTerm(trimmed);
+    }
+
+    const fuzzySet = new Set<string>();
+    [query, expanded, ...searchTerms, ...Array.from(codeSet)]
+      .map(value => (typeof value === 'string' ? value.trim() : ''))
+      .filter(value => value.length > 0)
+      .forEach(value => fuzzySet.add(value));
+
+    if (fuzzySet.size === 0 && trimmed) {
+      fuzzySet.add(trimmed);
+    }
+
+    return {
+      searchTerms: searchTerms.length > 0 ? searchTerms : trimmed ? [trimmed] : [],
+      codeTerms: Array.from(codeSet).filter(value => value.length > 0),
+      fuzzyTerms: Array.from(fuzzySet).filter(value => value.length > 0),
+    };
+  }
+
+  private buildCodePatterns(codeTerms: string[], fallbackTerms: string[]): string[] {
+    const patterns = new Set<string>();
+    const candidates = codeTerms.length > 0 ? codeTerms : fallbackTerms;
+
+    candidates
+      .map(value => value.trim())
+      .filter(value => value.length > 0)
+      .forEach(value => {
+        const upper = value.toUpperCase();
+        patterns.add(`${upper}%`);
+        patterns.add(`%${upper}%`);
+      });
+
+    return Array.from(patterns);
+  }
+
+  private async fetchCityRows(
+    searchTerms: string[],
+    codeTerms: string[],
+    limit: number,
+  ): Promise<Record<string, any>[]> {
+    if (searchTerms.length === 0) {
+      return [];
+    }
+
+    const hasCityCode = await this.tableHasColumn('cities', 'city_code');
+    const whereClauses = [
+      'city_name ILIKE ANY($1)',
+      'country_name ILIKE ANY($1)',
+    ];
+
+    const codeClauses = ['iata_code ILIKE ANY($2)'];
+    if (hasCityCode) {
+      codeClauses.push('city_code ILIKE ANY($2)');
+    }
+
+    const whereSql = [...whereClauses, ...codeClauses].join(' OR ');
+    const likeTerms = searchTerms.map(term => `%${term}%`);
+    const codePatterns = this.buildCodePatterns(codeTerms, searchTerms);
+
+    const { rows } = await query<Record<string, any>>(
+      `SELECT *
+       FROM cities
+       WHERE ${whereSql}
+       LIMIT $3;`,
+      [likeTerms, codePatterns, limit],
+    );
+
+    return rows;
+  }
+
+  private async fetchAirportRows(
+    searchTerms: string[],
+    codeTerms: string[],
+    limit: number,
+  ): Promise<Record<string, any>[]> {
+    if (searchTerms.length === 0) {
+      return [];
+    }
+
+    const hasIdent = await this.tableHasColumn('airports', 'ident');
+    const hasMunicipality = await this.tableHasColumn('airports', 'municipality');
+    const whereClauses = ['name ILIKE ANY($1)'];
+
+    if (hasMunicipality) {
+      whereClauses.push('municipality ILIKE ANY($1)');
+    }
+
+    const codeClauses = ['iata_code ILIKE ANY($2)'];
+    if (hasIdent) {
+      codeClauses.push('ident ILIKE ANY($2)');
+    }
+
+    const whereSql = [...whereClauses, ...codeClauses].join(' OR ');
+    const likeTerms = searchTerms.map(term => `%${term}%`);
+    const codePatterns = this.buildCodePatterns(codeTerms, searchTerms);
+
+    const { rows } = await query<Record<string, any>>(
+      `SELECT *
+       FROM airports
+       WHERE iata_code IS NOT NULL
+         AND (${whereSql})
+       LIMIT $3;`,
+      [likeTerms, codePatterns, limit],
+    );
+
+    return rows;
+  }
+
+  private computeBestScore(fuzzyTerms: string[], value?: string | null): number {
+    if (!value) {
+      return 0;
+    }
+
+    let best = 0;
+    for (const term of fuzzyTerms) {
+      best = Math.max(best, this.fuzzyMatch(term, value));
+    }
+    return best;
+  }
+
+  private async searchCitiesFromDatabase(
+    searchTerms: string[],
+    codeTerms: string[],
+    fuzzyTerms: string[],
+    limit: number,
+  ): Promise<ScoredResult[]> {
+    try {
+      const rows = await this.fetchCityRows(searchTerms, codeTerms, Math.max(limit * 5, 50));
+      const results: ScoredResult[] = [];
+
+      for (const row of rows) {
+        const cityName = this.normalizeString(row.city_name ?? row.name ?? row.city ?? row.municipality);
+        const countryName = this.normalizeString(row.country_name ?? row.country ?? row.countryName ?? row.iso_country);
+        const countryCode = this.normalizeCode(row.country_code ?? row.iso_country ?? row.country ?? row.countryCode);
+        const stateName = this.normalizeString(row.state_name ?? row.state ?? row.stateName ?? row.region ?? row.admin_name);
+        const stateCode = this.normalizeCode(row.state_code ?? row.stateCode ?? row.region_code ?? row.admin1_code);
+        const cityCode = this.normalizeCode(row.city_code ?? row.metro_code ?? row.cityCode);
+        const iataCode = this.normalizeCode(row.iata_code ?? row.iata ?? cityCode);
+        const latitude = row.latitude ?? row.lat ?? row.latitude_deg ?? row.latitudeDegrees;
+        const longitude = row.longitude ?? row.lon ?? row.longitude_deg ?? row.longitudeDegrees;
+        const population = this.normalizeNumber(row.population ?? row.population_proper ?? row.pop ?? row.population_total);
+        const timeZone = this.normalizeString(row.timezone ?? row.time_zone ?? row.tz ?? row.time_zone_name);
+
+        if (!cityName && !iataCode && !cityCode) {
+          continue;
+        }
+
+        const displayName = cityName && countryName ? `${cityName} (${countryName})` : undefined;
+        const baseName = cityName ?? iataCode ?? cityCode ?? 'Unknown City';
+        const score = Math.max(
+          this.computeBestScore(fuzzyTerms, cityName),
+          this.computeBestScore(fuzzyTerms, iataCode),
+          this.computeBestScore(fuzzyTerms, cityCode),
+          this.computeBestScore(fuzzyTerms, countryName),
+        );
+        const boostedScore = score + (population ? Math.min(population / 1_000_000, 5) : 0);
+
+        const rawResult = {
+          id: row.id ?? cityCode ?? iataCode ?? baseName,
+          type: 'CITY',
+          name: baseName,
+          cityName: cityName ?? undefined,
+          countryName: countryName ?? undefined,
+          countryCode,
+          region: stateName ?? stateCode ?? undefined,
+          state: stateName ?? undefined,
+          stateCode: stateCode ?? undefined,
+          iataCode: iataCode ?? undefined,
+          cityCode: cityCode ?? undefined,
+          latitude,
+          longitude,
+          timeZone,
+          population,
+          displayName,
+          detailedName: displayName,
+          score: boostedScore,
+          source: 'local-db',
+        } as Record<string, unknown>;
+
+        const normalized = this.normalizeResultShape(rawResult);
+        const finalScore = typeof normalized.relevance === 'number' ? normalized.relevance : boostedScore;
+        results.push({ result: normalized, score: finalScore });
+      }
+
+      return results;
+    } catch (error) {
+      console.error('City lookup failed:', error);
+      return [];
+    }
+  }
+
+  private async searchAirportsFromDatabase(
+    searchTerms: string[],
+    codeTerms: string[],
+    fuzzyTerms: string[],
+    limit: number,
+  ): Promise<ScoredResult[]> {
+    try {
+      const rows = await this.fetchAirportRows(searchTerms, codeTerms, Math.max(limit * 5, 50));
+      const results: ScoredResult[] = [];
+
+      for (const row of rows) {
+        const airportName = this.normalizeString(row.name ?? row.airport_name);
+        const cityName = this.normalizeString(row.municipality ?? row.city ?? row.city_name);
+        const countryName = this.normalizeString(row.country_name ?? row.country ?? row.iso_country_name);
+        const countryCode = this.normalizeCode(row.iso_country ?? row.country_code ?? row.country ?? row.countryCode);
+        const iataCode = this.normalizeCode(row.iata_code ?? row.iata ?? row.code);
+        const icaoCode = this.normalizeCode(row.ident ?? row.icao_code ?? row.icao ?? row.gps_code);
+        const latitude = row.latitude ?? row.latitude_deg ?? row.lat ?? row.latitudeDegrees;
+        const longitude = row.longitude ?? row.longitude_deg ?? row.lon ?? row.longitudeDegrees;
+
+        if (!airportName && !iataCode && !icaoCode) {
+          continue;
+        }
+
+        const score = Math.max(
+          this.computeBestScore(fuzzyTerms, airportName),
+          this.computeBestScore(fuzzyTerms, cityName),
+          this.computeBestScore(fuzzyTerms, iataCode),
+          this.computeBestScore(fuzzyTerms, icaoCode),
+          this.computeBestScore(fuzzyTerms, countryName),
+        );
+
+        const displayParts = [airportName, cityName, countryName].filter((part): part is string => Boolean(part));
+        const displayName = displayParts.length > 0
+          ? displayParts.join(', ')
+          : iataCode
+            ? `${iataCode}`
+            : undefined;
+
+        const rawResult = {
+          id: row.id ?? row.ident ?? iataCode ?? airportName ?? `${Date.now()}-${Math.random()}`,
+          type: 'AIRPORT',
+          name: airportName ?? iataCode ?? icaoCode ?? 'Unknown Airport',
+          cityName: cityName ?? undefined,
+          countryName: countryName ?? undefined,
+          countryCode,
+          iataCode: iataCode ?? undefined,
+          icaoCode: icaoCode ?? undefined,
+          latitude,
+          longitude,
+          displayName,
+          detailedName: displayName,
+          score,
+          source: 'local-db',
+        } as Record<string, unknown>;
+
+        const normalized = this.normalizeResultShape(rawResult);
+        const finalScore = typeof normalized.relevance === 'number' ? normalized.relevance : score;
+        results.push({ result: normalized, score: finalScore });
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Airport lookup failed:', error);
+      return [];
+    }
+  }
+
+  private async searchCountriesFromDatabase(
+    searchTerms: string[],
+    codeTerms: string[],
+    fuzzyTerms: string[],
+    limit: number,
+  ): Promise<ScoredResult[]> {
+    try {
+      const rows = await this.fetchCityRows(searchTerms, codeTerms, Math.max(limit * 10, 100));
+      const aggregated = new Map<string, { name?: string; code?: string; population?: number }>();
+
+      for (const row of rows) {
+        const countryName = this.normalizeString(row.country_name ?? row.country ?? row.countryName);
+        const countryCode = this.normalizeCode(row.country_code ?? row.iso_country ?? row.country ?? row.iso2);
+
+        if (!countryName && !countryCode) {
+          continue;
+        }
+
+        const key = countryCode ?? countryName ?? '';
+        if (!key) {
+          continue;
+        }
+
+        const population = this.normalizeNumber(row.population ?? row.population_proper ?? row.pop ?? row.population_total);
+        const existing = aggregated.get(key);
+
+        if (!existing || (population ?? 0) > (existing.population ?? 0)) {
+          aggregated.set(key, {
+            name: countryName ?? existing?.name,
+            code: countryCode ?? existing?.code,
+            population: population ?? existing?.population ?? 0,
+          });
+        }
+      }
+
+      const results: ScoredResult[] = [];
+
+      for (const entry of aggregated.values()) {
+        const countryName = entry.name ?? entry.code ?? 'Unknown Country';
+        const countryCode = entry.code;
+        const displayName = countryName && countryCode
+          ? `${countryName} (${countryCode})`
+          : countryName;
+        const score = Math.max(
+          this.computeBestScore(fuzzyTerms, countryName),
+          this.computeBestScore(fuzzyTerms, countryCode),
+        );
+        const boostedScore = score + (entry.population ? Math.min(entry.population / 5_000_000, 5) : 0);
+
+        const rawResult = {
+          id: countryCode ?? countryName,
+          type: 'COUNTRY',
+          name: countryName,
+          countryName,
+          countryCode: countryCode ?? undefined,
+          displayName,
+          detailedName: displayName,
+          score: boostedScore,
+          source: 'local-db',
+        } as Record<string, unknown>;
+
+        const normalized = this.normalizeResultShape(rawResult);
+        const finalScore = typeof normalized.relevance === 'number' ? normalized.relevance : boostedScore;
+        results.push({ result: normalized, score: finalScore });
+      }
+
+      return results;
+    } catch (error) {
+      console.error('Country lookup failed:', error);
+      return [];
+    }
+  }
+
+  private async searchLocalDatabase(
+    query: string,
+    types: Array<'AIRPORT' | 'CITY' | 'COUNTRY'>,
+    limit: number,
+  ): Promise<LocationSearchResult[]> {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    const { searchTerms, codeTerms, fuzzyTerms } = this.buildQueryVariants(trimmed);
+    const requestedTypes = types.length > 0 ? Array.from(new Set(types)) : ['AIRPORT', 'CITY', 'COUNTRY'];
+    const fetchLimit = Math.max(limit, 10);
+
+    const combined: ScoredResult[] = [];
+
+    if (requestedTypes.includes('CITY')) {
+      combined.push(
+        ...await this.searchCitiesFromDatabase(searchTerms, codeTerms, fuzzyTerms, fetchLimit),
+      );
+    }
+
+    if (requestedTypes.includes('AIRPORT')) {
+      combined.push(
+        ...await this.searchAirportsFromDatabase(searchTerms, codeTerms, fuzzyTerms, fetchLimit),
+      );
+    }
+
+    if (requestedTypes.includes('COUNTRY')) {
+      combined.push(
+        ...await this.searchCountriesFromDatabase(searchTerms, codeTerms, fuzzyTerms, fetchLimit),
+      );
+    }
+
+    const deduped = new Map<string, ScoredResult>();
+    for (const entry of combined) {
+      const existing = deduped.get(entry.result.id);
+      if (!existing || entry.score > existing.score) {
+        deduped.set(entry.result.id, entry);
+      }
+    }
+
+    return Array.from(deduped.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(entry => entry.result);
+  }
+
   async searchLocations(
     query: string,
     type?: 'AIRPORT' | 'CITY' | 'COUNTRY',
@@ -1053,7 +1507,15 @@ class LocationService {
     // Handle nickname expansion
     const normalizedQuery = this.normalizeForSearch(query);
     const expandedQuery = this.expandQueryWithNicknames(query);
-    
+
+    if (!useApi) {
+      const requestedTypes: Array<'AIRPORT' | 'CITY' | 'COUNTRY'> = type
+        ? [type]
+        : ['AIRPORT', 'CITY', 'COUNTRY'];
+
+      return this.searchLocalDatabase(query, requestedTypes, normalizedLimit);
+    }
+
     if (useApi) {
       // Search using Amadeus API
       try {
@@ -1188,6 +1650,8 @@ class LocationService {
     const limit = this.normalizeLimit(params.limit ?? 10);
     const useApi = this.normalizeBoolean(params.useApi) ?? false;
     const normalizedTypes = this.normalizeRequestedTypes(params.type, params.types);
+
+    console.debug('searchLocationsForApi', { query, normalizedTypes, limit, useApi });
 
     const needsAllTypes = normalizedTypes.length !== 1;
     const searchType = needsAllTypes ? undefined : normalizedTypes[0];
