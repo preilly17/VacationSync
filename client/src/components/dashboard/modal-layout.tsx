@@ -37,7 +37,7 @@ export default function ModalLayout({
     >
       <div
         className={cn(
-          "flex items-start justify-between gap-4 border-b border-slate-200/80 px-6 py-5",
+          "sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200/80 bg-white/95 px-6 py-5 backdrop-blur",
           headerClassName,
         )}
       >
@@ -58,7 +58,7 @@ export default function ModalLayout({
       {footer ? (
         <div
           className={cn(
-            "shrink-0 border-t border-slate-200/80 px-6 py-5",
+            "sticky bottom-0 z-10 border-t border-slate-200/80 bg-white/95 px-6 py-5 backdrop-blur",
             footerClassName,
           )}
         >
