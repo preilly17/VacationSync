@@ -1769,7 +1769,7 @@ export default function Trip() {
                             </Button>
                           </div>
                         </div>
-                        <div className="flex flex-wrap items-end gap-6">
+                        <div className="relative z-[1] flex flex-wrap items-end gap-6">
                             <div className="flex flex-col gap-1">
                               <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-100">
                                 <Filter className="h-3.5 w-3.5" />
