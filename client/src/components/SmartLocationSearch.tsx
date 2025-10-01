@@ -368,7 +368,10 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
               return accumulator;
             }
 
-            let typeForFilter: LocationResult['type'] = normalized.type;
+            const normalizedType = (normalized.type || 'city').toString().toLowerCase();
+            const safeNormalizedType = isValidLocationType(normalizedType) ? normalizedType : 'city';
+
+            let typeForFilter: LocationResult['type'] = safeNormalizedType;
 
             const rawRecord = rawLocation as unknown;
             if (rawRecord && typeof rawRecord === 'object') {
@@ -378,17 +381,30 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
               }
             }
 
-            accumulator.push({ normalized, typeForFilter });
+            const normalizedWithLowercaseType = {
+              ...normalized,
+              type: typeForFilter,
+            } as LocationResult;
+
+            accumulator.push({ normalized: normalizedWithLowercaseType, typeForFilter });
             return accumulator;
           },
           [],
         );
 
         const filteredResults = normalisedAllowedTypes
-          ? processedResults.filter(({ typeForFilter }) => normalisedAllowedTypes.includes(typeForFilter))
+          ? processedResults.filter(({ normalized }) => {
+              const loweredType = (normalized.type || 'city').toString().toLowerCase() as LocationResult['type'];
+              return normalisedAllowedTypes.includes(loweredType);
+            })
           : processedResults;
 
-        setResults(filteredResults.map(({ normalized }) => normalized));
+        setResults(
+          filteredResults.map(({ normalized }) => ({
+            ...normalized,
+            type: (normalized.type || 'city').toString().toLowerCase() as LocationResult['type'],
+          })),
+        );
         lastFetchedQueryKeyRef.current = currentSearchKey;
       } catch (error) {
         console.error('Location search error:', error);
@@ -639,10 +655,15 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                     No locations found for "{query}". Try a different search term.
                   </div>
                 ) : null}
-                {results.map((location, index) => {
-                  if (!location || typeof location !== "object") {
+                {results.map((rawLocation, index) => {
+                  if (!rawLocation || typeof rawLocation !== "object") {
                     return null;
                   }
+
+                  const location = {
+                    ...rawLocation,
+                    type: (rawLocation.type || "city").toString().toLowerCase() as LocationResult["type"],
+                  };
 
                   const isActive = index === activeIndex;
 
