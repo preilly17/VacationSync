@@ -7,8 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, Plane, Globe, Building, ChevronDown } from "lucide-react";
 import LocationUtils from "@/lib/locationUtils";
 
+type LocationTypeLower = 'airport' | 'city' | 'metro' | 'state' | 'country';
+type LocationTypeUpper = Uppercase<LocationTypeLower>;
+type LocationType = LocationTypeLower | LocationTypeUpper;
+
 export interface LocationResult {
-  type: 'airport' | 'city' | 'metro' | 'state' | 'country';
+  type: LocationType;
   name: string;
   code: string;
   displayName: string;
@@ -29,7 +33,7 @@ export interface LocationResult {
   source?: string;
 }
 
-const VALID_LOCATION_TYPES: Array<LocationResult['type']> = [
+const VALID_LOCATION_TYPES: LocationTypeLower[] = [
   'airport',
   'city',
   'metro',
@@ -37,8 +41,34 @@ const VALID_LOCATION_TYPES: Array<LocationResult['type']> = [
   'country',
 ];
 
-const isValidLocationType = (value: string): value is LocationResult['type'] =>
-  VALID_LOCATION_TYPES.includes(value as LocationResult['type']);
+const parseLocationType = (value: unknown): LocationTypeLower | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const lower = trimmed.toLowerCase() as LocationTypeLower;
+  return VALID_LOCATION_TYPES.includes(lower) ? lower : null;
+};
+
+const toUpperLocationTypeOrNull = (value: unknown): LocationTypeUpper | null => {
+  const parsed = parseLocationType(value);
+  return parsed ? (parsed.toUpperCase() as LocationTypeUpper) : null;
+};
+
+const toUpperLocationType = (
+  value: unknown,
+  fallback: LocationTypeUpper = 'CITY',
+): LocationTypeUpper => toUpperLocationTypeOrNull(value) ?? fallback;
+
+const toLowerLocationType = (
+  value: unknown,
+  fallback: LocationTypeLower = 'city',
+): LocationTypeLower => parseLocationType(value) ?? fallback;
 
 const toTrimmedString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -87,7 +117,7 @@ const toStringArray = (value: unknown): string[] => {
 
 const normalizeAllowedTypes = (
   allowedTypes?: Array<LocationResult['type']>,
-): Array<LocationResult['type']> | null => {
+): Array<LocationTypeUpper> | null => {
   if (!allowedTypes || allowedTypes.length === 0) {
     return null;
   }
@@ -95,8 +125,8 @@ const normalizeAllowedTypes = (
   const deduped = Array.from(
     new Set(
       allowedTypes
-        .map((type) => type.toLowerCase())
-        .filter((type): type is LocationResult['type'] => isValidLocationType(type)),
+        .map((type) => toUpperLocationTypeOrNull(type))
+        .filter((type): type is LocationTypeUpper => Boolean(type)),
     ),
   );
 
@@ -104,14 +134,15 @@ const normalizeAllowedTypes = (
 };
 
 const mapToLocationUtilsType = (type: LocationResult['type']): 'AIRPORT' | 'CITY' | 'COUNTRY' => {
-  switch (type) {
-    case 'airport':
+  const upperType = toUpperLocationType(type);
+  switch (upperType) {
+    case 'AIRPORT':
       return 'AIRPORT';
-    case 'country':
+    case 'COUNTRY':
       return 'COUNTRY';
-    case 'state':
-    case 'metro':
-    case 'city':
+    case 'STATE':
+    case 'METRO':
+    case 'CITY':
     default:
       return 'CITY';
   }
@@ -134,9 +165,7 @@ const normalizeFetchedLocation = (rawLocation: unknown): LocationResult | null =
 
   const record = rawLocation as Record<string, unknown>;
   const lowerCaseType = getLowercaseTypeCandidate(record);
-  const type: LocationResult['type'] = lowerCaseType && isValidLocationType(lowerCaseType)
-    ? lowerCaseType
-    : 'city';
+  const type = toUpperLocationType(lowerCaseType);
 
   const rawName = toTrimmedString(record.name);
   const rawDisplayName = toTrimmedString(record.displayName);
@@ -361,48 +390,47 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         });
 
         const safeResults = Array.isArray(rawResults) ? rawResults.slice(0, 7) : [];
-        const processedResults = safeResults.reduce<Array<{ normalized: LocationResult; typeForFilter: LocationResult['type'] }>>(
+        const processedResults = safeResults.reduce<
+          Array<{ normalized: LocationResult; typeForFilter: LocationTypeUpper }>
+        >(
           (accumulator, rawLocation) => {
             const normalized = normalizeFetchedLocation(rawLocation);
             if (!normalized) {
               return accumulator;
             }
 
-            const normalizedType = (normalized.type || 'city').toString().toLowerCase();
-            const safeNormalizedType = isValidLocationType(normalizedType) ? normalizedType : 'city';
-
-            let typeForFilter: LocationResult['type'] = safeNormalizedType;
+            let typeForFilter = toUpperLocationType(normalized.type);
 
             const rawRecord = rawLocation as unknown;
             if (rawRecord && typeof rawRecord === 'object') {
               const candidate = getLowercaseTypeCandidate(rawRecord as Record<string, unknown>);
-              if (candidate && isValidLocationType(candidate)) {
-                typeForFilter = candidate;
+              const candidateUpper = candidate ? toUpperLocationTypeOrNull(candidate) : null;
+              if (candidateUpper) {
+                typeForFilter = candidateUpper;
               }
             }
 
-            const normalizedWithLowercaseType = {
+            const normalizedWithUppercaseType = {
               ...normalized,
               type: typeForFilter,
             } as LocationResult;
 
-            accumulator.push({ normalized: normalizedWithLowercaseType, typeForFilter });
+            accumulator.push({ normalized: normalizedWithUppercaseType, typeForFilter });
             return accumulator;
           },
           [],
         );
 
         const filteredResults = normalisedAllowedTypes
-          ? processedResults.filter(({ normalized }) => {
-              const loweredType = (normalized.type || 'city').toString().toLowerCase() as LocationResult['type'];
-              return normalisedAllowedTypes.includes(loweredType);
+          ? processedResults.filter(({ typeForFilter }) => {
+              return normalisedAllowedTypes.includes(typeForFilter);
             })
           : processedResults;
 
         setResults(
-          filteredResults.map(({ normalized }) => ({
+          filteredResults.map(({ normalized, typeForFilter }) => ({
             ...normalized,
-            type: (normalized.type || 'city').toString().toLowerCase() as LocationResult['type'],
+            type: typeForFilter,
           })),
         );
         lastFetchedQueryKeyRef.current = currentSearchKey;
@@ -450,8 +478,8 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     onLocationSelect(location);
   };
 
-  const getLocationIcon = (type: string) => {
-    switch (type) {
+  const getLocationIcon = (type: LocationResult['type']) => {
+    switch (toLowerLocationType(type)) {
       case 'airport': return <Plane className="w-4 h-4" />;
       case 'city': return <Building className="w-4 h-4" />;
       case 'metro': return <Building className="w-4 h-4" />;
@@ -461,8 +489,8 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
   };
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
+  const getTypeColor = (type: LocationResult['type']) => {
+    switch (toLowerLocationType(type)) {
       case 'airport': return 'bg-blue-100 text-blue-800';
       case 'city': return 'bg-green-100 text-green-800';
       case 'metro': return 'bg-cyan-100 text-cyan-800';
@@ -660,16 +688,18 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                     return null;
                   }
 
-                  const location = {
+                  const normalizedType = toUpperLocationType(rawLocation.type);
+                  const location: LocationResult = {
                     ...rawLocation,
-                    type: (rawLocation.type || "city").toString().toLowerCase() as LocationResult["type"],
+                    type: normalizedType,
                   };
+                  const displayType = toLowerLocationType(normalizedType);
 
                   const isActive = index === activeIndex;
 
                   return (
                     <div
-                      key={`${location.type}-${location.code}-${index}`}
+                      key={`${displayType}-${location.code}-${index}`}
                       id={`${listboxId}-option-${index}`}
                       role="option"
                       aria-selected={isActive}
@@ -689,22 +719,22 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
                           <div className="flex items-center gap-2">
                             <span className="font-medium">{location.displayName}</span>
                             <Badge variant="outline" className={getTypeColor(location.type)}>
-                              {location.type === "metro" ? "metro area" : location.type}
+                              {displayType === "metro" ? "metro area" : displayType}
                             </Badge>
                           </div>
                           <div className="text-sm text-gray-600">
-                            {location.type === "airport"
+                            {displayType === "airport"
                               ? [location.cityName, location.countryName ?? location.country]
                                   .filter(Boolean)
                                   .join(", ")
                               : location.countryName ?? location.country}
-                            {location.type === "metro" && location.airports && (
+                            {displayType === "metro" && location.airports && (
                               <div className="mt-1 text-xs text-blue-600">
                                 Multiple airports: {location.airports.join(", ")}
                               </div>
                             )}
                           </div>
-                          {location.type === "city" && location.airports && location.airports.length > 0 && (
+                          {displayType === "city" && location.airports && location.airports.length > 0 && (
                             <div className="mt-1 text-xs text-gray-500">
                               Airports: {location.airports.slice(0, 3).join(", ")}
                               {location.airports.length > 3 && ` +${location.airports.length - 3} more`}
