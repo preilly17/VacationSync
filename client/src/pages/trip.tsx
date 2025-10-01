@@ -1700,20 +1700,32 @@ export default function Trip() {
                 {activeTab === "calendar" && (
                   <div className="space-y-6">
                     <Card className="overflow-hidden border-none shadow-xl">
-                      <CardHeader className="space-y-6 border-b border-neutral-200 bg-neutral-50/80">
+                      <CardHeader
+                        className="relative space-y-6 border-b border-[color:var(--calendar-line)]/60 bg-[color:var(--calendar-canvas-accent)]/70 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
+                      >
+                        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_58%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.32),transparent_58%)]" />
+                          <div className="absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" />
+                        </div>
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <CardTitle className="text-lg font-semibold text-neutral-900">Group activity calendar</CardTitle>
-                            <p className="text-sm text-neutral-600">Use filters to focus on the plans that matter right now.</p>
+                          <div className="relative">
+                            <CardTitle className="text-lg font-semibold text-[color:var(--calendar-ink)]">
+                              Group activity calendar
+                            </CardTitle>
+                            <p className="text-sm text-[color:var(--calendar-muted)]">
+                              Use filters to focus on the plans that matter right now.
+                            </p>
                           </div>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">View</span>
+                              <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                View
+                              </span>
                               <Select
                                 value={groupCalendarView}
                                 onValueChange={(value) => handleGroupViewChange(value as "month" | "day")}
                               >
-                                <SelectTrigger className="min-w-[150px] bg-white">
+                                <SelectTrigger className="min-w-[150px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
                                   <SelectValue placeholder="Select view" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1723,7 +1735,7 @@ export default function Trip() {
                               </Select>
                             </div>
                             {groupCalendarView === "month" && (
-                              <div className="flex items-center gap-2 rounded-full bg-white px-2 py-1 shadow-sm">
+                              <div className="flex items-center gap-2 rounded-full bg-[color:var(--calendar-surface)]/95 px-2 py-1 shadow-sm">
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1732,7 +1744,7 @@ export default function Trip() {
                                 >
                                   <ChevronLeft className="h-4 w-4" />
                                 </Button>
-                                <span className="min-w-[140px] text-center text-sm font-semibold text-neutral-900">
+                                <span className="min-w-[140px] text-center text-sm font-semibold text-[color:var(--calendar-ink)]">
                                   {format(currentMonth, 'MMMM yyyy')}
                                 </span>
                                 <Button
@@ -1755,15 +1767,15 @@ export default function Trip() {
                           </div>
                         </div>
                         <div className="flex flex-wrap items-end gap-6">
-                          <div className="flex flex-col gap-1">
-                            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              <Filter className="h-3.5 w-3.5" />
-                              Category
-                            </span>
-                            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                              <SelectTrigger className="min-w-[180px] bg-white">
-                                <SelectValue placeholder="All activities" />
-                              </SelectTrigger>
+                            <div className="flex flex-col gap-1">
+                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                <Filter className="h-3.5 w-3.5" />
+                                Category
+                              </span>
+                              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                                <SelectTrigger className="min-w-[180px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
+                                  <SelectValue placeholder="All activities" />
+                                </SelectTrigger>
                               <SelectContent>
                                 {categories.map((category) => (
                                   <SelectItem key={category} value={category}>
@@ -1773,15 +1785,15 @@ export default function Trip() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                              <Users className="h-3.5 w-3.5" />
-                              Person
-                            </span>
-                            <Select value={peopleFilter} onValueChange={setPeopleFilter}>
-                              <SelectTrigger className="min-w-[200px] bg-white">
-                                <SelectValue placeholder="Everyone" />
-                              </SelectTrigger>
+                            <div className="flex flex-col gap-1">
+                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                <Users className="h-3.5 w-3.5" />
+                                Person
+                              </span>
+                              <Select value={peopleFilter} onValueChange={setPeopleFilter}>
+                                <SelectTrigger className="min-w-[200px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
+                                  <SelectValue placeholder="Everyone" />
+                                </SelectTrigger>
                               <SelectContent>
                                 {people.map((personId) => {
                                   const member = trip?.members?.find((m: any) => m.userId === personId);
@@ -1865,21 +1877,29 @@ export default function Trip() {
 
                 {activeTab === "schedule" && (
                   <div>
-                    <Card className="mb-6">
-                      <div className="px-6 py-4 border-b border-gray-200 space-y-4">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <Card className="mb-6 overflow-hidden">
+                      <CardHeader
+                        className="relative space-y-4 border-b border-[color:var(--calendar-line)]/60 bg-[color:var(--calendar-canvas-accent)]/70 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
+                      >
+                        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_58%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.32),transparent_58%)]" />
+                          <div className="absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" />
+                        </div>
+                        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <h2 className="text-lg font-semibold text-neutral-900">My Schedule</h2>
-                            <p className="text-sm text-neutral-600">Things you’re going to or created.</p>
+                            <CardTitle className="text-lg font-semibold text-[color:var(--calendar-ink)]">My Schedule</CardTitle>
+                            <p className="text-sm text-[color:var(--calendar-muted)]">Things you’re going to or created.</p>
                           </div>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">View</span>
+                              <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                View
+                              </span>
                               <Select
                                 value={scheduleCalendarView}
                                 onValueChange={(value) => handleScheduleViewChange(value as "month" | "day")}
                               >
-                                <SelectTrigger className="min-w-[150px] bg-white">
+                                <SelectTrigger className="min-w-[150px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
                                   <SelectValue placeholder="Select view" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1889,7 +1909,7 @@ export default function Trip() {
                               </Select>
                             </div>
                             {scheduleCalendarView === "month" && (
-                              <div className="flex items-center space-x-2">
+                              <div className="flex items-center gap-2 rounded-full bg-[color:var(--calendar-surface)]/95 px-2 py-1 shadow-sm">
                                 <Button
                                   variant="ghost"
                                   size="sm"
@@ -1897,7 +1917,7 @@ export default function Trip() {
                                 >
                                   <ChevronLeft className="w-4 h-4" />
                                 </Button>
-                                <span className="min-w-[120px] text-center text-sm font-semibold text-neutral-900">
+                                <span className="min-w-[120px] text-center text-sm font-semibold text-[color:var(--calendar-ink)]">
                                   {format(currentMonth, 'MMMM yyyy')}
                                 </span>
                                 <Button
@@ -1918,8 +1938,8 @@ export default function Trip() {
                             </Button>
                           </div>
                         </div>
-                      </div>
-                      <div className="p-6">
+                      </CardHeader>
+                      <CardContent className="p-6">
                         {scheduleCalendarView === "month" ? (
                           <CalendarGrid
                             currentMonth={currentMonth}
@@ -1953,7 +1973,7 @@ export default function Trip() {
                             Trip dates are needed to show the calendar view.
                           </div>
                         )}
-                      </div>
+                      </CardContent>
                     </Card>
                   </div>
                 )}
