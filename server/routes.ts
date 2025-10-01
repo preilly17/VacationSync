@@ -676,9 +676,14 @@ export function setupRoutes(app: Express) {
 
   // Unified location search endpoint used by both flights (GET) and hotels (POST)
   app.get("/api/locations/search", async (req, res) => {
+    let query = "";
+    let parsedTypes: string[] = [];
+    let limit = 10;
+    let useApi = false;
+
     try {
       const rawQuery = Array.isArray(req.query.q) ? req.query.q[0] : req.query.q;
-      const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
+      query = typeof rawQuery === "string" ? rawQuery.trim() : "";
 
       if (!query) {
         return res.status(400).json({ message: "Query parameter 'q' is required" });
@@ -688,26 +693,44 @@ export function setupRoutes(app: Express) {
         return res.json([]);
       }
 
-      const typesParam = Array.isArray(req.query.types) ? req.query.types : req.query.types ? [req.query.types] : [];
-      const parsedTypes = typesParam
-        .flatMap((value) => (typeof value === "string" ? value.split(",") : []))
-        .map((value) => value.trim())
-        .filter((value) => value.length > 0);
+      const typesParam = Array.isArray(req.query.types)
+        ? req.query.types
+        : req.query.types
+          ? [req.query.types]
+          : [];
+      parsedTypes = typesParam.flatMap((value) =>
+        typeof value === "string"
+          ? value
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+          : [],
+      );
 
-      const limitParam = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
-      const useApiParam = Array.isArray(req.query.useApi) ? req.query.useApi[0] : req.query.useApi;
+      const limitRaw = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      limit = limitRaw && !isNaN(Number(limitRaw)) ? parseInt(limitRaw as string, 10) : 10;
+
+      const useApiRaw = Array.isArray(req.query.useApi) ? req.query.useApi[0] : req.query.useApi;
+      useApi = typeof useApiRaw === "string"
+        ? ["true", "1", "yes"].includes(useApiRaw.toLowerCase())
+        : false;
 
       const results = await locationService.searchLocationsForApi({
         query,
         types: parsedTypes,
-        limit: limitParam,
-        useApi: useApiParam,
+        limit,
+        useApi,
       });
 
       return res.json(results);
     } catch (error: unknown) {
-      console.error('Location search error:', error);
-      return res.status(500).json({ error: 'Location search failed' });
+      console.error("Location search error:", error, {
+        query,
+        parsedTypes,
+        limit,
+        useApi,
+      });
+      return res.status(500).json({ error: "Location search failed" });
     }
   });
 
