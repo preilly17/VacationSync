@@ -260,6 +260,11 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   allowedTypes,
   onQueryChange,
 }, ref) {
+  console.log("🧩 SmartLocationSearch mounted with props:", {
+    allowedTypes,
+    value,
+    placeholder,
+  });
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<LocationResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -391,6 +396,12 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           "types:",
           normalizedTypesForSearch,
         );
+        console.log(
+          "🌐 SmartLocationSearch: fetching locations for query",
+          currentQuery,
+          "allowedTypes:",
+          allowedTypes,
+        );
 
         const rawResults = await LocationUtils.searchLocations({
           query: currentQuery,
@@ -445,12 +456,15 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
         console.log("📊 Processed results before filtering:", processedResults);
         console.log("📊 Filtered results (by allowedTypes):", filteredResults);
 
-        setResults(
-          filteredResults.map(({ normalized, typeForFilter }) => ({
-            ...normalized,
-            type: typeForFilter,
-          })),
+        const normalizedResultsForState = filteredResults.map(({ normalized, typeForFilter }) => ({
+          ...normalized,
+          type: typeForFilter,
+        }));
+        console.log(
+          "✅ SmartLocationSearch: received results",
+          normalizedResultsForState,
         );
+        setResults(normalizedResultsForState);
         lastFetchedQueryKeyRef.current = currentSearchKey;
       } catch (error) {
         console.error('Location search error:', error);
