@@ -1771,12 +1771,12 @@ export default function Trip() {
                         </div>
                         <div className="flex flex-wrap items-end gap-6">
                             <div className="flex flex-col gap-1">
-                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-100">
                                 <Filter className="h-3.5 w-3.5" />
                                 Category
                               </span>
                               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                                <SelectTrigger className="min-w-[180px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
+                                <SelectTrigger className="min-w-[180px] bg-[color:var(--calendar-surface)] text-neutral-900 dark:text-neutral-100">
                                   <SelectValue placeholder="All activities" />
                                 </SelectTrigger>
                               <SelectContent>
@@ -1789,12 +1789,12 @@ export default function Trip() {
                             </Select>
                           </div>
                             <div className="flex flex-col gap-1">
-                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-100">
                                 <Users className="h-3.5 w-3.5" />
                                 Person
                               </span>
                               <Select value={peopleFilter} onValueChange={setPeopleFilter}>
-                                <SelectTrigger className="min-w-[200px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
+                                <SelectTrigger className="min-w-[200px] bg-[color:var(--calendar-surface)] text-neutral-900 dark:text-neutral-100">
                                   <SelectValue placeholder="Everyone" />
                                 </SelectTrigger>
                               <SelectContent>
