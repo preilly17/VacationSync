@@ -1935,7 +1935,7 @@ export function setupRoutes(app: Express) {
       }
 
       if (!userId) {
-        return res.status(401).json({ message: 'User ID not found' });
+        return res.status(401).json({ message: 'Unauthorized' });
       }
 
       const rsvpRaw =
@@ -1978,7 +1978,7 @@ export function setupRoutes(app: Express) {
       }
 
       if (!userId) {
-        return res.status(401).json({ message: 'User ID not found' });
+        return res.status(401).json({ message: 'Unauthorized' });
       }
 
       const rawStatus = typeof req.body?.status === 'string' ? req.body.status.toLowerCase() : '';
