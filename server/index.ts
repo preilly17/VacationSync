@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import cors, { type CorsOptions } from "cors";
+import cors from "cors";
 import { setupRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { createSessionMiddleware } from "./sessionAuth";
@@ -36,25 +36,28 @@ const allowedOrigins = envConfiguredOrigins.size
   ? Array.from(envConfiguredOrigins)
   : Array.from(defaultOrigins);
 
-const corsOptions: CorsOptions = {
-  origin: allowedOrigins,
-  credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-
+// ✅ FIXED CORS CONFIG
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true); // allow curl/postman without origin
-    if (allowedOrigins.includes(origin)) {
+    if (
+      allowedOrigins.some((allowed) =>
+        allowed instanceof RegExp ? allowed.test(origin) : allowed === origin
+      )
+    ) {
       return callback(null, true);
-    } else {
-      return callback(new Error("Not allowed by CORS"));
     }
+    // allow *.tripsyncbeta.com subdomains
+    if (/\.tripsyncbeta\.com$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
-app.options("*", cors(corsOptions));
+
+app.options("*", cors());
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -129,7 +132,3 @@ server.listen({ port, host, reusePort: true }, () => {
     log(`⚠️ Vite/static setup failed: ${error}`);
   }
 })();
-
-
-
-
