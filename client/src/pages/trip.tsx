@@ -187,6 +187,14 @@ const statusToActionMap: Record<ActivityInviteStatus, ActivityRsvpAction> = {
   waitlisted: "WAITLIST",
 };
 
+type DayDetailsState = {
+  date: Date;
+  activities: ActivityWithDetails[];
+  hiddenCount: number;
+  trigger: HTMLButtonElement | null;
+  viewMode: "group" | "personal";
+};
+
 // MOBILE-ONLY bottom navigation config
 const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
   { key: "calendar", label: "Group", icon: Calendar },
@@ -705,6 +713,9 @@ export default function Trip() {
   const [activeRedirectModal, setActiveRedirectModal] = useState<"flight" | "hotel" | null>(null);
   const [flightManualOpenSignal, setFlightManualOpenSignal] = useState(0);
   const [hotelManualOpenSignal, setHotelManualOpenSignal] = useState(0);
+  const [dayDetailsState, setDayDetailsState] = useState<DayDetailsState | null>(null);
+  const [isDayDetailsOpen, setIsDayDetailsOpen] = useState(false);
+  const dayDetailsContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -805,6 +816,67 @@ export default function Trip() {
 
   const flightDialogOpen = activeRedirectModal === "flight";
   const hotelDialogOpen = activeRedirectModal === "hotel";
+
+  const openDayDetails = useCallback(
+    (
+      day: Date,
+      dayActivities: ActivityWithDetails[],
+      hiddenCount: number,
+      trigger: HTMLButtonElement | null,
+      viewMode: DayDetailsState["viewMode"],
+    ) => {
+      setDayDetailsState({
+        date: day,
+        activities: dayActivities,
+        hiddenCount,
+        trigger,
+        viewMode,
+      });
+      setIsDayDetailsOpen(true);
+
+      if (typeof window !== "undefined") {
+        const analyticsWindow = window as typeof window & {
+          analytics?: {
+            track?: (eventName: string, properties?: Record<string, unknown>) => void;
+          };
+        };
+
+        analyticsWindow.analytics?.track?.("calendar_day_overflow_opened", {
+          date: day.toISOString(),
+          hiddenCount,
+        });
+      }
+    },
+    [],
+  );
+
+  const handleGroupDayOverflow = useCallback(
+    (
+      day: Date,
+      dayActivities: ActivityWithDetails[],
+      hiddenCount: number,
+      trigger: HTMLButtonElement | null,
+    ) => {
+      openDayDetails(day, dayActivities, hiddenCount, trigger, "group");
+    },
+    [openDayDetails],
+  );
+
+  const handlePersonalDayOverflow = useCallback(
+    (
+      day: Date,
+      dayActivities: ActivityWithDetails[],
+      hiddenCount: number,
+      trigger: HTMLButtonElement | null,
+    ) => {
+      openDayDetails(day, dayActivities, hiddenCount, trigger, "personal");
+    },
+    [openDayDetails],
+  );
+
+  const handleDayDetailsOpenChange = useCallback((open: boolean) => {
+    setIsDayDetailsOpen(open);
+  }, []);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -1842,6 +1914,7 @@ export default function Trip() {
                                 openAddActivityModal(clampDateToTrip(date));
                               }}
                               onActivityClick={handleActivityClick}
+                              onDayOverflowClick={handleGroupDayOverflow}
                             />
                             {filteredActivities.length === 0 && (
                               <div className="relative mt-6 overflow-hidden rounded-[24px] border border-[color:var(--calendar-line)]/60 bg-[var(--calendar-canvas)]/90 py-12 text-center shadow-[0_22px_60px_-28px_rgba(16,24,40,0.35)]">
@@ -1973,6 +2046,7 @@ export default function Trip() {
                               openAddActivityModal(clampDateToTrip(date));
                             }}
                             onActivityClick={handleActivityClick}
+                            onDayOverflowClick={handlePersonalDayOverflow}
                           />
                         ) : currentScheduleDay ? (
                           <DayView
@@ -2496,6 +2570,67 @@ export default function Trip() {
                 No
               </Button>
             </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isDayDetailsOpen} onOpenChange={handleDayDetailsOpenChange}>
+          <DialogContent
+            ref={dayDetailsContentRef}
+            className="w-full max-w-3xl"
+            tabIndex={-1}
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              const focus = () => {
+                dayDetailsContentRef.current?.focus();
+              };
+              if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+                window.requestAnimationFrame(focus);
+              } else {
+                focus();
+              }
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              if (dayDetailsState?.trigger) {
+                try {
+                  dayDetailsState.trigger.focus();
+                } catch (error) {
+                  // Ignore focus errors if the element is no longer in the DOM
+                }
+              }
+              setDayDetailsState(null);
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="sr-only">
+                {dayDetailsState
+                  ? `Schedule for ${format(dayDetailsState.date, "EEEE, MMMM d, yyyy")}`
+                  : "Schedule details"}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
+                Full list of activities for the selected day.
+              </DialogDescription>
+            </DialogHeader>
+            {dayDetailsState && (
+              <DayView
+                date={dayDetailsState.date}
+                activities={dayDetailsState.activities}
+                onPreviousDay={() => {}}
+                onNextDay={() => {}}
+                canGoPrevious={false}
+                canGoNext={false}
+                onActivityClick={handleActivityClick}
+                viewMode={dayDetailsState.viewMode}
+                {...(dayDetailsState.viewMode === "personal"
+                  ? {
+                      currentUser: user,
+                      onSubmitRsvp: (activity: ActivityWithDetails, action: ActivityRsvpAction) =>
+                        submitRsvpAction(activity.id, action),
+                      isRsvpPending: respondToInviteMutation.isPending,
+                    }
+                  : {})}
+              />
+            )}
           </DialogContent>
         </Dialog>
 

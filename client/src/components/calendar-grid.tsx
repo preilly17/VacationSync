@@ -13,6 +13,12 @@ interface CalendarGridProps {
   selectedDate?: Date | null;
   onDayClick?: (date: Date) => void;
   onActivityClick?: (activity: ActivityWithDetails) => void;
+  onDayOverflowClick?: (
+    day: Date,
+    activities: ActivityWithDetails[],
+    hiddenCount: number,
+    trigger: HTMLButtonElement | null,
+  ) => void;
   currentUserId?: string;
   highlightPersonalProposals?: boolean;
 }
@@ -163,6 +169,7 @@ export function CalendarGrid({
   selectedDate,
   onDayClick,
   onActivityClick,
+  onDayOverflowClick,
   currentUserId,
   highlightPersonalProposals,
 }: CalendarGridProps) {
@@ -314,9 +321,9 @@ export function CalendarGrid({
                       day={day}
                       activities={dayActivities}
                       onActivityClick={onActivityClick}
-                      onDayClick={onDayClick}
                       highlightPersonalProposals={highlightPersonalProposals}
                       currentUserId={currentUserId}
+                      onOverflowClick={onDayOverflowClick}
                     />
                   )}
                 </div>
@@ -333,7 +340,12 @@ interface DayActivityListProps {
   day: Date;
   activities: ActivityWithDetails[];
   onActivityClick?: (activity: ActivityWithDetails) => void;
-  onDayClick?: (day: Date) => void;
+  onOverflowClick?: (
+    day: Date,
+    activities: ActivityWithDetails[],
+    hiddenCount: number,
+    trigger: HTMLButtonElement | null,
+  ) => void;
   highlightPersonalProposals?: boolean;
   currentUserId?: string;
 }
@@ -342,7 +354,7 @@ function DayActivityList({
   day,
   activities,
   onActivityClick,
-  onDayClick,
+  onOverflowClick,
   highlightPersonalProposals,
   currentUserId,
 }: DayActivityListProps) {
@@ -719,7 +731,7 @@ function DayActivityList({
             data-hidden={hiddenCount > 0 ? "false" : "true"}
             onClick={event => {
               event.stopPropagation();
-              onDayClick?.(day);
+              onOverflowClick?.(day, activities, hiddenCount, event.currentTarget);
             }}
             className={cn(
               "flex w-full items-center justify-center rounded-full bg-[color:var(--calendar-canvas-accent)]/80 px-3 py-1.5 text-[12px] font-semibold tracking-tight text-[color:var(--calendar-ink)] shadow-[0_12px_22px_-16px_rgba(15,23,42,0.5)] transition-all duration-200",
