@@ -1167,6 +1167,31 @@ class LocationService {
     return rows;
   }
 
+  private async queryCitiesByNamePrefix(queryText: string, limit: number) {
+    const sql = `
+      SELECT geoname_id, name, country_code, latitude, longitude, population, timezone
+      FROM cities
+      WHERE name ILIKE $1 || '%'
+      ORDER BY population DESC
+      LIMIT $2
+    `;
+    const rows = (await query(sql, [queryText, limit])).rows;
+    return rows.map(row => this.normalizeResultShape({
+      id: row.geoname_id ?? row.name,
+      geonameId: row.geoname_id,
+      name: row.name,
+      type: 'CITY',
+      countryCode: row.country_code,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      population: row.population,
+      timeZone: row.timezone,
+      displayName: `${row.name}, ${row.country_code}`,
+      detailedName: `${row.name}, ${row.country_code}`,
+      source: 'cities-db',
+    }));
+  }
+
   private async queryAirports(queryText: string, limit: number) {
     const { rows } = await query<{
       iata_code: string | null;
@@ -1192,6 +1217,11 @@ class LocationService {
     );
 
     return rows;
+  }
+
+  private async queryAirportsByQuery(queryText: string, limit: number) {
+    const rows = await this.queryAirports(queryText, limit);
+    return rows.map(row => this.mapAirportRowToResult(row));
   }
 
   private mapCityRowToResult(row: {
@@ -1793,39 +1823,59 @@ class LocationService {
 
     const limit = this.normalizeLimit(params.limit ?? 10);
     const useApi = this.normalizeBoolean(params.useApi) ?? false;
-    const normalizedTypes = this.normalizeRequestedTypes(params.type, params.types);
+    let normalizedTypes = this.normalizeRequestedTypes(params.type, params.types);
+
+    if (!useApi && normalizedTypes.length === 0) {
+      normalizedTypes = ['CITY', 'AIRPORT'];
+    }
 
     console.debug('searchLocationsForApi', { query, normalizedTypes, limit, useApi });
 
     if (!useApi) {
-      const effectiveTypes = normalizedTypes.length > 0
-        ? normalizedTypes as Array<'AIRPORT' | 'CITY' | 'COUNTRY'>
-        : ['CITY', 'AIRPORT'];
-      const combinedResults: LocationSearchResult[] = [];
+      const results: LocationSearchResult[] = [];
 
-      if (effectiveTypes.includes('CITY')) {
-        const cities = await this.queryCities(query, limit);
-        combinedResults.push(...cities.map(row => this.mapCityRowToResult(row)));
+      if (normalizedTypes.includes('CITY')) {
+        results.push(...await this.queryCitiesByNamePrefix(query, limit));
       }
 
-      if (effectiveTypes.includes('AIRPORT')) {
-        const airports = await this.queryAirports(query, limit);
-        combinedResults.push(...airports.map(row => this.mapAirportRowToResult(row)));
+      if (normalizedTypes.includes('AIRPORT')) {
+        results.push(...await this.queryAirportsByQuery(query, limit));
       }
 
-      if (effectiveTypes.includes('COUNTRY')) {
-        combinedResults.push(...await this.searchLocalDatabase(query, ['COUNTRY'], limit));
+      if (normalizedTypes.includes('COUNTRY')) {
+        results.push(...await this.searchLocalDatabase(query, ['COUNTRY'], limit));
       }
 
       const deduped = new Map<string, LocationSearchResult>();
-      for (const result of combinedResults) {
+      for (const result of results) {
         const key = String(result.id ?? `${result.type}-${result.name}`);
         if (!deduped.has(key)) {
           deduped.set(key, result);
         }
       }
 
-      return Array.from(deduped.values()).slice(0, limit);
+      const sortedResults = Array.from(deduped.values()).sort((a, b) => {
+        const relevanceA = a.relevance ?? 0;
+        const relevanceB = b.relevance ?? 0;
+        if (relevanceA !== relevanceB) {
+          return relevanceB - relevanceA;
+        }
+
+        const nameA = a.displayName ?? a.name ?? '';
+        const nameB = b.displayName ?? b.name ?? '';
+        return nameA.localeCompare(nameB);
+      });
+
+      const limitedResults = sortedResults.slice(0, limit);
+
+      console.debug('searchLocationsForApi(useApi=false) returning', {
+        query,
+        types: normalizedTypes,
+        limit,
+        count: limitedResults.length,
+      });
+
+      return limitedResults.map(r => this.normalizeResultShape(r));
     }
 
     const needsAllTypes = normalizedTypes.length !== 1;
