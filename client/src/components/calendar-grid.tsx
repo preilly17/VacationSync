@@ -375,6 +375,13 @@ function DayActivityList({
       container.querySelectorAll<HTMLDivElement>("[data-calendar-chip-wrapper]"),
     );
 
+    const overflowWrapper = container.querySelector<HTMLDivElement>(
+      "[data-overflow-pill-wrapper]",
+    );
+    const overflowButton = overflowWrapper?.querySelector<HTMLButtonElement>(
+      "[data-overflow-pill]",
+    );
+
     const chips = wrappers
       .map(wrapper => wrapper.querySelector<HTMLButtonElement>("[data-calendar-chip]"))
       .filter((chip): chip is HTMLButtonElement => Boolean(chip));
@@ -394,6 +401,8 @@ function DayActivityList({
     const originalMode = container.dataset.mode ?? "";
     const originalWrapperHiddenStates = wrappers.map(wrapper => wrapper.dataset.hidden ?? "");
     const originalHiddenStates = chips.map(chip => chip.dataset.hidden ?? "");
+    const originalOverflowWrapperHidden = overflowWrapper?.dataset.hidden ?? "";
+    const originalOverflowHidden = overflowButton?.dataset.hidden ?? "";
 
     let resolvedState: LayoutState | null = null;
 
@@ -406,38 +415,83 @@ function DayActivityList({
         chips.forEach(chip => {
           chip.dataset.hidden = "false";
         });
+        if (overflowWrapper) {
+          overflowWrapper.dataset.hidden = "false";
+        }
+        if (overflowButton) {
+          overflowButton.dataset.hidden = "false";
+        }
 
         const gap = MODE_CONFIG[mode].gap;
-        const heights = wrappers.map(wrapper => wrapper.offsetHeight);
+        const chipHeights = wrappers.map(wrapper => wrapper.offsetHeight);
+        const overflowHeight = overflowWrapper?.offsetHeight ?? 0;
 
         let usedHeight = 0;
         let visibleCount = 0;
+        const cumulativeHeights: number[] = [];
 
-        for (const height of heights) {
+        for (const height of chipHeights) {
           const addition = height + (visibleCount > 0 ? gap : 0);
           if (usedHeight + addition <= availableHeight) {
             usedHeight += addition;
             visibleCount += 1;
+            cumulativeHeights.push(usedHeight);
           } else {
             break;
           }
         }
 
-        const hiddenCount = Math.max(totalChips - visibleCount, 0);
+        let hiddenCount = Math.max(totalChips - visibleCount, 0);
 
         if (hiddenCount === 0) {
           resolvedState = { mode, visibleCount, hiddenCount: 0 };
           break;
         }
 
-        if (visibleCount > 0) {
-          resolvedState = {
-            mode,
-            visibleCount: Math.min(visibleCount, totalChips),
-            hiddenCount,
-          };
-          break;
+        if (!overflowWrapper) {
+          if (visibleCount > 0) {
+            resolvedState = {
+              mode,
+              visibleCount: Math.min(visibleCount, totalChips),
+              hiddenCount,
+            };
+            break;
+          }
+
+          continue;
         }
+
+        let totalWithOverflow = usedHeight + (visibleCount > 0 ? gap : 0) + overflowHeight;
+
+        while (visibleCount > 0 && totalWithOverflow > availableHeight) {
+          cumulativeHeights.pop();
+          visibleCount -= 1;
+          hiddenCount = Math.max(totalChips - visibleCount, 0);
+          usedHeight = visibleCount > 0 ? cumulativeHeights[visibleCount - 1] : 0;
+          totalWithOverflow = usedHeight + (visibleCount > 0 ? gap : 0) + overflowHeight;
+        }
+
+        hiddenCount = Math.max(totalChips - visibleCount, 0);
+
+        if (visibleCount === 0) {
+          if (mode === MODE_ORDER[MODE_ORDER.length - 1]) {
+            resolvedState = {
+              mode,
+              visibleCount: 0,
+              hiddenCount,
+            };
+            break;
+          }
+
+          continue;
+        }
+
+        resolvedState = {
+          mode,
+          visibleCount: Math.min(visibleCount, totalChips),
+          hiddenCount,
+        };
+        break;
       }
 
       if (!resolvedState) {
@@ -466,6 +520,22 @@ function DayActivityList({
           chip.removeAttribute("data-hidden");
         }
       });
+
+      if (overflowWrapper) {
+        if (originalOverflowWrapperHidden) {
+          overflowWrapper.dataset.hidden = originalOverflowWrapperHidden;
+        } else {
+          overflowWrapper.removeAttribute("data-hidden");
+        }
+      }
+
+      if (overflowButton) {
+        if (originalOverflowHidden) {
+          overflowButton.dataset.hidden = originalOverflowHidden;
+        } else {
+          overflowButton.removeAttribute("data-hidden");
+        }
+      }
 
       if (resolvedState) {
         setLayoutIfChanged(resolvedState);
@@ -548,8 +618,6 @@ function DayActivityList({
 
           const isHidden = index >= visibleCount;
 
-          const shouldShowOverflowBadge = hiddenCount > 0 && visibleCount > 0 && index === 0;
-
           return (
             <div
               key={activity.id}
@@ -568,11 +636,7 @@ function DayActivityList({
                     data-hidden={isHidden ? "true" : "false"}
                     onClick={event => {
                       event.stopPropagation();
-                      if (hiddenCount > 0) {
-                        onDayClick?.(day);
-                      } else {
-                        onActivityClick?.(activity);
-                      }
+                      onActivityClick?.(activity);
                     }}
                     style={style}
                     className={cn(
@@ -638,49 +702,38 @@ function DayActivityList({
                   </div>
                 </TooltipContent>
               </Tooltip>
-
-              {shouldShowOverflowBadge && (
-                <button
-                  type="button"
-                  onClick={event => {
-                    event.stopPropagation();
-                    onDayClick?.(day);
-                  }}
-                  className={cn(
-                    "absolute bottom-1 right-1 flex min-w-[2.125rem] items-center justify-center rounded-full bg-[color:var(--primary)] px-2.5 py-1 text-[11px] font-semibold tracking-tight text-[color:var(--primary-foreground)] shadow-[0_12px_22px_-16px_rgba(15,23,42,0.5)] transition-all duration-200",
-                    "hover:-translate-y-0.5 hover:shadow-[0_16px_26px_-16px_rgba(15,23,42,0.55)]",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
-                    "active:translate-y-0.5",
-                  )}
-                  aria-label={`View ${hiddenCount} more events for ${format(day, "EEEE, MMMM d")}.`}
-                >
-                  {hiddenCount >= 10 ? "+9+" : `+${hiddenCount}`}
-                </button>
-              )}
             </div>
           );
         })}
-
-        {hiddenCount > 0 && visibleCount === 0 && (
-          <div className="flex flex-1 items-center justify-center">
-            <button
-              type="button"
-              onClick={event => {
-                event.stopPropagation();
-                onDayClick?.(day);
-              }}
-              className={cn(
-                "flex min-w-[2.125rem] items-center justify-center rounded-full bg-[color:var(--primary)] px-2.5 py-1 text-[11px] font-semibold tracking-tight text-[color:var(--primary-foreground)] shadow-[0_12px_22px_-16px_rgba(15,23,42,0.5)] transition-all duration-200",
-                "hover:-translate-y-0.5 hover:shadow-[0_16px_26px_-16px_rgba(15,23,42,0.55)]",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
-                "active:translate-y-0.5",
-              )}
-              aria-label={`View ${hiddenCount} more events for ${format(day, "EEEE, MMMM d")}.`}
-            >
-              {hiddenCount >= 10 ? "+9+" : `+${hiddenCount}`}
-            </button>
-          </div>
-        )}
+        <div
+          data-overflow-pill-wrapper
+          data-hidden={hiddenCount > 0 ? "false" : "true"}
+          className="data-[hidden=true]:hidden"
+        >
+          {hiddenCount > 0 && (
+            <span className="sr-only" aria-live="polite">{`${hiddenCount} hidden events`}</span>
+          )}
+          <button
+            type="button"
+            data-overflow-pill
+            data-hidden={hiddenCount > 0 ? "false" : "true"}
+            onClick={event => {
+              event.stopPropagation();
+              onDayClick?.(day);
+            }}
+            className={cn(
+              "flex w-full items-center justify-center rounded-full bg-[color:var(--calendar-canvas-accent)]/80 px-3 py-1.5 text-[12px] font-semibold tracking-tight text-[color:var(--calendar-ink)] shadow-[0_12px_22px_-16px_rgba(15,23,42,0.5)] transition-all duration-200",
+              "hover:-translate-y-0.5 hover:shadow-[0_16px_26px_-16px_rgba(15,23,42,0.55)]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+              "active:translate-y-0.5",
+              "group-data-[mode=compact]/mode:py-1.25 group-data-[mode=compact]/mode:text-[11px]",
+              "group-data-[mode=micro]/mode:py-1 group-data-[mode=micro]/mode:text-[10px]",
+            )}
+            aria-label={`Show ${hiddenCount} more events for ${format(day, "EEEE, MMMM d")}.`}
+          >
+            {`+${hiddenCount} more`}
+          </button>
+        </div>
       </div>
     </div>
   );
