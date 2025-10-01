@@ -3402,19 +3402,34 @@ function FlightCoordination({
 
     const normalizedFlightNumber = manualFlightData.flightNumber.trim().toUpperCase();
     const normalizedAirline = manualFlightData.airline.trim();
+    const airlineCodeFromFlightNumber = (value: string): string | null => {
+      const match = value.match(/^([A-Z0-9]{2,3})\d+/);
+      return match ? match[1] : null;
+    };
+
     const deriveAirlineCode = (): string | null => {
       const fromState = manualFlightData.airlineCode?.trim().toUpperCase();
       if (fromState && /^[A-Z0-9]{2,3}$/.test(fromState)) {
         return fromState;
       }
 
-      const fromFlightNumber = normalizedFlightNumber.match(/^([A-Z]{2,3})\d+/);
+      const fromFlightNumber = airlineCodeFromFlightNumber(normalizedFlightNumber);
       if (fromFlightNumber) {
-        return fromFlightNumber[1];
+        return fromFlightNumber;
       }
 
       return null;
     };
+
+    if (process.env.NODE_ENV !== "production") {
+      const sampleMatches = {
+        AA: airlineCodeFromFlightNumber("AA123"),
+        DL: airlineCodeFromFlightNumber("DL4567"),
+        B6: airlineCodeFromFlightNumber("B61234"),
+        U2: airlineCodeFromFlightNumber("U21234"),
+      };
+      console.debug("[Flights] Airline code parsing samples", sampleMatches);
+    }
 
     const airlineCode = deriveAirlineCode();
     if (!airlineCode) {
