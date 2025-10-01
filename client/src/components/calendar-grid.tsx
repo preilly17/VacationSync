@@ -57,8 +57,6 @@ const MODE_CONFIG: Record<DisplayMode, { gap: number }> = {
 
 const MODE_ORDER: DisplayMode[] = ["normal", "compact", "micro"];
 
-const FALLBACK_MORE_BUTTON_HEIGHT = 24;
-
 const getEventThemeKey = (category: string | null | undefined, isPersonal: boolean): EventThemeKey => {
   if (isPersonal) return "personal";
 
@@ -373,11 +371,15 @@ function DayActivityList({
     const container = containerRef.current;
     if (!container) return;
 
-    const chips = Array.from(
-      container.querySelectorAll<HTMLButtonElement>("[data-calendar-chip]"),
+    const wrappers = Array.from(
+      container.querySelectorAll<HTMLDivElement>("[data-calendar-chip-wrapper]"),
     );
 
-    const totalChips = chips.length;
+    const chips = wrappers
+      .map(wrapper => wrapper.querySelector<HTMLButtonElement>("[data-calendar-chip]"))
+      .filter((chip): chip is HTMLButtonElement => Boolean(chip));
+
+    const totalChips = wrappers.length;
     if (totalChips === 0) {
       setLayoutIfChanged({ mode: "normal", visibleCount: 0, hiddenCount: 0 });
       return;
@@ -390,6 +392,7 @@ function DayActivityList({
     }
 
     const originalMode = container.dataset.mode ?? "";
+    const originalWrapperHiddenStates = wrappers.map(wrapper => wrapper.dataset.hidden ?? "");
     const originalHiddenStates = chips.map(chip => chip.dataset.hidden ?? "");
 
     let resolvedState: LayoutState | null = null;
@@ -397,12 +400,15 @@ function DayActivityList({
     try {
       for (const mode of MODE_ORDER) {
         container.dataset.mode = mode;
+        wrappers.forEach(wrapper => {
+          wrapper.dataset.hidden = "false";
+        });
         chips.forEach(chip => {
           chip.dataset.hidden = "false";
         });
 
         const gap = MODE_CONFIG[mode].gap;
-        const heights = chips.map(chip => chip.offsetHeight);
+        const heights = wrappers.map(wrapper => wrapper.offsetHeight);
 
         let usedHeight = 0;
         let visibleCount = 0;
@@ -417,48 +423,21 @@ function DayActivityList({
           }
         }
 
-        if (visibleCount === totalChips) {
+        const hiddenCount = Math.max(totalChips - visibleCount, 0);
+
+        if (hiddenCount === 0) {
           resolvedState = { mode, visibleCount, hiddenCount: 0 };
           break;
         }
 
-        const moreButtonHeight = FALLBACK_MORE_BUTTON_HEIGHT;
-
-        let remainingHeight = availableHeight - moreButtonHeight;
-        if (remainingHeight < 0) {
-          remainingHeight = 0;
-        }
         if (visibleCount > 0) {
-          remainingHeight -= gap;
-          if (remainingHeight < 0) {
-            remainingHeight = 0;
-          }
+          resolvedState = {
+            mode,
+            visibleCount: Math.min(visibleCount, totalChips),
+            hiddenCount,
+          };
+          break;
         }
-
-        let visibleWithMore = 0;
-        let heightWithMore = 0;
-
-        for (const height of heights) {
-          const addition = height + (visibleWithMore > 0 ? gap : 0);
-          if (heightWithMore + addition <= remainingHeight) {
-            heightWithMore += addition;
-            visibleWithMore += 1;
-          } else {
-            break;
-          }
-        }
-
-        if (visibleWithMore === 0 && moreButtonHeight > availableHeight) {
-          continue;
-        }
-
-        const hiddenCount = Math.max(totalChips - visibleWithMore, 0);
-        resolvedState = {
-          mode,
-          visibleCount: Math.min(visibleWithMore, totalChips),
-          hiddenCount,
-        };
-        break;
       }
 
       if (!resolvedState) {
@@ -470,6 +449,15 @@ function DayActivityList({
       }
     } finally {
       container.dataset.mode = originalMode;
+      wrappers.forEach((wrapper, index) => {
+        const original = originalWrapperHiddenStates[index];
+        if (original) {
+          wrapper.dataset.hidden = original;
+        } else {
+          wrapper.removeAttribute("data-hidden");
+        }
+      });
+
       chips.forEach((chip, index) => {
         const original = originalHiddenStates[index];
         if (original) {
@@ -527,7 +515,7 @@ function DayActivityList({
       <div
         ref={containerRef}
         data-mode={layout.mode}
-        className="group/mode flex h-full flex-col overflow-hidden gap-y-1.5 data-[mode=compact]:gap-y-1 data-[mode=micro]:gap-y-0.5"
+        className="group/mode flex h-full flex-col overflow-visible gap-y-1.5 data-[mode=compact]:gap-y-1 data-[mode=micro]:gap-y-0.5"
       >
         {activities.map((activity, index) => {
           const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
@@ -560,96 +548,138 @@ function DayActivityList({
 
           const isHidden = index >= visibleCount;
 
+          const shouldShowOverflowBadge = hiddenCount > 0 && visibleCount > 0 && index === 0;
+
           return (
-            <Tooltip key={activity.id}>
-              <TooltipTrigger asChild>
+            <div
+              key={activity.id}
+              data-calendar-chip-wrapper
+              data-hidden={isHidden ? "true" : "false"}
+              className={cn(
+                "relative",
+                "data-[hidden=true]:hidden",
+              )}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    data-calendar-chip
+                    data-hidden={isHidden ? "true" : "false"}
+                    onClick={event => {
+                      event.stopPropagation();
+                      if (hiddenCount > 0) {
+                        onDayClick?.(day);
+                      } else {
+                        onActivityClick?.(activity);
+                      }
+                    }}
+                    style={style}
+                    className={cn(
+                      "group/chip relative flex w-full items-start gap-2 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-2 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                      "border-[var(--chip-border)]",
+                      showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : null,
+                      isProposal ? "border-dashed" : null,
+                      "data-[hidden=true]:hidden",
+                      "group-data-[mode=compact]/mode:rounded-lg group-data-[mode=compact]/mode:px-2 group-data-[mode=compact]/mode:py-1.5 group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:font-semibold group-data-[mode=compact]/mode:gap-1.5",
+                      "group-data-[mode=micro]/mode:rounded-md group-data-[mode=micro]/mode:px-1.5 group-data-[mode=micro]/mode:py-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-medium group-data-[mode=micro]/mode:items-center group-data-[mode=micro]/mode:gap-1.5",
+                    )}
+                    aria-label={formatActivityAriaLabel(activity, day)}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)] group-data-[mode=compact]/mode:h-2 group-data-[mode=compact]/mode:w-2 group-data-[mode=micro]/mode:h-2 group-data-[mode=micro]/mode:w-2" />
+                      <span className="shrink-0 text-sm group-data-[mode=compact]/mode:text-xs group-data-[mode=micro]/mode:text-xs">
+                        {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}
+                      </span>
+                    </span>
+                    <div className="min-w-0 flex-1 group-data-[mode=micro]/mode:hidden">
+                      <div className="flex items-center gap-1 text-[13px] font-semibold leading-[1.15] text-[var(--chip-text)] group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:leading-[1.2]">
+                        <span className="truncate">{activity.name}</span>
+                        {isPersonalEvent && (
+                          <span className="ml-1 flex items-center gap-1 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1] group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--chip-dot)]" />
+                            Me
+                          </span>
+                        )}
+                        {(showPersonalProposalChip || showGlobalProposalChip) && (
+                          <span
+                            className={cn(
+                              "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.1]",
+                              showPersonalProposalChip
+                                ? "bg-white/70 text-[var(--chip-text)]"
+                                : "bg-[var(--chip-border)]/20 text-[var(--chip-text)]/80",
+                              "group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden",
+                            )}
+                          >
+                            Proposed
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.05] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden">
+                        <span className="truncate">{metadata.join(" • ")}</span>
+                      </div>
+                    </div>
+                    <span
+                      className={cn(
+                        "ml-auto shrink-0 rounded-full bg-[var(--chip-border)]/10 px-1.75 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)] leading-[1.1]",
+                        "group-data-[mode=compact]/mode:ml-1.5 group-data-[mode=compact]/mode:px-1.5",
+                        "group-data-[mode=micro]/mode:ml-auto group-data-[mode=micro]/mode:bg-transparent group-data-[mode=micro]/mode:px-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-semibold group-data-[mode=micro]/mode:text-[var(--chip-text)] group-data-[mode=micro]/mode:tracking-[0.18em]",
+                      )}
+                    >
+                      {formatBadgeTime(activity.startTime)}
+                    </span>
+                    <span className="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-all duration-200 group-hover/chip:border-[var(--chip-border)]/50" aria-hidden />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs rounded-xl border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] px-3 py-2 text-xs text-[color:var(--calendar-ink)] shadow-lg" side="top" align="start">
+                  <div className="font-semibold text-[color:var(--calendar-ink)]">{activity.name}</div>
+                  <div className="mt-1 text-[11px] text-[color:var(--calendar-muted)]">
+                    {format(new Date(activity.startTime), "EEEE • MMM d • h:mm a")}
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+
+              {shouldShowOverflowBadge && (
                 <button
                   type="button"
-                  data-calendar-chip
-                  data-hidden={isHidden ? "true" : "false"}
                   onClick={event => {
                     event.stopPropagation();
-                    onActivityClick?.(activity);
+                    onDayClick?.(day);
                   }}
-                  style={style}
                   className={cn(
-                    "group/chip relative flex w-full items-start gap-2 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-2 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
-                    "border-[var(--chip-border)]",
-                    showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : null,
-                    isProposal ? "border-dashed" : null,
-                    "data-[hidden=true]:hidden",
-                    "group-data-[mode=compact]/mode:rounded-lg group-data-[mode=compact]/mode:px-2 group-data-[mode=compact]/mode:py-1.5 group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:font-semibold group-data-[mode=compact]/mode:gap-1.5",
-                    "group-data-[mode=micro]/mode:rounded-md group-data-[mode=micro]/mode:px-1.5 group-data-[mode=micro]/mode:py-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-medium group-data-[mode=micro]/mode:items-center group-data-[mode=micro]/mode:gap-1.5",
+                    "absolute bottom-1 right-1 flex min-w-[2.125rem] items-center justify-center rounded-full bg-[color:var(--primary)] px-2.5 py-1 text-[11px] font-semibold tracking-tight text-[color:var(--primary-foreground)] shadow-[0_12px_22px_-16px_rgba(15,23,42,0.5)] transition-all duration-200",
+                    "hover:-translate-y-0.5 hover:shadow-[0_16px_26px_-16px_rgba(15,23,42,0.55)]",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                    "active:translate-y-0.5",
                   )}
-                  aria-label={formatActivityAriaLabel(activity, day)}
+                  aria-label={`View ${hiddenCount} more events for ${format(day, "EEEE, MMMM d")}.`}
                 >
-                  <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)] group-data-[mode=compact]/mode:h-2 group-data-[mode=compact]/mode:w-2 group-data-[mode=micro]/mode:h-2 group-data-[mode=micro]/mode:w-2" />
-                    <span className="shrink-0 text-sm group-data-[mode=compact]/mode:text-xs group-data-[mode=micro]/mode:text-xs">
-                      {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}
-                    </span>
-                  </span>
-                  <div className="min-w-0 flex-1 group-data-[mode=micro]/mode:hidden">
-                    <div className="flex items-center gap-1 text-[13px] font-semibold leading-[1.15] text-[var(--chip-text)] group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:leading-[1.2]">
-                      <span className="truncate">{activity.name}</span>
-                      {isPersonalEvent && (
-                        <span className="ml-1 flex items-center gap-1 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1] group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden">
-                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--chip-dot)]" />
-                          Me
-                        </span>
-                      )}
-                      {(showPersonalProposalChip || showGlobalProposalChip) && (
-                        <span
-                          className={cn(
-                            "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.1]",
-                            showPersonalProposalChip
-                              ? "bg-white/70 text-[var(--chip-text)]"
-                              : "bg-[var(--chip-border)]/20 text-[var(--chip-text)]/80",
-                            "group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden",
-                          )}
-                        >
-                          Proposed
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.05] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden">
-                      <span className="truncate">{metadata.join(" • ")}</span>
-                    </div>
-                  </div>
-                  <span
-                    className={cn(
-                      "ml-auto shrink-0 rounded-full bg-[var(--chip-border)]/10 px-1.75 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)] leading-[1.1]",
-                      "group-data-[mode=compact]/mode:ml-1.5 group-data-[mode=compact]/mode:px-1.5",
-                      "group-data-[mode=micro]/mode:ml-auto group-data-[mode=micro]/mode:bg-transparent group-data-[mode=micro]/mode:px-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-semibold group-data-[mode=micro]/mode:text-[var(--chip-text)] group-data-[mode=micro]/mode:tracking-[0.18em]",
-                    )}
-                  >
-                    {formatBadgeTime(activity.startTime)}
-                  </span>
-                  <span className="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-all duration-200 group-hover/chip:border-[var(--chip-border)]/50" aria-hidden />
+                  {hiddenCount >= 10 ? "+9+" : `+${hiddenCount}`}
                 </button>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs rounded-xl border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] px-3 py-2 text-xs text-[color:var(--calendar-ink)] shadow-lg" side="top" align="start">
-                <div className="font-semibold text-[color:var(--calendar-ink)]">{activity.name}</div>
-                <div className="mt-1 text-[11px] text-[color:var(--calendar-muted)]">
-                  {format(new Date(activity.startTime), "EEEE • MMM d • h:mm a")}
-                </div>
-              </TooltipContent>
-            </Tooltip>
+              )}
+            </div>
           );
         })}
 
-        {hiddenCount > 0 && (
-          <button
-            type="button"
-            onClick={event => {
-              event.stopPropagation();
-              onDayClick?.(day);
-            }}
-            className="group self-end rounded-full border border-dashed border-[color:var(--calendar-line)]/70 bg-transparent px-2.5 py-0.5 text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--calendar-muted)] transition-all duration-200 hover:bg-[var(--calendar-canvas-accent)] hover:text-[color:var(--calendar-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)] leading-[1.15] group-data-[mode=micro]/mode:self-stretch group-data-[mode=micro]/mode:text-center"
-            aria-label={`${hiddenCount} more activities on ${format(day, "MMMM d")}`}
-          >
-            +{hiddenCount} more
-          </button>
+        {hiddenCount > 0 && visibleCount === 0 && (
+          <div className="flex flex-1 items-center justify-center">
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation();
+                onDayClick?.(day);
+              }}
+              className={cn(
+                "flex min-w-[2.125rem] items-center justify-center rounded-full bg-[color:var(--primary)] px-2.5 py-1 text-[11px] font-semibold tracking-tight text-[color:var(--primary-foreground)] shadow-[0_12px_22px_-16px_rgba(15,23,42,0.5)] transition-all duration-200",
+                "hover:-translate-y-0.5 hover:shadow-[0_16px_26px_-16px_rgba(15,23,42,0.55)]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                "active:translate-y-0.5",
+              )}
+              aria-label={`View ${hiddenCount} more events for ${format(day, "EEEE, MMMM d")}.`}
+            >
+              {hiddenCount >= 10 ? "+9+" : `+${hiddenCount}`}
+            </button>
+          </div>
         )}
       </div>
     </div>
