@@ -52,6 +52,62 @@
   --neutral-900: hsl(222 47% 12%);
   --neutral-600: hsl(215 16% 45%);
   --neutral-100: hsl(213 32% 94%);
+
+  /* Calendar experience tokens */
+  --calendar-canvas: #f7f9fc;
+  --calendar-canvas-accent: rgba(82, 109, 255, 0.06);
+  --calendar-surface: rgba(255, 255, 255, 0.96);
+  --calendar-ink: #0f1728;
+  --calendar-muted: #667085;
+  --calendar-line: rgba(16, 24, 40, 0.08);
+  --calendar-today-bg: rgba(56, 189, 248, 0.15);
+  --calendar-selected-bg: rgba(56, 189, 248, 0.12);
+  --calendar-selected-border: rgba(56, 189, 248, 0.6);
+  --calendar-focus-ring: rgba(56, 189, 248, 0.8);
+  --calendar-today-ring: rgba(56, 189, 248, 0.6);
+  --calendar-hover-shadow: 0 14px 32px -18px rgba(15, 23, 42, 0.25);
+
+  --chip-flights-bg: rgba(59, 130, 246, 0.12);
+  --chip-flights-border: rgba(37, 99, 235, 0.45);
+  --chip-flights-dot: #2563eb;
+  --chip-flights-text: #1d4ed8;
+  --chip-flights-ring: rgba(37, 99, 235, 0.4);
+  --chip-flights-glow: rgba(59, 130, 246, 0.35);
+
+  --chip-stays-bg: rgba(124, 58, 237, 0.12);
+  --chip-stays-border: rgba(109, 40, 217, 0.4);
+  --chip-stays-dot: #7c3aed;
+  --chip-stays-text: #5b21b6;
+  --chip-stays-ring: rgba(124, 58, 237, 0.45);
+  --chip-stays-glow: rgba(124, 58, 237, 0.32);
+
+  --chip-dining-bg: rgba(249, 115, 22, 0.13);
+  --chip-dining-border: rgba(249, 115, 22, 0.45);
+  --chip-dining-dot: #f97316;
+  --chip-dining-text: #c2410c;
+  --chip-dining-ring: rgba(249, 115, 22, 0.45);
+  --chip-dining-glow: rgba(249, 115, 22, 0.3);
+
+  --chip-adventure-bg: rgba(234, 179, 8, 0.16);
+  --chip-adventure-border: rgba(202, 138, 4, 0.42);
+  --chip-adventure-dot: #d97706;
+  --chip-adventure-text: #92400e;
+  --chip-adventure-ring: rgba(234, 179, 8, 0.38);
+  --chip-adventure-glow: rgba(234, 179, 8, 0.26);
+
+  --chip-personal-bg: rgba(71, 85, 105, 0.18);
+  --chip-personal-border: rgba(71, 85, 105, 0.4);
+  --chip-personal-dot: #334155;
+  --chip-personal-text: #1f2937;
+  --chip-personal-ring: rgba(71, 85, 105, 0.48);
+  --chip-personal-glow: rgba(71, 85, 105, 0.28);
+
+  --chip-default-bg: rgba(148, 163, 184, 0.14);
+  --chip-default-border: rgba(100, 116, 139, 0.35);
+  --chip-default-dot: #64748b;
+  --chip-default-text: #334155;
+  --chip-default-ring: rgba(100, 116, 139, 0.4);
+  --chip-default-glow: rgba(148, 163, 184, 0.24);
 }
 
 .dark {
@@ -83,6 +139,61 @@
   --on-header: #f8faff;
   --on-header-muted: rgba(248, 250, 255, 0.58);
   --header-shadow: 0 10px 28px -14px rgba(15, 23, 42, 0.6);
+
+  --calendar-canvas: #0b1220;
+  --calendar-canvas-accent: rgba(76, 90, 140, 0.16);
+  --calendar-surface: rgba(18, 26, 42, 0.88);
+  --calendar-ink: #e6eaf2;
+  --calendar-muted: #9aa3b2;
+  --calendar-line: rgba(31, 42, 68, 0.65);
+  --calendar-today-bg: rgba(56, 189, 248, 0.18);
+  --calendar-selected-bg: rgba(56, 189, 248, 0.22);
+  --calendar-selected-border: rgba(56, 189, 248, 0.7);
+  --calendar-focus-ring: rgba(125, 211, 252, 0.65);
+  --calendar-today-ring: rgba(125, 211, 252, 0.55);
+  --calendar-hover-shadow: 0 14px 30px -18px rgba(2, 6, 23, 0.9);
+
+  --chip-flights-bg: rgba(37, 99, 235, 0.22);
+  --chip-flights-border: rgba(59, 130, 246, 0.55);
+  --chip-flights-dot: #93c5fd;
+  --chip-flights-text: #bfdbfe;
+  --chip-flights-ring: rgba(59, 130, 246, 0.7);
+  --chip-flights-glow: rgba(37, 99, 235, 0.5);
+
+  --chip-stays-bg: rgba(139, 92, 246, 0.24);
+  --chip-stays-border: rgba(168, 85, 247, 0.52);
+  --chip-stays-dot: #c4b5fd;
+  --chip-stays-text: #ddd6fe;
+  --chip-stays-ring: rgba(168, 85, 247, 0.6);
+  --chip-stays-glow: rgba(139, 92, 246, 0.44);
+
+  --chip-dining-bg: rgba(249, 115, 22, 0.22);
+  --chip-dining-border: rgba(251, 146, 60, 0.55);
+  --chip-dining-dot: #fdba74;
+  --chip-dining-text: #fed7aa;
+  --chip-dining-ring: rgba(251, 146, 60, 0.65);
+  --chip-dining-glow: rgba(249, 115, 22, 0.44);
+
+  --chip-adventure-bg: rgba(202, 138, 4, 0.26);
+  --chip-adventure-border: rgba(251, 191, 36, 0.55);
+  --chip-adventure-dot: #fde68a;
+  --chip-adventure-text: #fef3c7;
+  --chip-adventure-ring: rgba(250, 204, 21, 0.62);
+  --chip-adventure-glow: rgba(202, 138, 4, 0.44);
+
+  --chip-personal-bg: rgba(71, 85, 105, 0.3);
+  --chip-personal-border: rgba(148, 163, 184, 0.48);
+  --chip-personal-dot: #cbd5f5;
+  --chip-personal-text: #e2e8f0;
+  --chip-personal-ring: rgba(148, 163, 184, 0.6);
+  --chip-personal-glow: rgba(71, 85, 105, 0.5);
+
+  --chip-default-bg: rgba(100, 116, 139, 0.28);
+  --chip-default-border: rgba(148, 163, 184, 0.48);
+  --chip-default-dot: #cbd5f5;
+  --chip-default-text: #e2e8f0;
+  --chip-default-ring: rgba(148, 163, 184, 0.58);
+  --chip-default-glow: rgba(100, 116, 139, 0.46);
 }
 
 @layer base {
