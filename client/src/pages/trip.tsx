@@ -1814,20 +1814,27 @@ export default function Trip() {
                               onActivityClick={handleActivityClick}
                             />
                             {filteredActivities.length === 0 && (
-                              <div className="p-8 text-center">
-                                <Calendar className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-                                <h3 className="mb-2 text-lg font-medium text-neutral-900">No activities planned yet</h3>
-                                <p className="mb-4 text-neutral-600">
-                                  Discover activities in {trip.destination} or add your own custom activities.
-                                </p>
-                                <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-                                  <Button
-                                    onClick={handleOpenAddActivityForGroup}
-                                    className="bg-primary text-white hover:bg-red-600"
-                                  >
-                                    <MapPin className="mr-2 h-4 w-4" />
-                                    Add Activity
-                                  </Button>
+                              <div className="relative mt-6 overflow-hidden rounded-[24px] border border-[color:var(--calendar-line)]/60 bg-[var(--calendar-canvas)]/90 py-12 text-center shadow-[0_22px_60px_-28px_rgba(16,24,40,0.35)]">
+                                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_62%)] dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.26),transparent_62%)]" />
+                                <div className="relative z-10 mx-auto flex max-w-xl flex-col items-center gap-5 px-6">
+                                  <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] shadow-[0_18px_40px_-24px_rgba(16,24,40,0.45)]">
+                                    <Calendar className="h-7 w-7 text-[color:var(--calendar-muted)]" />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <h3 className="text-xl font-semibold text-[color:var(--calendar-ink)]">No activities planned yet</h3>
+                                    <p className="text-sm text-[color:var(--calendar-muted)]">
+                                      Discover activities in {trip.destination} or add your own moments to anchor the itinerary.
+                                    </p>
+                                  </div>
+                                  <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
+                                    <Button
+                                      onClick={handleOpenAddActivityForGroup}
+                                      className="bg-primary text-white hover:bg-primary/90"
+                                    >
+                                      <MapPin className="mr-2 h-4 w-4" />
+                                      Add Activity
+                                    </Button>
+                                  </div>
                                 </div>
                               </div>
                             )}
