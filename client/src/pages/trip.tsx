@@ -1701,13 +1701,16 @@ export default function Trip() {
                   <div className="space-y-6">
                     <Card className="overflow-hidden border-none shadow-xl">
                       <CardHeader
-                        className="relative space-y-6 border-b border-[color:var(--calendar-line)]/60 bg-[color:var(--calendar-canvas-accent)]/70 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
+                        className="relative overflow-hidden space-y-6 border-b border-[color:var(--calendar-line)]/60 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
                       >
-                        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_58%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.32),transparent_58%)]" />
-                          <div className="absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" />
-                        </div>
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div
+                          className="pointer-events-none absolute inset-0"
+                          style={{ backgroundImage: TRIP_COVER_GRADIENT }}
+                          aria-hidden="true"
+                        />
+                        <div className="pointer-events-none absolute inset-0 bg-white/60 backdrop-blur-[1.5px] dark:bg-slate-950/60" aria-hidden="true" />
+                        <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" aria-hidden="true" />
+                        <div className="relative z-[1] flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="relative">
                             <CardTitle className="text-lg font-semibold text-[color:var(--calendar-ink)]">
                               Group activity calendar
@@ -1879,13 +1882,16 @@ export default function Trip() {
                   <div>
                     <Card className="mb-6 overflow-hidden">
                       <CardHeader
-                        className="relative space-y-4 border-b border-[color:var(--calendar-line)]/60 bg-[color:var(--calendar-canvas-accent)]/70 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
+                        className="relative overflow-hidden space-y-4 border-b border-[color:var(--calendar-line)]/60 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
                       >
-                        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.22),transparent_58%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.32),transparent_58%)]" />
-                          <div className="absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" />
-                        </div>
-                        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div
+                          className="pointer-events-none absolute inset-0"
+                          style={{ backgroundImage: TRIP_COVER_GRADIENT }}
+                          aria-hidden="true"
+                        />
+                        <div className="pointer-events-none absolute inset-0 bg-white/60 backdrop-blur-[1.5px] dark:bg-slate-950/60" aria-hidden="true" />
+                        <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" aria-hidden="true" />
+                        <div className="relative z-[1] flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <CardTitle className="text-lg font-semibold text-[color:var(--calendar-ink)]">My Schedule</CardTitle>
                             <p className="text-sm text-[color:var(--calendar-muted)]">Things you’re going to or created.</p>
