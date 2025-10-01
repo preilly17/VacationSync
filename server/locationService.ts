@@ -1146,6 +1146,113 @@ class LocationService {
     return Array.from(patterns);
   }
 
+  private async queryCities(queryText: string, limit: number) {
+    const { rows } = await query<{
+      geoname_id: string | number | null;
+      name: string;
+      country_code: string | null;
+      latitude: number | string | null;
+      longitude: number | string | null;
+      population: number | string | null;
+      timezone: string | null;
+    }>(
+      `SELECT geoname_id, name, country_code, latitude, longitude, population, timezone
+       FROM cities
+       WHERE name ILIKE $1 || '%'
+       ORDER BY population DESC
+       LIMIT $2;`,
+      [queryText, limit],
+    );
+
+    return rows;
+  }
+
+  private async queryAirports(queryText: string, limit: number) {
+    const { rows } = await query<{
+      iata_code: string | null;
+      icao_code: string | null;
+      name: string | null;
+      municipality: string | null;
+      iso_country: string | null;
+      latitude: number | string | null;
+      longitude: number | string | null;
+    }>(
+      `SELECT iata_code, icao_code, name, municipality, iso_country, latitude, longitude
+       FROM airports
+       WHERE type IN ('large_airport','medium_airport')
+         AND (
+           iata_code ILIKE $1 OR
+           icao_code ILIKE $1 OR
+           name ILIKE '%' || $1 || '%'
+           OR municipality ILIKE '%' || $1 || '%'
+         )
+       ORDER BY name
+       LIMIT $2;`,
+      [queryText, limit],
+    );
+
+    return rows;
+  }
+
+  private mapCityRowToResult(row: {
+    geoname_id: string | number | null;
+    name: string;
+    country_code: string | null;
+    latitude: number | string | null;
+    longitude: number | string | null;
+    population: number | string | null;
+    timezone: string | null;
+  }): LocationSearchResult {
+    const displayName = row.country_code
+      ? `${row.name}, ${row.country_code}`
+      : row.name;
+
+    return this.normalizeResultShape({
+      id: row.geoname_id ?? row.name,
+      type: 'CITY',
+      name: row.name,
+      displayName,
+      detailedName: displayName,
+      cityName: row.name,
+      countryCode: row.country_code ?? undefined,
+      latitude: row.latitude ?? undefined,
+      longitude: row.longitude ?? undefined,
+      geonameId: row.geoname_id ?? undefined,
+      population: row.population ?? undefined,
+      timeZone: row.timezone ?? undefined,
+      source: 'cities-db',
+    });
+  }
+
+  private mapAirportRowToResult(row: {
+    iata_code: string | null;
+    icao_code: string | null;
+    name: string | null;
+    municipality: string | null;
+    iso_country: string | null;
+    latitude: number | string | null;
+    longitude: number | string | null;
+  }): LocationSearchResult {
+    const airportName = row.name ?? row.iata_code ?? row.icao_code ?? 'Unknown Airport';
+    const iataCode = row.iata_code ?? undefined;
+    const displayName = iataCode ? `${airportName} (${iataCode})` : airportName;
+
+    return this.normalizeResultShape({
+      id: iataCode ?? row.icao_code ?? airportName,
+      type: 'AIRPORT',
+      name: airportName,
+      displayName,
+      detailedName: displayName,
+      iataCode,
+      icaoCode: row.icao_code ?? undefined,
+      cityName: row.municipality ?? undefined,
+      countryCode: row.iso_country ?? undefined,
+      latitude: row.latitude ?? undefined,
+      longitude: row.longitude ?? undefined,
+      source: 'airports-db',
+    });
+  }
+
   private async fetchCityRows(
     searchTerms: string[],
     codeTerms: string[],
@@ -1515,9 +1622,42 @@ class LocationService {
     if (!useApi) {
       const requestedTypes: Array<'AIRPORT' | 'CITY' | 'COUNTRY'> = type
         ? [type]
-        : ['AIRPORT', 'CITY', 'COUNTRY'];
+        : ['CITY', 'AIRPORT'];
+      const includesCountry = requestedTypes.includes('COUNTRY');
+      const lookupTypes = requestedTypes.filter(t => t === 'CITY' || t === 'AIRPORT');
+      const trimmedQuery = query.trim();
 
-      return this.searchLocalDatabase(query, requestedTypes, normalizedLimit);
+      const combinedResults: LocationSearchResult[] = [];
+
+      if (lookupTypes.includes('CITY')) {
+        const cityRows = await this.queryCities(trimmedQuery, Math.max(normalizedLimit, 1));
+        const mappedCities = cityRows.map(row => this.mapCityRowToResult(row));
+
+        combinedResults.push(...mappedCities);
+      }
+
+      if (lookupTypes.includes('AIRPORT')) {
+        const airportRows = await this.queryAirports(trimmedQuery, Math.max(normalizedLimit, 1));
+        const mappedAirports = airportRows.map(row => this.mapAirportRowToResult(row));
+
+        combinedResults.push(...mappedAirports);
+      }
+
+      if (includesCountry) {
+        combinedResults.push(
+          ...await this.searchLocalDatabase(query, ['COUNTRY'], normalizedLimit),
+        );
+      }
+
+      const deduped = new Map<string, LocationSearchResult>();
+      for (const result of combinedResults) {
+        const key = String(result.id ?? `${result.type}-${result.name}`);
+        if (!deduped.has(key)) {
+          deduped.set(key, result);
+        }
+      }
+
+      return Array.from(deduped.values()).slice(0, normalizedLimit);
     }
 
     if (useApi) {
@@ -1656,6 +1796,37 @@ class LocationService {
     const normalizedTypes = this.normalizeRequestedTypes(params.type, params.types);
 
     console.debug('searchLocationsForApi', { query, normalizedTypes, limit, useApi });
+
+    if (!useApi) {
+      const effectiveTypes = normalizedTypes.length > 0
+        ? normalizedTypes as Array<'AIRPORT' | 'CITY' | 'COUNTRY'>
+        : ['CITY', 'AIRPORT'];
+      const combinedResults: LocationSearchResult[] = [];
+
+      if (effectiveTypes.includes('CITY')) {
+        const cities = await this.queryCities(query, limit);
+        combinedResults.push(...cities.map(row => this.mapCityRowToResult(row)));
+      }
+
+      if (effectiveTypes.includes('AIRPORT')) {
+        const airports = await this.queryAirports(query, limit);
+        combinedResults.push(...airports.map(row => this.mapAirportRowToResult(row)));
+      }
+
+      if (effectiveTypes.includes('COUNTRY')) {
+        combinedResults.push(...await this.searchLocalDatabase(query, ['COUNTRY'], limit));
+      }
+
+      const deduped = new Map<string, LocationSearchResult>();
+      for (const result of combinedResults) {
+        const key = String(result.id ?? `${result.type}-${result.name}`);
+        if (!deduped.has(key)) {
+          deduped.set(key, result);
+        }
+      }
+
+      return Array.from(deduped.values()).slice(0, limit);
+    }
 
     const needsAllTypes = normalizedTypes.length !== 1;
     const searchType = needsAllTypes ? undefined : normalizedTypes[0];
