@@ -48,6 +48,41 @@ interface ExpenseTrackerProps {
 
 type SectionKey = "open" | "completed";
 
+type SummaryCardKey = "paid" | "owe" | "owed";
+
+const summaryCardStyles: Record<
+  SummaryCardKey,
+  {
+    accent: string;
+    surface: string;
+    icon: string;
+    focusRing: string;
+    dot: string;
+  }
+> = {
+  paid: {
+    accent: "from-sky-400 via-sky-500 to-indigo-500",
+    surface: "bg-sky-500/10 dark:bg-sky-500/20",
+    icon: "bg-sky-500/15 text-sky-700 dark:bg-sky-500/25 dark:text-sky-100",
+    focusRing: "focus-visible:ring-sky-500",
+    dot: "bg-sky-500",
+  },
+  owe: {
+    accent: "from-amber-400 via-orange-400 to-orange-500",
+    surface: "bg-amber-500/10 dark:bg-amber-500/20",
+    icon: "bg-amber-500/15 text-amber-700 dark:bg-amber-500/25 dark:text-amber-100",
+    focusRing: "focus-visible:ring-amber-500",
+    dot: "bg-amber-500",
+  },
+  owed: {
+    accent: "from-emerald-400 via-emerald-500 to-teal-500",
+    surface: "bg-emerald-500/10 dark:bg-emerald-500/20",
+    icon: "bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-100",
+    focusRing: "focus-visible:ring-emerald-500",
+    dot: "bg-emerald-500",
+  },
+};
+
 function formatCurrency(amount: number, currency: string) {
   const safeAmount = Number.isFinite(amount) ? amount : 0;
   try {
@@ -301,6 +336,40 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
 
   const summaryLoading = isLoadingExpenses && expenses.length === 0;
 
+  const summaryCardData: Array<{
+    key: SummaryCardKey;
+    label: string;
+    value: string;
+    description: string;
+    Icon: typeof Wallet;
+    showDot: boolean;
+  }> = [
+    {
+      key: "paid",
+      label: "You've paid",
+      value: formatCurrency(summary.youPaid, summary.currency),
+      description: "Total amount you've personally covered.",
+      Icon: Wallet,
+      showDot: false,
+    },
+    {
+      key: "owe",
+      label: "You owe",
+      value: formatCurrency(summary.owes, summary.currency),
+      description: "What you still need to pay others.",
+      Icon: ArrowUpCircle,
+      showDot: summary.owes > 0,
+    },
+    {
+      key: "owed",
+      label: "You're owed",
+      value: formatCurrency(summary.owed, summary.currency),
+      description: "What others still need to pay you.",
+      Icon: PiggyBank,
+      showDot: summary.owed > 0,
+    },
+  ];
+
   const sortedExpenses = useMemo(
     () =>
       [...expenses].sort((a, b) => {
@@ -346,9 +415,12 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     [expenses, activeExpenseId],
   );
 
-  const owesBadgeClass = "border-transparent bg-destructive/10 text-destructive";
-  const waitingBadgeClass = "border-transparent bg-primary/10 text-primary";
-  const paidBadgeClass = "border-transparent bg-muted text-muted-foreground";
+  const owesBadgeClass =
+    "border-transparent bg-sky-500/15 text-sky-700 dark:bg-sky-500/25 dark:text-sky-100";
+  const waitingBadgeClass =
+    "border-transparent bg-amber-500/20 text-amber-700 dark:bg-amber-500/25 dark:text-amber-100";
+  const paidBadgeClass =
+    "border-transparent bg-slate-500/15 text-slate-700 dark:bg-slate-500/25 dark:text-slate-200";
 
   const sections: {
     key: SectionKey;
@@ -407,7 +479,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
     const dateDisplay = formatExpenseDate(expense.createdAt);
     const totalDisplay = formatCurrency(expense.totalAmount, targetCurrency);
     const shareClassName = cn(
-      "text-sm font-semibold tabular-nums text-right",
+      "text-base font-semibold tracking-tight tabular-nums text-right text-foreground",
       yourShareAmount === null ? "text-muted-foreground" : undefined,
     );
 
@@ -437,7 +509,11 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
             setActiveExpenseId(expense.id);
           }
         }}
-        className="group flex items-start gap-3 rounded-md px-3 py-2 transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className={cn(
+          "group flex items-start gap-4 rounded-xl border border-transparent bg-transparent px-4 py-3 transition-all duration-200",
+          "hover:border-sky-500/30 hover:bg-sky-500/5 dark:hover:border-sky-500/30 dark:hover:bg-sky-500/10",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-sky-500",
+        )}
       >
         <Avatar className="h-9 w-9">
           <AvatarImage
@@ -457,12 +533,15 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
           </div>
           <p className="text-xs text-muted-foreground">{shareSummary}</p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
+        <div className="flex shrink-0 flex-col items-end gap-2 border-l border-border/70 pl-4 text-right dark:border-white/10">
           <div className="flex items-center gap-2">
             <span className={shareClassName}>{yourShareDisplay}</span>
             <Badge
               variant="outline"
-              className={cn("border-transparent text-xs font-medium", badgeClassName)}
+              className={cn(
+                "border-transparent px-2.5 py-1 text-xs font-semibold shadow-sm",
+                badgeClassName,
+              )}
             >
               {statusLabel}
             </Badge>
@@ -486,7 +565,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                 Mark paid
               </Button>
             ) : null}
-            <span className="text-xs text-muted-foreground tabular-nums text-right">
+            <span className="text-right text-sm font-medium text-muted-foreground tabular-nums">
               {totalDisplay}
             </span>
           </div>
@@ -613,12 +692,15 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
           </p>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {categoryLabel ? (
-              <Badge variant="outline" className="border-transparent capitalize">
+              <Badge
+                variant="outline"
+                className="border-transparent bg-slate-500/15 text-slate-700 dark:bg-slate-500/25 dark:text-slate-200 capitalize"
+              >
                 {categoryLabel}
               </Badge>
             ) : null}
             {activeExpense.activity ? (
-              <Badge variant="outline" className="border-transparent">
+              <Badge variant="outline" className="border-transparent bg-slate-500/15 text-slate-700 dark:bg-slate-500/25 dark:text-slate-200">
                 Linked to {activeExpense.activity.name}
               </Badge>
             ) : null}
@@ -666,7 +748,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
             return (
               <div
                 key={share.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/30 px-3 py-3 dark:border-white/10 dark:bg-slate-800/40"
               >
                 <div className="flex items-center gap-3">
                   <Avatar className="h-8 w-8">
@@ -677,12 +759,12 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                     <AvatarFallback>{getUserInitials(share.user)}</AvatarFallback>
                   </Avatar>
                   <div className="space-y-0.5">
-                    <p className="text-sm font-medium">
+                    <p className="text-sm font-medium text-foreground">
                       {getUserDisplayName(share.user)}
                       {share.userId === user?.id ? (
                         <Badge
                           variant="outline"
-                          className="ml-2 border-transparent text-xs text-muted-foreground"
+                          className="ml-2 border-transparent bg-slate-500/15 text-xs font-semibold text-slate-700 dark:bg-slate-500/25 dark:text-slate-200"
                         >
                           You
                         </Badge>
@@ -748,6 +830,18 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
       </>
     );
   })();
+  const netAbsoluteAmount = Math.abs(summary.net);
+  const netStatusText = summary.net === 0
+    ? "You're all settled up"
+    : summary.net > 0
+    ? `You're owed ${formatCurrency(summary.net, summary.currency)}`
+    : `You owe ${formatCurrency(netAbsoluteAmount, summary.currency)}`;
+  const netPillClass = summary.net === 0
+    ? "bg-slate-500/15 text-slate-700 dark:bg-slate-500/25 dark:text-slate-100"
+    : summary.net > 0
+    ? "bg-emerald-500/20 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-100"
+    : "bg-amber-500/20 text-amber-700 dark:bg-amber-500/25 dark:text-amber-100";
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -757,79 +851,114 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
             Track purchases and know exactly who still owes what.
           </p>
         </div>
-        <Button onClick={() => setIsAddExpenseModalOpen(true)}>
+        <Button
+          onClick={() => setIsAddExpenseModalOpen(true)}
+          className="bg-gradient-to-r from-sky-500 via-sky-600 to-indigo-500 text-white shadow-[0_16px_38px_-20px_rgba(14,116,144,0.65)] transition-all hover:from-sky-500 hover:via-sky-600 hover:to-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-sky-500 dark:shadow-[0_18px_42px_-22px_rgba(8,47,73,0.75)]"
+        >
           <Plus className="mr-2 h-4 w-4" />
           Log expense
         </Button>
       </div>
 
-      <div className="space-y-3">
-        <div className="rounded-xl border border-border/60 bg-card px-4 py-3 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="font-medium text-muted-foreground">Net balance</span>
-            <div className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+      <div className="space-y-4">
+        <div
+          role="group"
+          tabIndex={0}
+          className="group relative overflow-hidden rounded-2xl border border-border/70 bg-indigo-500/5 p-5 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-28px_rgba(15,23,42,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-[#6366f1] dark:border-white/10 dark:bg-indigo-500/15 dark:shadow-[0_32px_56px_-30px_rgba(0,0,0,0.7)] dark:hover:shadow-[0_34px_60px_-26px_rgba(0,0,0,0.75)]"
+        >
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100"
+          />
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-3">
+              <span className="text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-foreground/80">
+                Net balance
+              </span>
               {summaryLoading ? (
-                <Skeleton className="h-4 w-24" />
-              ) : summary.net === 0 ? (
-                <span>You're all settled up</span>
-              ) : summary.net > 0 ? (
-                <span>You're owed {formatCurrency(summary.net, summary.currency)}</span>
+                <Skeleton className="h-7 w-28 rounded-md" />
               ) : (
-                <span>You owe {formatCurrency(Math.abs(summary.net), summary.currency)}</span>
+                <p className="text-[1.6rem] font-semibold tracking-tight text-foreground tabular-nums">
+                  {formatCurrency(netAbsoluteAmount, summary.currency)}
+                </p>
+              )}
+              {!summaryLoading ? (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  This is the difference between what you're owed and what you owe across every expense on this trip.
+                </p>
+              ) : (
+                <Skeleton className="h-3 w-56 rounded-md" />
               )}
             </div>
+            <div className="flex items-start justify-end">
+              <div
+                className={cn(
+                  "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold shadow-sm", 
+                  netPillClass,
+                )}
+              >
+                {summaryLoading ? <Skeleton className="h-4 w-28 rounded-full" /> : netStatusText}
+              </div>
+            </div>
           </div>
-          {!summaryLoading ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              This is the difference between what you're owed and what you owe across every expense on this trip.
-            </p>
-          ) : null}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          {summaryLoading
-            ? [0, 1, 2].map((item) => (
-                <div
-                  key={item}
-                  className="rounded-xl border border-border/60 bg-muted/40 p-4"
+          {summaryCardData.map((card) => {
+            const styles = summaryCardStyles[card.key];
+            return (
+              <div
+                key={card.label}
+                role="group"
+                tabIndex={0}
+                className={cn(
+                  "group relative overflow-hidden rounded-2xl border border-border/70 p-5 shadow-[0_20px_44px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-[3px] hover:shadow-[0_22px_48px_-28px_rgba(15,23,42,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-white/10 dark:shadow-[0_28px_54px_-32px_rgba(0,0,0,0.68)] dark:hover:shadow-[0_30px_58px_-28px_rgba(0,0,0,0.72)]",
+                  styles.surface,
+                  styles.focusRing,
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r opacity-80 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100",
+                    styles.accent,
+                  )}
+                />
+                {card.showDot ? (
+                  <span
+                    className={cn(
+                      "absolute right-4 top-4 inline-flex h-2.5 w-2.5 items-center justify-center rounded-full border border-white/80 shadow-sm dark:border-white/20",
+                      styles.dot,
+                    )}
+                    aria-hidden
+                  />
+                ) : null}
+                <div className={cn(
+                  "flex h-11 w-11 items-center justify-center rounded-full",
+                  styles.icon,
+                )}
                 >
-                  <Skeleton className="mb-3 h-10 w-10 rounded-full" />
-                  <Skeleton className="mb-2 h-4 w-24" />
-                  <Skeleton className="h-3 w-20" />
+                  <card.Icon className="h-5 w-5" strokeWidth={1.8} />
                 </div>
-              ))
-            : [
-                {
-                  label: "You've paid",
-                  value: formatCurrency(summary.youPaid, summary.currency),
-                  description: "Total amount you've personally covered.",
-                  Icon: Wallet,
-                },
-                {
-                  label: "You owe",
-                  value: formatCurrency(summary.owes, summary.currency),
-                  description: "What you still need to pay others.",
-                  Icon: ArrowUpCircle,
-                },
-                {
-                  label: "You're owed",
-                  value: formatCurrency(summary.owed, summary.currency),
-                  description: "What others still need to pay you.",
-                  Icon: PiggyBank,
-                },
-              ].map(({ label, value, description, Icon }) => (
-                <div
-                  key={label}
-                  className="rounded-xl border border-border/60 bg-card p-4 shadow-sm"
-                >
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <p className="mt-4 text-sm font-medium">{label}</p>
-                  <p className="text-lg font-semibold tabular-nums">{value}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-                </div>
-              ))}
+                <p className="mt-6 text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-foreground/80">
+                  {card.label}
+                </p>
+                {summaryLoading ? (
+                  <>
+                    <Skeleton className="mt-3 h-6 w-24 rounded-md" />
+                    <Skeleton className="mt-2 h-3 w-28 rounded-md" />
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-3 text-[1.45rem] font-semibold tracking-tight text-foreground tabular-nums">
+                      {card.value}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">{card.description}</p>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -852,14 +981,14 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                   setOpenSections((previous) => ({ ...previous, [section.key]: open }))
                 }
               >
-                <div className="rounded-lg border border-border/60 px-3 py-2">
+                <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/50 dark:shadow-[0_30px_52px_-34px_rgba(0,0,0,0.65)]">
                   <CollapsibleTrigger asChild>
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between gap-2 text-left text-sm font-medium"
+                      className="group flex w-full items-center justify-between gap-2 bg-slate-100/60 px-4 py-3 text-left text-sm font-semibold text-foreground/80 transition-colors hover:bg-slate-100/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-sky-500 dark:bg-slate-800/50 dark:text-foreground dark:hover:bg-slate-800/70"
                     >
                       <span>{section.title}</span>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground group-hover:text-foreground/80">
                         <span>{items.length}</span>
                         <ChevronDown
                           className={cn(
@@ -870,11 +999,13 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
                       </div>
                     </button>
                   </CollapsibleTrigger>
-                  <p className="mt-1 text-xs text-muted-foreground">{section.description}</p>
+                  <div className="border-t border-border/70 bg-muted/30 px-4 py-3 text-xs text-muted-foreground dark:border-white/10 dark:bg-slate-900/40">
+                    {section.description}
+                  </div>
                   <CollapsibleContent>
-                    <div className="space-y-2 pt-2">
+                    <div className="space-y-2 px-2 pb-4 pt-2 sm:px-4">
                       {items.length === 0 ? (
-                        <p className="px-1 py-2 text-xs text-muted-foreground">
+                        <p className="rounded-xl bg-muted/40 px-3 py-3 text-xs text-muted-foreground dark:bg-slate-800/50">
                           {section.emptyMessage}
                         </p>
                       ) : (
