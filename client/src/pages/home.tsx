@@ -1021,14 +1021,14 @@ export default function Home() {
         <div className="flex flex-col gap-8">
 
           {isDesktop ? (
-              <Dialog open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
-                <DialogContent
-                  className="w-full max-w-3xl gap-0 overflow-hidden rounded-[32px] border border-slate-200/80 bg-white p-0 shadow-2xl max-h-[calc(100vh-4rem)] sm:max-h-[calc(100vh-6rem)]"
-                  aria-labelledby={howItWorksTitleId}
-                  aria-describedby={howItWorksDescriptionId}
-                  onOpenAutoFocus={handleHowItWorksOpenAutoFocus}
-                  onCloseAutoFocus={handleDialogCloseAutoFocus}
-                >
+            <Dialog open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
+              <DialogContent
+                className="flex w-full max-w-3xl flex-col gap-0 overflow-hidden rounded-[32px] border border-slate-200/80 bg-white p-0 shadow-2xl max-h-[min(90vh,calc(100vh-4rem))] sm:max-h-[min(90vh,calc(100vh-6rem))]"
+                aria-labelledby={howItWorksTitleId}
+                aria-describedby={howItWorksDescriptionId}
+                onOpenAutoFocus={handleHowItWorksOpenAutoFocus}
+                onCloseAutoFocus={handleDialogCloseAutoFocus}
+              >
                 {howItWorksContent}
               </DialogContent>
             </Dialog>
@@ -1036,7 +1036,7 @@ export default function Home() {
             <Sheet open={isHowItWorksOpen} onOpenChange={handleHowItWorksOpenChange}>
               <SheetContent
                 side="bottom"
-                className="flex h-[100dvh] max-h-[100dvh] w-full max-w-full flex-col gap-0 overflow-hidden rounded-t-[32px] border-none bg-white p-0 shadow-2xl"
+                className="flex h-[min(90vh,100dvh)] max-h-[min(90vh,100dvh)] w-full max-w-full flex-col gap-0 overflow-hidden rounded-t-[32px] border-none bg-white p-0 shadow-2xl"
                 aria-labelledby={howItWorksTitleId}
                 aria-describedby={howItWorksDescriptionId}
                 onOpenAutoFocus={handleHowItWorksOpenAutoFocus}
