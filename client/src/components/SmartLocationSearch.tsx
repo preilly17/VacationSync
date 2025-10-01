@@ -334,6 +334,12 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   }, [normalisedAllowedTypes]);
 
   useEffect(() => {
+    console.log(
+      "🔍 SmartLocationSearch search effect triggered with query:",
+      query,
+      "allowedTypes:",
+      allowedTypes,
+    );
     const trimmedQuery = query.trim();
 
     if (debounceRef.current) {
@@ -341,6 +347,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
 
     if (trimmedQuery.length < 2) {
+      console.log("⛔ Skipping search, query too short:", query);
       setResults([]);
       setSelectedLocation(null);
       setActiveIndex(-1);
@@ -351,10 +358,18 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
     }
 
     if (selectedLocation && selectedLocation.displayName === trimmedQuery) {
+      console.log(
+        "⛔ Skipping search, query matches selected location:",
+        trimmedQuery,
+      );
       return;
     }
 
     if (!isUserEditingRef.current && lastSelectedQueryRef.current === trimmedQuery) {
+      console.log(
+        "⛔ Skipping search, query matches last selected while not editing:",
+        trimmedQuery,
+      );
       return;
     }
 
@@ -366,16 +381,25 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       // Skip if the user has since cleared or changed the input
       const currentQuery = internalInputRef.current?.value?.trim() ?? "";
       if (currentQuery.length < 2) {
+        console.log("⛔ Skipping debounced search, query too short:", currentQuery);
         return;
       }
 
       if (!isUserEditingRef.current && lastSelectedQueryRef.current === currentQuery) {
+        console.log(
+          "⛔ Skipping debounced search, query matches last selected while not editing:",
+          currentQuery,
+        );
         return;
       }
 
       const currentSearchKey = `${currentQuery}|${allowedTypesKey}`;
 
       if (lastFetchedQueryKeyRef.current === currentSearchKey) {
+        console.log(
+          "⛔ Skipping debounced search, query already fetched:",
+          currentSearchKey,
+        );
         return;
       }
 
@@ -403,11 +427,18 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
           allowedTypes,
         );
 
+        console.log("🌐 SmartLocationSearch calling LocationUtils.searchLocations with:", {
+          query: currentQuery,
+          allowedTypes,
+        });
+
         const rawResults = await LocationUtils.searchLocations({
           query: currentQuery,
           limit: 7,
           ...(normalizedTypesForSearch ? { types: normalizedTypesForSearch } : {}),
         });
+
+        console.log("✅ SmartLocationSearch LocationUtils returned", rawResults);
 
         console.log("🔎 SmartLocationSearch: rawResults from API", rawResults);
         console.log("🔎 Query:", currentQuery, "Allowed types:", locationUtilsTypes);
