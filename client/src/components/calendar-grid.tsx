@@ -2,7 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isWithinInterval, isSameMonth } from "date-fns";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import { cn } from "@/lib/utils";
-import type { CSSProperties } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 type CalendarCssVariables = CSSProperties & Record<string, string | number | undefined>;
 
@@ -39,9 +39,25 @@ const categoryIcons = {
   other: "📍",
 };
 
-const MAX_VISIBLE_EVENTS = 3;
-
 type EventThemeKey = "flights" | "stays" | "dining" | "adventure" | "personal" | "default";
+
+type DisplayMode = "normal" | "compact" | "micro";
+
+interface LayoutState {
+  mode: DisplayMode;
+  visibleCount: number;
+  hiddenCount: number;
+}
+
+const MODE_CONFIG: Record<DisplayMode, { gap: number }> = {
+  normal: { gap: 6 },
+  compact: { gap: 4 },
+  micro: { gap: 2 },
+};
+
+const MODE_ORDER: DisplayMode[] = ["normal", "compact", "micro"];
+
+const FALLBACK_MORE_BUTTON_HEIGHT = 24;
 
 const getEventThemeKey = (category: string | null | undefined, isPersonal: boolean): EventThemeKey => {
   if (isPersonal) return "personal";
@@ -236,9 +252,6 @@ export function CalendarGrid({
               const isToday = isSameDay(day, new Date());
               const outsideMonth = !isSameMonth(day, currentMonth);
 
-              const visibleActivities = dayActivities.slice(0, MAX_VISIBLE_EVENTS);
-              const hiddenCount = Math.max(dayActivities.length - visibleActivities.length, 0);
-
               const dayClasses = cn(
                 "group/day relative flex h-32 flex-col overflow-hidden rounded-2xl border border-transparent bg-[var(--calendar-surface)]/95 p-2.5 shadow-[0_6px_18px_-14px_rgba(15,23,42,0.35)] transition-all duration-200 ease-out dark:shadow-[0_10px_24px_-16px_rgba(2,6,23,0.7)] lg:h-40",
                 isTripActive
@@ -299,123 +312,345 @@ export function CalendarGrid({
                   )}
 
                   {dayActivities.length > 0 && (
-                    <div className="mt-1 flex-1 space-y-0.5 overflow-hidden">
-                      {visibleActivities.map(activity => {
-                        const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
-                        const isProposal = activityType === "PROPOSE";
-                        const isCreator = Boolean(
-                          currentUserId && (activity.postedBy === currentUserId || activity.poster?.id === currentUserId),
-                        );
-                        const showPersonalProposalChip = Boolean(
-                          highlightPersonalProposals && isProposal && isCreator,
-                        );
-                        const showGlobalProposalChip = Boolean(isProposal && !showPersonalProposalChip);
-                        const isPersonalScheduleView = Boolean(currentUserId && highlightPersonalProposals);
-                        const inviteCount = activity.invites?.length ?? 0;
-                        const isPersonalEvent = Boolean(
-                          isPersonalScheduleView
-                            && ((inviteCount === 0 && activity.postedBy === currentUserId)
-                              || (inviteCount === 1 && activity.invites?.[0]?.userId === currentUserId)),
-                        );
-
-                        const themeKey = getEventThemeKey(activity.category, isPersonalEvent);
-                        const style = { ...themeVariableMap[themeKey] } as CalendarCssVariables;
-
-                        const metadata: string[] = [
-                          format(new Date(activity.startTime), "h:mm a"),
-                        ];
-
-                        if (activity.location && activity.location.trim().length > 0) {
-                          metadata.push(activity.location);
-                        }
-
-                        return (
-                          <Tooltip key={activity.id}>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={event => {
-                                  event.stopPropagation();
-                                  onActivityClick?.(activity);
-                                }}
-                                style={style}
-                                className={cn(
-                                  "group/chip relative flex w-full items-start gap-1.5 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-[0.35rem] text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
-                                  showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : "",
-                                  "border-[var(--chip-border)]",
-                                  isProposal ? "border-dashed" : null,
-                                )}
-                                aria-label={formatActivityAriaLabel(activity, day)}
-                              >
-                                <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)]" />
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1 text-[13px] font-semibold leading-[1.15] text-[var(--chip-text)]">
-                                    <span className="shrink-0 text-sm">
-                                      {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}
-                                    </span>
-                                    <span className="truncate">
-                                      {activity.name}
-                                    </span>
-                                    {isPersonalEvent && (
-                                      <span className="ml-1 flex items-center gap-1 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1]">
-                                        <span className="h-1.5 w-1.5 rounded-full bg-[var(--chip-dot)]" />
-                                        Me
-                                      </span>
-                                    )}
-                                    {(showPersonalProposalChip || showGlobalProposalChip) && (
-                                      <span
-                                        className={cn(
-                                          "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.1]",
-                                          showPersonalProposalChip
-                                            ? "bg-white/70 text-[var(--chip-text)]"
-                                            : "bg-[var(--chip-border)]/20 text-[var(--chip-text)]/80",
-                                        )}
-                                      >
-                                        Proposed
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="mt-0.25 flex items-center gap-1 text-[11px] font-medium leading-[1.05] text-[color:var(--calendar-muted)]">
-                                    <span className="truncate">
-                                      {metadata.join(" • ")}
-                                    </span>
-                                  </div>
-                                </div>
-                                <span className="ml-2 shrink-0 rounded-full bg-[var(--chip-border)]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)] leading-[1.1]">
-                                  {formatBadgeTime(activity.startTime)}
-                                </span>
-                                <span className="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-all duration-200 group-hover/chip:border-[var(--chip-border)]/50" aria-hidden />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs rounded-xl border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] px-3 py-2 text-xs text-[color:var(--calendar-ink)] shadow-lg" side="top" align="start">
-                              <div className="font-semibold text-[color:var(--calendar-ink)]">{activity.name}</div>
-                              <div className="mt-1 text-[11px] text-[color:var(--calendar-muted)]">
-                                {format(new Date(activity.startTime), "EEEE • MMM d • h:mm a")}
-                              </div>
-                            </TooltipContent>
-                          </Tooltip>
-                        );
-                      })}
-                      {hiddenCount > 0 && (
-                        <button
-                          type="button"
-                          onClick={event => {
-                            event.stopPropagation();
-                            onDayClick?.(day);
-                          }}
-                          className="group self-end rounded-full border border-dashed border-[color:var(--calendar-line)]/70 bg-transparent px-2.5 py-0.5 text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--calendar-muted)] transition-all duration-200 hover:bg-[var(--calendar-canvas-accent)] hover:text-[color:var(--calendar-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)] leading-[1.15]"
-                          aria-label={`${hiddenCount} more activities on ${format(day, "MMMM d")}`}
-                        >
-                          +{hiddenCount} more
-                        </button>
-                      )}
-                    </div>
+                    <DayActivityList
+                      day={day}
+                      activities={dayActivities}
+                      onActivityClick={onActivityClick}
+                      onDayClick={onDayClick}
+                      highlightPersonalProposals={highlightPersonalProposals}
+                      currentUserId={currentUserId}
+                    />
                   )}
                 </div>
               );
             })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+interface DayActivityListProps {
+  day: Date;
+  activities: ActivityWithDetails[];
+  onActivityClick?: (activity: ActivityWithDetails) => void;
+  onDayClick?: (day: Date) => void;
+  highlightPersonalProposals?: boolean;
+  currentUserId?: string;
+}
+
+function DayActivityList({
+  day,
+  activities,
+  onActivityClick,
+  onDayClick,
+  highlightPersonalProposals,
+  currentUserId,
+}: DayActivityListProps) {
+  const [layout, setLayout] = useState<LayoutState>({
+    mode: "normal",
+    visibleCount: activities.length,
+    hiddenCount: 0,
+  });
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const setLayoutIfChanged = useCallback((next: LayoutState) => {
+    setLayout(previous => {
+      if (
+        previous.mode === next.mode
+        && previous.visibleCount === next.visibleCount
+        && previous.hiddenCount === next.hiddenCount
+      ) {
+        return previous;
+      }
+
+      return next;
+    });
+  }, []);
+
+  const computeLayout = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const chips = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("[data-calendar-chip]"),
+    );
+
+    const totalChips = chips.length;
+    if (totalChips === 0) {
+      setLayoutIfChanged({ mode: "normal", visibleCount: 0, hiddenCount: 0 });
+      return;
+    }
+
+    const availableHeight = container.clientHeight;
+    if (availableHeight <= 0) {
+      setLayoutIfChanged({ mode: "normal", visibleCount: totalChips, hiddenCount: 0 });
+      return;
+    }
+
+    const originalMode = container.dataset.mode ?? "";
+    const originalHiddenStates = chips.map(chip => chip.dataset.hidden ?? "");
+
+    let resolvedState: LayoutState | null = null;
+
+    try {
+      for (const mode of MODE_ORDER) {
+        container.dataset.mode = mode;
+        chips.forEach(chip => {
+          chip.dataset.hidden = "false";
+        });
+
+        const gap = MODE_CONFIG[mode].gap;
+        const heights = chips.map(chip => chip.offsetHeight);
+
+        let usedHeight = 0;
+        let visibleCount = 0;
+
+        for (const height of heights) {
+          const addition = height + (visibleCount > 0 ? gap : 0);
+          if (usedHeight + addition <= availableHeight) {
+            usedHeight += addition;
+            visibleCount += 1;
+          } else {
+            break;
+          }
+        }
+
+        if (visibleCount === totalChips) {
+          resolvedState = { mode, visibleCount, hiddenCount: 0 };
+          break;
+        }
+
+        const moreButtonHeight = FALLBACK_MORE_BUTTON_HEIGHT;
+
+        let remainingHeight = availableHeight - moreButtonHeight;
+        if (remainingHeight < 0) {
+          remainingHeight = 0;
+        }
+        if (visibleCount > 0) {
+          remainingHeight -= gap;
+          if (remainingHeight < 0) {
+            remainingHeight = 0;
+          }
+        }
+
+        let visibleWithMore = 0;
+        let heightWithMore = 0;
+
+        for (const height of heights) {
+          const addition = height + (visibleWithMore > 0 ? gap : 0);
+          if (heightWithMore + addition <= remainingHeight) {
+            heightWithMore += addition;
+            visibleWithMore += 1;
+          } else {
+            break;
+          }
+        }
+
+        if (visibleWithMore === 0 && moreButtonHeight > availableHeight) {
+          continue;
+        }
+
+        const hiddenCount = Math.max(totalChips - visibleWithMore, 0);
+        resolvedState = {
+          mode,
+          visibleCount: Math.min(visibleWithMore, totalChips),
+          hiddenCount,
+        };
+        break;
+      }
+
+      if (!resolvedState) {
+        resolvedState = {
+          mode: "micro",
+          visibleCount: 0,
+          hiddenCount: totalChips,
+        };
+      }
+    } finally {
+      container.dataset.mode = originalMode;
+      chips.forEach((chip, index) => {
+        const original = originalHiddenStates[index];
+        if (original) {
+          chip.dataset.hidden = original;
+        } else {
+          chip.removeAttribute("data-hidden");
+        }
+      });
+
+      if (resolvedState) {
+        setLayoutIfChanged(resolvedState);
+      }
+    }
+  }, [setLayoutIfChanged]);
+
+  useLayoutEffect(() => {
+    computeLayout();
+  }, [computeLayout, activities, highlightPersonalProposals, currentUserId, layout.mode, layout.visibleCount]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => {
+      computeLayout();
+    });
+
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [computeLayout]);
+
+  useLayoutEffect(() => {
+    setLayout(previous => {
+      const nextVisible = activities.length;
+      if (previous.visibleCount === nextVisible && previous.hiddenCount === 0) {
+        return previous;
+      }
+
+      return {
+        mode: previous.mode,
+        visibleCount: nextVisible,
+        hiddenCount: 0,
+      };
+    });
+  }, [activities.length]);
+
+  const visibleCount = Math.min(layout.visibleCount, activities.length);
+  const hiddenCount = Math.max(activities.length - visibleCount, 0);
+
+  return (
+    <div className="mt-1 flex-1 overflow-hidden">
+      <div
+        ref={containerRef}
+        data-mode={layout.mode}
+        className="group/mode flex h-full flex-col overflow-hidden gap-y-1.5 data-[mode=compact]:gap-y-1 data-[mode=micro]:gap-y-0.5"
+      >
+        {activities.map((activity, index) => {
+          const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
+          const isProposal = activityType === "PROPOSE";
+          const isCreator = Boolean(
+            currentUserId && (activity.postedBy === currentUserId || activity.poster?.id === currentUserId),
+          );
+          const showPersonalProposalChip = Boolean(
+            highlightPersonalProposals && isProposal && isCreator,
+          );
+          const showGlobalProposalChip = Boolean(isProposal && !showPersonalProposalChip);
+          const isPersonalScheduleView = Boolean(currentUserId && highlightPersonalProposals);
+          const inviteCount = activity.invites?.length ?? 0;
+          const isPersonalEvent = Boolean(
+            isPersonalScheduleView
+              && ((inviteCount === 0 && activity.postedBy === currentUserId)
+                || (inviteCount === 1 && activity.invites?.[0]?.userId === currentUserId)),
+          );
+
+          const themeKey = getEventThemeKey(activity.category, isPersonalEvent);
+          const style = { ...themeVariableMap[themeKey] } as CalendarCssVariables;
+
+          const metadata: string[] = [
+            format(new Date(activity.startTime), "h:mm a"),
+          ];
+
+          if (activity.location && activity.location.trim().length > 0) {
+            metadata.push(activity.location);
+          }
+
+          const isHidden = index >= visibleCount;
+
+          return (
+            <Tooltip key={activity.id}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  data-calendar-chip
+                  data-hidden={isHidden ? "true" : "false"}
+                  onClick={event => {
+                    event.stopPropagation();
+                    onActivityClick?.(activity);
+                  }}
+                  style={style}
+                  className={cn(
+                    "group/chip relative flex w-full items-start gap-2 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-2 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                    "border-[var(--chip-border)]",
+                    showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : null,
+                    isProposal ? "border-dashed" : null,
+                    "data-[hidden=true]:hidden",
+                    "group-data-[mode=compact]/mode:rounded-lg group-data-[mode=compact]/mode:px-2 group-data-[mode=compact]/mode:py-1.5 group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:font-semibold group-data-[mode=compact]/mode:gap-1.5",
+                    "group-data-[mode=micro]/mode:rounded-md group-data-[mode=micro]/mode:px-1.5 group-data-[mode=micro]/mode:py-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-medium group-data-[mode=micro]/mode:items-center group-data-[mode=micro]/mode:gap-1.5",
+                  )}
+                  aria-label={formatActivityAriaLabel(activity, day)}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)] group-data-[mode=compact]/mode:h-2 group-data-[mode=compact]/mode:w-2 group-data-[mode=micro]/mode:h-2 group-data-[mode=micro]/mode:w-2" />
+                    <span className="shrink-0 text-sm group-data-[mode=compact]/mode:text-xs group-data-[mode=micro]/mode:text-xs">
+                      {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}
+                    </span>
+                  </span>
+                  <div className="min-w-0 flex-1 group-data-[mode=micro]/mode:hidden">
+                    <div className="flex items-center gap-1 text-[13px] font-semibold leading-[1.15] text-[var(--chip-text)] group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:leading-[1.2]">
+                      <span className="truncate">{activity.name}</span>
+                      {isPersonalEvent && (
+                        <span className="ml-1 flex items-center gap-1 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1] group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--chip-dot)]" />
+                          Me
+                        </span>
+                      )}
+                      {(showPersonalProposalChip || showGlobalProposalChip) && (
+                        <span
+                          className={cn(
+                            "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.1]",
+                            showPersonalProposalChip
+                              ? "bg-white/70 text-[var(--chip-text)]"
+                              : "bg-[var(--chip-border)]/20 text-[var(--chip-text)]/80",
+                            "group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden",
+                          )}
+                        >
+                          Proposed
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.05] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden">
+                      <span className="truncate">{metadata.join(" • ")}</span>
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      "ml-auto shrink-0 rounded-full bg-[var(--chip-border)]/10 px-1.75 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)] leading-[1.1]",
+                      "group-data-[mode=compact]/mode:ml-1.5 group-data-[mode=compact]/mode:px-1.5",
+                      "group-data-[mode=micro]/mode:ml-auto group-data-[mode=micro]/mode:bg-transparent group-data-[mode=micro]/mode:px-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-semibold group-data-[mode=micro]/mode:text-[var(--chip-text)] group-data-[mode=micro]/mode:tracking-[0.18em]",
+                    )}
+                  >
+                    {formatBadgeTime(activity.startTime)}
+                  </span>
+                  <span className="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-all duration-200 group-hover/chip:border-[var(--chip-border)]/50" aria-hidden />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs rounded-xl border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] px-3 py-2 text-xs text-[color:var(--calendar-ink)] shadow-lg" side="top" align="start">
+                <div className="font-semibold text-[color:var(--calendar-ink)]">{activity.name}</div>
+                <div className="mt-1 text-[11px] text-[color:var(--calendar-muted)]">
+                  {format(new Date(activity.startTime), "EEEE • MMM d • h:mm a")}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation();
+              onDayClick?.(day);
+            }}
+            className="group self-end rounded-full border border-dashed border-[color:var(--calendar-line)]/70 bg-transparent px-2.5 py-0.5 text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--calendar-muted)] transition-all duration-200 hover:bg-[var(--calendar-canvas-accent)] hover:text-[color:var(--calendar-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)] leading-[1.15] group-data-[mode=micro]/mode:self-stretch group-data-[mode=micro]/mode:text-center"
+            aria-label={`${hiddenCount} more activities on ${format(day, "MMMM d")}`}
+          >
+            +{hiddenCount} more
+          </button>
+        )}
       </div>
     </div>
   );
