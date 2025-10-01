@@ -12,11 +12,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { PackingItem, User } from "@shared/schema";
-import { format } from "date-fns";
-
 interface PackingListProps {
   tripId: number;
 }
+
+type PackingListItem = PackingItem & { user: User };
+type PackingListData = PackingListItem[];
 
 const categories = [
   { value: "general", label: "General", color: "bg-gray-100 text-gray-800" },
@@ -33,14 +34,16 @@ export function PackingList({ tripId }: PackingListProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  
+
+  const packingQueryKey = [`/api/trips/${tripId}/packing`] as const;
+
   const [newItem, setNewItem] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("general");
   const [selectedItemType, setSelectedItemType] = useState<"personal" | "group">("personal");
   const [showCompleted, setShowCompleted] = useState(true);
 
-  const { data: packingItems = [], isLoading } = useQuery<(PackingItem & { user: User })[]>({
-    queryKey: [`/api/trips/${tripId}/packing`],
+  const { data: packingItems = [], isLoading } = useQuery<PackingListData>({
+    queryKey: packingQueryKey,
     retry: false,
   });
 
@@ -52,7 +55,7 @@ export function PackingList({ tripId }: PackingListProps) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/packing`] });
+      queryClient.invalidateQueries({ queryKey: packingQueryKey });
       setNewItem("");
       setSelectedCategory("general");
       setSelectedItemType("personal");
@@ -81,14 +84,14 @@ export function PackingList({ tripId }: PackingListProps) {
     },
   });
 
-  const toggleItemMutation = useMutation({
+  const togglePersonalItemMutation = useMutation({
     mutationFn: async (itemId: number) => {
       await apiRequest(`/api/packing/${itemId}/toggle`, {
         method: 'PATCH',
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/packing`] });
+      queryClient.invalidateQueries({ queryKey: packingQueryKey });
     },
     onError: (error) => {
       if (isUnauthorizedError(error as Error)) {
@@ -110,6 +113,99 @@ export function PackingList({ tripId }: PackingListProps) {
     },
   });
 
+  const updateGroupItemStatusMutation = useMutation<
+    PackingListItem,
+    Error,
+    { itemId: number; handled: boolean },
+    { previousItems?: PackingListData }
+  >({
+    mutationFn: async ({ itemId, handled }) => {
+      const method = handled ? 'POST' : 'DELETE';
+      const res = await apiRequest(
+        `/api/trips/${tripId}/packing/group-items/${itemId}/handled`,
+        {
+          method,
+        },
+      );
+      const data = (await res.json()) as PackingListItem;
+      return data;
+    },
+    onMutate: async ({ itemId, handled }) => {
+      await queryClient.cancelQueries({ queryKey: packingQueryKey });
+
+      const previousItems = queryClient.getQueryData<PackingListData>(packingQueryKey);
+      if (previousItems) {
+        const updatedItems = previousItems.map(item => {
+          if (item.id !== itemId || item.itemType !== "group") {
+            return item;
+          }
+
+          const nextIsChecked = handled;
+          const delta = nextIsChecked === item.isChecked ? 0 : nextIsChecked ? 1 : -1;
+          const currentGroupStatus = item.groupStatus;
+
+          return {
+            ...item,
+            isChecked: nextIsChecked,
+            groupStatus: currentGroupStatus
+              ? {
+                  ...currentGroupStatus,
+                  checkedCount: Math.max(
+                    0,
+                    Math.min(
+                      currentGroupStatus.memberCount,
+                      (currentGroupStatus.checkedCount ?? 0) + delta,
+                    ),
+                  ),
+                }
+              : currentGroupStatus,
+          };
+        });
+
+        queryClient.setQueryData<PackingListData>(packingQueryKey, updatedItems);
+      }
+
+      return { previousItems };
+    },
+    onError: (error, _variables, context) => {
+      if (context?.previousItems) {
+        queryClient.setQueryData<PackingListData>(packingQueryKey, context.previousItems);
+      }
+
+      if (isUnauthorizedError(error as Error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You are logged out. Logging in again...",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+
+      toast({
+        title: "Status not updated",
+        description: "Couldn't update your status. Please try again.",
+        variant: "destructive",
+      });
+    },
+    onSuccess: (updatedItem) => {
+      queryClient.setQueryData<PackingListData>(packingQueryKey, current => {
+        if (!current) {
+          return current;
+        }
+
+        return current.map(item =>
+          item.id === updatedItem.id ? updatedItem : item,
+        );
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: packingQueryKey });
+    },
+  });
+
   const deleteItemMutation = useMutation({
     mutationFn: async (itemId: number) => {
       await apiRequest(`/api/packing/${itemId}`, {
@@ -117,7 +213,7 @@ export function PackingList({ tripId }: PackingListProps) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/packing`] });
+      queryClient.invalidateQueries({ queryKey: packingQueryKey });
       toast({
         title: "Item deleted",
         description: "The packing item has been removed.",
@@ -146,12 +242,31 @@ export function PackingList({ tripId }: PackingListProps) {
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItem.trim()) return;
-    
+
     addItemMutation.mutate({
       item: newItem.trim(),
       category: selectedCategory,
       itemType: selectedItemType,
     });
+  };
+
+  const handlePersonalToggle = (itemId: number) => {
+    togglePersonalItemMutation.mutate(itemId);
+  };
+
+  const handleGroupItemStatusChange = (item: PackingListItem, handled: boolean) => {
+    updateGroupItemStatusMutation.mutate({ itemId: item.id, handled });
+  };
+
+  const handleGroupItemToggle = (item: PackingListItem) => {
+    handleGroupItemStatusChange(item, !item.isChecked);
+  };
+
+  const getGroupItemAriaLabel = (item: PackingListItem) => {
+    const handledCount = item.groupStatus?.checkedCount ?? 0;
+    const memberCount = item.groupStatus?.memberCount ?? 0;
+    const userState = item.isChecked ? "checked" : "unchecked";
+    return `${item.item}, your status, ${userState}. Group: ${handledCount} of ${memberCount} handled.`;
   };
 
   const personalItems = packingItems.filter(
@@ -166,7 +281,7 @@ export function PackingList({ tripId }: PackingListProps) {
     }
     acc[item.category || 'general'].push(item);
     return acc;
-  }, {} as Record<string, (PackingItem & { user: User })[]>);
+  }, {} as Record<string, PackingListItem[]>);
 
   const groupedGroupItems = groupItems.reduce((acc, item) => {
     if (!acc[item.category || 'general']) {
@@ -174,7 +289,7 @@ export function PackingList({ tripId }: PackingListProps) {
     }
     acc[item.category || 'general'].push(item);
     return acc;
-  }, {} as Record<string, (PackingItem & { user: User })[]>);
+  }, {} as Record<string, PackingListItem[]>);
 
   const getCategoryInfo = (categoryValue: string) => {
     return categories.find(cat => cat.value === categoryValue) || categories[0];
@@ -326,11 +441,15 @@ export function PackingList({ tripId }: PackingListProps) {
                             }`}
                           >
                             <div className="flex items-center space-x-3 flex-1">
-                              <div className="cursor-pointer p-1 -m-1 rounded hover:bg-gray-100">
+                              <div
+                                className="cursor-pointer p-1 -m-1 rounded hover:bg-gray-100"
+                                onClick={() => handlePersonalToggle(item.id)}
+                              >
                                 <Checkbox
                                   data-testid={`checkbox-${item.id}`}
                                   checked={!!item.isChecked}
-                                  onCheckedChange={() => toggleItemMutation.mutate(item.id)}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onCheckedChange={() => handlePersonalToggle(item.id)}
                                 />
                               </div>
                               <div className="flex-1">
@@ -421,13 +540,17 @@ export function PackingList({ tripId }: PackingListProps) {
                             }`}
                           >
                             <div className="flex items-center space-x-3 flex-1">
-                              <div 
-                                className="cursor-pointer p-1 -m-1 rounded hover:bg-gray-100" 
-                                onClick={() => toggleItemMutation.mutate(item.id)}
+                              <div
+                                className="cursor-pointer p-1 -m-1 rounded hover:bg-gray-100"
+                                onClick={() => handleGroupItemToggle(item)}
                               >
                                 <Checkbox
                                   checked={!!item.isChecked}
-                                  onCheckedChange={() => toggleItemMutation.mutate(item.id)}
+                                  onClick={(event) => event.stopPropagation()}
+                                  onCheckedChange={(checked) =>
+                                    handleGroupItemStatusChange(item, checked === true)
+                                  }
+                                  aria-label={getGroupItemAriaLabel(item)}
                                 />
                               </div>
                               <div className="flex-1">
@@ -442,7 +565,7 @@ export function PackingList({ tripId }: PackingListProps) {
                                   {item.isChecked && (
                                     <span className="text-sm text-blue-600 font-medium">✓ Handled</span>
                                   )}
-                                  {item.groupStatus && item.groupStatus.memberCount > 0 && (
+                                  {item.groupStatus && (
                                     <Badge variant="secondary" className="text-xs font-normal px-2 py-0.5">
                                       Group: {item.groupStatus.checkedCount}/{item.groupStatus.memberCount} handled
                                     </Badge>

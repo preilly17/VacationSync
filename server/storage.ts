@@ -1253,6 +1253,40 @@ const mapPackingItem = (row: PackingItemRow): PackingItem => ({
   createdAt: row.created_at,
 });
 
+const mapPackingItemWithStatus = (
+  row: PackingItemWithStatusRow,
+): (PackingItem & { user: User }) => {
+  const base = mapPackingItem({
+    id: row.id,
+    trip_id: row.trip_id,
+    user_id: row.item_user_id,
+    item: row.item,
+    category: row.category,
+    item_type: row.item_type,
+    is_checked: row.is_checked,
+    assigned_user_id: row.assigned_user_id,
+    created_at: row.created_at,
+  });
+
+  const groupStatus =
+    base.itemType === "group"
+      ? {
+          checkedCount: Math.max(Number(row.group_checked_count ?? 0), 0),
+          memberCount: Math.max(Number(row.trip_member_count ?? 0), 0),
+        }
+      : undefined;
+
+  return {
+    ...base,
+    isChecked:
+      base.itemType === "group"
+        ? Boolean(row.current_user_is_checked)
+        : base.isChecked,
+    groupStatus,
+    user: mapUserFromPrefix(row, "user_"),
+  };
+};
+
 const mapExpense = (row: ExpenseRow): Expense => {
   const conversionMetadata = (row.converted_amounts ?? null) as
     | ExpenseConversionMetadata
@@ -3797,37 +3831,138 @@ export class DatabaseStorage implements IStorage {
       [tripId, userId],
     );
 
-    return rows.map((row) => {
-      const base = mapPackingItem({
-        id: row.id,
-        trip_id: row.trip_id,
-        user_id: row.item_user_id,
-        item: row.item,
-        category: row.category,
-        item_type: row.item_type,
-        is_checked: row.is_checked,
-        assigned_user_id: row.assigned_user_id,
-        created_at: row.created_at,
-      });
+    return rows.map(mapPackingItemWithStatus);
+  }
 
-      const groupStatus =
-        base.itemType === "group"
-          ? {
-              checkedCount: Math.max(Number(row.group_checked_count), 0),
-              memberCount: Math.max(Number(row.trip_member_count), 0),
-            }
-          : undefined;
+  private async getPackingItemWithStatus(
+    itemId: number,
+    tripId: number,
+    userId: string,
+  ): Promise<(PackingItem & { user: User }) | null> {
+    await this.ensurePackingStructures();
 
-      return {
-        ...base,
-        isChecked:
-          base.itemType === "group"
-            ? Boolean(row.current_user_is_checked)
-            : base.isChecked,
-        groupStatus,
-        user: mapUserFromPrefix(row, "user_"),
-      };
-    });
+    const { rows } = await query<PackingItemWithStatusRow>(
+      `
+      WITH member_counts AS (
+        SELECT tm.trip_calendar_id AS trip_id, COUNT(*) AS member_count
+        FROM trip_members tm
+        WHERE tm.trip_calendar_id = $2
+        GROUP BY tm.trip_calendar_id
+      ),
+      status_counts AS (
+        SELECT
+          pis.item_id,
+          COUNT(*) FILTER (WHERE pis.is_checked) AS checked_count
+        FROM packing_item_statuses pis
+        WHERE pis.item_id = $1
+        GROUP BY pis.item_id
+      )
+      SELECT
+        pi.id,
+        pi.trip_id,
+        pi.user_id AS item_user_id,
+        pi.item,
+        pi.category,
+        pi.item_type,
+        pi.is_checked,
+        pi.assigned_user_id,
+        pi.created_at,
+        COALESCE(pis_current.is_checked, FALSE) AS current_user_is_checked,
+        COALESCE(sc.checked_count, 0) AS group_checked_count,
+        COALESCE(mc.member_count, 0) AS trip_member_count,
+        u.id AS user_id,
+        u.email AS user_email,
+        u.username AS user_username,
+        u.first_name AS user_first_name,
+        u.last_name AS user_last_name,
+        u.phone_number AS user_phone_number,
+        u.password_hash AS user_password_hash,
+        u.profile_image_url AS user_profile_image_url,
+        u.cashapp_username AS user_cashapp_username,
+        u.cash_app_username AS user_cash_app_username,
+        u.cashapp_phone AS user_cashapp_phone,
+        u.cash_app_phone AS user_cash_app_phone,
+        u.venmo_username AS user_venmo_username,
+        u.venmo_phone AS user_venmo_phone,
+        u.timezone AS user_timezone,
+        u.default_location AS user_default_location,
+        u.default_location_code AS user_default_location_code,
+        u.default_city AS user_default_city,
+        u.default_country AS user_default_country,
+        u.auth_provider AS user_auth_provider,
+        u.notification_preferences AS user_notification_preferences,
+        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+        u.created_at AS user_created_at,
+        u.updated_at AS user_updated_at
+      FROM packing_items pi
+      JOIN users u ON u.id = pi.user_id
+      LEFT JOIN packing_item_statuses pis_current
+        ON pis_current.item_id = pi.id AND pis_current.user_id = $3
+      LEFT JOIN status_counts sc ON sc.item_id = pi.id
+      LEFT JOIN member_counts mc ON mc.trip_id = pi.trip_id
+      WHERE pi.id = $1 AND pi.trip_id = $2
+      LIMIT 1
+      `,
+      [itemId, tripId, userId],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return mapPackingItemWithStatus(row);
+  }
+
+  async markGroupItemHandled(
+    itemId: number,
+    tripId: number,
+    userId: string,
+  ): Promise<PackingItem & { user: User }> {
+    await this.ensurePackingStructures();
+
+    await query(
+      `
+      INSERT INTO packing_item_statuses (item_id, user_id, is_checked)
+      VALUES ($1, $2, TRUE)
+      ON CONFLICT (item_id, user_id)
+      DO UPDATE SET
+        is_checked = TRUE,
+        updated_at = NOW()
+      `,
+      [itemId, userId],
+    );
+
+    const updated = await this.getPackingItemWithStatus(itemId, tripId, userId);
+    if (!updated) {
+      throw new Error("Packing item not found after updating status");
+    }
+
+    return updated;
+  }
+
+  async markGroupItemUnhandled(
+    itemId: number,
+    tripId: number,
+    userId: string,
+  ): Promise<PackingItem & { user: User }> {
+    await this.ensurePackingStructures();
+
+    await query(
+      `
+      DELETE FROM packing_item_statuses
+      WHERE item_id = $1 AND user_id = $2
+      `,
+      [itemId, userId],
+    );
+
+    const updated = await this.getPackingItemWithStatus(itemId, tripId, userId);
+    if (!updated) {
+      throw new Error("Packing item not found after updating status");
+    }
+
+    return updated;
   }
 
   async togglePackingItem(
