@@ -276,15 +276,15 @@ export function CalendarGrid({
                   aria-label={format(day, "MMMM d, yyyy")}
                   className={dayClasses}
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-1">
                     <span className={dateLabelClass}>{format(day, "d")}</span>
                     {isToday && !isSelected && (
-                      <span className="rounded-full border border-[color:var(--calendar-today-ring)] bg-[color:var(--calendar-today-bg)] px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-tight text-[color:var(--calendar-ink)]/80">
+                      <span className="rounded-full border border-[color:var(--calendar-today-ring)] bg-[color:var(--calendar-today-bg)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-ink)]/80 leading-[1.15]">
                         Today
                       </span>
                     )}
                     {isSelected && (
-                      <span className="rounded-full border border-[color:var(--calendar-selected-border)] bg-[var(--calendar-selected-bg)] px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-tight text-[color:var(--calendar-ink)]">
+                      <span className="rounded-full border border-[color:var(--calendar-selected-border)] bg-[var(--calendar-selected-bg)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-ink)] leading-[1.15]">
                         Selected
                       </span>
                     )}
@@ -292,14 +292,14 @@ export function CalendarGrid({
 
                   {isTripActive && dayActivities.length === 0 && (
                     <div className="mt-auto flex items-center justify-center">
-                      <span className="rounded-full bg-[var(--calendar-canvas-accent)] px-3 py-1 text-[11px] font-medium text-[color:var(--calendar-muted)] opacity-0 transition-opacity duration-200 group-hover/day:opacity-100 group-focus-visible/day:opacity-100">
+                      <span className="rounded-full bg-[var(--calendar-canvas-accent)] px-2.5 py-0.5 text-[10px] font-medium leading-[1.2] text-[color:var(--calendar-muted)] opacity-0 transition-opacity duration-200 group-hover/day:opacity-100 group-focus-visible/day:opacity-100">
                         Tap to add plans
                       </span>
                     </div>
                   )}
 
                   {dayActivities.length > 0 && (
-                    <div className="mt-2 flex-1 space-y-1 overflow-hidden">
+                    <div className="mt-1.5 flex-1 space-y-1 overflow-hidden">
                       {visibleActivities.map(activity => {
                         const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
                         const isProposal = activityType === "PROPOSE";
@@ -340,16 +340,16 @@ export function CalendarGrid({
                                 }}
                                 style={style}
                                 className={cn(
-                                  "group/chip relative flex w-full items-start gap-2 rounded-xl border bg-[var(--chip-bg)] px-3 py-2 text-left text-sm font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                                  "group/chip relative flex w-full items-start gap-1.5 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-1.5 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
                                   showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : "",
                                   "border-[var(--chip-border)]",
                                   isProposal ? "border-dashed" : null,
                                 )}
                                 aria-label={formatActivityAriaLabel(activity, day)}
                               >
-                                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)]" />
+                                <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)]" />
                                 <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1 text-[13px] font-semibold leading-5 text-[var(--chip-text)]">
+                                  <div className="flex items-center gap-1 text-[13px] font-semibold leading-[1.15] text-[var(--chip-text)]">
                                     <span className="shrink-0 text-sm">
                                       {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}
                                     </span>
@@ -357,7 +357,7 @@ export function CalendarGrid({
                                       {activity.name}
                                     </span>
                                     {isPersonalEvent && (
-                                      <span className="ml-1 flex items-center gap-1 rounded-full bg-[var(--chip-border)]/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75">
+                                      <span className="ml-1 flex items-center gap-1 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1]">
                                         <span className="h-1.5 w-1.5 rounded-full bg-[var(--chip-dot)]" />
                                         Me
                                       </span>
@@ -365,7 +365,7 @@ export function CalendarGrid({
                                     {(showPersonalProposalChip || showGlobalProposalChip) && (
                                       <span
                                         className={cn(
-                                          "ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                                          "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.1]",
                                           showPersonalProposalChip
                                             ? "bg-white/70 text-[var(--chip-text)]"
                                             : "bg-[var(--chip-border)]/20 text-[var(--chip-text)]/80",
@@ -375,13 +375,13 @@ export function CalendarGrid({
                                       </span>
                                     )}
                                   </div>
-                                  <div className="mt-1 flex items-center gap-1 text-[11px] font-medium text-[color:var(--calendar-muted)]">
+                                  <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.1] text-[color:var(--calendar-muted)]">
                                     <span className="truncate">
                                       {metadata.join(" • ")}
                                     </span>
                                   </div>
                                 </div>
-                                <span className="ml-2 shrink-0 rounded-full bg-[var(--chip-border)]/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)]">
+                                <span className="ml-2 shrink-0 rounded-full bg-[var(--chip-border)]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)] leading-[1.1]">
                                   {formatBadgeTime(activity.startTime)}
                                 </span>
                                 <span className="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-all duration-200 group-hover/chip:border-[var(--chip-border)]/50" aria-hidden />
@@ -403,7 +403,7 @@ export function CalendarGrid({
                             event.stopPropagation();
                             onDayClick?.(day);
                           }}
-                          className="group self-end rounded-full border border-dashed border-[color:var(--calendar-line)]/70 bg-transparent px-3 py-1 text-right text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--calendar-muted)] transition-all duration-200 hover:bg-[var(--calendar-canvas-accent)] hover:text-[color:var(--calendar-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]"
+                          className="group self-end rounded-full border border-dashed border-[color:var(--calendar-line)]/70 bg-transparent px-2.5 py-0.5 text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--calendar-muted)] transition-all duration-200 hover:bg-[var(--calendar-canvas-accent)] hover:text-[color:var(--calendar-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--calendar-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)] leading-[1.15]"
                           aria-label={`${hiddenCount} more activities on ${format(day, "MMMM d")}`}
                         >
                           +{hiddenCount} more
