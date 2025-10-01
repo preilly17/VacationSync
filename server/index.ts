@@ -16,19 +16,30 @@ const parseOrigins = (value?: string | null) =>
     .map((origin) => origin.trim())
     .filter(Boolean) ?? [];
 
-const envConfiguredOrigins = [
+const envConfiguredOrigins = new Set([
   ...parseOrigins(process.env.CORS_ORIGINS),
   ...parseOrigins(process.env.CORS_ORIGIN),
   ...parseOrigins(process.env.CLIENT_URL),
-];
+]);
 
-const allowedOrigins = envConfiguredOrigins.length
-  ? Array.from(new Set(envConfiguredOrigins))
-  : Array.from(new Set([defaultClientUrl, "http://localhost:3000"]));
+const defaultOrigins = new Set([
+  "http://localhost:3000",
+  "https://www.tripsyncbeta.com",
+]);
+
+if (defaultClientUrl) {
+  defaultOrigins.add(defaultClientUrl);
+}
+
+const allowedOrigins = envConfiguredOrigins.size
+  ? Array.from(envConfiguredOrigins)
+  : Array.from(defaultOrigins);
 
 const corsOptions: CorsOptions = {
   origin: allowedOrigins,
   credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
