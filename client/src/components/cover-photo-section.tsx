@@ -1,16 +1,57 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
+import { nanoid } from "nanoid";
+import {
+  COVER_PHOTO_MAX_FILE_SIZE_BYTES,
+  COVER_PHOTO_MAX_FILE_SIZE_MB,
+  COVER_PHOTO_MIN_HEIGHT,
+  COVER_PHOTO_MIN_WIDTH,
+  COVER_PHOTO_RECOMMENDED_HEIGHT,
+  COVER_PHOTO_RECOMMENDED_WIDTH,
+} from "@shared/constants";
 
-const MAX_FILE_SIZE_MB = 10;
-const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-const ACCEPTED_FILE_TYPES = "image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.heic,.heif";
+const ACCEPTED_FILE_TYPES =
+  "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
 
-const UNSPLASH_PRESETS: { url: string; label: string; attribution: string }[] = [
+const ALLOWED_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const loadImageDimensions = (src: string): Promise<{
+  width: number;
+  height: number;
+}> =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = "anonymous";
+    image.onload = () =>
+      resolve({ width: image.naturalWidth, height: image.naturalHeight });
+    image.onerror = reject;
+    image.src = src;
+  });
+
+const UNSPLASH_PRESETS: {
+  url: string;
+  label: string;
+  attribution: string;
+}[] = [
   {
     url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2400&q=90",
     label: "Tropical sunrise",
@@ -28,257 +69,289 @@ const UNSPLASH_PRESETS: { url: string; label: string; attribution: string }[] = 
   },
 ];
 
-const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-
-const loadImage = (src: string): Promise<HTMLImageElement> =>
-  new Promise((resolve, reject) => {
-    const image = new Image();
-    if (src.startsWith("http")) {
-      image.crossOrigin = "anonymous";
-    }
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = src;
-  });
-
-const toDataUrl = async (
-  image: HTMLImageElement,
-  crop: { x: number; y: number; width: number; height: number },
-  outputWidth: number,
-  ratio: number,
-): Promise<string> => {
-  const canvas = document.createElement("canvas");
-  const outputHeight = Math.round(outputWidth / ratio);
-  canvas.width = outputWidth;
-  canvas.height = outputHeight;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("Unable to prepare canvas context");
-  }
-  ctx.drawImage(
-    image,
-    crop.x,
-    crop.y,
-    crop.width,
-    crop.height,
-    0,
-    0,
-    outputWidth,
-    outputHeight,
-  );
-  return canvas.toDataURL("image/webp", 0.9);
-};
-
-const deriveCrop = (
-  width: number,
-  height: number,
-  focusX: number,
-  focusY: number,
-  ratio: number,
-) => {
-  const centerX = clamp((focusX / 100) * width, 0, width);
-  const centerY = clamp((focusY / 100) * height, 0, height);
-  const maxWidthFromHeight = height * ratio;
-  const cropWidth = Math.min(width, maxWidthFromHeight);
-  const cropHeight = cropWidth / ratio;
-  const startX = clamp(centerX - cropWidth / 2, 0, width - cropWidth);
-  const startY = clamp(centerY - cropHeight / 2, 0, height - cropHeight);
-  return { x: startX, y: startY, width: cropWidth, height: cropHeight };
-};
-
 export type CoverPhotoValue = {
   coverPhotoUrl: string | null;
-  coverPhotoCardUrl: string | null;
-  coverPhotoThumbUrl: string | null;
+  coverPhotoCardUrl?: string | null;
+  coverPhotoThumbUrl?: string | null;
   coverPhotoAlt: string | null;
-  coverPhotoAttribution: string | null;
+  coverPhotoAttribution?: string | null;
+  coverPhotoStorageKey: string | null;
+  coverPhotoOriginalUrl: string | null;
+  coverPhotoFocalX: number | null;
+  coverPhotoFocalY: number | null;
 };
 
 interface CoverPhotoSectionProps {
   value: CoverPhotoValue;
   onChange: (value: CoverPhotoValue) => void;
   defaultAltText: string;
+  onPendingFileChange: (file: File | null, previewUrl: string | null) => void;
+  isBusy?: boolean;
 }
 
-type EditorState = {
-  source: string;
+type SelectedImageMeta = {
+  previewUrl: string;
   width: number;
   height: number;
-  attribution: string | null;
 };
 
-export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhotoSectionProps) {
+const buildFileName = (label: string, extension: string) => {
+  const normalized = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `${normalized || "cover-photo"}-${nanoid(6)}${extension}`;
+};
+
+const createFileFromUrl = async (
+  url: string,
+  label: string,
+): Promise<File> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Failed to fetch remote image");
+  }
+  const blob = await response.blob();
+  const mimeType = blob.type || "image/jpeg";
+  if (!ALLOWED_MIME_TYPES.has(mimeType)) {
+    throw new Error("UNSUPPORTED_TYPE");
+  }
+  const extension =
+    mimeType === "image/png"
+      ? ".png"
+      : mimeType === "image/webp"
+        ? ".webp"
+        : ".jpg";
+  return new File([blob], buildFileName(label, extension), { type: mimeType });
+};
+
+export function CoverPhotoSection({
+  value,
+  onChange,
+  defaultAltText,
+  onPendingFileChange,
+  isBusy = false,
+}: CoverPhotoSectionProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [preview, setPreview] = useState<SelectedImageMeta | null>(null);
+  const [altText, setAltText] = useState<string>(
+    value.coverPhotoAlt ?? defaultAltText,
+  );
+  const [focusX, setFocusX] = useState<number>(
+    (value.coverPhotoFocalX ?? 0.5) * 100,
+  );
+  const [focusY, setFocusY] = useState<number>(
+    (value.coverPhotoFocalY ?? 0.5) * 100,
+  );
   const [urlInput, setUrlInput] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [focusX, setFocusX] = useState(50);
-  const [focusY, setFocusY] = useState(50);
-  const [editorState, setEditorState] = useState<EditorState | null>(null);
-  const [altText, setAltText] = useState<string>(value.coverPhotoAlt ?? defaultAltText);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [isFetchingRemote, setIsFetchingRemote] = useState(false);
+  const previousPreviewRef = useRef<string | null>(null);
   const fileInputId = useId();
 
-  const hasImage = Boolean(value.coverPhotoUrl);
-
-  useEffect(() => {
-    if (!hasImage) {
-      setFocusX(50);
-      setFocusY(50);
-    }
-  }, [hasImage]);
+  const hasImage = Boolean(preview?.previewUrl || value.coverPhotoUrl);
 
   useEffect(() => {
     if (value.coverPhotoAlt && value.coverPhotoAlt !== altText) {
       setAltText(value.coverPhotoAlt);
     }
-  }, [value.coverPhotoAlt]);
-
-  useEffect(() => {
     if (!value.coverPhotoAlt && hasImage) {
       setAltText(defaultAltText);
       onChange({
-        coverPhotoUrl: value.coverPhotoUrl,
-        coverPhotoCardUrl: value.coverPhotoCardUrl,
-        coverPhotoThumbUrl: value.coverPhotoThumbUrl,
+        ...value,
         coverPhotoAlt: defaultAltText,
-        coverPhotoAttribution: value.coverPhotoAttribution,
       });
     }
-  }, [
-    defaultAltText,
-    hasImage,
-    onChange,
-    value.coverPhotoAlt,
-    value.coverPhotoAttribution,
-    value.coverPhotoCardUrl,
-    value.coverPhotoThumbUrl,
-    value.coverPhotoUrl,
-  ]);
+  }, [value.coverPhotoAlt, hasImage, defaultAltText, onChange, value, altText]);
 
   useEffect(() => {
-    if (!editorState) {
+    if (preview) {
       return;
     }
-    let cancelled = false;
-    const run = async () => {
-      try {
-        setIsProcessing(true);
-        const image = await loadImage(editorState.source);
-        if (cancelled) {
-          return;
-        }
-        const bannerCrop = deriveCrop(editorState.width, editorState.height, focusX, focusY, 16 / 9);
-        const cardCrop = deriveCrop(editorState.width, editorState.height, focusX, focusY, 4 / 3);
-        const thumbCrop = deriveCrop(editorState.width, editorState.height, focusX, focusY, 1);
-        const [banner, card, thumb] = await Promise.all([
-          toDataUrl(image, bannerCrop, 1920, 16 / 9),
-          toDataUrl(image, cardCrop, 800, 4 / 3),
-          toDataUrl(image, thumbCrop, 256, 1),
-        ]);
-        onChange({
-          coverPhotoUrl: banner,
-          coverPhotoCardUrl: card,
-          coverPhotoThumbUrl: thumb,
-          coverPhotoAlt: altText,
-          coverPhotoAttribution: editorState.attribution,
-        });
-        setError(null);
-      } catch (processingError) {
-        console.error(processingError);
-        if (!cancelled) {
-          setError("We couldn't process that image. Try another one.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsProcessing(false);
-        }
+    if (typeof value.coverPhotoFocalX === "number") {
+      setFocusX(clamp(value.coverPhotoFocalX * 100, 0, 100));
+    }
+    if (typeof value.coverPhotoFocalY === "number") {
+      setFocusY(clamp(value.coverPhotoFocalY * 100, 0, 100));
+    }
+  }, [value.coverPhotoFocalX, value.coverPhotoFocalY, preview]);
+
+  useEffect(() => {
+    return () => {
+      if (previousPreviewRef.current) {
+        URL.revokeObjectURL(previousPreviewRef.current);
+        previousPreviewRef.current = null;
       }
     };
+  }, []);
 
-    void run();
+  const displayedImage =
+    preview?.previewUrl ??
+    value.coverPhotoUrl ??
+    value.coverPhotoOriginalUrl ??
+    null;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [altText, editorState, focusX, focusY, onChange]);
-
-  const setEditorFromImage = useCallback(
-    (src: string, width: number, height: number, attribution: string | null) => {
-      setEditorState({ source: src, width, height, attribution });
-      setFocusX(50);
-      setFocusY(50);
+  const updateValue = useCallback(
+    (patch: Partial<CoverPhotoValue>) => {
+      const nextAlt =
+        patch.coverPhotoAlt !== undefined ? patch.coverPhotoAlt : altText;
+      onChange({
+        coverPhotoUrl: patch.coverPhotoUrl ?? value.coverPhotoUrl ?? null,
+        coverPhotoCardUrl: patch.coverPhotoCardUrl ?? value.coverPhotoCardUrl ?? null,
+        coverPhotoThumbUrl: patch.coverPhotoThumbUrl ?? value.coverPhotoThumbUrl ?? null,
+        coverPhotoAlt: nextAlt ?? null,
+        coverPhotoAttribution:
+          patch.coverPhotoAttribution ?? value.coverPhotoAttribution ?? null,
+        coverPhotoStorageKey:
+          patch.coverPhotoStorageKey ?? value.coverPhotoStorageKey ?? null,
+        coverPhotoOriginalUrl:
+          patch.coverPhotoOriginalUrl ?? value.coverPhotoOriginalUrl ?? null,
+        coverPhotoFocalX:
+          typeof patch.coverPhotoFocalX === "number"
+            ? patch.coverPhotoFocalX
+            : clamp(focusX / 100, 0, 1),
+        coverPhotoFocalY:
+          typeof patch.coverPhotoFocalY === "number"
+            ? patch.coverPhotoFocalY
+            : clamp(focusY / 100, 0, 1),
+      });
     },
-    [],
+    [altText, focusX, focusY, onChange, value],
   );
 
-  useEffect(() => {
-    if (!value.coverPhotoUrl || editorState) {
-      return;
+  const resetPreview = useCallback(() => {
+    if (previousPreviewRef.current) {
+      URL.revokeObjectURL(previousPreviewRef.current);
+      previousPreviewRef.current = null;
     }
-    let cancelled = false;
-    const hydrate = async () => {
+    setPreview(null);
+  }, []);
+
+  const applyFile = useCallback(
+    async (file: File) => {
+      if (!ALLOWED_MIME_TYPES.has(file.type)) {
+        setError("That file type isn’t supported. Use JPG, PNG, or WebP.");
+        return;
+      }
+
+      if (file.size > COVER_PHOTO_MAX_FILE_SIZE_BYTES) {
+        setError(
+          `We couldn’t upload that image. Try JPG/PNG/WebP under ${COVER_PHOTO_MAX_FILE_SIZE_MB}MB.`,
+        );
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(file);
       try {
-        const image = await loadImage(value.coverPhotoUrl!);
-        if (cancelled) {
+        const dimensions = await loadImageDimensions(objectUrl);
+        if (dimensions.width < COVER_PHOTO_MIN_WIDTH || dimensions.height < COVER_PHOTO_MIN_HEIGHT) {
+          setError(
+            `This image is too small. Choose one at least ${COVER_PHOTO_MIN_WIDTH}×${COVER_PHOTO_MIN_HEIGHT}.`,
+          );
+          URL.revokeObjectURL(objectUrl);
           return;
         }
-        setEditorFromImage(
-          value.coverPhotoUrl!,
-          image.naturalWidth,
-          image.naturalHeight,
-          value.coverPhotoAttribution ?? null,
+
+        const belowRecommendation =
+          dimensions.width < COVER_PHOTO_RECOMMENDED_WIDTH ||
+          dimensions.height < COVER_PHOTO_RECOMMENDED_HEIGHT;
+
+        setWarning(
+          belowRecommendation
+            ? `For best results, use at least ${COVER_PHOTO_RECOMMENDED_WIDTH}×${COVER_PHOTO_RECOMMENDED_HEIGHT}. This one is ${dimensions.width}×${dimensions.height}.`
+            : null,
         );
-      } catch (hydrateError) {
-        console.error(hydrateError);
+        setError(null);
+        setFocusX(50);
+        setFocusY(50);
+        const nextAlt = altText?.trim() ? altText : defaultAltText;
+        setAltText(nextAlt);
+        previousPreviewRef.current && URL.revokeObjectURL(previousPreviewRef.current);
+        previousPreviewRef.current = objectUrl;
+        setPreview({ previewUrl: objectUrl, width: dimensions.width, height: dimensions.height });
+        onPendingFileChange(file, objectUrl);
+        updateValue({
+          coverPhotoAlt: nextAlt,
+          coverPhotoStorageKey: null,
+          coverPhotoOriginalUrl: value.coverPhotoOriginalUrl ?? null,
+          coverPhotoFocalX: 0.5,
+          coverPhotoFocalY: 0.5,
+        });
+      } catch (applyError) {
+        URL.revokeObjectURL(objectUrl);
+        setError("We couldn’t read that image. Try another one.");
       }
-    };
-
-    void hydrate();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [editorState, setEditorFromImage, value.coverPhotoAttribution, value.coverPhotoUrl]);
-
-  const handleFile = useCallback(
-    async (file: File) => {
-      if (!file.type.startsWith("image/")) {
-        setError("Please upload an image file (JPG, PNG, or HEIC).");
-        return;
-      }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        setError(`Images must be ${MAX_FILE_SIZE_MB}MB or smaller.`);
-        return;
-      }
-
-      setError(null);
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const src = typeof reader.result === "string" ? reader.result : "";
-          const image = await loadImage(src);
-          setAltText((prev) => prev || defaultAltText);
-          setEditorFromImage(src, image.naturalWidth, image.naturalHeight, null);
-        } catch (fileError) {
-          console.error(fileError);
-          setError("We couldn't read that image. Try another file.");
-        }
-      };
-      reader.onerror = () => setError("We couldn't read that image. Try another file.");
-      reader.readAsDataURL(file);
     },
-    [defaultAltText, setEditorFromImage],
+    [altText, defaultAltText, onPendingFileChange, updateValue, value.coverPhotoOriginalUrl],
+  );
+
+  const handleFileInput = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) {
+        return;
+      }
+      await applyFile(file);
+      event.target.value = "";
+    },
+    [applyFile],
   );
 
   const handleDrop = useCallback(
     async (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
-      if (event.dataTransfer.files?.length) {
-        setError(null);
-        await handleFile(event.dataTransfer.files[0]!);
+      if (isBusy || isFetchingRemote) {
+        return;
+      }
+      const file = event.dataTransfer.files?.[0];
+      if (file) {
+        await applyFile(file);
       }
     },
-    [handleFile],
+    [applyFile, isBusy, isFetchingRemote],
+  );
+
+  const openFilePicker = useCallback(() => {
+    if (isBusy || isFetchingRemote) {
+      return;
+    }
+    const input = fileInputRef.current as (HTMLInputElement & {
+      showPicker?: () => void;
+    }) | null;
+    if (!input) {
+      return;
+    }
+    try {
+      if (typeof input.showPicker === "function") {
+        input.showPicker();
+      } else {
+        input.click();
+      }
+    } catch (error) {
+      console.warn("File picker showPicker failed, falling back to click.", error);
+      input.click();
+    }
+  }, [isBusy, isFetchingRemote]);
+
+  const applyRemoteImage = useCallback(
+    async (src: string, label: string) => {
+      try {
+        setIsFetchingRemote(true);
+        const file = await createFileFromUrl(src, label);
+        await applyFile(file);
+      } catch (remoteError) {
+        if ((remoteError as Error).message === "UNSUPPORTED_TYPE") {
+          setError("That file type isn’t supported. Use JPG, PNG, or WebP.");
+        } else {
+          setError("Couldn't load this image. Try another link or upload.");
+        }
+      } finally {
+        setIsFetchingRemote(false);
+      }
+    },
+    [applyFile],
   );
 
   const handleUrlSubmit = useCallback(async () => {
@@ -286,182 +359,199 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
       setError("Enter an image URL to preview it.");
       return;
     }
-    try {
-      const src = urlInput.trim();
-      const image = await loadImage(src);
-      setAltText((prev) => prev || defaultAltText);
-      setEditorFromImage(src, image.naturalWidth, image.naturalHeight, null);
-      setUrlInput("");
-      setError(null);
-    } catch (loadError) {
-      console.error(loadError);
-      setError("Couldn't load this image. Try another link or upload.");
-    }
-  }, [defaultAltText, setEditorFromImage, urlInput]);
+    await applyRemoteImage(urlInput.trim(), "cover-photo");
+    setUrlInput("");
+  }, [applyRemoteImage, urlInput]);
 
   const handleUnsplashSelect = useCallback(
     async (preset: (typeof UNSPLASH_PRESETS)[number]) => {
-      try {
-        const image = await loadImage(preset.url);
-        setAltText(`${preset.label} – ${defaultAltText}`);
-        setEditorFromImage(preset.url, image.naturalWidth, image.naturalHeight, preset.attribution);
-        setError(null);
-      } catch (presetError) {
-        console.error(presetError);
-        setError("We couldn't load that Unsplash image. Try another option.");
-      }
+      await applyRemoteImage(preset.url, preset.label);
+      setAltText(`${preset.label} – ${defaultAltText}`);
+      updateValue({
+        coverPhotoAlt: `${preset.label} – ${defaultAltText}`,
+        coverPhotoAttribution: preset.attribution,
+        coverPhotoStorageKey: null,
+      });
     },
-    [defaultAltText, setEditorFromImage],
+    [applyRemoteImage, defaultAltText, updateValue],
   );
 
-  const focusControls = useMemo(
-    () => (
-      <div className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="font-medium text-slate-700">Horizontal focus</span>
-            <Input
-              type="range"
-              min={0}
-              max={100}
-              value={focusX}
-              onChange={(event) => setFocusX(Number(event.target.value))}
-              aria-label="Adjust horizontal focus"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="font-medium text-slate-700">Vertical focus</span>
-            <Input
-              type="range"
-              min={0}
-              max={100}
-              value={focusY}
-              onChange={(event) => setFocusY(Number(event.target.value))}
-              aria-label="Adjust vertical focus"
-            />
-          </label>
-        </div>
-        <p className="text-xs text-slate-500">
-          Fine-tune the focal point. We’ll regenerate crops for the banner, card, and chip automatically.
-        </p>
-      </div>
-    ),
+  const objectPosition = useMemo(
+    () => `${clamp(focusX, 0, 100)}% ${clamp(focusY, 0, 100)}%`,
     [focusX, focusY],
   );
 
-  const openFilePicker = useCallback(() => {
-    const input = fileInputRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
-    if (!input || isProcessing) {
-      return;
-    }
-    try {
-      if (typeof input.showPicker === "function") {
-        input.showPicker();
-        return;
-      }
-    } catch (showPickerError) {
-      console.warn("File picker showPicker failed, falling back to click.", showPickerError);
-    }
-    input.click();
-  }, [isProcessing]);
+  const handleFocusXChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const next = Number(event.target.value);
+      setFocusX(next);
+      updateValue({
+        coverPhotoFocalX: clamp(next / 100, 0, 1),
+      });
+    },
+    [updateValue],
+  );
+
+  const handleFocusYChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const next = Number(event.target.value);
+      setFocusY(next);
+      updateValue({
+        coverPhotoFocalY: clamp(next / 100, 0, 1),
+      });
+    },
+    [updateValue],
+  );
+
+  const handleAltChange = useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const next = event.target.value;
+      setAltText(next);
+      updateValue({ coverPhotoAlt: next });
+    },
+    [updateValue],
+  );
+
+  const handleRemove = useCallback(() => {
+    resetPreview();
+    setAltText(defaultAltText);
+    setFocusX(50);
+    setFocusY(50);
+    setWarning(null);
+    setError(null);
+    onPendingFileChange(null, null);
+    updateValue({
+      coverPhotoUrl: null,
+      coverPhotoCardUrl: null,
+      coverPhotoThumbUrl: null,
+      coverPhotoAlt: null,
+      coverPhotoAttribution: null,
+      coverPhotoStorageKey: null,
+      coverPhotoOriginalUrl: null,
+      coverPhotoFocalX: 0.5,
+      coverPhotoFocalY: 0.5,
+    });
+  }, [defaultAltText, onPendingFileChange, resetPreview, updateValue]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <input
-        ref={fileInputRef}
         id={fileInputId}
+        ref={fileInputRef}
         type="file"
         accept={ACCEPTED_FILE_TYPES}
-        className="sr-only"
-        aria-label="Choose a cover photo"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) {
-            void handleFile(file);
-            event.target.value = "";
-          }
-        }}
-        disabled={isProcessing}
+        className="hidden"
+        onChange={handleFileInput}
+        aria-hidden="true"
       />
-      <div className="space-y-1.5">
-        <Label className="text-sm font-semibold text-slate-700">Cover photo</Label>
-        <p className="text-xs text-slate-500">
-          Upload an image to personalize your trip banner. We’ll optimize it for the dashboard and cards automatically.
+
+      <div className="space-y-2">
+        <Label htmlFor={fileInputId}>Cover photo</Label>
+        <p className="text-sm text-slate-500">
+          Upload a JPG, PNG, or WebP under {COVER_PHOTO_MAX_FILE_SIZE_MB}MB.
         </p>
       </div>
 
-      {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>
-      ) : null}
-
-      {hasImage ? (
+      {displayedImage ? (
         <div className="space-y-4">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
             <div className="relative aspect-video">
               <img
-                src={value.coverPhotoUrl ?? undefined}
+                src={displayedImage}
                 alt={altText || "Trip cover photo"}
-                className={cn("h-full w-full object-cover", isProcessing && "opacity-70")}
+                className="h-full w-full object-cover"
+                style={{ objectPosition }}
                 loading="lazy"
               />
-              {isProcessing ? (
+              {(isBusy || isFetchingRemote) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/50 text-white">
                   <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
-                  <span className="text-xs font-medium">Processing photo…</span>
+                  <span className="text-xs font-medium">
+                    {isBusy ? "Uploading…" : "Loading photo…"}
+                  </span>
                 </div>
-              ) : null}
+              )}
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent p-4">
                 <p className="text-sm font-medium text-white">Trip banner preview</p>
               </div>
             </div>
             <div className="grid gap-4 bg-white p-4 sm:grid-cols-2">
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Upcoming trip card</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Upcoming trip card
+                </p>
                 <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
                   <div className="aspect-[4/3]">
                     <img
-                      src={value.coverPhotoCardUrl ?? undefined}
+                      src={displayedImage}
                       alt=""
                       className="h-full w-full object-cover"
+                      style={{ objectPosition }}
                       loading="lazy"
                     />
                   </div>
                 </div>
               </div>
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Trip chip</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Trip chip
+                </p>
                 <div className="mt-2 flex items-center gap-3">
                   <div className="h-12 w-12 overflow-hidden rounded-full border border-slate-200">
                     <img
-                      src={value.coverPhotoThumbUrl ?? undefined}
+                      src={displayedImage}
                       alt=""
                       className="h-full w-full object-cover"
+                      style={{ objectPosition }}
                       loading="lazy"
                     />
                   </div>
-                  <span className="rounded-full bg-slate-900/10 px-3 py-1 text-xs font-medium text-slate-700">Preview</span>
+                  <span className="rounded-full bg-slate-900/10 px-3 py-1 text-xs font-medium text-slate-700">
+                    Preview
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
-          {editorState ? focusControls : null}
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium text-slate-700">Horizontal focus</span>
+                <Input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={focusX}
+                  onChange={handleFocusXChange}
+                  aria-label="Adjust horizontal focus"
+                  disabled={isBusy || isFetchingRemote}
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium text-slate-700">Vertical focus</span>
+                <Input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={focusY}
+                  onChange={handleFocusYChange}
+                  aria-label="Adjust vertical focus"
+                  disabled={isBusy || isFetchingRemote}
+                />
+              </label>
+            </div>
+            <p className="text-xs text-slate-500">
+              Fine-tune the focal point. We’ll regenerate crops for the banner, card, and chip automatically when the new photo saves.
+            </p>
+          </div>
 
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               size="sm"
               onClick={openFilePicker}
-              onKeyDown={(event) => {
-                if (
-                  (event.key === "Enter" || event.key === " " || event.key === "Spacebar") &&
-                  !isProcessing
-                ) {
-                  event.preventDefault();
-                  openFilePicker();
-                }
-              }}
-              disabled={isProcessing}
+              disabled={isBusy || isFetchingRemote}
             >
               Replace photo
             </Button>
@@ -469,75 +559,71 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
               type="button"
               variant="outline"
               size="sm"
-              disabled={isProcessing}
-              onClick={() => {
-                onChange({
-                  coverPhotoUrl: null,
-                  coverPhotoCardUrl: null,
-                  coverPhotoThumbUrl: null,
-                  coverPhotoAlt: null,
-                  coverPhotoAttribution: null,
-                });
-                setEditorState(null);
-                setAltText(defaultAltText);
-                setError(null);
-              }}
+              onClick={handleRemove}
+              disabled={isBusy || isFetchingRemote}
             >
               Remove
             </Button>
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div
-            className={cn(
-              "flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-slate-400",
-              isProcessing && "opacity-70",
-            )}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleDrop}
-          >
-            <p className="text-sm font-semibold text-slate-700">Add a cover photo</p>
-            <p className="text-xs text-slate-500">
-              Drag & drop or choose a JPG, PNG, or HEIC (max {MAX_FILE_SIZE_MB}MB).
-            </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={openFilePicker}
-                onKeyDown={(event) => {
-                  if (
-                    (event.key === "Enter" || event.key === " " || event.key === "Spacebar") &&
-                    !isProcessing
-                  ) {
-                    event.preventDefault();
-                    openFilePicker();
-                  }
-                }}
-                disabled={isProcessing}
-              >
-                Upload photo
-              </Button>
-              <Label htmlFor={fileInputId} className="sr-only">
-                Choose a cover photo file
-              </Label>
-            </div>
+        <div
+          className={cn(
+            "flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-slate-400",
+            (isBusy || isFetchingRemote) && "opacity-70",
+          )}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={handleDrop}
+        >
+          <p className="text-sm font-semibold text-slate-700">Add a cover photo</p>
+          <p className="text-xs text-slate-500">
+            Drag &amp; drop or choose a JPG, PNG, or WebP (max {COVER_PHOTO_MAX_FILE_SIZE_MB}MB).
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={openFilePicker}
+              disabled={isBusy || isFetchingRemote}
+            >
+              Upload photo
+            </Button>
           </div>
+        </div>
+      )}
 
-          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-            <Label htmlFor="cover-photo-url" className="text-sm font-medium text-slate-700">
-              Paste image URL
-            </Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="cover-photo-alt">Alt text (optional)</Label>
+          <Textarea
+            id="cover-photo-alt"
+            value={altText}
+            onChange={handleAltChange}
+            placeholder="Describe the image for screen readers"
+            disabled={isBusy || isFetchingRemote || !hasImage}
+            rows={3}
+          />
+          <p className="text-xs text-slate-500">
+            Helpful for travelers using screen readers. If left blank, we’ll reuse the trip name.
+          </p>
+        </div>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="cover-photo-url">Use an image URL</Label>
+            <div className="flex gap-2">
               <Input
                 id="cover-photo-url"
+                type="url"
+                placeholder="https://example.com/photo.jpg"
                 value={urlInput}
                 onChange={(event) => setUrlInput(event.target.value)}
-                placeholder="https://example.com/photo.jpg"
-                className="flex-1"
+                disabled={isBusy || isFetchingRemote}
               />
-              <Button type="button" onClick={handleUrlSubmit} disabled={isProcessing}>
+              <Button
+                type="button"
+                onClick={handleUrlSubmit}
+                disabled={isBusy || isFetchingRemote || !urlInput.trim()}
+              >
                 Preview
               </Button>
             </div>
@@ -545,62 +631,32 @@ export function CoverPhotoSection({ value, onChange, defaultAltText }: CoverPhot
               We’ll fetch the image and show a preview. If the link is private or blocked, uploading is more reliable.
             </p>
           </div>
-
-          <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
-            <p className="text-sm font-medium text-slate-700">Choose from Unsplash</p>
-            <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Or start from Unsplash
+            </p>
+            <div className="flex flex-wrap gap-2">
               {UNSPLASH_PRESETS.map((preset) => (
-                <button
+                <Button
                   key={preset.url}
                   type="button"
-                  onClick={() => void handleUnsplashSelect(preset)}
-                  className="group overflow-hidden rounded-xl border border-slate-200 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleUnsplashSelect(preset)}
+                  disabled={isBusy || isFetchingRemote}
                 >
-                  <div className="aspect-[4/3] overflow-hidden">
-                    <img
-                      src={preset.url}
-                      alt={preset.label}
-                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-                      loading="lazy"
-                    />
-                  </div>
-                  <div className="p-3">
-                    <p className="text-sm font-medium text-slate-700">{preset.label}</p>
-                    <p className="text-xs text-slate-500">{preset.attribution}</p>
-                  </div>
-                </button>
+                  {preset.label}
+                </Button>
               ))}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
-      {hasImage ? (
-        <div className="space-y-2">
-          <Label htmlFor="cover-photo-alt" className="text-sm font-medium text-slate-700">
-            Alt text (optional)
-          </Label>
-          <Textarea
-            id="cover-photo-alt"
-            value={altText}
-            onChange={(event) => {
-              const next = event.target.value;
-              setAltText(next);
-              onChange({
-                ...value,
-                coverPhotoAlt: next || null,
-              });
-            }}
-            placeholder={defaultAltText}
-            className="min-h-[60px]"
-          />
-          <p className="text-xs text-slate-500">
-            Describe the image for travelers using screen readers. Leave blank to use the default description.
-          </p>
-        </div>
+      {warning ? (
+        <p className="text-sm text-amber-600">{warning}</p>
       ) : null}
-
-      <p className="text-xs text-slate-500">Recommended size 1920×1080 or larger for the sharpest banner.</p>
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </div>
   );
 }

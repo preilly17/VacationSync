@@ -131,6 +131,12 @@ export interface TripCalendar {
   coverPhotoThumbUrl?: string | null;
   coverPhotoAlt?: string | null;
   coverPhotoAttribution?: string | null;
+  coverPhotoStorageKey?: string | null;
+  coverPhotoOriginalUrl?: string | null;
+  coverPhotoFocalX?: number | null;
+  coverPhotoFocalY?: number | null;
+  coverPhotoUploadSize?: number | null;
+  coverPhotoUploadType?: string | null;
 }
 
 const imageUrlSchema = z
@@ -159,6 +165,48 @@ export const insertTripCalendarSchema = z.object({
   coverPhotoThumbUrl: imageUrlSchema.nullable().optional(),
   coverPhotoAlt: z.string().max(255).nullable().optional(),
   coverPhotoAttribution: z.string().max(255).nullable().optional(),
+  coverPhotoStorageKey: z.string().max(255).nullable().optional(),
+  coverPhotoOriginalUrl: imageUrlSchema.nullable().optional(),
+  coverPhotoFocalX: z
+    .union([z.number(), z.string()])
+    .transform((value) => {
+      if (typeof value === "number") {
+        return value;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : z.NEVER;
+    })
+    .refine((value) => value === null || (value >= 0 && value <= 1), {
+      message: "Focal point must be between 0 and 1",
+    })
+    .nullable()
+    .optional(),
+  coverPhotoFocalY: z
+    .union([z.number(), z.string()])
+    .transform((value) => {
+      if (typeof value === "number") {
+        return value;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : z.NEVER;
+    })
+    .refine((value) => value === null || (value >= 0 && value <= 1), {
+      message: "Focal point must be between 0 and 1",
+    })
+    .nullable()
+    .optional(),
+  coverPhotoUploadSize: z
+    .union([z.number(), z.string()])
+    .transform((value) => {
+      if (typeof value === "number") {
+        return value;
+      }
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : z.NEVER;
+    })
+    .nullable()
+    .optional(),
+  coverPhotoUploadType: z.string().max(255).nullable().optional(),
 });
 
 export type InsertTripCalendar = z.infer<typeof insertTripCalendarSchema>;

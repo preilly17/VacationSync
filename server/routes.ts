@@ -9,6 +9,8 @@ import { query } from "./db";
 import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityWithDetails } from "@shared/schema";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
+import { registerCoverPhotoUploadRoutes } from "./coverPhotoUpload";
+import { logCoverPhotoFailure } from "./observability";
 
 // Validation schemas for route parameters
 const notificationIdSchema = z.object({
@@ -364,6 +366,11 @@ export function setupRoutes(app: Express) {
   
   // Setup auth routes FIRST before any middleware
   setupAuth(app);
+
+  registerCoverPhotoUploadRoutes(app, {
+    isAuthenticated,
+    getUserId: (req: any) => getRequestUserId(req),
+  });
   
   // Custom auth routes
   app.post('/api/auth/register', async (req: any, res) => {
@@ -964,23 +971,26 @@ export function setupRoutes(app: Express) {
   });
 
   app.put("/api/trips/:id", async (req: any, res) => {
+    let userId = getRequestUserId(req);
+    let tripId: number | null = null;
     try {
-      let userId = getRequestUserId(req);
-      
+      let effectiveUserId = userId;
+
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
         console.log("Development mode: demo user updating trip");
-        userId = 'demo-user';
+        effectiveUserId = 'demo-user';
       }
-      
-      if (!userId) {
+
+      if (!effectiveUserId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const tripId = parseInt(req.params.id);
-      if (!tripId || isNaN(tripId)) {
+      const parsedTripId = parseInt(req.params.id);
+      if (!parsedTripId || isNaN(parsedTripId)) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
+      tripId = parsedTripId;
 
       // Parse and convert dates if provided
       const updateData: any = { ...req.body };
@@ -994,12 +1004,42 @@ export function setupRoutes(app: Express) {
       // Validate only the fields that are being updated
       const updateSchema = insertTripCalendarSchema.partial();
       const validatedData = updateSchema.parse(updateData);
-      
-      const updatedTrip = await storage.updateTrip(tripId, validatedData, userId);
+
+      userId = effectiveUserId;
+
+      const updatedTrip = await storage.updateTrip(
+        tripId,
+        validatedData,
+        effectiveUserId,
+      );
 
       res.json(updatedTrip);
     } catch (error: unknown) {
       console.error("Error updating trip:", error);
+      if (req.body?.coverPhotoStorageKey) {
+        const rawSize = req.body.coverPhotoUploadSize;
+        const numericSize =
+          typeof rawSize === "number"
+            ? rawSize
+            : typeof rawSize === "string"
+              ? Number(rawSize)
+              : null;
+        const fileType =
+          typeof req.body.coverPhotoUploadType === "string"
+            ? req.body.coverPhotoUploadType
+            : null;
+        logCoverPhotoFailure({
+          step: "save",
+          userId: userId ?? null,
+          tripId,
+          fileSize: Number.isFinite(numericSize as number)
+            ? (numericSize as number)
+            : null,
+          fileType,
+          storageKey: req.body.coverPhotoStorageKey,
+          error,
+        });
+      }
       const errorMessage = getErrorMessage(error);
       if (errorMessage.includes("Only the trip creator")) {
         res.status(403).json({ message: "Only the trip creator can edit the trip" });
