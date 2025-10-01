@@ -41,8 +41,8 @@ interface LocationStats {
 
 interface SearchOptions {
   query: string;
-  type?: LocationResult['type'];
-  types?: Array<LocationResult['type'] | string>;
+  type?: LocationResult['type'] | string;
+  types?: string[];
   limit?: number;
   useApi?: boolean;
 }
@@ -519,14 +519,16 @@ class LocationUtils {
       return [];
     }
 
-    const requestedTypes = [
-      ...(Array.isArray(types) ? types : []),
-      ...(type ? [type] : []),
-    ];
+    const hasTypesArray = Array.isArray(types) && types.length > 0;
+    const requestedTypes = hasTypesArray
+      ? types
+      : type
+        ? [type]
+        : [];
 
-    const normalisedTypes = requestedTypes
-      .map((entry) => this.normaliseType(entry))
-      .filter((entry, index, array) => array.indexOf(entry) === index);
+    const normalisedTypes = Array.from(
+      new Set(requestedTypes.map((entry) => this.normaliseType(entry))),
+    );
 
     const typeKey = normalisedTypes.length > 0
       ? [...normalisedTypes].sort().join('-')
@@ -545,12 +547,7 @@ class LocationUtils {
     try {
       const params = new URLSearchParams({ q: query });
       if (normalisedTypes.length > 0) {
-        params.set(
-          'types',
-          normalisedTypes
-            .map((value) => value.toLowerCase())
-            .join(','),
-        );
+        params.set('types', normalisedTypes.join(','));
       }
 
       if (typeof limit === 'number') {
@@ -560,6 +557,14 @@ class LocationUtils {
       if (useApi) {
         params.set('useApi', 'true');
       }
+
+      const payload = {
+        query,
+        ...(normalisedTypes.length > 0 ? { types: normalisedTypes } : {}),
+        ...(typeof limit === 'number' ? { limit } : {}),
+        ...(useApi ? { useApi: true } : {}),
+      };
+      console.log('📡 LocationUtils.searchLocations payload:', payload);
 
       const response = await apiFetch(`/api/locations/search?${params.toString()}`);
 
