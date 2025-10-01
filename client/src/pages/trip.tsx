@@ -1197,6 +1197,10 @@ export default function Trip() {
       : myScheduleActivities;
 
     return sourceActivities
+      .filter((activity) => {
+        const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
+        return activityType !== "PROPOSE";
+      })
       .filter((activity) => isSameDay(new Date(activity.startTime), expandedDay.date))
       .sort(
         (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
