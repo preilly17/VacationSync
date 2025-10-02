@@ -281,6 +281,19 @@ export default function Activities() {
       // Combine date and time into ISO string
       const startDateTime = new Date(`${startDate}T${startTime}`).toISOString();
       
+      const attendeeIds = trip?.members
+        ? Array.from(
+            new Set(
+              trip.members
+                .map((member) => member.userId)
+                .filter((memberId): memberId is string => Boolean(memberId))
+                .concat(user?.id ? [user.id] : []),
+            ),
+          )
+        : user
+          ? [user.id]
+          : [];
+
       const response = await apiFetch(`/api/trips/${tripId}/activities`, {
         method: 'POST',
         headers: {
@@ -297,7 +310,7 @@ export default function Activities() {
           cost: activity.price ? parseFloat(activity.price) : null,
           maxCapacity: 10,
           tripCalendarId: parseInt(tripId!),
-          attendeeIds: user ? [user.id] : [],
+          attendeeIds,
         }),
       });
 
