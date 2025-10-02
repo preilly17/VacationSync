@@ -214,7 +214,16 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     error: hotelProposalsError,
     refetch: refetchHotelProposals,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/hotel-proposals`],
+    queryKey: [`/api/trips/${tripId}/proposals/hotels`],
+    enabled: !!tripId && isAuthenticated,
+  });
+
+  const {
+    data: myHotelProposalsData,
+    isLoading: myHotelProposalsLoading,
+    error: myHotelProposalsError,
+  } = useQuery<unknown>({
+    queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -225,7 +234,16 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     error: flightProposalsError,
     refetch: refetchFlightProposals,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/flight-proposals`],
+    queryKey: [`/api/trips/${tripId}/proposals/flights`],
+    enabled: !!tripId && isAuthenticated,
+  });
+
+  const {
+    data: myFlightProposalsData,
+    isLoading: myFlightProposalsLoading,
+    error: myFlightProposalsError,
+  } = useQuery<unknown>({
+    queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -254,8 +272,14 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   const { items: hotelProposals, isInvalid: hotelProposalsInvalid } = normalizeArrayData<HotelProposalWithDetails>(
     hotelProposalsData,
   );
+  const { items: myHotelProposalsFromApi, isInvalid: myHotelProposalsInvalid } = normalizeArrayData<HotelProposalWithDetails>(
+    myHotelProposalsData,
+  );
   const { items: flightProposals, isInvalid: flightProposalsInvalid } = normalizeArrayData<FlightProposalWithDetails>(
     flightProposalsData,
+  );
+  const { items: myFlightProposalsFromApi, isInvalid: myFlightProposalsInvalid } = normalizeArrayData<FlightProposalWithDetails>(
+    myFlightProposalsData,
   );
   const { items: rawActivityProposals, isInvalid: activityProposalsInvalid } = normalizeArrayData<ActivityWithDetails>(
     rawActivityProposalsData,
@@ -303,7 +327,10 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
         return;
       }
       // PROPOSALS FEATURE: refresh hotel proposals so saved-hotel votes appear immediately.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+      });
       toast({
         title: "Vote Recorded",
         description: "Your hotel preference has been saved.",
@@ -334,7 +361,10 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
       if (!tripId) {
         return;
       }
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+      });
       toast({
         title: "Vote Recorded",
         description: "Your flight preference has been saved.",
@@ -412,16 +442,30 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
 
       if (type === "hotel") {
         queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/hotel-proposals`],
+          [`/api/trips/${tripId}/proposals/hotels`],
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+        queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
+          [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
+        );
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        });
       } else if (type === "flight") {
         queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/flight-proposals`],
+          [`/api/trips/${tripId}/proposals/flights`],
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] });
+        queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
+          [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
+        );
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        });
       } else if (type === "restaurant") {
         queryClient.setQueryData<RestaurantProposalWithDetails[] | undefined>(
           ["/api/trips", tripId, "restaurant-proposals"],
@@ -1780,14 +1824,34 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     [applyStatusFilter, otherRestaurantProposals],
   );
 
-  const myHotelProposals = useMemo(
-    () => hotelProposals.filter((proposal) => isMyProposal(proposal)),
-    [hotelProposals, isMyProposal],
-  );
-  const myFlightProposals = useMemo(
-    () => flightProposals.filter((proposal) => isMyProposal(proposal)),
-    [flightProposals, isMyProposal],
-  );
+  const myHotelProposals = useMemo(() => {
+    if (myHotelProposalsLoading || myHotelProposalsInvalid || myHotelProposalsError) {
+      return hotelProposals.filter((proposal) => isMyProposal(proposal));
+    }
+
+    return myHotelProposalsFromApi;
+  }, [
+    hotelProposals,
+    isMyProposal,
+    myHotelProposalsError,
+    myHotelProposalsFromApi,
+    myHotelProposalsInvalid,
+    myHotelProposalsLoading,
+  ]);
+  const myFlightProposals = useMemo(() => {
+    if (myFlightProposalsLoading || myFlightProposalsInvalid || myFlightProposalsError) {
+      return flightProposals.filter((proposal) => isMyProposal(proposal));
+    }
+
+    return myFlightProposalsFromApi;
+  }, [
+    flightProposals,
+    isMyProposal,
+    myFlightProposalsError,
+    myFlightProposalsFromApi,
+    myFlightProposalsInvalid,
+    myFlightProposalsLoading,
+  ]);
   const myActivityProposals = useMemo(
     () => activityProposals.filter((proposal) => isMyProposal(proposal)),
     [activityProposals, isMyProposal],

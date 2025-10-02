@@ -8070,6 +8070,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       tripId?: number;
       proposalIds?: number[];
       currentUserId?: string;
+      proposedBy?: string;
     },
   ): Promise<HotelProposalWithDetails[]> {
     const conditions: string[] = [];
@@ -8085,6 +8086,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (options.proposalIds && options.proposalIds.length > 0) {
       conditions.push(`hp.id = ANY($${index}::int[])`);
       values.push(options.proposalIds);
+      index += 1;
+    }
+
+    if (options.proposedBy) {
+      conditions.push(`hp.proposed_by = $${index}`);
+      values.push(options.proposedBy);
       index += 1;
     }
 
@@ -8167,6 +8174,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       tripId?: number;
       proposalIds?: number[];
       currentUserId?: string;
+      proposedBy?: string;
     },
   ): Promise<FlightProposalWithDetails[]> {
     const conditions: string[] = [];
@@ -8182,6 +8190,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (options.proposalIds && options.proposalIds.length > 0) {
       conditions.push(`fp.id = ANY($${index}::int[])`);
       values.push(options.proposalIds);
+      index += 1;
+    }
+
+    if (options.proposedBy) {
+      conditions.push(`fp.proposed_by = $${index}`);
+      values.push(options.proposedBy);
       index += 1;
     }
 
@@ -8551,10 +8565,15 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async getTripHotelProposals(
     tripId: number,
     currentUserId: string,
+    options: { proposedBy?: string } = {},
   ): Promise<HotelProposalWithDetails[]> {
     // PROPOSALS FEATURE: ensure manually saved hotels are represented as proposals.
     await this.ensureManualHotelsHaveProposals(tripId);
-    return this.fetchHotelProposals({ tripId, currentUserId });
+    return this.fetchHotelProposals({
+      tripId,
+      currentUserId,
+      proposedBy: options.proposedBy,
+    });
   }
 
   async getHotelProposalById(
@@ -9045,8 +9064,13 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async getTripFlightProposals(
     tripId: number,
     currentUserId: string,
+    options: { proposedBy?: string } = {},
   ): Promise<FlightProposalWithDetails[]> {
-    return this.fetchFlightProposals({ tripId, currentUserId });
+    return this.fetchFlightProposals({
+      tripId,
+      currentUserId,
+      proposedBy: options.proposedBy,
+    });
   }
 
   async getFlightProposalById(

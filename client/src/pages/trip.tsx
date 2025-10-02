@@ -3532,7 +3532,10 @@ function FlightCoordination({
     onSuccess: async () => {
       toast({ title: "Flight proposed to group." });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        }),
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
       ]);
     },
@@ -4808,7 +4811,7 @@ function HotelBooking({
   });
 
   const { data: hotelProposals = [] } = useQuery<HotelProposalWithDetails[]>({
-    queryKey: [`/api/trips/${tripId}/hotel-proposals`],
+    queryKey: [`/api/trips/${tripId}/proposals/hotels`],
     enabled: !!tripId,
   });
 
@@ -4871,7 +4874,10 @@ function HotelBooking({
     onSuccess: async () => {
       toast({ title: "Hotel proposed to group." });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        }),
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
       ]);
     },
@@ -4925,7 +4931,12 @@ function HotelBooking({
           description: `${hotel.name} is now ready for everyone to review and rank.`,
         });
 
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+          queryClient.invalidateQueries({
+            queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          }),
+        ]);
       } catch (error) {
         const errorObj = error instanceof Error ? error : new Error(String(error));
         if (isUnauthorizedError(errorObj)) {
@@ -5406,7 +5417,10 @@ function HotelBooking({
         tripId={tripId}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
+          queryClient.invalidateQueries({
+            queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          });
         }}
       />
     </>

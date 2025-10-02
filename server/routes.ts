@@ -369,6 +369,27 @@ function getRequestUserId(req: any): string | undefined {
   return req.user?.claims?.sub;
 }
 
+function parseBooleanQueryParam(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => parseBooleanQueryParam(item));
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
+  }
+
+  if (typeof value === "number") {
+    return value === 1;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return false;
+}
+
 interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
@@ -2695,6 +2716,36 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.get(
+    '/api/trips/:tripId/proposals/flights',
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        if (Number.isNaN(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id" });
+        }
+
+        const userId = getRequestUserId(req);
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const mineOnly = parseBooleanQueryParam(req.query?.mineOnly);
+        const proposals = await storage.getTripFlightProposals(
+          tripId,
+          userId,
+          mineOnly ? { proposedBy: userId } : undefined,
+        );
+
+        res.json(proposals);
+      } catch (error: unknown) {
+        console.error("Error fetching flight proposals:", error);
+        res.status(500).json({ message: "Failed to fetch flight proposals" });
+      }
+    },
+  );
+
   app.post(
     '/api/trips/:tripId/proposals/flights',
     isAuthenticated,
@@ -2760,6 +2811,72 @@ export function setupRoutes(app: Express) {
 
         res.status(500).json({ message: "Failed to propose flight" });
       }
+    },
+  );
+
+  app.get(
+    '/api/trips/:tripId/proposals/hotels',
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        if (Number.isNaN(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id" });
+        }
+
+        const userId = getRequestUserId(req);
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const mineOnly = parseBooleanQueryParam(req.query?.mineOnly);
+        const proposals = await storage.getTripHotelProposals(
+          tripId,
+          userId,
+          mineOnly ? { proposedBy: userId } : undefined,
+        );
+
+        res.json(proposals);
+      } catch (error: unknown) {
+        console.error("Error fetching hotel proposals:", error);
+        res.status(500).json({ message: "Failed to fetch hotel proposals" });
+      }
+    },
+  );
+
+  app.get(
+    '/api/trips/:tripId/proposals/restaurants',
+    isAuthenticated,
+    (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      res.json([]);
+    },
+  );
+
+  app.get(
+    '/api/trips/:tripId/proposals/activities',
+    isAuthenticated,
+    (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      res.json([]);
     },
   );
 
