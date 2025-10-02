@@ -457,7 +457,16 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
     return (
       <div
         key={item.id}
-        className="group flex items-start gap-3 rounded-md border border-border/60 bg-background px-3 py-2 transition hover:border-border hover:bg-muted/40"
+        className={cn(
+          "group flex items-start gap-3 rounded-md border border-transparent bg-transparent px-3 py-2 transition-all duration-200",
+          "hover:border-sky-500/30 hover:bg-sky-500/5 dark:hover:border-sky-500/30 dark:hover:bg-sky-500/10",
+          "focus-within:border-sky-500/30 focus-within:bg-sky-500/5 dark:focus-within:border-sky-500/30 dark:focus-within:bg-sky-500/10",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-sky-500",
+          "focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-background focus-within:ring-sky-500",
+          item.purchased
+            ? "border-sky-500/40 bg-sky-500/10 dark:border-sky-500/40 dark:bg-sky-500/20"
+            : undefined,
+        )}
       >
         <Checkbox
           checked={item.purchased}
@@ -480,10 +489,20 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {addedByName && <Badge variant="outline">Added by {addedByName}</Badge>}
+            {addedByName && (
+              <Badge
+                variant="outline"
+                className="border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-700 shadow-sm dark:border-sky-500/40 dark:bg-sky-500/20 dark:text-sky-100"
+              >
+                Added by {addedByName}
+              </Badge>
+            )}
             {claimedByName && (
-              <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">
-                {claimedByName === currentUserName ? "You\'re buying this" : `${claimedByName} will buy this`}
+              <Badge
+                variant="outline"
+                className="border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-700 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/25 dark:text-emerald-100"
+              >
+                {claimedByName === currentUserName ? "You're buying this" : `${claimedByName} will buy this`}
               </Badge>
             )}
           </div>
