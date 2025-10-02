@@ -336,9 +336,11 @@ export function AddActivityModal({
       };
 
       updateCache([`/api/trips/${tripId}/activities`]);
+      updateCache([`/api/trips/${tripId}/proposals/activities`]);
       updateCache(["/api/trips", tripId.toString(), "activities"]);
 
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
 
       toast({

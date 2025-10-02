@@ -2964,18 +2964,50 @@ export function setupRoutes(app: Express) {
   app.get(
     '/api/trips/:tripId/proposals/activities',
     isAuthenticated,
-    (req: any, res) => {
-      const tripId = Number.parseInt(req.params.tripId, 10);
-      if (Number.isNaN(tripId)) {
-        return res.status(400).json({ message: "Invalid trip id" });
-      }
+    async (req: any, res) => {
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        if (Number.isNaN(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id" });
+        }
 
-      const userId = getRequestUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "User ID not found" });
-      }
+        let userId = getRequestUserId(req);
 
-      res.json([]);
+        if (process.env.NODE_ENV === 'development' && !req.isAuthenticated?.()) {
+          userId = 'demo-user';
+        }
+
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const trip = await storage.getTripById(tripId);
+        if (!trip) {
+          return res.status(404).json({ message: "Trip not found" });
+        }
+
+        const isMember = trip.members.some((member) => member.userId === userId);
+        if (!isMember) {
+          return res.status(403).json({ message: "You are no longer a member of this trip" });
+        }
+
+        const activities = await storage.getTripActivities(tripId, userId);
+        const mineOnly = parseBooleanQueryParam(req.query?.mineOnly);
+
+        if (mineOnly) {
+          const filtered = activities.filter((activity) => {
+            const proposerId = activity.postedBy ?? activity.poster?.id ?? null;
+            return proposerId === userId;
+          });
+          res.json(filtered);
+          return;
+        }
+
+        res.json(activities);
+      } catch (error: unknown) {
+        console.error('Error fetching activity proposals:', error);
+        res.status(500).json({ message: 'Failed to fetch activity proposals' });
+      }
     },
   );
 

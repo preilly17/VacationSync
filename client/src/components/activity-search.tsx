@@ -359,6 +359,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
         description: "We added your manual activity to the trip.",
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
       closeManualForm();
     },
     onError: (error: unknown) => {

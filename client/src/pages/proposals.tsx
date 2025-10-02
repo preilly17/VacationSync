@@ -266,15 +266,14 @@ function ProposalsPage({
     enabled: !!tripId && isAuthenticated,
   });
 
-  // For now, activity and restaurant proposals use placeholder data
-  // TODO: Implement API routes for activity and restaurant proposals
+  // Fetch activity and restaurant proposals
   const {
     data: rawActivityProposalsData,
     isLoading: activityProposalsLoading,
     error: activityProposalsError,
     refetch: refetchActivityProposals,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/activities`],
+    queryKey: [`/api/trips/${tripId}/proposals/activities`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -493,10 +492,10 @@ function ProposalsPage({
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
       } else if (type === "activity") {
         queryClient.setQueryData<ActivityWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/activities`],
+          [`/api/trips/${tripId}/proposals/activities`],
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
       }
 
       toast({
@@ -559,7 +558,7 @@ function ProposalsPage({
         return {};
       }
 
-      const queryKey = [`/api/trips/${tripId}/activities`] as const;
+      const queryKey = [`/api/trips/${tripId}/proposals/activities`] as const;
       await queryClient.cancelQueries({ queryKey });
 
       const previousActivities = queryClient.getQueryData<ActivityWithDetails[]>(queryKey) ?? null;
@@ -596,7 +595,7 @@ function ProposalsPage({
     },
     onSuccess: () => {
       if (tripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
       }
     },
   });
