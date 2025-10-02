@@ -1892,10 +1892,11 @@ export function setupRoutes(app: Express) {
       }
       
       const isMember = trip.members.some(member => member.userId === userId);
-      if (!isMember) {
+      const isCreator = trip.createdBy === userId;
+      if (!isMember && !isCreator) {
         return res.status(403).json({ message: "You are no longer a member of this trip" });
       }
-      
+
       const activities = await storage.getTripActivities(tripId, userId);
       res.json(activities);
     } catch (error: unknown) {
@@ -1956,13 +1957,17 @@ export function setupRoutes(app: Express) {
       }
 
       const isMember = trip.members.some((member) => member.userId === userId);
-      if (!isMember) {
+      const isCreator = trip.createdBy === userId;
+      if (!isMember && !isCreator) {
         res.status(403).json({ message: "You are no longer a member of this trip" });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "not-member" });
         return;
       }
 
       const validMemberIds = new Set(trip.members.map((member) => member.userId));
+      if (trip.createdBy) {
+        validMemberIds.add(trip.createdBy);
+      }
 
       const rawData = {
         ...req.body,
