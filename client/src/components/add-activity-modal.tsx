@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { createActivityWithAttendeesSchema, type TripMember, type User } from "@shared/schema";
+import {
+  createActivityWithAttendeesSchema,
+  type ActivityType,
+  type TripMember,
+  type User,
+} from "@shared/schema";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
@@ -24,6 +30,8 @@ interface AddActivityModalProps {
   tripId: number;
   selectedDate?: Date | null;
   members: TripMemberWithUser[];
+  defaultMode?: ActivityType;
+  allowModeToggle?: boolean;
 }
 
 const formSchema = createActivityWithAttendeesSchema.extend({
@@ -57,7 +65,15 @@ const getMemberDisplayName = (member?: User | null) => {
   return member.email || "Trip member";
 };
 
-export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, members }: AddActivityModalProps) {
+export function AddActivityModal({
+  open,
+  onOpenChange,
+  tripId,
+  selectedDate,
+  members,
+  defaultMode = "SCHEDULED",
+  allowModeToggle = true,
+}: AddActivityModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -97,6 +113,9 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
     defaultValues: getDefaultValues(),
   });
 
+  const [mode, setMode] = useState<ActivityType>(defaultMode);
+  const isProposalMode = mode === "PROPOSE";
+
   const selectedAttendeeIds = form.watch("attendeeIds") ?? [];
 
   useEffect(() => {
@@ -105,14 +124,21 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
     }
   }, [open, defaultAttendeeIds, form]);
 
+  useEffect(() => {
+    if (open) {
+      setMode(defaultMode);
+    }
+  }, [defaultMode, open]);
+
   // Update form when selectedDate changes
   useEffect(() => {
     if (selectedDate) {
       form.setValue("startDate", format(selectedDate, "yyyy-MM-dd"));
     } else {
       form.reset(getDefaultValues());
+      setMode(defaultMode);
     }
-  }, [selectedDate, form, getDefaultValues]);
+  }, [selectedDate, form, getDefaultValues, defaultMode]);
 
   const handleToggleAttendee = (userId: string, checked: boolean | "indeterminate") => {
     const normalizedId = String(userId);
@@ -162,6 +188,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
         cost,
         maxCapacity,
         attendeeIds = [],
+        type,
         ...rest
       } = data;
 
@@ -176,6 +203,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
         cost: cost ? parseFloat(cost) : null,
         maxCapacity: maxCapacity ? parseInt(maxCapacity) : null,
         attendeeIds: normalizedAttendeeIds,
+        type: type ?? "SCHEDULED",
       };
 
       await apiRequest(`/api/trips/${tripId}/activities`, {
@@ -183,15 +211,21 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
         body: JSON.stringify(activityData),
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      const submissionType =
+        (variables as { type?: ActivityType } | undefined)?.type ?? "SCHEDULED";
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
       toast({
-        title: "Activity created!",
-        description: "Your activity has been added to the trip calendar.",
+        title: submissionType === "PROPOSE" ? "Activity proposed!" : "Activity created!",
+        description:
+          submissionType === "PROPOSE"
+            ? "Your idea has been shared with the group for feedback."
+            : "Your activity has been added to the trip calendar.",
       });
       onOpenChange(false);
       form.reset(getDefaultValues());
+      setMode(defaultMode);
     },
     onError: (error) => {
       console.error("Activity creation error:", error);
@@ -206,7 +240,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
   const onSubmit = (data: FormData) => {
     console.log('Form data:', data);
     console.log('Form errors:', form.formState.errors);
-    createActivityMutation.mutate(data);
+    createActivityMutation.mutate({ ...data, type: mode });
   };
 
   return (
@@ -220,6 +254,35 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <div>
+            <Label htmlFor="mode">Activity Type</Label>
+            {allowModeToggle ? (
+              <ToggleGroup
+                type="single"
+                value={mode}
+                onValueChange={(value) => {
+                  if (value) {
+                    setMode(value as ActivityType);
+                  }
+                }}
+                className="mt-2 flex"
+              >
+                <ToggleGroupItem value="SCHEDULED" className="flex-1">
+                  Add to schedule
+                </ToggleGroupItem>
+                <ToggleGroupItem value="PROPOSE" className="flex-1">
+                  Propose to group
+                </ToggleGroupItem>
+              </ToggleGroup>
+            ) : (
+              <p className="mt-2 text-sm text-neutral-600">
+                {isProposalMode
+                  ? "This activity will be proposed to the group."
+                  : "This activity will be added directly to the schedule."}
+              </p>
+            )}
+          </div>
+
           <div>
             <Label htmlFor="name">Activity Name</Label>
             <Input
