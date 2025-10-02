@@ -30,6 +30,45 @@ Tabs partition activities by mode while reusing a shared card component with mod
 * **Proposals Tab:** Two sections per user—"Accepted/Booked" (responded or converted) and "Pending" (awaiting response). Each card displays title, earliest proposed window, interest counts vs. group size, quorum progress bar, decision deadline, and the member's status chip.
 * **Scheduled Tab:** Cards show sticky Accept/Decline actions, capacity meter, RSVP deadline, member status, and waitlist badge when applicable. Past activities move automatically to a "Completed" sub-section with attendance notes.
 
+### Surface Cadence & Visibility Rules
+
+The same activity should appear in different parts of the product depending on its mode and the viewer. The following rules keep the experience predictable:
+
+#### Proposed Activities
+
+* **Creation:** As soon as a proposal is created it appears in the **Proposals tab** for every invitee (and trip admins/creator) with 👍/👎 voting. A lightweight "Proposed" chip is also placed on the **Group Calendar** date; clicking it opens the proposal and allows inline voting.
+* **Personal calendar:** Proposals never show on **My Schedule**—even if the member has already voted—so the surface stays focused on confirmed plans.
+* **Conversion:** When the organizer converts a proposal, it disappears from the proposal list (or receives a "Scheduled" tag in historical views), leaves the calendar chip state, and becomes a scheduled activity that now drives RSVP collection.
+
+#### Scheduled Activities
+
+* **Creation:** Scheduled activities render as full event cards on the **Group Calendar** for invitees, with RSVP state (Invited / Going / Not going) shown inline or on hover. They also appear on **My Schedule** for each invited member (recommended) or, if the stricter rule is selected, only once the member RSVPs "Going"—the product should pick one rule and apply it consistently. They do not appear in the Proposals tab.
+* **Updates:** Changing date, time, or location updates both calendar surfaces instantly and sends notifications to invitees whose schedules are affected. The personal schedule mirrors those changes for every member who sees the event.
+* **Cancellation:** Canceling removes the activity from both calendar views (optionally leaving a brief "Canceled" state) without reintroducing it to the Proposals tab.
+
+#### Snapshot Table
+
+| View | Proposed | Scheduled (Invited) | Scheduled (Going) |
+| --- | --- | --- | --- |
+| **Proposals tab** | ✅ | ❌ | ❌ |
+| **Group Calendar** | ✅ (light chip) | ✅ (full card) | ✅ (full card) |
+| **My Schedule** | ❌ | ✅ *(or hide until Going — choose one rule)* | ✅ |
+
+#### Edge Case Handling
+
+* **Invitee filtering:** Only invited members (plus trip admins/creator) can see a given activity across all surfaces.
+* **Capacity awareness:** Invited members see scheduled activities on My Schedule even when the event is at capacity; if they are waitlisted, their status chip reflects it.
+* **Multiple activities per day:** Day cells show up to _N_ items and then collapse into a `+X more` pill that opens a popover listing every proposal and scheduled event with inline vote/RSVP controls.
+* **Timezone display:** Use the trip's timezone as the primary display while optionally showing a subtle hint of the viewer's local time.
+* **Conversion behavior:** Converting a proposal immediately removes it from proposal listings, surfaces it as a scheduled activity, and triggers RSVP requests per the scheduled activity rules.
+
+#### Plain-Language Scenarios
+
+* **Propose "Dinner" for Friday at 7 PM:** Appears in the Proposals tab (all invitees can vote) and as a "Proposed" chip on the Group Calendar, but not on My Schedule.
+* **Publish "Dinner" for Friday at 7 PM:** Leaves the Proposals tab, shows as a scheduled card on the Group Calendar, and appears on My Schedule for each invitee with their current RSVP state.
+* **RSVP "Going":** My Schedule retains the event and reflects the "Going" status; the Group Calendar updates aggregate counts.
+* **Move dinner to 7:30 PM:** Both calendars update instantly and notifications alert every invitee.
+
 ### Notifications & Reminders
 
 * Reminder scheduler supports configurable templates; mode-specific timing (see each mode) feeds into the same scheduler service.
