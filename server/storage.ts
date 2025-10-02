@@ -2156,6 +2156,42 @@ export class DatabaseStorage implements IStorage {
       `);
 
       await query(
+        `ALTER TABLE activity_invites ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ`,
+      );
+
+      await query(
+        `ALTER TABLE activity_invites ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ`,
+      );
+
+      await query(
+        `ALTER TABLE activity_invites ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`,
+      );
+
+      await query(
+        `UPDATE activity_invites SET created_at = NOW() WHERE created_at IS NULL`,
+      );
+
+      await query(
+        `UPDATE activity_invites SET updated_at = NOW() WHERE updated_at IS NULL`,
+      );
+
+      await query(
+        `ALTER TABLE activity_invites ALTER COLUMN created_at SET DEFAULT NOW()`,
+      );
+
+      await query(
+        `ALTER TABLE activity_invites ALTER COLUMN updated_at SET DEFAULT NOW()`,
+      );
+
+      await query(
+        `ALTER TABLE activity_invites ALTER COLUMN created_at SET NOT NULL`,
+      );
+
+      await query(
+        `ALTER TABLE activity_invites ALTER COLUMN updated_at SET NOT NULL`,
+      );
+
+      await query(
         `CREATE INDEX IF NOT EXISTS idx_activity_invites_activity ON activity_invites(activity_id)`,
       );
 
