@@ -3491,6 +3491,75 @@ function FlightCoordination({
     },
   });
 
+  const [proposingFlightId, setProposingFlightId] = useState<number | null>(null);
+  const proposeFlightMutation = useMutation({
+    mutationFn: async (flight: FlightWithDetails) => {
+      const payload: InsertFlight = {
+        tripId: flight.tripId,
+        flightNumber: flight.flightNumber,
+        airline: flight.airline,
+        airlineCode: flight.airlineCode,
+        departureAirport: flight.departureAirport,
+        departureCode: flight.departureCode,
+        departureTime: flight.departureTime,
+        arrivalAirport: flight.arrivalAirport,
+        arrivalCode: flight.arrivalCode,
+        arrivalTime: flight.arrivalTime,
+        flightType: flight.flightType || "outbound",
+        status: flight.status ?? "confirmed",
+        currency: flight.currency ?? "USD",
+        bookingReference: flight.bookingReference ?? null,
+        departureTerminal: flight.departureTerminal ?? null,
+        departureGate: flight.departureGate ?? null,
+        arrivalTerminal: flight.arrivalTerminal ?? null,
+        arrivalGate: flight.arrivalGate ?? null,
+        seatNumber: flight.seatNumber ?? null,
+        seatClass: flight.seatClass ?? null,
+        price: typeof flight.price === "number" ? flight.price : null,
+        layovers: flight.layovers ?? null,
+        bookingSource: flight.bookingSource ?? null,
+        purchaseUrl: flight.purchaseUrl ?? null,
+        aircraft: flight.aircraft ?? null,
+        flightDuration: flight.flightDuration ?? null,
+        baggage: flight.baggage ?? null,
+      };
+
+      return apiRequest(`/api/trips/${tripId}/proposals/flights`, {
+        method: "POST",
+        body: { ...payload, id: flight.id },
+      });
+    },
+    onSuccess: async () => {
+      toast({ title: "Flight proposed to group." });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flight-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
+      ]);
+    },
+    onError: () => {
+      toast({
+        title: "Failed to propose flight.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleProposeFlight = useCallback(
+    (flight: FlightWithDetails) => {
+      if (flight.proposalId) {
+        return;
+      }
+
+      setProposingFlightId(flight.id);
+      proposeFlightMutation.mutate(flight, {
+        onSettled: () => {
+          setProposingFlightId(null);
+        },
+      });
+    },
+    [proposeFlightMutation],
+  );
+
   const handleManualSubmit = useCallback(() => {
     if (
       !manualFlightData.flightNumber ||
@@ -3808,6 +3877,26 @@ function FlightCoordination({
                     <div className="flex items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => handleEditFlight(flight)}>
                         Edit
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleProposeFlight(flight)}
+                        disabled={
+                          Boolean(flight.proposalId) ||
+                          (proposeFlightMutation.isPending && proposingFlightId === flight.id)
+                        }
+                      >
+                        {proposeFlightMutation.isPending && proposingFlightId === flight.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Proposing...
+                          </>
+                        ) : flight.proposalId ? (
+                          "Proposed"
+                        ) : (
+                          "Propose to Group"
+                        )}
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -4738,6 +4827,77 @@ function HotelBooking({
       hotels.filter((hotel) => !hotel.bookingSource || hotel.bookingSource.toLowerCase() === "manual"),
     [hotels],
   );
+  const [proposingHotelId, setProposingHotelId] = useState<number | null>(null);
+  const proposeHotelMutation = useMutation({
+    mutationFn: async (hotel: HotelWithDetails) => {
+      const payload: InsertHotel = {
+        tripId: hotel.tripId,
+        hotelName: hotel.hotelName,
+        address: hotel.address,
+        city: hotel.city,
+        country: hotel.country,
+        checkInDate: hotel.checkInDate,
+        checkOutDate: hotel.checkOutDate,
+        guestCount: hotel.guestCount ?? null,
+        roomCount: hotel.roomCount ?? null,
+        roomType: hotel.roomType ?? null,
+        hotelChain: hotel.hotelChain ?? null,
+        hotelRating: hotel.hotelRating ?? null,
+        bookingReference: hotel.bookingReference ?? null,
+        totalPrice: hotel.totalPrice ?? null,
+        pricePerNight: hotel.pricePerNight ?? null,
+        currency: hotel.currency ?? "USD",
+        status: hotel.status ?? "confirmed",
+        bookingSource: hotel.bookingSource ?? null,
+        purchaseUrl: hotel.purchaseUrl ?? null,
+        amenities: hotel.amenities ?? null,
+        images: hotel.images ?? null,
+        policies: hotel.policies ?? null,
+        contactInfo: hotel.contactInfo ?? null,
+        bookingPlatform: hotel.bookingPlatform ?? null,
+        bookingUrl: hotel.bookingUrl ?? null,
+        cancellationPolicy: hotel.cancellationPolicy ?? null,
+        notes: hotel.notes ?? null,
+        latitude: hotel.latitude ?? null,
+        longitude: hotel.longitude ?? null,
+        zipCode: hotel.zipCode ?? null,
+      };
+
+      return apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
+        method: "POST",
+        body: { ...payload, id: hotel.id },
+      });
+    },
+    onSuccess: async () => {
+      toast({ title: "Hotel proposed to group." });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
+      ]);
+    },
+    onError: () => {
+      toast({
+        title: "Failed to propose hotel.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleProposeHotel = useCallback(
+    (hotel: HotelWithDetails) => {
+      if (hotel.proposalId) {
+        return;
+      }
+
+      setProposingHotelId(hotel.id);
+      proposeHotelMutation.mutate(hotel, {
+        onSettled: () => {
+          setProposingHotelId(null);
+        },
+      });
+    },
+    [proposeHotelMutation],
+  );
 
   const focusSearchPanel = useCallback(() => {
     searchPanelRef.current?.focusForm();
@@ -5091,6 +5251,26 @@ function HotelBooking({
                       <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" onClick={() => handleEditHotel(hotel)}>
                           Edit
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleProposeHotel(hotel)}
+                          disabled={
+                            Boolean(hotel.proposalId) ||
+                            (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
+                          }
+                        >
+                          {proposeHotelMutation.isPending && proposingHotelId === hotel.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Proposing...
+                            </>
+                          ) : hotel.proposalId ? (
+                            "Proposed"
+                          ) : (
+                            "Propose to Group"
+                          )}
                         </Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
