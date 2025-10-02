@@ -344,6 +344,7 @@ type ActivityRow = {
   cost: string | null;
   max_capacity: number | null;
   category: string;
+  status: string;
   created_at: Date | null;
   updated_at: Date | null;
 };
@@ -508,6 +509,7 @@ type NotificationWithDetailsRow = NotificationRow & {
   activity_cost: string | null;
   activity_max_capacity: number | null;
   activity_category: string | null;
+  activity_status: string | null;
   activity_created_at: Date | null;
   activity_updated_at: Date | null;
   joined_expense_id: number | null;
@@ -1204,6 +1206,7 @@ const mapActivity = (row: ActivityRow): Activity => ({
   cost: toNumberOrNull(row.cost),
   maxCapacity: row.max_capacity,
   category: row.category,
+  status: row.status,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -3401,9 +3404,10 @@ export class DatabaseStorage implements IStorage {
         location,
         cost,
         max_capacity,
-        category
+        category,
+        status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING
         id,
         trip_calendar_id,
@@ -3416,6 +3420,7 @@ export class DatabaseStorage implements IStorage {
         cost,
         max_capacity,
         category,
+        status,
         created_at,
         updated_at
       `,
@@ -3430,6 +3435,7 @@ export class DatabaseStorage implements IStorage {
         costValue,
         maxCapacityValue,
         activity.category,
+        "active",
       ],
     );
 
@@ -3460,6 +3466,7 @@ export class DatabaseStorage implements IStorage {
         cost,
         max_capacity,
         category,
+        status,
         created_at,
         updated_at
       FROM activities
@@ -3491,6 +3498,7 @@ export class DatabaseStorage implements IStorage {
         a.cost,
         a.max_capacity,
         a.category,
+        a.status,
         a.created_at,
         a.updated_at,
         u.id AS poster_id,
@@ -3690,12 +3698,17 @@ export class DatabaseStorage implements IStorage {
         `DELETE FROM proposal_schedule_links WHERE scheduled_table = 'activities' AND scheduled_id = $1`,
         [activityId],
       );
-      await query(`DELETE FROM activities WHERE id = $1`, [activityId]);
+      await query(
+        `UPDATE activities SET status = 'canceled', updated_at = NOW() WHERE id = $1`,
+        [activityId],
+      );
       await query("COMMIT");
     } catch (error) {
       await query("ROLLBACK");
       throw error;
     }
+
+    const updatedActivity = await this.getActivityById(activityId);
 
     await this.notifyProposalCancellation({
       tripId: activity.tripCalendarId,
@@ -3704,7 +3717,7 @@ export class DatabaseStorage implements IStorage {
       canceledBy: currentUserId,
     });
 
-    return activity;
+    return updatedActivity ?? { ...activity, status: "canceled" };
   }
 
   async acceptActivity(activityId: number, userId: string): Promise<void> {
@@ -4534,6 +4547,7 @@ export class DatabaseStorage implements IStorage {
           cost,
           max_capacity,
           category,
+          status,
           created_at,
           updated_at
         FROM activities
@@ -5134,6 +5148,7 @@ export class DatabaseStorage implements IStorage {
         a.cost AS activity_cost,
         a.max_capacity AS activity_max_capacity,
         a.category AS activity_category,
+        a.status AS activity_status,
         a.created_at AS activity_created_at,
         a.updated_at AS activity_updated_at,
         e.id AS joined_expense_id,
@@ -5212,6 +5227,7 @@ export class DatabaseStorage implements IStorage {
           cost: row.activity_cost,
           max_capacity: row.activity_max_capacity,
           category: row.activity_category as string,
+          status: (row.activity_status ?? "active") as string,
           created_at: row.activity_created_at,
           updated_at: row.activity_updated_at,
         };

@@ -2,7 +2,7 @@
 const config = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
-  roots: ['<rootDir>/shared', '<rootDir>/server'],
+  roots: ['<rootDir>/shared', '<rootDir>/server', '<rootDir>/client'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/client/src/$1',
     '^@shared/(.*)$': '<rootDir>/shared/$1',

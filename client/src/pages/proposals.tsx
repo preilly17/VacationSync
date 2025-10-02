@@ -25,6 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
+import { filterProposalsByStatus, normalizeProposalStatus } from "./proposalStatusFilters";
 import {
   ArrowLeft,
   Hotel,
@@ -662,9 +663,6 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     [user?.id],
   );
 
-  const normalizeStatus = (status?: string | null) =>
-    (status ?? "active").toLowerCase();
-
   type ActivityInviteWithUser = ActivityWithDetails["invites"][number];
   type ActivityAcceptanceWithUser = ActivityWithDetails["acceptances"][number];
 
@@ -754,20 +752,8 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   );
 
   const applyStatusFilter = useCallback(
-    <T extends BaseProposal>(items: T[]): T[] => {
-      return items.filter((item) => {
-        if (statusFilter === "all") {
-          return true;
-        }
-
-        const normalizedStatus = normalizeStatus(item.status);
-        if (statusFilter === "canceled") {
-          return normalizedStatus === "canceled" || normalizedStatus === "cancelled";
-        }
-
-        return normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
-      });
-    },
+    <T extends BaseProposal>(items: T[]): T[] =>
+      filterProposalsByStatus(items, statusFilter),
     [statusFilter],
   );
 
@@ -1739,16 +1725,24 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
 
   const activityProposals = useMemo<NormalizedActivityProposal[]>(
     () =>
-      rawActivityProposals.map((activity) => ({
-        ...activity,
-        tripId: activity.tripCalendarId,
-        proposedBy: activity.postedBy,
-        proposer: activity.poster,
-        status: getActivityProposalStatus(activity),
-        activityName: activity.name,
-        rankings: [],
-        averageRanking: null,
-      })),
+      rawActivityProposals.map((activity) => {
+        const normalizedStatus = normalizeProposalStatus(activity.status);
+        const isCanceled =
+          normalizedStatus === "canceled" || normalizedStatus === "cancelled";
+
+        return {
+          ...activity,
+          tripId: activity.tripCalendarId,
+          proposedBy: activity.postedBy,
+          proposer: activity.poster,
+          status: isCanceled
+            ? activity.status ?? "canceled"
+            : getActivityProposalStatus(activity),
+          activityName: activity.name,
+          rankings: [],
+          averageRanking: null,
+        };
+      }),
     [getActivityProposalStatus, rawActivityProposals],
   );
 
