@@ -2904,6 +2904,7 @@ export default function Trip() {
           members={trip?.members ?? []}
           defaultMode={addActivityMode}
           allowModeToggle={isAddActivityModeToggleEnabled}
+          currentUserId={user?.id}
         />
 
         {trip && (

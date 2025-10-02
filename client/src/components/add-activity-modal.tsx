@@ -31,6 +31,12 @@ import { format } from "date-fns";
 
 type TripMemberWithUser = TripMember & { user: User };
 
+interface MemberOption {
+  id: string;
+  name: string;
+  isCurrentUser: boolean;
+}
+
 interface AddActivityModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -39,6 +45,7 @@ interface AddActivityModalProps {
   members: TripMemberWithUser[];
   defaultMode?: ActivityType;
   allowModeToggle?: boolean;
+  currentUserId?: string;
 }
 
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -156,14 +163,12 @@ const serverFieldMap: Partial<Record<string, keyof FormData>> = {
   startDate: "startDate",
 };
 
-const getMemberDisplayName = (member?: User | null) => {
-  if (!member) return "Trip member";
+const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: boolean) => {
+  if (!member) return isCurrentUser ? "You" : "Trip member";
   const first = member.firstName?.trim();
   const last = member.lastName?.trim();
-  if (first && last) return `${first} ${last}`;
-  if (first) return first;
-  if (member.username) return member.username;
-  return member.email || "Trip member";
+  const baseName = first && last ? `${first} ${last}` : first ?? member.username ?? member.email ?? "Trip member";
+  return isCurrentUser ? `${baseName} (You)` : baseName;
 };
 
 export function AddActivityModal({
@@ -174,22 +179,32 @@ export function AddActivityModal({
   members,
   defaultMode = "SCHEDULED",
   allowModeToggle = true,
+  currentUserId,
 }: AddActivityModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const memberOptions = useMemo(
+  const memberOptions = useMemo<MemberOption[]>(
     () =>
       members.map((member) => ({
         id: String(member.userId),
-        name: getMemberDisplayName(member.user),
+        name: getMemberDisplayName(member.user, member.userId === currentUserId),
+        isCurrentUser: member.userId === currentUserId,
       })),
-    [members],
+    [members, currentUserId],
   );
 
   const defaultAttendeeIds = useMemo(
     () => memberOptions.map((member) => member.id),
     [memberOptions],
+  );
+
+  const creatorMemberId = useMemo(() => memberOptions.find((member) => member.isCurrentUser)?.id ?? null, [memberOptions]);
+
+  const scheduledActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/activities`], [tripId]);
+  const proposalActivitiesQueryKey = useMemo(
+    () => [`/api/trips/${tripId}/proposals/activities`],
+    [tripId],
   );
 
   const getDefaultValues = useCallback(
@@ -253,8 +268,21 @@ export function AddActivityModal({
     form.setValue("type", defaultMode, { shouldDirty: false, shouldValidate: true });
   }, [defaultMode, form]);
 
+  useEffect(() => {
+    if (mode === "SCHEDULED" && creatorMemberId) {
+      const attendees = new Set((form.getValues("attendeeIds") ?? []).map(String));
+      if (!attendees.has(creatorMemberId)) {
+        attendees.add(creatorMemberId);
+        form.setValue("attendeeIds", Array.from(attendees), { shouldDirty: true, shouldValidate: true });
+      }
+    }
+  }, [creatorMemberId, form, mode]);
+
   const handleToggleAttendee = (userId: string, checked: boolean | "indeterminate") => {
     const normalizedId = String(userId);
+    if (mode === "SCHEDULED" && creatorMemberId && normalizedId === creatorMemberId && checked !== true) {
+      return;
+    }
     const current = new Set((form.getValues("attendeeIds") ?? []).map(String));
     if (checked === true) {
       current.add(normalizedId);
@@ -269,6 +297,12 @@ export function AddActivityModal({
   };
 
   const handleClearAttendees = () => {
+    if (mode === "SCHEDULED") {
+      if (creatorMemberId) {
+        form.setValue("attendeeIds", [creatorMemberId], { shouldDirty: true, shouldValidate: true });
+      }
+      return;
+    }
     form.setValue("attendeeIds", [], { shouldDirty: true, shouldValidate: true });
   };
 
@@ -346,17 +380,17 @@ export function AddActivityModal({
       };
 
       if (submissionType === "PROPOSE") {
-        updateCache([`/api/trips/${tripId}/proposals/activities`]);
-        updateCache([`/api/trips/${tripId}/activities`]);
+        updateCache(proposalActivitiesQueryKey);
+        updateCache(scheduledActivitiesQueryKey);
 
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+        queryClient.invalidateQueries({ queryKey: proposalActivitiesQueryKey });
+        queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
       } else {
-        updateCache([`/api/trips/${tripId}/activities`]);
+        updateCache(scheduledActivitiesQueryKey);
         updateCache(["/api/trips", tripId.toString(), "activities"]);
 
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+        queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
       }
 
@@ -433,7 +467,58 @@ export function AddActivityModal({
     },
   });
 
+  const findDuplicateActivity = useCallback(
+    (name: string, startDateTime: Date) => {
+      const normalizedName = name.trim().toLowerCase();
+      if (!normalizedName) {
+        return null;
+      }
+
+      const targetTime = startDateTime.getTime();
+      if (!Number.isFinite(targetTime)) {
+        return null;
+      }
+
+      const scheduled = queryClient.getQueryData<ActivityWithDetails[]>(scheduledActivitiesQueryKey) ?? [];
+      const proposals = queryClient.getQueryData<ActivityWithDetails[]>(proposalActivitiesQueryKey) ?? [];
+      const combined = [...scheduled, ...proposals];
+
+      for (const activity of combined) {
+        const activityName = (activity.name ?? "").trim().toLowerCase();
+        if (activityName !== normalizedName) {
+          continue;
+        }
+
+        const activityStart = new Date(activity.startTime).getTime();
+        if (!Number.isFinite(activityStart)) {
+          continue;
+        }
+
+        if (Math.abs(activityStart - targetTime) <= 60_000) {
+          return activity;
+        }
+      }
+
+      return null;
+    },
+    [proposalActivitiesQueryKey, queryClient, scheduledActivitiesQueryKey],
+  );
+
   const onSubmit = (data: FormData) => {
+    const startDateTime = new Date(`${data.startDate}T${data.startTime}`);
+    const duplicate = findDuplicateActivity(data.name, startDateTime);
+
+    if (duplicate) {
+      const duplicateStart = new Date(duplicate.startTime);
+      const friendlyTime = Number.isNaN(duplicateStart.getTime())
+        ? "the same time"
+        : format(duplicateStart, "MMM d 'at' h:mm a");
+      toast({
+        title: "Heads up — possible duplicate",
+        description: `"${duplicate.name}" is already on the books for ${friendlyTime}. We'll still save this if you'd like to continue.`,
+      });
+    }
+
     createActivityMutation.mutate({ ...data, type: mode });
   };
 
@@ -441,15 +526,15 @@ export function AddActivityModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add New Activity</DialogTitle>
+          <DialogTitle>Create an activity</DialogTitle>
           <DialogDescription>
-            Plan a new activity for your trip, choose who's attending, and we'll notify them for you.
+            Decide whether you&apos;re proposing an idea for feedback or locking plans onto the schedule.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <div>
-            <Label htmlFor="mode">Activity Type</Label>
+            <Label htmlFor="mode">Share it with the group</Label>
             {allowModeToggle ? (
               <ToggleGroup
                 type="single"
@@ -475,6 +560,11 @@ export function AddActivityModal({
                   : "This activity will be added directly to the schedule."}
               </p>
             )}
+            <p className="mt-2 text-xs text-neutral-500">
+              {isProposalMode
+                ? "Invitees get a 👍 / 👎 vote. You can schedule it later if the group is in."
+                : "Invitees receive an RSVP request right away so their schedules stay in sync."}
+            </p>
           </div>
 
           <div>
@@ -583,11 +673,13 @@ export function AddActivityModal({
 
           <div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="attendees">Who's Going?</Label>
+              <Label htmlFor="attendees">Who&apos;s going?</Label>
               <span className="text-xs text-neutral-500">{selectedAttendeeIds.length} selected</span>
             </div>
             <p className="text-xs text-neutral-500 mt-1">
-              Everyone can still see this on the group calendar, even if they're not attending.
+              {isProposalMode
+                ? "We’ll ping the selected travelers to vote 👍 or 👎."
+                : "We’ll send RSVP requests to everyone selected and keep their calendars updated."}
             </p>
             <div className="flex items-center gap-2 mt-3">
               <Button
@@ -622,6 +714,7 @@ export function AddActivityModal({
                           id={`attendee-${member.id}`}
                           checked={isChecked}
                           onCheckedChange={(checked) => handleToggleAttendee(member.id, checked)}
+                          disabled={mode === "SCHEDULED" && member.isCurrentUser}
                         />
                         <Label htmlFor={`attendee-${member.id}`} className="text-sm text-neutral-700">
                           {member.name}
@@ -686,7 +779,13 @@ export function AddActivityModal({
               className="flex-1 bg-primary hover:bg-red-600 text-white"
               disabled={createActivityMutation.isPending || !form.formState.isValid}
             >
-              {createActivityMutation.isPending ? "Creating..." : "Create Activity"}
+              {createActivityMutation.isPending
+                ? isProposalMode
+                  ? "Sending..."
+                  : "Scheduling..."
+                : isProposalMode
+                  ? "Send proposal"
+                  : "Add to schedule"}
             </Button>
           </div>
         </form>
