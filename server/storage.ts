@@ -3429,12 +3429,13 @@ export class DatabaseStorage implements IStorage {
 
     return rows[0]?.exists ?? false;
   }
-  async createActivity(
+  async createActivityWithInvites(
     activity: InsertActivity,
     userId: string,
     inviteeIds: string[] = [],
   ): Promise<Activity> {
     await this.ensureActivityTypeColumn();
+    await this.ensureActivityInviteStructures();
 
     const costValue = activity.cost ?? null;
 
@@ -3449,66 +3450,123 @@ export class DatabaseStorage implements IStorage {
         : parsedMaxCapacity;
     const typeValue = toActivityType(activity.type);
 
-    const { rows } = await query<ActivityRow>(
-      `
-      INSERT INTO activities (
-        trip_calendar_id,
-        posted_by,
-        name,
-        description,
-        start_time,
-        end_time,
-        location,
-        cost,
-        max_capacity,
-        category,
-        status,
-        type
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-      RETURNING
-        id,
-        trip_calendar_id,
-        posted_by,
-        name,
-        description,
-        start_time,
-        end_time,
-        location,
-        cost,
-        max_capacity,
-        category,
-        status,
-        type,
-        created_at,
-        updated_at
-      `,
-      [
-        activity.tripCalendarId,
-        userId,
-        activity.name,
-        activity.description ?? null,
-        activity.startTime,
-        activity.endTime ?? null,
-        activity.location ?? null,
-        costValue,
-        maxCapacityValue,
-        activity.category,
-        "active",
-        typeValue,
-      ],
-    );
+    await query("BEGIN");
+    try {
+      const { rows } = await query<ActivityRow>(
+        `
+        INSERT INTO activities (
+          trip_calendar_id,
+          posted_by,
+          name,
+          description,
+          start_time,
+          end_time,
+          location,
+          cost,
+          max_capacity,
+          category,
+          status,
+          type
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING
+          id,
+          trip_calendar_id,
+          posted_by,
+          name,
+          description,
+          start_time,
+          end_time,
+          location,
+          cost,
+          max_capacity,
+          category,
+          status,
+          type,
+          created_at,
+          updated_at
+        `,
+        [
+          activity.tripCalendarId,
+          userId,
+          activity.name,
+          activity.description ?? null,
+          activity.startTime,
+          activity.endTime ?? null,
+          activity.location ?? null,
+          costValue,
+          maxCapacityValue,
+          activity.category,
+          "active",
+          typeValue,
+        ],
+      );
 
-    const row = rows[0];
-    if (!row) {
-      throw new Error("Failed to create activity");
+      const row = rows[0];
+      if (!row) {
+        throw new Error("Failed to create activity");
+      }
+
+      const uniqueInviteeIds = Array.from(new Set(inviteeIds));
+      if (uniqueInviteeIds.length > 0) {
+        await query(
+          `
+          INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
+          SELECT
+            $1,
+            uid,
+            $2,
+            CASE WHEN $2 = 'pending' THEN NULL ELSE NOW() END
+          FROM UNNEST($3::text[]) AS uid
+          ON CONFLICT (activity_id, user_id) DO UPDATE
+            SET status = EXCLUDED.status,
+                responded_at = EXCLUDED.responded_at,
+                updated_at = NOW()
+          `,
+          [row.id, "pending", uniqueInviteeIds],
+        );
+      }
+
+      const { rows: organizerInviteRows } = await query<ActivityInviteRow>(
+        `
+        INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
+        VALUES ($1, $2, $3, CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END)
+        ON CONFLICT (activity_id, user_id) DO UPDATE
+          SET status = EXCLUDED.status,
+              responded_at = EXCLUDED.responded_at,
+              updated_at = NOW()
+        RETURNING
+          id,
+          activity_id,
+          user_id,
+          status,
+          responded_at,
+          created_at,
+          updated_at
+        `,
+        [row.id, userId, "accepted"],
+      );
+
+      const organizerInviteRow = organizerInviteRows[0];
+      if (!organizerInviteRow) {
+        throw new Error("Failed to update activity invite");
+      }
+
+      await query("COMMIT");
+
+      return mapActivity(row);
+    } catch (error) {
+      await query("ROLLBACK");
+      throw error;
     }
+  }
 
-    if (inviteeIds.length > 0) {
-      await this.upsertActivityInvites(row.id, inviteeIds, "pending");
-    }
-
-    return mapActivity(row);
+  async createActivity(
+    activity: InsertActivity,
+    userId: string,
+    inviteeIds: string[] = [],
+  ): Promise<Activity> {
+    return this.createActivityWithInvites(activity, userId, inviteeIds);
   }
 
   async getActivityById(activityId: number): Promise<Activity | undefined> {
