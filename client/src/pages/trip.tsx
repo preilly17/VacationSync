@@ -93,6 +93,7 @@ import type {
   HotelSearchResult,
   HotelWithDetails,
   TripWithDates,
+  FlightWithDetails,
 } from "@shared/schema";
 import {
   format,
@@ -118,6 +119,7 @@ import {
   createHotelFormDefaults,
   hotelFormSchema,
   transformHotelFormValues,
+  stringifyJsonValue,
   type HotelFormValues,
 } from "@/lib/hotel-form";
 import { apiRequest } from "@/lib/queryClient";
@@ -2753,6 +2755,13 @@ function FlightCoordination({
   });
 
   const flights = Array.isArray(flightsData) ? flightsData : [];
+  const manualFlights = useMemo(
+    () =>
+      flights.filter((flight: FlightWithDetails) =>
+        !flight.bookingSource || flight.bookingSource.toLowerCase() === "manual",
+      ),
+    [flights],
+  );
 
   const [searchFormData, setSearchFormData] = useState<TripFlightSearchFormState>({
     departure: "",
@@ -2804,6 +2813,27 @@ function FlightCoordination({
   });
   const [manualDepartureHasSelected, setManualDepartureHasSelected] = useState(false);
   const [manualArrivalHasSelected, setManualArrivalHasSelected] = useState(false);
+  const [editingFlight, setEditingFlight] = useState<FlightWithDetails | null>(null);
+  const toDateTimeLocalValue = useCallback((value?: string | null) => {
+    if (!value) {
+      return "";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+  }, []);
+  const formatTitleCase = useCallback((value: string | null | undefined) => {
+    if (!value) {
+      return "";
+    }
+
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }, []);
   const selectedDepartureAirportDetails = useMemo(
     () =>
       departureAirports.find((airport) => airport.iata === selectedDepartureAirport) ?? null,
@@ -3331,6 +3361,7 @@ function FlightCoordination({
     });
     setManualDepartureHasSelected(false);
     setManualArrivalHasSelected(false);
+    setEditingFlight(null);
   }, []);
 
   const openManualFlightForm = useCallback(() => {
@@ -3348,6 +3379,36 @@ function FlightCoordination({
       openManualFlightForm();
     }
   }, [manualFormOpenSignal, openManualFlightForm]);
+
+  const handleEditFlight = useCallback(
+    (flight: FlightWithDetails) => {
+      setEditingFlight(flight);
+      setManualFlightData({
+        flightNumber: flight.flightNumber ?? "",
+        airline: flight.airline ?? "",
+        airlineCode: flight.airlineCode ?? "",
+        departureAirport: flight.departureAirport ?? "",
+        departureCode: flight.departureCode ?? "",
+        departureTime: toDateTimeLocalValue(flight.departureTime as string),
+        arrivalAirport: flight.arrivalAirport ?? "",
+        arrivalCode: flight.arrivalCode ?? "",
+        arrivalTime: toDateTimeLocalValue(flight.arrivalTime as string),
+        price:
+          typeof flight.price === "number" && Number.isFinite(flight.price)
+            ? flight.price.toString()
+            : "",
+        seatClass: flight.seatClass ?? "economy",
+        flightType: flight.flightType ?? "outbound",
+        bookingReference: flight.bookingReference ?? "",
+        aircraft: flight.aircraft ?? "",
+        status: flight.status ?? "confirmed",
+      });
+      setManualDepartureHasSelected(Boolean(flight.departureCode));
+      setManualArrivalHasSelected(Boolean(flight.arrivalCode));
+      setIsManualFlightFormOpen(true);
+    },
+    [toDateTimeLocalValue],
+  );
 
   const createFlightMutation = useMutation({
     mutationFn: async (flightData: InsertFlight) => {
@@ -3367,6 +3428,52 @@ function FlightCoordination({
     onError: (error: any) => {
       toast({
         title: "Unable to add flight",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateFlightMutation = useMutation({
+    mutationFn: async (payload: { id: number; updates: Partial<InsertFlight> }) => {
+      return apiRequest(`/api/flights/${payload.id}`, {
+        method: "PUT",
+        body: payload.updates,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      toast({
+        title: "Flight updated",
+        description: "Your flight details have been refreshed.",
+      });
+      closeManualFlightForm();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to update flight",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteFlightMutation = useMutation({
+    mutationFn: async (flightId: number) => {
+      return apiRequest(`/api/flights/${flightId}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      toast({
+        title: "Flight removed",
+        description: "The flight has been deleted.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to delete flight",
         description: error?.message || "Please try again.",
         variant: "destructive",
       });
@@ -3526,8 +3633,21 @@ function FlightCoordination({
       userId: user.id,
     };
 
+    if (editingFlight) {
+      updateFlightMutation.mutate({ id: editingFlight.id, updates: basePayload });
+      return;
+    }
+
     createFlightMutation.mutate(payloadWithUser as InsertFlight);
-  }, [createFlightMutation, manualFlightData, toast, tripId, user]);
+  }, [
+    createFlightMutation,
+    editingFlight,
+    manualFlightData,
+    toast,
+    tripId,
+    updateFlightMutation,
+    user,
+  ]);
 
   const handleFlightSearch = useCallback(async () => {
     if (!searchFormData.departure || !searchFormData.arrival || !searchFormData.departureDate) {
@@ -3587,6 +3707,9 @@ function FlightCoordination({
     }
   }, [isRoundTrip, searchFormData, toast]);
 
+  const isSavingManualFlight =
+    createFlightMutation.isPending || updateFlightMutation.isPending;
+
 
   if (isLoading) {
     return (
@@ -3607,6 +3730,151 @@ function FlightCoordination({
           Manual Entry
         </Button>
       </div>
+
+      <div className="space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-semibold">Manually Added Flights</h3>
+          {manualFlights.length > 0 ? (
+            <Button variant="outline" size="sm" onClick={openManualFlightForm}>
+              Add flight
+            </Button>
+          ) : null}
+        </div>
+
+        {manualFlights.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="text-base font-medium text-neutral-900">No manual flights yet</p>
+                <p className="text-sm text-muted-foreground">
+                  Log flights you've booked elsewhere so the group can stay in sync.
+                </p>
+              </div>
+              <Button onClick={openManualFlightForm}>Add a flight</Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {manualFlights.map((flight) => {
+              const formattedDepartureLabel = flight.departureCode
+                ? `${flight.departureAirport ?? flight.departureCode} (${flight.departureCode})`
+                : flight.departureAirport || flight.departureCode || "TBD";
+              const formattedArrivalLabel = flight.arrivalCode
+                ? `${flight.arrivalAirport ?? flight.arrivalCode} (${flight.arrivalCode})`
+                : flight.arrivalAirport || flight.arrivalCode || "TBD";
+              const departureTimeLabel = flight.departureTime
+                ? format(new Date(flight.departureTime), "MMM d, yyyy h:mm a")
+                : "Time TBD";
+              const arrivalTimeLabel = flight.arrivalTime
+                ? format(new Date(flight.arrivalTime), "MMM d, yyyy h:mm a")
+                : "Time TBD";
+              const priceLabel = formatCurrency(flight.price, {
+                currency: flight.currency ?? "USD",
+                fallback: "—",
+              });
+
+              return (
+                <Card key={flight.id}>
+                  <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-2">
+                      <CardTitle className="text-base font-semibold text-neutral-900">
+                        {[flight.airline, flight.flightNumber].filter(Boolean).join(" ") || "Flight"}
+                      </CardTitle>
+                      <CardDescription className="text-sm text-muted-foreground">
+                        {formattedDepartureLabel} → {formattedArrivalLabel}
+                      </CardDescription>
+                      <div className="flex flex-wrap gap-2">
+                        {flight.flightType ? (
+                          <Badge variant="secondary">{formatTitleCase(flight.flightType)}</Badge>
+                        ) : null}
+                        {flight.status ? (
+                          <Badge variant="outline" className="capitalize">
+                            {formatTitleCase(flight.status)}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEditFlight(flight)}>
+                        Edit
+                      </Button>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          >
+                            Delete
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete flight?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will remove the flight from your trip plan. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteFlightMutation.mutate(flight.id)}
+                              className="bg-red-600 hover:bg-red-700"
+                              disabled={deleteFlightMutation.isPending}
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Departure</p>
+                        <p className="text-sm font-medium text-neutral-900">{formattedDepartureLabel}</p>
+                        <p className="text-sm text-muted-foreground">{departureTimeLabel}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Arrival</p>
+                        <p className="text-sm font-medium text-neutral-900">{formattedArrivalLabel}</p>
+                        <p className="text-sm text-muted-foreground">{arrivalTimeLabel}</p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Price</p>
+                        <p className="text-sm font-medium text-neutral-900">{priceLabel}</p>
+                      </div>
+                      {flight.bookingReference ? (
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-muted-foreground">Booking ref</p>
+                          <p className="text-sm font-medium text-neutral-900">{flight.bookingReference}</p>
+                        </div>
+                      ) : null}
+                      {flight.seatClass ? (
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-muted-foreground">Seat class</p>
+                          <p className="text-sm font-medium text-neutral-900">{formatTitleCase(flight.seatClass)}</p>
+                        </div>
+                      ) : null}
+                      {flight.aircraft ? (
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-muted-foreground">Aircraft</p>
+                          <p className="text-sm font-medium text-neutral-900">{flight.aircraft}</p>
+                        </div>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-200" />
 
       <Card>
         <CardContent className="space-y-6 p-6">
@@ -3963,18 +4231,20 @@ function FlightCoordination({
       <Dialog
         open={isManualFlightFormOpen}
         onOpenChange={(open) => {
-          if (open) {
-            openManualFlightForm();
-          } else {
+          if (!open) {
             closeManualFlightForm();
           }
         }}
       >
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Flight Manually</DialogTitle>
+            <DialogTitle>
+              {editingFlight ? "Edit Manual Flight" : "Add Flight Manually"}
+            </DialogTitle>
             <DialogDescription>
-              Enter the flight details to share them with your group.
+              {editingFlight
+                ? "Update the details for this flight so everyone stays aligned."
+                : "Enter the flight details to share them with your group."}
             </DialogDescription>
           </DialogHeader>
           <form
@@ -4156,12 +4426,14 @@ function FlightCoordination({
               <Button variant="outline" type="button" onClick={closeManualFlightForm}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createFlightMutation.isPending}>
-                {createFlightMutation.isPending ? (
+              <Button type="submit" disabled={isSavingManualFlight}>
+                {isSavingManualFlight ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
+                    {editingFlight ? "Updating..." : "Saving..."}
                   </>
+                ) : editingFlight ? (
+                  "Update Flight"
                 ) : (
                   "Add Flight"
                 )}
@@ -4430,7 +4702,7 @@ function HotelBooking({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { isLoading } = useQuery<HotelWithDetails[]>({
+  const { data: hotels = [], isLoading } = useQuery<HotelWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotels`],
     enabled: !!tripId,
   });
@@ -4449,6 +4721,12 @@ function HotelBooking({
 
   const searchPanelRef = useRef<HotelSearchPanelRef>(null);
   const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
+  const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
+  const manualHotels = useMemo(
+    () =>
+      hotels.filter((hotel) => !hotel.bookingSource || hotel.bookingSource.toLowerCase() === "manual"),
+    [hotels],
+  );
 
   const focusSearchPanel = useCallback(() => {
     searchPanelRef.current?.focusForm();
@@ -4515,11 +4793,13 @@ function HotelBooking({
   }, [form, formDefaults]);
 
   const openManualForm = useCallback(() => {
+    setEditingHotel(null);
     form.reset(formDefaults());
     setIsManualHotelFormOpen(true);
   }, [form, formDefaults]);
 
   const closeManualForm = useCallback(() => {
+    setEditingHotel(null);
     form.reset(formDefaults());
     setIsManualHotelFormOpen(false);
   }, [form, formDefaults]);
@@ -4565,9 +4845,127 @@ function HotelBooking({
     },
   });
 
+  const updateHotelMutation = useMutation({
+    mutationFn: async (data: { id: number; payload: InsertHotel }) => {
+      return await apiRequest(`/api/hotels/${data.id}`, {
+        method: "PUT",
+        body: JSON.stringify(data.payload),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      toast({
+        title: "Hotel updated",
+        description: "The hotel stay has been updated.",
+      });
+      closeManualForm();
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error as Error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You need to be logged in to update hotels.",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to update hotel. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteHotelMutation = useMutation({
+    mutationFn: async (hotelId: number) => {
+      return await apiRequest(`/api/hotels/${hotelId}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      toast({
+        title: "Hotel removed",
+        description: "The hotel entry has been deleted.",
+      });
+    },
+    onError: (error) => {
+      if (isUnauthorizedError(error as Error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You need to be logged in to remove hotels.",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+      toast({
+        title: "Error",
+        description: "Failed to delete hotel. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const onSubmit = (values: HotelFormValues) => {
-    createHotelMutation.mutate(transformHotelFormValues(values));
+    const payload = transformHotelFormValues(values);
+    if (editingHotel) {
+      updateHotelMutation.mutate({ id: editingHotel.id, payload });
+      return;
+    }
+
+    createHotelMutation.mutate(payload);
   };
+
+  const isSavingHotel = createHotelMutation.isPending || updateHotelMutation.isPending;
+
+  const handleEditHotel = useCallback(
+    (hotel: HotelWithDetails) => {
+      const defaults = formDefaults();
+      form.reset({
+        ...defaults,
+        tripId,
+        hotelName: hotel.hotelName ?? "",
+        hotelChain: hotel.hotelChain ?? null,
+        hotelRating: hotel.hotelRating ?? null,
+        address: hotel.address ?? "",
+        city: hotel.city ?? "",
+        country: hotel.country ?? "",
+        zipCode: hotel.zipCode ?? null,
+        latitude: hotel.latitude ?? null,
+        longitude: hotel.longitude ?? null,
+        checkInDate: hotel.checkInDate ? new Date(hotel.checkInDate) : defaults.checkInDate,
+        checkOutDate: hotel.checkOutDate ? new Date(hotel.checkOutDate) : defaults.checkOutDate,
+        roomType: hotel.roomType ?? null,
+        roomCount: hotel.roomCount ?? null,
+        guestCount: hotel.guestCount ?? null,
+        bookingReference: hotel.bookingReference ?? null,
+        totalPrice: hotel.totalPrice ?? null,
+        pricePerNight: hotel.pricePerNight ?? null,
+        currency: hotel.currency ?? defaults.currency,
+        status: hotel.status ?? defaults.status,
+        bookingSource: hotel.bookingSource ?? null,
+        purchaseUrl: hotel.purchaseUrl ?? null,
+        amenities: stringifyJsonValue(hotel.amenities),
+        images: stringifyJsonValue(hotel.images),
+        policies: stringifyJsonValue(hotel.policies),
+        contactInfo: stringifyJsonValue(hotel.contactInfo),
+        bookingPlatform: hotel.bookingPlatform ?? null,
+        bookingUrl: hotel.bookingUrl ?? null,
+        cancellationPolicy: hotel.cancellationPolicy ?? null,
+        notes: hotel.notes ?? "",
+      });
+      setEditingHotel(hotel);
+      setIsManualHotelFormOpen(true);
+    },
+    [form, formDefaults, tripId],
+  );
 
   if (isLoading) {
     return (
@@ -4599,6 +4997,145 @@ function HotelBooking({
           </div>
         </div>
 
+        <div className="space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h3 className="text-lg font-semibold">Manually Added Hotels</h3>
+            {manualHotels.length > 0 ? (
+              <Button variant="outline" size="sm" onClick={openManualForm}>
+                Add stay
+              </Button>
+            ) : null}
+          </div>
+
+          {manualHotels.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-base font-medium text-neutral-900">No manual hotels yet</p>
+                  <p className="text-sm text-muted-foreground">
+                    Keep track of reservations booked outside of TripSync.
+                  </p>
+                </div>
+                <Button onClick={openManualForm}>Add a stay</Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {manualHotels.map((hotel) => {
+                const addressLine = [hotel.address, hotel.city, hotel.country]
+                  .filter(Boolean)
+                  .join(", ");
+                const checkInLabel = hotel.checkInDate
+                  ? format(new Date(hotel.checkInDate), "MMM d, yyyy")
+                  : "TBD";
+                const checkOutLabel = hotel.checkOutDate
+                  ? format(new Date(hotel.checkOutDate), "MMM d, yyyy")
+                  : "TBD";
+                const totalPriceLabel = formatCurrency(hotel.totalPrice, {
+                  currency: hotel.currency ?? "USD",
+                  fallback: "—",
+                });
+                const nightlyPriceLabel = hotel.pricePerNight
+                  ? formatCurrency(hotel.pricePerNight, {
+                      currency: hotel.currency ?? "USD",
+                      fallback: "",
+                    })
+                  : null;
+                const statusLabel = hotel.status
+                  ? hotel.status.charAt(0).toUpperCase() + hotel.status.slice(1)
+                  : null;
+
+                return (
+                  <Card key={hotel.id}>
+                    <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-2">
+                        <CardTitle className="text-base font-semibold text-neutral-900">
+                          {hotel.hotelName || "Hotel"}
+                        </CardTitle>
+                        <CardDescription className="text-sm text-muted-foreground">
+                          {addressLine || "Address TBD"}
+                        </CardDescription>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">
+                            {checkInLabel} → {checkOutLabel}
+                          </Badge>
+                          {statusLabel ? (
+                            <Badge variant="outline" className="capitalize">
+                              {statusLabel}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleEditHotel(hotel)}>
+                          Edit
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            >
+                              Delete
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete hotel?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will remove the stay from your trip. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteHotelMutation.mutate(hotel.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                                disabled={deleteHotelMutation.isPending}
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase text-muted-foreground">Total price</p>
+                          <p className="text-sm font-medium text-neutral-900">{totalPriceLabel}</p>
+                        </div>
+                        {nightlyPriceLabel ? (
+                          <div>
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">Price / night</p>
+                            <p className="text-sm font-medium text-neutral-900">{nightlyPriceLabel}</p>
+                          </div>
+                        ) : null}
+                        {hotel.bookingReference ? (
+                          <div>
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">Booking ref</p>
+                            <p className="text-sm font-medium text-neutral-900">{hotel.bookingReference}</p>
+                          </div>
+                        ) : null}
+                        {hotel.bookingSource ? (
+                          <div>
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">Source</p>
+                            <p className="text-sm font-medium text-neutral-900">{hotel.bookingSource}</p>
+                          </div>
+                        ) : null}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-200" />
+
         <HotelSearchPanel
           ref={searchPanelRef}
           tripId={tripId}
@@ -4626,26 +5163,28 @@ function HotelBooking({
         <Dialog
           open={isManualHotelFormOpen}
           onOpenChange={(open) => {
-            if (open) {
-              openManualForm();
-            } else {
+            if (!open) {
               closeManualForm();
             }
           }}
         >
           <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add Hotel Manually</DialogTitle>
+              <DialogTitle>
+                {editingHotel ? "Edit Manual Hotel" : "Add Hotel Manually"}
+              </DialogTitle>
               <DialogDescription>
-                Record a stay that isn't imported from the hotel search results.
+                {editingHotel
+                  ? "Update this reservation so everyone has the latest details."
+                  : "Record a stay that isn't imported from the hotel search results."}
               </DialogDescription>
             </DialogHeader>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <HotelFormFields
                   form={form}
-                  isSubmitting={createHotelMutation.isPending}
-                  submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+                  isSubmitting={isSavingHotel}
+                  submitLabel={isSavingHotel ? (editingHotel ? "Updating..." : "Saving...") : editingHotel ? "Update Hotel" : "Save Hotel"}
                   showCancelButton
                   onCancel={closeManualForm}
                 />
