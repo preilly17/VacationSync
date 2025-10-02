@@ -3088,17 +3088,17 @@ export function setupRoutes(app: Express) {
     try {
       const tripId = parseInt(req.params.id);
       const userId = getRequestUserId(req);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
       const validatedData = insertFlightSchema.parse({
         ...req.body,
         tripId,
         bookedBy: userId
       });
-      
+
       const flight = await storage.addFlight(validatedData, userId);
       res.json(flight);
     } catch (error: unknown) {
@@ -3108,6 +3108,66 @@ export function setupRoutes(app: Express) {
       } else {
         res.status(500).json({ message: "Failed to add flight" });
       }
+    }
+  });
+
+  app.put('/api/flights/:id', isAuthenticated, async (req: any, res) => {
+    const flightId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(flightId)) {
+      return res.status(400).json({ error: "Invalid flight id" });
+    }
+
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "User ID not found" });
+    }
+
+    try {
+      await storage.updateFlight(flightId, req.body ?? {}, userId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error updating flight:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('Flight not found')) {
+          return res.status(404).json({ error: "Flight not found" });
+        }
+
+        if (error.message.includes('Only the creator')) {
+          return res.status(403).json({ error: error.message });
+        }
+      }
+
+      res.status(500).json({ error: "Failed to update flight" });
+    }
+  });
+
+  app.delete('/api/flights/:id', isAuthenticated, async (req: any, res) => {
+    const flightId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(flightId)) {
+      return res.status(400).json({ error: "Invalid flight id" });
+    }
+
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "User ID not found" });
+    }
+
+    try {
+      await storage.deleteFlight(flightId, userId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error deleting flight:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('Flight not found')) {
+          return res.status(404).json({ error: "Flight not found" });
+        }
+
+        if (error.message.includes('Only the creator')) {
+          return res.status(403).json({ error: error.message });
+        }
+      }
+
+      res.status(500).json({ error: "Failed to delete flight" });
     }
   });
 
@@ -3209,7 +3269,7 @@ export function setupRoutes(app: Express) {
     try {
       const tripId = parseInt(req.params.id);
       const userId = getRequestUserId(req);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
@@ -3271,6 +3331,66 @@ export function setupRoutes(app: Express) {
       } else {
         res.status(500).json({ message: "Failed to add hotel" });
       }
+    }
+  });
+
+  app.put('/api/hotels/:id', isAuthenticated, async (req: any, res) => {
+    const hotelId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(hotelId)) {
+      return res.status(400).json({ error: "Invalid hotel id" });
+    }
+
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "User ID not found" });
+    }
+
+    try {
+      await storage.updateHotel(hotelId, req.body ?? {}, userId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error updating hotel:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('Hotel not found')) {
+          return res.status(404).json({ error: "Hotel not found" });
+        }
+
+        if (error.message.includes('Only the creator')) {
+          return res.status(403).json({ error: error.message });
+        }
+      }
+
+      res.status(500).json({ error: "Failed to update hotel" });
+    }
+  });
+
+  app.delete('/api/hotels/:id', isAuthenticated, async (req: any, res) => {
+    const hotelId = Number.parseInt(req.params.id, 10);
+    if (Number.isNaN(hotelId)) {
+      return res.status(400).json({ error: "Invalid hotel id" });
+    }
+
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "User ID not found" });
+    }
+
+    try {
+      await storage.deleteHotel(hotelId, userId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error deleting hotel:", error);
+      if (error instanceof Error) {
+        if (error.message.includes('Hotel not found')) {
+          return res.status(404).json({ error: "Hotel not found" });
+        }
+
+        if (error.message.includes('Only the creator')) {
+          return res.status(403).json({ error: error.message });
+        }
+      }
+
+      res.status(500).json({ error: "Failed to delete hotel" });
     }
   });
 
