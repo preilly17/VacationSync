@@ -129,6 +129,50 @@ const promoteWaitlistedInviteIfNeeded = async (
   return nextInvite.userId;
 };
 
+type ClientInfo = { userId: string; tripId?: number };
+
+export const assignClientToTrip = (
+  clientMap: Map<WebSocket, ClientInfo>,
+  ws: WebSocket,
+  data: { userId?: string; tripId?: unknown },
+): void => {
+  const userId = typeof data.userId === "string" ? data.userId : "";
+  const parsedTripId = Number.parseInt(String(data.tripId), 10);
+
+  if (Number.isNaN(parsedTripId)) {
+    console.warn("Received invalid trip ID in join_trip message:", data.tripId);
+    clientMap.set(ws, { userId });
+    return;
+  }
+
+  clientMap.set(ws, {
+    userId,
+    tripId: parsedTripId,
+  });
+};
+
+export const broadcastMessageToTripClients = (
+  clientMap: Map<WebSocket, ClientInfo>,
+  tripId: number,
+  message: any,
+  wsLib: typeof WebSocket,
+): void => {
+  if (!Number.isFinite(tripId)) {
+    return;
+  }
+
+  clientMap.forEach((clientInfo, ws) => {
+    if (
+      typeof clientInfo.tripId === "number" &&
+      Number.isFinite(clientInfo.tripId) &&
+      clientInfo.tripId === tripId &&
+      ws.readyState === wsLib.OPEN
+    ) {
+      ws.send(JSON.stringify(message));
+    }
+  });
+};
+
 let broadcastToTrip = (_tripId: number, _message: any) => {};
 
 const applyActivityResponse = async (
@@ -2262,7 +2306,7 @@ export function setupRoutes(app: Express) {
   // WebSocket setup
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
-  const clients = new Map<WebSocket, { userId: string; tripId?: number }>();
+  const clients = new Map<WebSocket, ClientInfo>();
 
   wss.on('connection', (ws: WebSocket, req) => {
     console.log('WebSocket client connected');
@@ -2272,10 +2316,7 @@ export function setupRoutes(app: Express) {
         const data = JSON.parse(message.toString());
         
         if (data.type === 'join_trip') {
-          clients.set(ws, { 
-            userId: data.userId, 
-            tripId: data.tripId 
-          });
+          assignClientToTrip(clients, ws, data);
         }
       } catch (error: unknown) {
         console.error('Error parsing WebSocket message:', error);
@@ -2289,11 +2330,7 @@ export function setupRoutes(app: Express) {
   });
 
   broadcastToTrip = (tripId: number, message: any) => {
-    clients.forEach((clientInfo, ws) => {
-      if (clientInfo.tripId === tripId && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(message));
-      }
-    });
+    broadcastMessageToTripClients(clients, tripId, message, WebSocket);
   };
 
   // Delete trip route
