@@ -7,6 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import {
@@ -24,9 +27,24 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { markExternalRedirect, ACTIVITY_REDIRECT_STORAGE_KEY } from "@/lib/externalRedirects";
 import { format } from "date-fns";
-import type { ActivityWithDetails, TripWithDetails, User } from "@shared/schema";
+import type { ActivityWithDetails, ActivityType, TripWithDetails, User } from "@shared/schema";
+import {
+  ATTENDEE_REQUIRED_MESSAGE,
+  normalizeAttendeeIds,
+  normalizeCostInput,
+} from "@shared/activityValidation";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
+
+const getMemberDisplayName = (member?: User | null) => {
+  if (!member) return "Trip member";
+  const first = member.firstName?.trim();
+  const last = member.lastName?.trim();
+  if (first && last) return `${first} ${last}`;
+  if (first) return first;
+  if (member.username) return member.username;
+  return member.email || "Trip member";
+};
 
 const MANUAL_STATUS_OPTIONS = [
   { value: "planned", label: "Planned" },
@@ -141,6 +159,17 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     currency: MANUAL_CURRENCY_OPTIONS[0],
     status: MANUAL_STATUS_OPTIONS[0].value,
   });
+  const memberOptions = useMemo(
+    () =>
+      (trip?.members ?? []).map((member) => ({
+        id: String(member.userId),
+        name: getMemberDisplayName(member.user),
+      })),
+    [trip?.members],
+  );
+  const defaultMemberIds = useMemo(() => memberOptions.map((member) => member.id), [memberOptions]);
+  const [manualAttendeeIds, setManualAttendeeIds] = useState<string[]>(defaultMemberIds);
+  const [manualMode, setManualMode] = useState<ActivityType>("SCHEDULED");
   const locationInputRef = useRef<HTMLInputElement | null>(null);
   const manualSignalRef = useRef(manualFormOpenSignal ?? 0);
 
@@ -162,6 +191,21 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     focusLocationInput();
   };
 
+  useEffect(() => {
+    setManualAttendeeIds((prev) => {
+      if (defaultMemberIds.length === 0) {
+        return [];
+      }
+
+      const valid = prev.filter((id) => defaultMemberIds.includes(id));
+      if (valid.length === prev.length) {
+        return prev;
+      }
+
+      return valid;
+    });
+  }, [defaultMemberIds]);
+
   const resetManualForm = useCallback(() => {
     setManualFormData({
       name: "",
@@ -171,7 +215,9 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       currency: MANUAL_CURRENCY_OPTIONS[0],
       status: MANUAL_STATUS_OPTIONS[0].value,
     });
-  }, [trip?.destination, trip?.startDate]);
+    setManualAttendeeIds(defaultMemberIds);
+    setManualMode("SCHEDULED");
+  }, [defaultMemberIds, trip?.destination, trip?.startDate]);
 
   const openManualForm = useCallback(() => {
     resetManualForm();
@@ -345,18 +391,34 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const canBuildExternalLink = Boolean((locationSearch.trim() || trip?.destination) && trip?.startDate);
 
   const createManualActivityMutation = useMutation({
-    mutationFn: async (payload: Record<string, unknown>) => {
-      const response = await apiRequest(`/api/trips/${tripId}/activities`, {
+    mutationFn: async ({
+      payload,
+      submissionType,
+    }: {
+      payload: Record<string, unknown>;
+      submissionType: ActivityType;
+    }) => {
+      const endpoint =
+        submissionType === "PROPOSE"
+          ? `/api/trips/${tripId}/proposals/activities`
+          : `/api/trips/${tripId}/activities`;
+
+      const response = await apiRequest(endpoint, {
         method: "POST",
         body: payload,
       });
 
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_createdActivity, variables) => {
+      const submissionType = variables?.submissionType ?? "SCHEDULED";
+
       toast({
-        title: "Activity saved",
-        description: "We added your manual activity to the trip.",
+        title: submissionType === "PROPOSE" ? "Activity proposed" : "Activity saved",
+        description:
+          submissionType === "PROPOSE"
+            ? "We shared this idea with your group for feedback."
+            : "We added your manual activity to the trip.",
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
@@ -373,6 +435,30 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   });
 
   const isSavingManualActivity = createManualActivityMutation.isPending;
+
+  const handleManualToggleAttendee = useCallback(
+    (memberId: string, checked: boolean | "indeterminate") => {
+      const normalizedId = String(memberId);
+      setManualAttendeeIds((current) => {
+        const next = new Set(current);
+        if (checked === true) {
+          next.add(normalizedId);
+        } else if (checked === false) {
+          next.delete(normalizedId);
+        }
+        return Array.from(next);
+      });
+    },
+    [],
+  );
+
+  const handleManualSelectAll = useCallback(() => {
+    setManualAttendeeIds(defaultMemberIds);
+  }, [defaultMemberIds]);
+
+  const handleManualClearAttendees = useCallback(() => {
+    setManualAttendeeIds([]);
+  }, []);
 
   const handleManualFormSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -399,18 +485,39 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       return;
     }
 
+    const costResult = normalizeCostInput(manualFormData.price);
+    if (costResult.error) {
+      toast({
+        title: "Price looks off",
+        description: costResult.error,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const attendeeResult = normalizeAttendeeIds(manualAttendeeIds);
+    if (attendeeResult.error || attendeeResult.value.length === 0) {
+      toast({
+        title: "Select attendees",
+        description: attendeeResult.error ?? ATTENDEE_REQUIRED_MESSAGE,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const payload = {
       name: trimmedName,
       location: trimmedLocation,
       startTime: parsedDate.toISOString(),
       endTime: null,
       description: `Manual entry · Status: ${MANUAL_STATUS_LABELS[manualFormData.status]} · Currency: ${manualFormData.currency}`,
-      cost: manualFormData.price ? Number(manualFormData.price) : null,
+      cost: costResult.value,
       category: MANUAL_ACTIVITY_CATEGORY,
-      type: "SCHEDULED" as const,
+      attendeeIds: attendeeResult.value,
+      type: manualMode,
     };
 
-    createManualActivityMutation.mutate(payload);
+    createManualActivityMutation.mutate({ payload, submissionType: manualMode });
   };
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
@@ -741,6 +848,26 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
           </DialogHeader>
           <form onSubmit={handleManualFormSubmit} className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="manual-activity-type">Activity type</Label>
+              <ToggleGroup
+                type="single"
+                value={manualMode}
+                onValueChange={(value) => {
+                  if (value) {
+                    setManualMode(value as ActivityType);
+                  }
+                }}
+                className="flex"
+              >
+                <ToggleGroupItem value="SCHEDULED" className="flex-1">
+                  Add to schedule
+                </ToggleGroupItem>
+                <ToggleGroupItem value="PROPOSE" className="flex-1">
+                  Propose to group
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="manual-activity-name">Activity name</Label>
               <Input
                 id="manual-activity-name"
@@ -788,6 +915,69 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                   placeholder="150"
                 />
               </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="manual-attendees">Who's going?</Label>
+                <span className="text-xs text-neutral-500">{manualAttendeeIds.length} selected</span>
+              </div>
+              <p className="text-xs text-neutral-500">
+                We'll send invites to everyone you include. They can RSVP from their schedule.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleManualSelectAll}
+                  disabled={memberOptions.length === 0 || manualAttendeeIds.length === defaultMemberIds.length}
+                >
+                  Select all
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleManualClearAttendees}
+                  disabled={manualAttendeeIds.length === 0}
+                >
+                  Clear
+                </Button>
+              </div>
+              <ScrollArea
+                className={`mt-3 max-h-40 rounded-lg border ${
+                  manualAttendeeIds.length === 0 ? "border-red-300" : "border-neutral-200"
+                }`}
+              >
+                <div className="p-3 space-y-2">
+                  {memberOptions.length === 0 ? (
+                    <p className="text-sm text-neutral-500">
+                      Invite friends to your trip to pick attendees.
+                    </p>
+                  ) : (
+                    memberOptions.map((member) => {
+                      const isChecked = manualAttendeeIds.includes(member.id);
+                      return (
+                        <div key={member.id} className="flex items-center space-x-3">
+                          <Checkbox
+                            id={`manual-attendee-${member.id}`}
+                            checked={isChecked}
+                            onCheckedChange={(checked) => handleManualToggleAttendee(member.id, checked)}
+                          />
+                          <Label htmlFor={`manual-attendee-${member.id}`} className="text-sm text-neutral-700">
+                            {member.name}
+                          </Label>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </ScrollArea>
+              {manualAttendeeIds.length === 0 && (
+                <p className="text-sm text-red-600">
+                  {ATTENDEE_REQUIRED_MESSAGE}
+                </p>
+              )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
