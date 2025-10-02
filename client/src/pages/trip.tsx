@@ -125,7 +125,6 @@ import SmartLocationSearch, { type LocationResult } from "@/components/SmartLoca
 import { fetchNearestAirportsForLocation, type NearbyAirport, extractCoordinates } from "@/lib/nearestAirports";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -3599,9 +3598,14 @@ function FlightCoordination({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold">Flight Coordination</h2>
-        <p className="text-gray-600">Coordinate flights with your group</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold">Flight Coordination</h2>
+          <p className="text-gray-600">Coordinate flights with your group</p>
+        </div>
+        <Button variant="outline" onClick={openManualFlightForm}>
+          Manual Entry
+        </Button>
       </div>
 
       <Card>
@@ -3956,7 +3960,7 @@ function FlightCoordination({
         </Card>
       )}
 
-      <Collapsible
+      <Dialog
         open={isManualFlightFormOpen}
         onOpenChange={(open) => {
           if (open) {
@@ -3966,27 +3970,20 @@ function FlightCoordination({
           }
         }}
       >
-        <div className="rounded-lg border border-dashed bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-neutral-900">Manual entry</p>
-              <p className="text-sm text-muted-foreground">
-                Record a flight that isn't imported from the search results.
-              </p>
-            </div>
-            <CollapsibleTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full justify-between sm:w-auto sm:justify-center"
-              >
-                <span>{isManualFlightFormOpen ? "Close" : "Log Flight Manually"}</span>
-                <ChevronDown
-                  className={`ml-2 h-4 w-4 transition-transform ${isManualFlightFormOpen ? "rotate-180" : ""}`}
-                />
-              </Button>
-            </CollapsibleTrigger>
-          </div>
-          <CollapsibleContent className="space-y-4 p-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Add Flight Manually</DialogTitle>
+            <DialogDescription>
+              Enter the flight details to share them with your group.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleManualSubmit();
+            }}
+          >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="manual-flight-number">Flight Number *</Label>
@@ -4155,15 +4152,11 @@ function FlightCoordination({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2">
+            <DialogFooter className="gap-2 sm:flex-row">
               <Button variant="outline" type="button" onClick={closeManualFlightForm}>
                 Cancel
               </Button>
-              <Button
-                type="button"
-                onClick={handleManualSubmit}
-                disabled={createFlightMutation.isPending}
-              >
+              <Button type="submit" disabled={createFlightMutation.isPending}>
                 {createFlightMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -4173,10 +4166,10 @@ function FlightCoordination({
                   "Add Flight"
                 )}
               </Button>
-            </div>
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -4461,16 +4454,6 @@ function HotelBooking({
     searchPanelRef.current?.focusForm();
   }, []);
 
-  const openManualForm = useCallback(() => {
-    setIsManualHotelFormOpen(true);
-  }, []);
-
-  useEffect(() => {
-    if (manualFormOpenSignal > 0) {
-      openManualForm();
-    }
-  }, [manualFormOpenSignal, openManualForm]);
-
   const shareHotelWithGroup = useCallback(
     async (hotel: HotelSearchResult) => {
       try {
@@ -4531,6 +4514,22 @@ function HotelBooking({
     form.reset(formDefaults());
   }, [form, formDefaults]);
 
+  const openManualForm = useCallback(() => {
+    form.reset(formDefaults());
+    setIsManualHotelFormOpen(true);
+  }, [form, formDefaults]);
+
+  const closeManualForm = useCallback(() => {
+    form.reset(formDefaults());
+    setIsManualHotelFormOpen(false);
+  }, [form, formDefaults]);
+
+  useEffect(() => {
+    if (manualFormOpenSignal > 0) {
+      openManualForm();
+    }
+  }, [manualFormOpenSignal, openManualForm]);
+
   const createHotelMutation = useMutation({
     mutationFn: async (payload: InsertHotel) => {
       return await apiRequest(`/api/trips/${tripId}/hotels`, {
@@ -4544,8 +4543,7 @@ function HotelBooking({
         title: "Hotel added",
         description: "Your hotel booking has been saved to the trip.",
       });
-      form.reset(formDefaults());
-      setIsManualHotelFormOpen(false);
+      closeManualForm();
     },
     onError: (error) => {
       if (isUnauthorizedError(error as Error)) {
@@ -4587,13 +4585,18 @@ function HotelBooking({
             <h2 className="text-xl font-semibold">Hotel Booking</h2>
             <p className="text-gray-600">Find and book accommodations</p>
           </div>
-          <Button
-            onClick={focusSearchPanel}
-            className="bg-primary hover:bg-red-600 text-white"
-          >
-            <Search className="w-4 h-4 mr-2" />
-            Search Hotels
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              onClick={focusSearchPanel}
+              className="bg-primary hover:bg-red-600 text-white"
+            >
+              <Search className="w-4 h-4 mr-2" />
+              Search Hotels
+            </Button>
+            <Button variant="outline" onClick={openManualForm}>
+              Manual Entry
+            </Button>
+          </div>
         </div>
 
         <HotelSearchPanel
@@ -4620,45 +4623,37 @@ function HotelBooking({
           toast={toast}
         />
 
-        <Collapsible open={isManualHotelFormOpen} onOpenChange={setIsManualHotelFormOpen}>
-          <div className="rounded-lg border border-dashed bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-neutral-900">Manual entry</p>
-                <p className="text-sm text-muted-foreground">
-                  Record a stay that isn't imported from the hotel search results.
-                </p>
-              </div>
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto justify-between sm:justify-center"
-                >
-                  <span>{isManualHotelFormOpen ? "Close" : "Add a Hotel"}</span>
-                  <ChevronDown
-                    className={`ml-2 h-4 w-4 transition-transform ${isManualHotelFormOpen ? "rotate-180" : ""}`}
-                  />
-                </Button>
-              </CollapsibleTrigger>
-            </div>
-            <CollapsibleContent className="space-y-6 p-4 transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)}>
-                  <HotelFormFields
-                    form={form}
-                    isSubmitting={createHotelMutation.isPending}
-                    submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
-                    showCancelButton
-                    onCancel={() => {
-                      form.reset(formDefaults());
-                      setIsManualHotelFormOpen(false);
-                    }}
-                  />
-                </form>
-              </Form>
-            </CollapsibleContent>
-          </div>
-        </Collapsible>
+        <Dialog
+          open={isManualHotelFormOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              openManualForm();
+            } else {
+              closeManualForm();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Add Hotel Manually</DialogTitle>
+              <DialogDescription>
+                Record a stay that isn't imported from the hotel search results.
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <HotelFormFields
+                  form={form}
+                  isSubmitting={createHotelMutation.isPending}
+                  submitLabel={createHotelMutation.isPending ? "Saving..." : "Save Hotel"}
+                  showCancelButton
+                  onCancel={closeManualForm}
+                />
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+
 
       </div>
 
