@@ -3464,7 +3464,18 @@ function FlightCoordination({
         method: "DELETE",
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (_response, flightId) => {
+      queryClient.setQueryData<FlightWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/flights`],
+        (existing) => {
+          if (!Array.isArray(existing)) {
+            return existing;
+          }
+
+          return existing.filter((flight) => flight.id !== flightId);
+        },
+      );
+
       await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
       toast({
         title: "Flight removed",
@@ -4886,8 +4897,19 @@ function HotelBooking({
         method: "DELETE",
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+    onSuccess: async (_response, hotelId) => {
+      queryClient.setQueryData<HotelWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/hotels`],
+        (existing) => {
+          if (!Array.isArray(existing)) {
+            return existing;
+          }
+
+          return existing.filter((hotel) => hotel.id !== hotelId);
+        },
+      );
+
+      await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
       toast({
         title: "Hotel removed",
         description: "The hotel entry has been deleted.",
