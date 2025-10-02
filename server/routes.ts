@@ -1930,9 +1930,11 @@ export function setupRoutes(app: Express) {
       attendeeIdSet.delete(userId);
       const inviteeIds = Array.from(attendeeIdSet);
 
-      const activity = await storage.createActivity(validationResult.data, userId, inviteeIds);
-
-      await storage.setActivityInviteStatus(activity.id, userId, "accepted");
+      const activity = await storage.createActivityWithInvites(
+        validationResult.data,
+        userId,
+        inviteeIds,
+      );
 
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
