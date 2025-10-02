@@ -7,6 +7,7 @@ process.env.DATABASE_URL =
 
 const queryMock = jest.fn();
 
+let storageModule: typeof import("../storage");
 let storage: typeof import("../storage")["storage"];
 let dbQuerySpy: jest.SpiedFunction<typeof import("../db")["query"]>;
 
@@ -14,7 +15,7 @@ beforeAll(async () => {
   jest.resetModules();
   const dbModule: any = await import("../db");
   dbQuerySpy = jest.spyOn(dbModule, "query").mockImplementation(queryMock as any);
-  const storageModule: any = await import("../storage");
+  storageModule = await import("../storage");
   storage = storageModule.storage;
 });
 
@@ -63,6 +64,7 @@ describe("createActivityWithInvites", () => {
     queryMock
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
       .mockResolvedValueOnce({ rows: [activityRow] }) // insert activity
+      .mockResolvedValueOnce({ rows: [{ user_id: "friend" }] }) // validate members
       .mockRejectedValueOnce(error) // insert invites
       .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
@@ -71,12 +73,54 @@ describe("createActivityWithInvites", () => {
     ).rejects.toThrow("failed to persist invites");
 
     expect(queryMock).toHaveBeenNthCalledWith(1, "BEGIN");
-    expect(queryMock).toHaveBeenNthCalledWith(
-      4,
-      "ROLLBACK",
-    );
+    expect(queryMock).toHaveBeenNthCalledWith(5, "ROLLBACK");
     expect(
       queryMock.mock.calls.map(([sql]) => sql),
     ).not.toContain("COMMIT");
+  });
+
+  it("throws ActivityInviteMembershipError when invitees are no longer members", async () => {
+    const activityInput: InsertActivity = {
+      tripCalendarId: 42,
+      name: "Beach Bonfire",
+      description: null,
+      startTime: new Date().toISOString(),
+      endTime: null,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: "fun",
+      type: "SCHEDULED",
+    };
+
+    const activityRow = {
+      id: 99,
+      trip_calendar_id: 42,
+      posted_by: "organizer",
+      name: activityInput.name,
+      description: null,
+      start_time: activityInput.startTime,
+      end_time: null,
+      location: null,
+      cost: null,
+      max_capacity: null,
+      category: activityInput.category,
+      status: "active",
+      type: activityInput.type,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rows: [activityRow] }) // insert activity
+      .mockResolvedValueOnce({ rows: [] }) // validate members returns none
+      .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
+
+    await expect(
+      storage.createActivityWithInvites(activityInput, "organizer", ["former-member"]),
+    ).rejects.toBeInstanceOf(storageModule.ActivityInviteMembershipError);
+
+    expect(queryMock).toHaveBeenNthCalledWith(4, "ROLLBACK");
   });
 });

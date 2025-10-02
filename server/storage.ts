@@ -218,6 +218,26 @@ const toActivityType = (value: unknown): ActivityType => {
   return "SCHEDULED";
 };
 
+export class ActivityInviteMembershipError extends Error {
+  readonly invalidInviteeIds: string[];
+
+  readonly attemptedInviteeIds: string[];
+
+  constructor({
+    invalidInviteeIds,
+    attemptedInviteeIds,
+  }: {
+    invalidInviteeIds: string[];
+    attemptedInviteeIds: string[];
+  }) {
+    super("One or more invitees are no longer members of this trip.");
+    this.name = "ActivityInviteMembershipError";
+    this.invalidInviteeIds = invalidInviteeIds;
+    this.attemptedInviteeIds = attemptedInviteeIds;
+    Object.setPrototypeOf(this, ActivityInviteMembershipError.prototype);
+  }
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -3545,6 +3565,26 @@ export class DatabaseStorage implements IStorage {
 
       const uniqueInviteeIds = Array.from(new Set(inviteeIds));
       if (uniqueInviteeIds.length > 0) {
+        const { rows: memberRows } = await query<{ user_id: string }>(
+          `
+          SELECT user_id
+          FROM trip_members
+          WHERE trip_calendar_id = $1
+            AND user_id = ANY($2::text[])
+          `,
+          [activity.tripCalendarId, uniqueInviteeIds],
+        );
+
+        const validMemberIds = new Set(memberRows.map((row) => row.user_id));
+        const invalidInviteeIds = uniqueInviteeIds.filter((id) => !validMemberIds.has(id));
+
+        if (invalidInviteeIds.length > 0) {
+          throw new ActivityInviteMembershipError({
+            invalidInviteeIds,
+            attemptedInviteeIds: uniqueInviteeIds,
+          });
+        }
+
         await query(
           `
           INSERT INTO activity_invites (activity_id, user_id, status, responded_at)

@@ -12,6 +12,7 @@ import {
 type RouteHandler = (req: any, res: any, next?: any) => Promise<unknown> | unknown;
 
 let setupRoutes: (app: express.Express) => import("http").Server;
+let storageModule: any;
 let storage: any;
 let observabilityModule: any;
 let logActivityCreationFailure: jest.SpyInstance;
@@ -82,7 +83,7 @@ beforeAll(async () => {
   const routesModule: any = await import("../routes");
   setupRoutes = routesModule.setupRoutes;
 
-  const storageModule: any = await import("../storage");
+  storageModule = await import("../storage");
   storage = storageModule.storage;
 
   observabilityModule = await import("../observability");
@@ -201,6 +202,91 @@ describe("POST /api/trips/:id/activities", () => {
 
     consoleWarnSpy.mockRestore();
     consoleErrorSpy.mockRestore();
+  });
+
+  it("returns 422 when invitees are no longer trip members", async () => {
+    const trip = {
+      id: 789,
+      createdBy: "former-member",
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Sunset Cruise",
+      startTime: new Date("2024-04-01T18:00:00Z").toISOString(),
+      endTime: null,
+      category: "entertainment",
+      attendeeIds: ["friend", "former-member"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest
+      .spyOn(storage, "getTripById")
+      .mockResolvedValueOnce(trip as any);
+
+    const membershipError = new storageModule.ActivityInviteMembershipError({
+      invalidInviteeIds: ["former-member"],
+      attemptedInviteeIds: ["friend", "former-member"],
+    });
+
+    const createSpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockRejectedValueOnce(membershipError as never);
+
+    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "One or more invitees are no longer members of this trip.",
+        correlationId: expect.any(String),
+        invalidInviteeIds: ["former-member"],
+      }),
+    );
+
+    expect(logActivityCreationFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        correlationId: expect.any(String),
+        step: "save",
+        userId: "organizer",
+        tripId: trip.id,
+        error: membershipError,
+        mode: "SCHEDULED",
+      }),
+    );
+
+    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "SCHEDULED", outcome: "failure", reason: "constraint" }),
+    );
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "Activity creation blocked due to non-member invites",
+      expect.objectContaining({
+        correlationId: expect.any(String),
+        tripId: trip.id,
+        userId: "organizer",
+        invalidInviteeIds: ["former-member"],
+        attemptedInviteeIds: ["friend", "former-member"],
+        error: membershipError,
+      }),
+    );
+
+    expect(createSpy).toHaveBeenCalled();
+
+    consoleWarnSpy.mockRestore();
   });
 
   it("allows manual entry activities to be created", async () => {
