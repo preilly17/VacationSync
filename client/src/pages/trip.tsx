@@ -239,6 +239,92 @@ const parseTripDateToLocal = (value?: string | Date | null): Date | null => {
   return Number.isNaN(fallback.getTime()) ? null : fallback;
 };
 
+type ActivityWithSchedulingDetails = Omit<ActivityWithDetails, "startTime" | "endTime"> & {
+  startTime?: string | Date | null;
+  endTime?: string | Date | null;
+  timeOptions?: (string | Date | null | undefined)[] | null;
+};
+
+const parseActivityDate = (value: unknown): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+};
+
+const getActivityStartDate = (activity: ActivityWithSchedulingDetails): Date | null => {
+  const rawStart = activity.startTime ?? (activity as ActivityWithDetails).startTime ?? null;
+  return parseActivityDate(rawStart);
+};
+
+const getActivityEndDate = (activity: ActivityWithSchedulingDetails): Date | null => {
+  const rawEnd = activity.endTime ?? (activity as ActivityWithDetails).endTime ?? null;
+  return parseActivityDate(rawEnd);
+};
+
+const getActivityTimeOptions = (activity: ActivityWithSchedulingDetails): Date[] => {
+  const rawOptions = activity.timeOptions;
+  if (!Array.isArray(rawOptions)) {
+    return [];
+  }
+
+  const seen = new Set<number>();
+
+  return rawOptions
+    .map(option => parseActivityDate(option))
+    .filter((option): option is Date => Boolean(option))
+    .filter(option => {
+      const time = option.getTime();
+      if (seen.has(time)) {
+        return false;
+      }
+      seen.add(time);
+      return true;
+    });
+};
+
+const getActivityPrimaryDate = (activity: ActivityWithSchedulingDetails): Date | null => {
+  const start = getActivityStartDate(activity);
+  if (start) {
+    return start;
+  }
+
+  const [firstOption] = getActivityTimeOptions(activity);
+  return firstOption ?? null;
+};
+
+const getActivityDateCandidates = (activity: ActivityWithSchedulingDetails): Date[] => {
+  const primary = getActivityPrimaryDate(activity);
+  const candidates: Date[] = [];
+
+  if (primary) {
+    candidates.push(primary);
+  }
+
+  for (const option of getActivityTimeOptions(activity)) {
+    if (!primary || option.getTime() !== primary.getTime()) {
+      candidates.push(option);
+    }
+  }
+
+  return candidates;
+};
+
+const getActivityComparisonPoint = (activity: ActivityWithSchedulingDetails): Date | null => {
+  const end = getActivityEndDate(activity);
+  return end ?? getActivityPrimaryDate(activity);
+};
+
 interface DayViewProps {
   date: Date;
   activities: ActivityWithDetails[];
@@ -252,6 +338,7 @@ interface DayViewProps {
   onSubmitRsvp?: (activity: ActivityWithDetails, action: ActivityRsvpAction) => void;
   isRsvpPending?: boolean;
   viewMode?: "group" | "personal";
+  proposalFallbackDate?: Date | null;
 }
 
 const getParticipantDisplayName = (user: User) => {
@@ -273,10 +360,22 @@ const getParticipantDisplayName = (user: User) => {
   return user.email || "Trip member";
 };
 
-const formatActivityTimeRange = (startTime: string | Date, endTime?: string | Date | null) => {
-  const startDate = new Date(startTime);
+const formatActivityTimeRange = (
+  startTime: string | Date | null | undefined,
+  endTime?: string | Date | null | undefined,
+  timeOptions?: (string | Date | null | undefined)[] | null,
+) => {
+  const startDate = parseActivityDate(startTime);
 
-  if (Number.isNaN(startDate.getTime())) {
+  if (!startDate) {
+    const firstOption = Array.isArray(timeOptions)
+      ? timeOptions.map(option => parseActivityDate(option)).find((value): value is Date => Boolean(value))
+      : null;
+
+    if (firstOption) {
+      return `Time TBD (proposed ${format(firstOption, "MMM d, h:mm a")})`;
+    }
+
     return "Time TBD";
   }
 
@@ -286,9 +385,9 @@ const formatActivityTimeRange = (startTime: string | Date, endTime?: string | Da
     return startLabel;
   }
 
-  const endDate = new Date(endTime);
+  const endDate = parseActivityDate(endTime);
 
-  if (Number.isNaN(endDate.getTime())) {
+  if (!endDate) {
     return startLabel;
   }
 
@@ -297,6 +396,40 @@ const formatActivityTimeRange = (startTime: string | Date, endTime?: string | Da
   }
 
   return `${startLabel} - ${format(endDate, "MMM d, h:mm a")}`;
+};
+
+const activityMatchesDay = (
+  activity: ActivityWithSchedulingDetails,
+  day: Date,
+  proposalFallbackDate: Date | null,
+) => {
+  const candidates = getActivityDateCandidates(activity);
+  if (candidates.some(candidate => isSameDay(candidate, day))) {
+    return true;
+  }
+
+  if (proposalFallbackDate && activity.type === "PROPOSE") {
+    return isSameDay(proposalFallbackDate, day);
+  }
+
+  return false;
+};
+
+const compareActivitiesByPrimaryDate = (
+  a: ActivityWithSchedulingDetails,
+  b: ActivityWithSchedulingDetails,
+) => {
+  const aDate = getActivityPrimaryDate(a);
+  const bDate = getActivityPrimaryDate(b);
+
+  if (aDate && bDate) {
+    return aDate.getTime() - bDate.getTime();
+  }
+
+  if (aDate) return -1;
+  if (bDate) return 1;
+
+  return a.name.localeCompare(b.name);
 };
 
 function DayView({
@@ -312,12 +445,14 @@ function DayView({
   onSubmitRsvp,
   isRsvpPending,
   viewMode = "group",
+  proposalFallbackDate = null,
 }: DayViewProps) {
   const dayActivities = activities
-    .filter((activity) => isSameDay(new Date(activity.startTime), date))
-    .sort(
-      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
+    .filter(activity => activityMatchesDay(activity as ActivityWithSchedulingDetails, date, proposalFallbackDate))
+    .sort((a, b) => compareActivitiesByPrimaryDate(
+      a as ActivityWithSchedulingDetails,
+      b as ActivityWithSchedulingDetails,
+    ));
 
   const now = new Date();
   const isPersonalView = viewMode === "personal";
@@ -362,6 +497,7 @@ function DayView({
       ) : (
         <div className="space-y-4">
           {dayActivities.map((activity) => {
+            const activityWithScheduling = activity as ActivityWithSchedulingDetails;
             const waitlistedCount =
               activity.waitlistedCount
                 ?? activity.invites.filter((invite) => invite.status === "waitlisted").length;
@@ -382,17 +518,11 @@ function DayView({
             const statusBadgeClasses = showPersonalProposalChip
               ? "bg-blue-100 text-blue-800 border-blue-200"
               : inviteStatusBadgeClasses[derivedStatus];
-            const isPastActivity = (() => {
-              const end = activity.endTime ? new Date(activity.endTime) : null;
-              const start = new Date(activity.startTime);
-              const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
-              return Number.isNaN(comparisonTarget.getTime())
-                ? false
-                : comparisonTarget.getTime() < now.getTime();
-            })();
-            const rsvpCloseDate = activity.rsvpCloseTime
-              ? new Date(activity.rsvpCloseTime)
-              : null;
+            const comparisonTarget = getActivityComparisonPoint(activityWithScheduling);
+            const isPastActivity = Boolean(
+              comparisonTarget && comparisonTarget.getTime() < now.getTime(),
+            );
+            const rsvpCloseDate = parseActivityDate(activity.rsvpCloseTime ?? null);
             const isRsvpClosed = Boolean(
               rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
             );
@@ -611,7 +741,11 @@ function DayView({
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <span className="inline-flex items-center">
                         <Clock className="mr-2 h-4 w-4" aria-hidden="true" />
-                        {formatActivityTimeRange(activity.startTime, activity.endTime)}
+                        {formatActivityTimeRange(
+                          activityWithScheduling.startTime ?? activity.startTime ?? null,
+                          activityWithScheduling.endTime ?? activity.endTime ?? null,
+                          activityWithScheduling.timeOptions ?? null,
+                        )}
                       </span>
                       <Badge className="bg-primary/10 text-primary" variant="secondary">
                         {activity.acceptedCount} going
@@ -1052,8 +1186,10 @@ export default function Trip() {
   };
 
   const handleViewOnCalendar = (activity: ActivityWithDetails) => {
-    const targetDate = clampDateToTrip(new Date(activity.startTime));
-    if (targetDate) {
+    const activityWithScheduling = activity as ActivityWithSchedulingDetails;
+    const primaryDate = getActivityPrimaryDate(activityWithScheduling);
+    if (primaryDate) {
+      const targetDate = clampDateToTrip(primaryDate);
       setActiveTab("calendar");
       setGroupCalendarView("day");
       setGroupViewDate(targetDate);
@@ -1096,6 +1232,18 @@ export default function Trip() {
     const parsed = parseTripDateToLocal(trip?.endDate);
     return parsed ? startOfDay(parsed) : null;
   }, [trip?.endDate]);
+
+  const proposalFallbackDate = useMemo(() => {
+    if (tripStartDate) {
+      return tripStartDate;
+    }
+
+    if (tripEndDate) {
+      return tripEndDate;
+    }
+
+    return null;
+  }, [tripEndDate, tripStartDate]);
 
   const clampDateToTrip = (date: Date) => {
     if (!tripStartDate && !tripEndDate) {
@@ -1205,17 +1353,19 @@ export default function Trip() {
   const sortedMyInvitedActivities = useMemo(() => {
     const now = Date.now();
     return [...filteredMyInvitedActivities].sort((a, b) => {
-      const aTime = new Date(a.startTime).getTime();
-      const bTime = new Date(b.startTime).getTime();
-      const aIsPast = Number.isNaN(aTime) ? 1 : aTime < now ? 1 : 0;
-      const bIsPast = Number.isNaN(bTime) ? 1 : bTime < now ? 1 : 0;
+      const aDate = getActivityPrimaryDate(a as ActivityWithSchedulingDetails);
+      const bDate = getActivityPrimaryDate(b as ActivityWithSchedulingDetails);
+      const aTime = aDate ? aDate.getTime() : Number.POSITIVE_INFINITY;
+      const bTime = bDate ? bDate.getTime() : Number.POSITIVE_INFINITY;
+      const aIsPast = aDate ? (aTime < now ? 1 : 0) : 0;
+      const bIsPast = bDate ? (bTime < now ? 1 : 0) : 0;
 
       if (aIsPast !== bIsPast) {
         return aIsPast - bIsPast;
       }
 
-      if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
-        return 0;
+      if (!Number.isFinite(aTime) && !Number.isFinite(bTime)) {
+        return a.name.localeCompare(b.name);
       }
 
       return aTime - bTime;
@@ -1358,11 +1508,18 @@ export default function Trip() {
   const upcomingActivities = useMemo(() => {
     const now = new Date();
     return filteredActivities
-      .map((activity) => ({
-        activity,
-        start: new Date(activity.startTime),
-      }))
-      .filter(({ start }) => !Number.isNaN(start.getTime()) && start.getTime() >= now.getTime())
+      .map((activity) => {
+        const activityWithScheduling = activity as ActivityWithSchedulingDetails;
+        const start = getActivityPrimaryDate(activityWithScheduling);
+        return { activity, start };
+      })
+      .filter((entry): entry is { activity: ActivityWithDetails; start: Date } => {
+        if (!entry.start) {
+          return false;
+        }
+
+        return entry.start.getTime() >= now.getTime();
+      })
       .sort((a, b) => a.start.getTime() - b.start.getTime());
   }, [filteredActivities]);
 
@@ -1965,6 +2122,7 @@ export default function Trip() {
                             currentUser={user}
                             onSubmitRsvp={(activity, action) => submitRsvpAction(activity.id, action)}
                             isRsvpPending={respondToInviteMutation.isPending}
+                            proposalFallbackDate={proposalFallbackDate}
                           />
                         ) : (
                           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
@@ -2076,6 +2234,7 @@ export default function Trip() {
                             onSubmitRsvp={(activity, action) => submitRsvpAction(activity.id, action)}
                             isRsvpPending={respondToInviteMutation.isPending}
                             viewMode="personal"
+                            proposalFallbackDate={proposalFallbackDate}
                           />
                         ) : (
                           <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
@@ -2323,13 +2482,12 @@ export default function Trip() {
                     <ScrollArea className="max-h-[60vh] pr-4">
                       <div className="space-y-3 py-1">
                         {sortedMyInvitedActivities.map((activity) => {
+                          const activityWithScheduling = activity as ActivityWithSchedulingDetails;
                           const invite = activity.invites?.find((entry) => entry.userId === user.id);
                           const status: ActivityInviteStatus = invite?.status ?? "pending";
-                          const start = new Date(activity.startTime);
-                          const dateLabel = Number.isNaN(start.getTime())
-                            ? null
-                            : format(start, "EEEE, MMM d");
-                          const timeLabel = Number.isNaN(start.getTime()) ? null : format(start, "h:mm a");
+                          const start = getActivityPrimaryDate(activityWithScheduling);
+                          const dateLabel = start ? format(start, "EEEE, MMM d") : null;
+                          const timeLabel = start ? format(start, "h:mm a") : null;
                           const locationLabel = activity.location?.trim();
                           const waitlistedCount =
                             activity.waitlistedCount
@@ -2356,12 +2514,14 @@ export default function Trip() {
                               <div className="flex items-start justify-between gap-4">
                                 <div>
                                   <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
-                                  {(dateLabel || timeLabel) && (
+                                  {dateLabel || timeLabel ? (
                                     <p className="mt-1 text-sm text-neutral-600">
                                       {dateLabel}
                                       {dateLabel && timeLabel ? " • " : ""}
                                       {timeLabel}
                                     </p>
+                                  ) : (
+                                    <p className="mt-1 text-sm text-neutral-600">Time TBD</p>
                                   )}
                                   {locationLabel && (
                                     <p className="mt-2 flex items-center gap-2 text-xs text-neutral-500">
@@ -2643,6 +2803,7 @@ export default function Trip() {
                 canGoNext={false}
                 onActivityClick={handleActivityClick}
                 viewMode={dayDetailsState.viewMode}
+                proposalFallbackDate={proposalFallbackDate}
                 {...(dayDetailsState.viewMode === "personal"
                   ? {
                       currentUser: user,

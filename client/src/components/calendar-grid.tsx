@@ -150,15 +150,95 @@ const themeVariableMap: Record<EventThemeKey, CalendarCssVariables> = {
   },
 };
 
-const formatBadgeTime = (dateInput: string | Date) => {
-  const dateValue = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-  return format(dateValue, "h:mmaaa").toLowerCase().replace("m", "");
+type ActivityWithOptionalTimeOptions = ActivityWithDetails & {
+  startTime?: string | Date | null;
+  endTime?: string | Date | null;
+  timeOptions?: (string | Date | null | undefined)[] | null;
+};
+
+const parseDateValue = (value: unknown): Date | null => {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+};
+
+const getActivityTimeOptions = (activity: ActivityWithOptionalTimeOptions): Date[] => {
+  const rawOptions = activity.timeOptions;
+  if (!Array.isArray(rawOptions)) {
+    return [];
+  }
+
+  const seen = new Set<number>();
+
+  return rawOptions
+    .map(option => parseDateValue(option))
+    .filter((option): option is Date => Boolean(option))
+    .filter(option => {
+      const timestamp = option.getTime();
+      if (seen.has(timestamp)) {
+        return false;
+      }
+      seen.add(timestamp);
+      return true;
+    });
+};
+
+const getActivityPrimaryDate = (activity: ActivityWithOptionalTimeOptions): Date | null => {
+  const rawStartTime = activity.startTime ?? (activity as ActivityWithDetails).startTime;
+  const startDate = parseDateValue(rawStartTime);
+  if (startDate) {
+    return startDate;
+  }
+
+  const [firstOption] = getActivityTimeOptions(activity);
+  return firstOption ?? null;
+};
+
+const getActivityDateCandidates = (activity: ActivityWithOptionalTimeOptions): Date[] => {
+  const primary = getActivityPrimaryDate(activity);
+  const candidates: Date[] = [];
+
+  if (primary) {
+    candidates.push(primary);
+  }
+
+  for (const option of getActivityTimeOptions(activity)) {
+    if (!primary || option.getTime() !== primary.getTime()) {
+      candidates.push(option);
+    }
+  }
+
+  return candidates;
+};
+
+const formatBadgeTime = (dateInput: string | Date | null | undefined) => {
+  const parsed = parseDateValue(dateInput);
+  if (!parsed) {
+    return "Time TBD";
+  }
+
+  return format(parsed, "h:mmaaa").toLowerCase().replace("m", "");
 };
 
 const formatActivityAriaLabel = (activity: ActivityWithDetails, day: Date) => {
-  const start = new Date(activity.startTime);
-  const timeLabel = format(start, "h:mm a");
+  const activityWithOptions = activity as ActivityWithOptionalTimeOptions;
+  const scheduledStart = parseDateValue(activityWithOptions.startTime ?? activity.startTime ?? null);
   const dateLabel = format(day, "MMM d");
+
+  if (!scheduledStart) {
+    return `${activity.name} time to be determined on ${dateLabel}`;
+  }
+
+  const timeLabel = format(scheduledStart, "h:mm a");
   return `${activity.name} at ${timeLabel} on ${dateLabel}`;
 };
 
@@ -177,10 +257,35 @@ export function CalendarGrid({
   const monthEnd = endOfMonth(currentMonth);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
+  const proposalFallbackDate = parseDateValue(trip.startDate) ?? parseDateValue(trip.endDate);
+
   const getActivitiesForDay = (day: Date) => {
     return activities
-      .filter(activity => isSameDay(new Date(activity.startTime), day))
-      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+      .filter(activity => {
+        const candidates = getActivityDateCandidates(activity);
+        if (candidates.some(candidate => isSameDay(candidate, day))) {
+          return true;
+        }
+
+        if (activity.type === "PROPOSE" && proposalFallbackDate) {
+          return isSameDay(proposalFallbackDate, day);
+        }
+
+        return false;
+      })
+      .sort((a, b) => {
+        const aDate = getActivityPrimaryDate(a);
+        const bDate = getActivityPrimaryDate(b);
+
+        if (aDate && bDate) {
+          return aDate.getTime() - bDate.getTime();
+        }
+
+        if (aDate) return -1;
+        if (bDate) return 1;
+
+        return a.name.localeCompare(b.name);
+      });
   };
 
   const isTripDay = (day: Date) => {
@@ -563,6 +668,7 @@ function DayActivityList({
         className="group/mode flex h-full flex-col overflow-visible gap-y-1.5 data-[mode=compact]:gap-y-1 data-[mode=micro]:gap-y-0.5"
       >
         {activities.map((activity, index) => {
+          const activityWithOptions = activity as ActivityWithOptionalTimeOptions;
           const activityType = activity.type;
           const isProposal = activityType === "PROPOSE";
           const isCreator = Boolean(
@@ -583,9 +689,14 @@ function DayActivityList({
           const themeKey = getEventThemeKey(activity.category, isPersonalEvent);
           const style = { ...themeVariableMap[themeKey] } as CalendarCssVariables;
 
-          const metadata: string[] = [
-            format(new Date(activity.startTime), "h:mm a"),
-          ];
+          const primaryDate = getActivityPrimaryDate(activityWithOptions);
+          const scheduledStart = parseDateValue(activityWithOptions.startTime ?? activity.startTime ?? null);
+          const metadata: string[] = [];
+
+          const timeLabel = formatBadgeTime(scheduledStart ?? null);
+          if (timeLabel) {
+            metadata.push(timeLabel);
+          }
 
           if (activity.location && activity.location.trim().length > 0) {
             metadata.push(activity.location);
@@ -665,7 +776,7 @@ function DayActivityList({
                         "group-data-[mode=micro]/mode:ml-auto group-data-[mode=micro]/mode:bg-transparent group-data-[mode=micro]/mode:px-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-semibold group-data-[mode=micro]/mode:text-[var(--chip-text)] group-data-[mode=micro]/mode:tracking-[0.18em]",
                       )}
                     >
-                      {formatBadgeTime(activity.startTime)}
+                      {formatBadgeTime(scheduledStart ?? null)}
                     </span>
                     <span className="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-all duration-200 group-hover/chip:border-[var(--chip-border)]/50" aria-hidden />
                   </button>
@@ -673,7 +784,11 @@ function DayActivityList({
                 <TooltipContent className="max-w-xs rounded-xl border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] px-3 py-2 text-xs text-[color:var(--calendar-ink)] shadow-lg" side="top" align="start">
                   <div className="font-semibold text-[color:var(--calendar-ink)]">{activity.name}</div>
                   <div className="mt-1 text-[11px] text-[color:var(--calendar-muted)]">
-                    {format(new Date(activity.startTime), "EEEE • MMM d • h:mm a")}
+                    {scheduledStart
+                      ? format(scheduledStart, "EEEE • MMM d • h:mm a")
+                      : primaryDate
+                        ? `Proposed for ${format(primaryDate, "EEE • MMM d • h:mm a")}`
+                        : "Time TBD"}
                   </div>
                 </TooltipContent>
               </Tooltip>
