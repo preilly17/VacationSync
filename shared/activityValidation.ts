@@ -8,6 +8,7 @@ export const ACTIVITY_CATEGORY_VALUES = [
   "shopping",
   "culture",
   "outdoor",
+  "manual",
   "other",
 ] as const;
 
