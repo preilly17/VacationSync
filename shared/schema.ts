@@ -552,6 +552,8 @@ export interface Flight {
   aircraft: string | null;
   flightDuration: number | null;
   baggage: JsonValue | null;
+  proposalId?: number | null;
+  proposalStatus?: string | null;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
 }
@@ -621,6 +623,8 @@ export interface Hotel {
   bookingUrl: string | null;
   cancellationPolicy: string | null;
   notes: string | null;
+  proposalId?: number | null;
+  proposalStatus?: string | null;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
 }

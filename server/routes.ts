@@ -2682,11 +2682,11 @@ export function setupRoutes(app: Express) {
     try {
       const tripId = parseInt(req.params.id);
       const userId = getRequestUserId(req);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
       const groceryBill = await storage.getGroceryBill(tripId);
       res.json(groceryBill);
     } catch (error: unknown) {
@@ -2694,6 +2694,142 @@ export function setupRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch grocery bill" });
     }
   });
+
+  app.post(
+    '/api/trips/:tripId/proposals/flights',
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        if (Number.isNaN(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id" });
+        }
+
+        const userId = getRequestUserId(req);
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const parsedFlight = insertFlightSchema.safeParse(req.body);
+        if (!parsedFlight.success) {
+          return res
+            .status(400)
+            .json({ message: "Invalid flight data", errors: parsedFlight.error.issues });
+        }
+
+        if (parsedFlight.data.tripId !== tripId) {
+          return res
+            .status(400)
+            .json({ message: "Trip ID mismatch between path and payload" });
+        }
+
+        const rawFlightId = req.body?.id ?? req.body?.flightId;
+        const flightId =
+          typeof rawFlightId === 'number'
+            ? rawFlightId
+            : rawFlightId != null
+            ? Number.parseInt(String(rawFlightId), 10)
+            : NaN;
+
+        if (!Number.isFinite(flightId)) {
+          return res
+            .status(400)
+            .json({ message: "Flight ID is required to propose to the group" });
+        }
+
+        const proposal = await storage.ensureFlightProposalForSavedFlight({
+          flightId,
+          tripId,
+          currentUserId: userId,
+        });
+
+        res.json(proposal);
+      } catch (error: unknown) {
+        console.error("Error proposing flight to group:", error);
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ message: "Invalid flight data", errors: error.issues });
+        }
+        if (error instanceof Error) {
+          if (error.message.includes('Flight not found')) {
+            return res.status(404).json({ message: error.message });
+          }
+          if (error.message.includes('does not belong to this trip')) {
+            return res.status(400).json({ message: error.message });
+          }
+        }
+
+        res.status(500).json({ message: "Failed to propose flight" });
+      }
+    },
+  );
+
+  app.post(
+    '/api/trips/:tripId/proposals/hotels',
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        if (Number.isNaN(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id" });
+        }
+
+        const userId = getRequestUserId(req);
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const parsedHotel = insertHotelSchema.safeParse({ ...req.body, tripId });
+        if (!parsedHotel.success) {
+          return res
+            .status(400)
+            .json({ message: "Invalid hotel data", errors: parsedHotel.error.issues });
+        }
+
+        if (parsedHotel.data.tripId !== tripId) {
+          return res
+            .status(400)
+            .json({ message: "Trip ID mismatch between path and payload" });
+        }
+
+        const rawHotelId = req.body?.id ?? req.body?.hotelId;
+        const hotelId =
+          typeof rawHotelId === 'number'
+            ? rawHotelId
+            : rawHotelId != null
+            ? Number.parseInt(String(rawHotelId), 10)
+            : NaN;
+
+        if (!Number.isFinite(hotelId)) {
+          return res
+            .status(400)
+            .json({ message: "Hotel ID is required to propose to the group" });
+        }
+
+        const proposal = await storage.ensureHotelProposalForSavedHotel({
+          hotelId,
+          tripId,
+          currentUserId: userId,
+        });
+
+        res.json(proposal);
+      } catch (error: unknown) {
+        console.error("Error proposing hotel to group:", error);
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ message: "Invalid hotel data", errors: error.issues });
+        }
+        if (error instanceof Error) {
+          if (error.message.includes('Hotel not found')) {
+            return res.status(404).json({ message: error.message });
+          }
+          if (error.message.includes('does not belong to this trip')) {
+            return res.status(400).json({ message: error.message });
+          }
+        }
+
+        res.status(500).json({ message: "Failed to propose hotel" });
+      }
+    },
+  );
 
   // Hotel proposals and ranking routes
   app.get('/api/trips/:id/hotel-proposals', isAuthenticated, async (req: any, res) => {

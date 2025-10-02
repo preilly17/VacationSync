@@ -605,6 +605,8 @@ type FlightRow = {
   aircraft: string | null;
   flight_duration: number | null;
   baggage: Record<string, unknown> | null;
+  linked_proposal_id?: number | null;
+  linked_proposal_status?: string | null;
   created_at: Date | null;
   updated_at: Date | null;
 };
@@ -653,6 +655,8 @@ type HotelRow = {
   booking_url: string | null;
   cancellation_policy: string | null;
   notes: string | null;
+  linked_proposal_id?: number | null;
+  linked_proposal_status?: string | null;
   created_at: Date | null;
   updated_at: Date | null;
 };
@@ -1590,6 +1594,10 @@ const mapFlight = (row: FlightRow): Flight => ({
   aircraft: row.aircraft,
   flightDuration: row.flight_duration,
   baggage: (row.baggage ?? null) as any,
+  proposalId:
+    (row as { linked_proposal_id?: number | null }).linked_proposal_id ?? null,
+  proposalStatus:
+    (row as { linked_proposal_status?: string | null }).linked_proposal_status ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -1671,6 +1679,10 @@ const mapHotel = (row: HotelRow): Hotel => ({
   bookingUrl: row.booking_url,
   cancellationPolicy: row.cancellation_policy,
   notes: row.notes,
+  proposalId:
+    (row as { linked_proposal_id?: number | null }).linked_proposal_id ?? null,
+  proposalStatus:
+    (row as { linked_proposal_status?: string | null }).linked_proposal_status ?? null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -6133,6 +6145,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         f.baggage,
         f.created_at,
         f.updated_at,
+        psl.proposal_id AS linked_proposal_id,
+        fp.status AS linked_proposal_status,
         u.id AS user_id,
         u.email AS user_email,
         u.username AS user_username,
@@ -6166,6 +6180,11 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.created_by AS trip_created_by,
         t.created_at AS trip_created_at
       FROM flights f
+      LEFT JOIN proposal_schedule_links psl
+        ON psl.proposal_type = 'flight'
+       AND psl.scheduled_table = 'flights'
+       AND psl.scheduled_id = f.id
+      LEFT JOIN flight_proposals fp ON fp.id = psl.proposal_id
       JOIN users u ON u.id = f.user_id
       JOIN trip_calendars t ON t.id = f.trip_id
       WHERE f.trip_id = $1
@@ -6665,7 +6684,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   // PROPOSALS FEATURE: create or update a linked hotel proposal for a manually saved hotel.
-  private async syncHotelProposalFromHotelRow(hotel: HotelRow): Promise<void> {
+  private async syncHotelProposalFromHotelRow(hotel: HotelRow): Promise<number> {
     await this.ensureProposalLinkStructures();
 
     const { rows: existingLinks } = await query<{
@@ -6724,7 +6743,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
     }
 
     if (existingLinks.length > 0) {
-      const proposalId = existingLinks[0].proposal_id;
+      const link = existingLinks[0];
+      const proposalId = link.proposal_id;
       await query(
         `
         UPDATE hotel_proposals
@@ -6758,7 +6778,11 @@ ${selectUserColumns("participant_user", "participant_user_")}
           proposalId,
         ],
       );
-      return;
+      await query(
+        `UPDATE proposal_schedule_links SET trip_id = $1 WHERE id = $2`,
+        [hotel.trip_id, link.id],
+      );
+      return proposalId;
     }
 
     const { rows: proposalRows } = await query<HotelProposalRow>(
@@ -6796,7 +6820,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     const insertedProposal = proposalRows[0];
     if (!insertedProposal) {
-      return;
+      throw new Error("Failed to create hotel proposal");
     }
 
     await query(
@@ -6813,6 +6837,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
       `,
       [insertedProposal.id, hotel.id, hotel.trip_id],
     );
+
+    return insertedProposal.id;
   }
 
   // PROPOSALS FEATURE: backfill proposals for any saved hotels missing a proposal link.
@@ -6840,6 +6866,271 @@ ${selectUserColumns("participant_user", "participant_user_")}
     for (const hotel of unsyncedHotels) {
       await this.syncHotelProposalFromHotelRow(hotel);
     }
+  }
+
+  async ensureHotelProposalForSavedHotel(options: {
+    hotelId: number;
+    tripId: number;
+    currentUserId: string;
+  }): Promise<HotelProposalWithDetails> {
+    const { hotelId, tripId, currentUserId } = options;
+
+    const { rows } = await query<HotelRow>(
+      `
+      SELECT *
+      FROM hotels
+      WHERE id = $1
+      `,
+      [hotelId],
+    );
+
+    const hotel = rows[0];
+    if (!hotel) {
+      throw new Error("Hotel not found");
+    }
+
+    if (hotel.trip_id !== tripId) {
+      throw new Error("Hotel does not belong to this trip");
+    }
+
+    const proposalId = await this.syncHotelProposalFromHotelRow(hotel);
+    const proposal = await this.getHotelProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Failed to load hotel proposal");
+    }
+
+    return proposal;
+  }
+
+  private async syncFlightProposalFromFlightRow(flight: FlightRow): Promise<number> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows: existingLinks } = await query<{
+      id: number;
+      proposal_id: number;
+    }>(
+      `
+      SELECT id, proposal_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = 'flight'
+        AND scheduled_table = 'flights'
+        AND scheduled_id = $1
+      LIMIT 1
+      `,
+      [flight.id],
+    );
+
+    const departureLabel =
+      toOptionalString(flight.departure_airport)?.trim() ||
+      toOptionalString(flight.departure_code)?.trim() ||
+      "Departure";
+    const arrivalLabel =
+      toOptionalString(flight.arrival_airport)?.trim() ||
+      toOptionalString(flight.arrival_code)?.trim() ||
+      "Arrival";
+
+    const departureTime =
+      flight.departure_time instanceof Date
+        ? flight.departure_time
+        : new Date(flight.departure_time);
+    const arrivalTime =
+      flight.arrival_time instanceof Date ? flight.arrival_time : new Date(flight.arrival_time);
+
+    const diffMs = arrivalTime.getTime() - departureTime.getTime();
+    let durationLabel = "Duration TBD";
+    if (Number.isFinite(diffMs) && diffMs > 0) {
+      const totalMinutes = Math.round(diffMs / 60000);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      const parts: string[] = [];
+      if (hours > 0) {
+        parts.push(`${hours}h`);
+      }
+      parts.push(`${minutes}m`);
+      durationLabel = parts.join(" ").trim();
+    }
+
+    const parseStops = (value: unknown): number => {
+      if (!value) {
+        return 0;
+      }
+      if (Array.isArray(value)) {
+        return value.length;
+      }
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            return parsed.length;
+          }
+        } catch {
+          return 0;
+        }
+      }
+      if (typeof value === "object") {
+        const layoverArray =
+          Array.isArray((value as { layovers?: unknown }).layovers)
+            ? ((value as { layovers: unknown[] }).layovers as unknown[])
+            : Array.isArray((value as { segments?: unknown }).segments)
+            ? ((value as { segments: unknown[] }).segments as unknown[])
+            : null;
+        return Array.isArray(layoverArray) ? layoverArray.length : 0;
+      }
+      return 0;
+    };
+
+    const stopsCount = parseStops(flight.layovers);
+    const priceString = toOptionalString(flight.price) ?? "0";
+    const currency = toOptionalString(flight.currency) ?? "USD";
+    const bookingUrl =
+      toOptionalString(flight.purchase_url)?.trim() || "https://manual-entry.local/manual-flight";
+    const platform = toOptionalString(flight.booking_source) ?? "Manual Save";
+
+    const normalizedFlightStatus = (toOptionalString(flight.status) || "").toLowerCase();
+    let proposalStatus = "proposed";
+    if (normalizedFlightStatus.includes("cancel")) {
+      proposalStatus = "canceled";
+    } else if (
+      ["selected", "booked", "scheduled", "active", "proposed", "confirmed"].includes(
+        normalizedFlightStatus,
+      )
+    ) {
+      proposalStatus = normalizedFlightStatus;
+    }
+
+    const departureIso = departureTime.toISOString();
+    const arrivalIso = arrivalTime.toISOString();
+
+    if (existingLinks.length > 0) {
+      const link = existingLinks[0];
+      const proposalId = link.proposal_id;
+      await query(
+        `
+        UPDATE flight_proposals
+        SET
+          trip_id = $1,
+          proposed_by = $2,
+          airline = $3,
+          flight_number = $4,
+          departure_airport = $5,
+          departure_time = $6,
+          departure_terminal = $7,
+          arrival_airport = $8,
+          arrival_time = $9,
+          arrival_terminal = $10,
+          duration = $11,
+          stops = $12,
+          aircraft = $13,
+          price = $14,
+          currency = $15,
+          booking_url = $16,
+          platform = $17,
+          status = $18,
+          updated_at = NOW()
+        WHERE id = $19
+        `,
+        [
+          flight.trip_id,
+          flight.user_id,
+          flight.airline,
+          flight.flight_number,
+          departureLabel,
+          departureIso,
+          toOptionalString(flight.departure_terminal),
+          arrivalLabel,
+          arrivalIso,
+          toOptionalString(flight.arrival_terminal),
+          durationLabel,
+          stopsCount,
+          toOptionalString(flight.aircraft),
+          priceString,
+          currency,
+          bookingUrl,
+          platform,
+          proposalStatus,
+          proposalId,
+        ],
+      );
+      await query(
+        `UPDATE proposal_schedule_links SET trip_id = $1 WHERE id = $2`,
+        [flight.trip_id, link.id],
+      );
+      return proposalId;
+    }
+
+    const created = await this.createFlightProposal(
+      {
+        tripId: flight.trip_id,
+        airline: flight.airline,
+        flightNumber: flight.flight_number,
+        departureAirport: departureLabel,
+        departureTime: departureIso,
+        arrivalAirport: arrivalLabel,
+        arrivalTime: arrivalIso,
+        duration: durationLabel,
+        stops: stopsCount,
+        aircraft: toOptionalString(flight.aircraft),
+        price: priceString,
+        currency,
+        bookingUrl,
+        platform,
+        status: proposalStatus,
+        departureTerminal: toOptionalString(flight.departure_terminal),
+        arrivalTerminal: toOptionalString(flight.arrival_terminal),
+      },
+      flight.user_id,
+    );
+
+    await query(
+      `
+      INSERT INTO proposal_schedule_links (
+        proposal_type,
+        proposal_id,
+        scheduled_table,
+        scheduled_id,
+        trip_id
+      )
+      VALUES ('flight', $1, 'flights', $2, $3)
+      ON CONFLICT DO NOTHING
+      `,
+      [created.id, flight.id, flight.trip_id],
+    );
+
+    return created.id;
+  }
+
+  async ensureFlightProposalForSavedFlight(options: {
+    flightId: number;
+    tripId: number;
+    currentUserId: string;
+  }): Promise<FlightProposalWithDetails> {
+    const { flightId, tripId, currentUserId } = options;
+
+    const { rows } = await query<FlightRow>(
+      `
+      SELECT *
+      FROM flights
+      WHERE id = $1
+      `,
+      [flightId],
+    );
+
+    const flight = rows[0];
+    if (!flight) {
+      throw new Error("Flight not found");
+    }
+
+    if (flight.trip_id !== tripId) {
+      throw new Error("Flight does not belong to this trip");
+    }
+
+    const proposalId = await this.syncFlightProposalFromFlightRow(flight);
+    const proposal = await this.getFlightProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Failed to load flight proposal");
+    }
+
+    return proposal;
   }
 
   // PROPOSALS FEATURE: remove linked proposals when a saved hotel is deleted.
@@ -6922,6 +7213,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         h.notes,
         h.created_at,
         h.updated_at,
+        psl.proposal_id AS linked_proposal_id,
+        hp.status AS linked_proposal_status,
         u.id AS user_id,
         u.email AS user_email,
         u.username AS user_username,
@@ -6955,6 +7248,11 @@ ${selectUserColumns("participant_user", "participant_user_")}
         t.created_by AS trip_created_by,
         t.created_at AS trip_created_at
       FROM hotels h
+      LEFT JOIN proposal_schedule_links psl
+        ON psl.proposal_type = 'hotel'
+       AND psl.scheduled_table = 'hotels'
+       AND psl.scheduled_id = h.id
+      LEFT JOIN hotel_proposals hp ON hp.id = psl.proposal_id
       JOIN users u ON u.id = h.user_id
       JOIN trip_calendars t ON t.id = h.trip_id
       WHERE h.trip_id = $1
