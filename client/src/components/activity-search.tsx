@@ -250,31 +250,21 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       return;
     }
 
-    const { start, end } = getTripDateRange();
-    if (!start) {
-      toast({
-        title: "Add trip dates",
-        description: "Add trip dates to build a Viator search link.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (typeof window === "undefined") {
       return;
     }
 
-    const url = new URL("https://www.viator.com/search");
-    url.searchParams.set("q", location);
-    url.searchParams.set("startDate", start);
-    if (end) {
-      url.searchParams.set("endDate", end);
-    }
-    url.searchParams.set("sort", "relevance");
+    const url = new URL("https://www.viator.com/searchResults/all");
+    url.searchParams.set("text", location);
+    url.searchParams.set("vs_source", "tripsync");
+    url.searchParams.set("vs_vendor", "viator");
+    url.searchParams.set("vs_city", location);
+    url.searchParams.set("vs_return", "1");
+    url.searchParams.set("vs_trip", String(tripId));
 
     markExternalRedirect(ACTIVITY_REDIRECT_STORAGE_KEY);
     window.open(url.toString(), "_blank", "noopener,noreferrer");
-  }, [getTripDateRange, locationSearch, toast, trip?.destination]);
+  }, [locationSearch, toast, trip?.destination, tripId]);
 
   const handleAirbnbLink = useCallback(() => {
     const location = (locationSearch.trim() || trip?.destination || "").trim();
