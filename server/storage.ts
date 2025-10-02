@@ -3565,17 +3565,32 @@ export class DatabaseStorage implements IStorage {
 
       const uniqueInviteeIds = Array.from(new Set(inviteeIds));
       if (uniqueInviteeIds.length > 0) {
-        const { rows: memberRows } = await query<{ user_id: string }>(
-          `
-          SELECT user_id
-          FROM trip_members
-          WHERE trip_calendar_id = $1
-            AND user_id = ANY($2::text[])
-          `,
-          [activity.tripCalendarId, uniqueInviteeIds],
-        );
+        const [{ rows: memberRows }, { rows: creatorRows }] = await Promise.all([
+          query<{ user_id: string }>(
+            `
+            SELECT user_id
+            FROM trip_members
+            WHERE trip_calendar_id = $1
+              AND user_id = ANY($2::text[])
+            `,
+            [activity.tripCalendarId, uniqueInviteeIds],
+          ),
+          query<{ created_by: string | null }>(
+            `
+            SELECT created_by
+            FROM trip_calendars
+            WHERE id = $1
+            `,
+            [activity.tripCalendarId],
+          ),
+        ]);
 
         const validMemberIds = new Set(memberRows.map((row) => row.user_id));
+        const tripCreatorId = creatorRows[0]?.created_by ?? null;
+        if (tripCreatorId) {
+          validMemberIds.add(tripCreatorId);
+        }
+
         const invalidInviteeIds = uniqueInviteeIds.filter((id) => !validMemberIds.has(id));
 
         if (invalidInviteeIds.length > 0) {
