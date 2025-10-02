@@ -2098,7 +2098,7 @@ export default function Trip() {
 
                 {activeTab === "proposals" && trip && (
                   <div className="space-y-6" data-testid="proposals-section">
-                    <Proposals tripId={trip.id} embedded />
+                    <Proposals tripId={trip.id} embedded includeUserProposalsInCategories />
                   </div>
                 )}
 

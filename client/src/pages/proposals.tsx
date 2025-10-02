@@ -118,6 +118,7 @@ const parseApiError = (error: unknown): ParsedApiError => {
 interface ProposalsPageProps {
   tripId?: number;
   embedded?: boolean;
+  includeUserProposalsInCategories?: boolean;
 }
 
 type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
@@ -166,7 +167,11 @@ const actionToStatusMap: Record<ActivityRsvpAction, ActivityInviteStatus | null>
   MAYBE: "pending",
 };
 
-function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
+function ProposalsPage({
+  tripId,
+  embedded = false,
+  includeUserProposalsInCategories = true,
+}: ProposalsPageProps = {}) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -1790,38 +1795,50 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     [getActivityProposalStatus, rawActivityProposals],
   );
 
-  const otherHotelProposals = useMemo(
-    () => hotelProposals.filter((proposal) => !isMyProposal(proposal)),
-    [hotelProposals, isMyProposal],
+  const hotelProposalsForCategories = useMemo(
+    () =>
+      includeUserProposalsInCategories
+        ? hotelProposals
+        : hotelProposals.filter((proposal) => !isMyProposal(proposal)),
+    [hotelProposals, includeUserProposalsInCategories, isMyProposal],
   );
-  const otherFlightProposals = useMemo(
-    () => flightProposals.filter((proposal) => !isMyProposal(proposal)),
-    [flightProposals, isMyProposal],
+  const flightProposalsForCategories = useMemo(
+    () =>
+      includeUserProposalsInCategories
+        ? flightProposals
+        : flightProposals.filter((proposal) => !isMyProposal(proposal)),
+    [flightProposals, includeUserProposalsInCategories, isMyProposal],
   );
-  const otherActivityProposals = useMemo(
-    () => activityProposals.filter((proposal) => !isMyProposal(proposal)),
-    [activityProposals, isMyProposal],
+  const activityProposalsForCategories = useMemo(
+    () =>
+      includeUserProposalsInCategories
+        ? activityProposals
+        : activityProposals.filter((proposal) => !isMyProposal(proposal)),
+    [activityProposals, includeUserProposalsInCategories, isMyProposal],
   );
-  const otherRestaurantProposals = useMemo(
-    () => restaurantProposals.filter((proposal) => !isMyProposal(proposal)),
-    [restaurantProposals, isMyProposal],
+  const restaurantProposalsForCategories = useMemo(
+    () =>
+      includeUserProposalsInCategories
+        ? restaurantProposals
+        : restaurantProposals.filter((proposal) => !isMyProposal(proposal)),
+    [restaurantProposals, includeUserProposalsInCategories, isMyProposal],
   );
 
   const filteredHotelProposals = useMemo(
-    () => applyStatusFilter(otherHotelProposals),
-    [applyStatusFilter, otherHotelProposals],
+    () => applyStatusFilter(hotelProposalsForCategories),
+    [applyStatusFilter, hotelProposalsForCategories],
   );
   const filteredFlightProposals = useMemo(
-    () => applyStatusFilter(otherFlightProposals),
-    [applyStatusFilter, otherFlightProposals],
+    () => applyStatusFilter(flightProposalsForCategories),
+    [applyStatusFilter, flightProposalsForCategories],
   );
   const filteredActivityProposals = useMemo(
-    () => applyActivityResponseFilter(otherActivityProposals),
-    [applyActivityResponseFilter, otherActivityProposals],
+    () => applyActivityResponseFilter(activityProposalsForCategories),
+    [applyActivityResponseFilter, activityProposalsForCategories],
   );
   const filteredRestaurantProposals = useMemo(
-    () => applyStatusFilter(otherRestaurantProposals),
-    [applyStatusFilter, otherRestaurantProposals],
+    () => applyStatusFilter(restaurantProposalsForCategories),
+    [applyStatusFilter, restaurantProposalsForCategories],
   );
 
   const myHotelProposals = useMemo(() => {
@@ -1892,10 +1909,10 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
     0;
 
   const totalAvailableProposals =
-    otherHotelProposals.length +
-    otherFlightProposals.length +
-    otherActivityProposals.length +
-    otherRestaurantProposals.length;
+    hotelProposalsForCategories.length +
+    flightProposalsForCategories.length +
+    activityProposalsForCategories.length +
+    restaurantProposalsForCategories.length;
   const hasProposalDataIssues =
     hotelProposalsHasError ||
     flightProposalsHasError ||
@@ -2054,19 +2071,19 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
             </TabsTrigger>
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
               <Hotel className="w-4 h-4" />
-              Hotels {otherHotelProposals.length > 0 && `(${otherHotelProposals.length})`}
+              Hotels {hotelProposalsForCategories.length > 0 && `(${hotelProposalsForCategories.length})`}
             </TabsTrigger>
             <TabsTrigger value="flights" className="flex items-center gap-2" data-testid="tab-flights">
               <Plane className="w-4 h-4" />
-              Flights {otherFlightProposals.length > 0 && `(${otherFlightProposals.length})`}
+              Flights {flightProposalsForCategories.length > 0 && `(${flightProposalsForCategories.length})`}
             </TabsTrigger>
             <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
               <MapPin className="w-4 h-4" />
-              Activities {otherActivityProposals.length > 0 && `(${otherActivityProposals.length})`}
+              Activities {activityProposalsForCategories.length > 0 && `(${activityProposalsForCategories.length})`}
             </TabsTrigger>
             <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
               <Utensils className="w-4 h-4" />
-              Restaurants {otherRestaurantProposals.length > 0 && `(${otherRestaurantProposals.length})`}
+              Restaurants {restaurantProposalsForCategories.length > 0 && `(${restaurantProposalsForCategories.length})`}
             </TabsTrigger>
           </TabsList>
 
@@ -2159,7 +2176,7 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
                   <HotelProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : hotelProposals.length > 0 ? (
+            ) : hotelProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Hotel" />
             ) : (
               <EmptyState type="Hotel" icon={Hotel} />
@@ -2183,7 +2200,7 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
                   <FlightProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : flightProposals.length > 0 ? (
+            ) : flightProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Flight" />
             ) : (
               <EmptyState type="Flight" icon={Plane} />
@@ -2207,7 +2224,7 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
                   <ActivityProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : activityProposals.length > 0 ? (
+            ) : activityProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Activity" />
             ) : (
               <EmptyState type="Activity" icon={MapPin} />
@@ -2231,7 +2248,7 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
                   <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : restaurantProposals.length > 0 ? (
+            ) : restaurantProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Restaurant" />
             ) : (
               <EmptyState type="Restaurant" icon={Utensils} />
