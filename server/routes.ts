@@ -2,7 +2,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { storage } from "./storage";
+import { ActivityInviteMembershipError, storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
@@ -2119,6 +2119,37 @@ export function setupRoutes(app: Express) {
       res.json(createdActivity ?? activity);
     } catch (error: unknown) {
       const correlationId = nanoid();
+
+      if (error instanceof ActivityInviteMembershipError) {
+        const { invalidInviteeIds, attemptedInviteeIds } = error;
+
+        console.warn("Activity creation blocked due to non-member invites", {
+          correlationId,
+          tripId,
+          userId,
+          invalidInviteeIds,
+          attemptedInviteeIds,
+          error,
+        });
+
+        logActivityCreationFailure({
+          correlationId,
+          step: "save",
+          userId,
+          tripId,
+          error,
+          mode,
+        });
+
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "constraint" });
+
+        res.status(422).json({
+          message: error.message,
+          correlationId,
+          invalidInviteeIds,
+        });
+        return;
+      }
 
       if (isPostgresConstraintViolation(error)) {
         const invalidInviteeIds = extractInviteeIdsFromDetail(error.detail);
