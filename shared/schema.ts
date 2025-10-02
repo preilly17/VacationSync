@@ -233,6 +233,7 @@ export interface Activity {
   cost: number | null;
   maxCapacity: number | null;
   category: string;
+  status: string;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
 }
