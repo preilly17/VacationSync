@@ -202,4 +202,83 @@ describe("POST /api/trips/:id/activities", () => {
     consoleWarnSpy.mockRestore();
     consoleErrorSpy.mockRestore();
   });
+
+  it("allows manual entry activities to be created", async () => {
+    const trip = {
+      id: 456,
+      createdBy: "organizer",
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Manual Museum Visit",
+      location: "City Museum",
+      startTime: new Date("2024-03-10T15:00:00Z").toISOString(),
+      endTime: null,
+      description: "Manual entry · Status: Confirmed · Currency: USD",
+      cost: 25,
+      category: "manual",
+      attendeeIds: ["friend"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const createdActivity = {
+      id: 99,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      description: requestBody.description,
+      startTime: requestBody.startTime,
+      endTime: requestBody.endTime,
+      location: requestBody.location,
+      cost: requestBody.cost,
+      maxCapacity: null,
+      category: requestBody.category,
+      type: "SCHEDULED",
+    };
+
+    const createActivitySpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    const getActivitiesSpy = jest
+      .spyOn(storage, "getTripActivities")
+      .mockResolvedValueOnce([createdActivity] as any);
+
+    const createNotificationSpy = jest
+      .spyOn(storage, "createNotification")
+      .mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(createActivitySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: "manual",
+        tripCalendarId: trip.id,
+      }),
+      "organizer",
+      ["friend"],
+    );
+
+    expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
+    expect(createNotificationSpy).toHaveBeenCalledTimes(1);
+    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "SCHEDULED", outcome: "success" }),
+    );
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ id: createdActivity.id, category: "manual" }),
+    );
+  });
 });
