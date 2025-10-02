@@ -1,5 +1,15 @@
 import { log } from "./vite";
 
+type ActivityFailureStep = "validate" | "save";
+
+interface ActivityFailureContext {
+  correlationId: string;
+  step: ActivityFailureStep;
+  userId?: string | null;
+  tripId?: number | null;
+  error: unknown;
+}
+
 type CounterName = "upload_failed" | "save_failed" | "processing_timeout";
 
 type FailureStep = "validate" | "upload" | "save" | "process";
@@ -58,5 +68,28 @@ export const logCoverPhotoFailure = ({
       storageKey ?? "n/a"
     } :: ${message}`,
     "cover-photo",
+  );
+};
+
+export const logActivityCreationFailure = ({
+  correlationId,
+  step,
+  userId,
+  tripId,
+  error,
+}: ActivityFailureContext) => {
+  const timestamp = new Date().toISOString();
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : JSON.stringify(error);
+
+  log(
+    `activity.create failure :: ts=${timestamp} correlation=${correlationId} user=${
+      userId ?? "unknown"
+    } trip=${tripId ?? "unknown"} step=${step} :: ${message}`,
+    "activity",
   );
 };

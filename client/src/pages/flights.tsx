@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -86,6 +86,9 @@ const formatPriceDisplay = (
 const parseApiErrorResponse = (
   error: unknown,
 ): { status: number; data: unknown } | null => {
+  if (error instanceof ApiError) {
+    return { status: error.status, data: error.data };
+  }
   if (error instanceof Error) {
     const match = error.message.match(/^(\d{3}):\s*(.*)$/);
     if (match) {

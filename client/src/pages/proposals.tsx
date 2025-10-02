@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
 import { filterProposalsByStatus, normalizeProposalStatus } from "./proposalStatusFilters";
@@ -66,6 +66,20 @@ type ParsedApiError = {
 };
 
 const parseApiError = (error: unknown): ParsedApiError => {
+  if (error instanceof ApiError) {
+    let message: string | undefined;
+    if (error.data && typeof error.data === "object" && "message" in error.data) {
+      const dataMessage = (error.data as { message?: unknown }).message;
+      if (typeof dataMessage === "string") {
+        message = dataMessage;
+      } else if (dataMessage != null) {
+        message = String(dataMessage);
+      }
+    }
+
+    return { status: error.status, message: message ?? error.message };
+  }
+
   if (error instanceof Error) {
     const match = error.message.match(/^(\d{3}):\s*(.*)$/);
     if (match) {

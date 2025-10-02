@@ -6,11 +6,13 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
-import { insertTripCalendarSchema, createActivityWithAttendeesSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityWithDetails } from "@shared/schema";
+import { insertTripCalendarSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityWithDetails } from "@shared/schema";
+import { validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
 import { registerCoverPhotoUploadRoutes } from "./coverPhotoUpload";
-import { logCoverPhotoFailure } from "./observability";
+import { logCoverPhotoFailure, logActivityCreationFailure } from "./observability";
+import { nanoid } from "nanoid";
 
 // Validation schemas for route parameters
 const notificationIdSchema = z.object({
@@ -1866,13 +1868,15 @@ export function setupRoutes(app: Express) {
   });
 
   app.post('/api/trips/:id/activities', async (req: any, res) => {
+    let tripId: number | null = null;
+    let userId: string | null = null;
     try {
-      const tripId = parseInt(req.params.id);
+      tripId = parseInt(req.params.id);
       if (isNaN(tripId)) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
 
-      let userId = getRequestUserId(req);
+      userId = getRequestUserId(req);
 
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
         userId = 'demo-user';
@@ -1892,23 +1896,41 @@ export function setupRoutes(app: Express) {
         return res.status(403).json({ message: "You are no longer a member of this trip" });
       }
 
+      const validMemberIds = new Set(trip.members.map((member) => member.userId));
+
       const rawData = {
         ...req.body,
         tripCalendarId: tripId,
-      };
+      } as Record<string, unknown>;
 
-      const validatedData = createActivityWithAttendeesSchema.parse(rawData);
-      const { attendeeIds = [], ...activityData } = validatedData;
+      const validationResult = validateActivityInput(rawData, {
+        tripCalendarId: tripId,
+        userId,
+        validMemberIds,
+      });
 
-      const validMemberIds = new Set(trip.members.map((member) => member.userId));
-      const filteredAttendeeIds = Array.from(
-        new Set(attendeeIds.filter((id) => typeof id === 'string' && validMemberIds.has(id))),
-      );
-      const attendeeIdSet = new Set(filteredAttendeeIds);
+      if (validationResult.errors || !validationResult.data || !validationResult.attendeeIds) {
+        const correlationId = nanoid();
+        logActivityCreationFailure({
+          correlationId,
+          step: "validate",
+          userId,
+          tripId,
+          error: validationResult.errors ?? "Unknown validation error",
+        });
+
+        return res.status(422).json({
+          message: "Activity could not be created due to validation errors.",
+          correlationId,
+          errors: validationResult.errors ?? [],
+        });
+      }
+
+      const attendeeIdSet = new Set(validationResult.attendeeIds);
       attendeeIdSet.delete(userId);
       const inviteeIds = Array.from(attendeeIdSet);
 
-      const activity = await storage.createActivity(activityData, userId, inviteeIds);
+      const activity = await storage.createActivity(validationResult.data, userId, inviteeIds);
 
       await storage.setActivityInviteStatus(activity.id, userId, "accepted");
 
@@ -1951,12 +1973,20 @@ export function setupRoutes(app: Express) {
 
       res.json(createdActivity ?? activity);
     } catch (error: unknown) {
+      const correlationId = nanoid();
       console.error('Error creating activity:', error);
-      if (error instanceof z.ZodError) {
-        res.status(400).json({ message: 'Invalid activity data', errors: error.errors });
-      } else {
-        res.status(500).json({ message: 'Failed to create activity' });
-      }
+      logActivityCreationFailure({
+        correlationId,
+        step: 'save',
+        userId,
+        tripId,
+        error,
+      });
+
+      res.status(500).json({
+        message: "We couldn’t create this activity. Nothing was saved. Please try again.",
+        correlationId,
+      });
     }
   });
 
