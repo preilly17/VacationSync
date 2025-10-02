@@ -112,7 +112,7 @@ export function ActivityDetailsDialog({
   const isRsvpClosed = Boolean(
     rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
   );
-  const activityType = (activity?.type ?? "SCHEDULED").toUpperCase();
+  const activityType = activity?.type ?? "SCHEDULED";
   const isProposal = activityType === "PROPOSE";
   const capacityFull = Boolean(
     !isProposal && activity?.maxCapacity != null
