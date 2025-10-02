@@ -526,120 +526,110 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="space-y-10">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold">Grocery List</h1>
-            <p className="text-muted-foreground">One shared list for personal items and group meals.</p>
+      <div
+        className="relative overflow-hidden rounded-3xl border border-border/70 bg-indigo-500/5 p-6 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm sm:p-8 dark:border-white/10 dark:bg-indigo-500/15 dark:shadow-[0_32px_56px_-30px_rgba(0,0,0,0.7)]"
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80"
+        />
+        <div className="space-y-10">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold">Grocery List</h1>
+              <p className="text-muted-foreground">One shared list for personal items and group meals.</p>
+            </div>
+            <Button
+              onClick={() => {
+                setAddMode("item");
+                setIsAddDialogOpen(true);
+              }}
+              className="ml-auto w-full gap-2 md:w-auto"
+            >
+              <Plus className="h-4 w-4" /> Add an item
+            </Button>
           </div>
-          <Button
-            onClick={() => {
-              setAddMode("item");
-              setIsAddDialogOpen(true);
-            }}
-            className="ml-auto w-full gap-2 md:w-auto"
+
+          <section
+            className="group relative overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/60"
           >
-            <Plus className="h-4 w-4" /> Add an item
-          </Button>
-        </div>
-
-        <section className="space-y-4">
-          <header className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Items</h2>
-          </header>
-          <div className="relative max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search items…"
-              className="pl-9"
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
             />
-          </div>
+            <div className="space-y-6">
+              <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-semibold">Items</h2>
+              </header>
+              <div className="relative max-w-md">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search items…"
+                  className="pl-9"
+                />
+              </div>
 
-          {activeItems.length === 0 && purchasedItems.length === 0 ? (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Nothing needed yet. Add an item or propose a group meal.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activeItems.map((item) => renderItemRow(item))}
-            </div>
-          )}
-
-          {purchasedItems.length > 0 && (
-            <div className="overflow-hidden rounded-md border">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between bg-muted/40 px-4 py-3 text-left text-sm font-medium"
-                onClick={() => setShowPurchased((previous) => !previous)}
-              >
-                <span>
-                  Purchased <span className="text-muted-foreground">({purchasedItems.length})</span>
-                </span>
-                {showPurchased ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </button>
-              {showPurchased && (
-                <div className="space-y-3 border-t px-4 py-3">
-                  {purchasedItems.map((item) => renderItemRow(item))}
+              {activeItems.length === 0 && purchasedItems.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+                  Nothing needed yet. Add an item or propose a group meal.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeItems.map((item) => renderItemRow(item))}
                 </div>
               )}
-              <div className="border-t bg-muted/30 px-4 py-2 text-right">
-                <Button variant="ghost" size="sm" onClick={handleClearPurchased}>
-                  Clear all
-                </Button>
-              </div>
+
+              {purchasedItems.length > 0 && (
+                <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/40">
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-muted/60"
+                    onClick={() => setShowPurchased((previous) => !previous)}
+                  >
+                    <span>
+                      Purchased <span className="text-muted-foreground">({purchasedItems.length})</span>
+                    </span>
+                    {showPurchased ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  {showPurchased && (
+                    <div className="space-y-3 border-t border-border/50 bg-background/40 px-4 py-3">
+                      {purchasedItems.map((item) => renderItemRow(item))}
+                    </div>
+                  )}
+                  <div className="border-t border-border/50 bg-muted/50 px-4 py-2 text-right">
+                    <Button variant="ghost" size="sm" onClick={handleClearPurchased}>
+                      Clear all
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </section>
+          </section>
 
-        <Separator />
+          <Separator />
 
-        <section className="space-y-6">
-          <header>
-            <h2 className="text-xl font-semibold">Group Meals</h2>
-            <p className="text-sm text-muted-foreground">Propose dinners and vote together.</p>
-          </header>
+          <section
+            className="group relative overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/60"
+          >
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
+            />
+            <div className="space-y-6">
+              <header>
+                <h2 className="text-xl font-semibold">Group Meals</h2>
+                <p className="text-sm text-muted-foreground">Propose dinners and vote together.</p>
+              </header>
 
-          {activeMeals.length === 0 && declinedMeals.length === 0 ? (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No meal ideas yet. Propose your first group dinner.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {activeMeals.map((meal) => (
-                <GroupMealCard
-                  key={meal.id}
-                  meal={meal}
-                  currentUserId={user?.id}
-                  currentUserName={currentUserName}
-                  onToggleUpvote={() => handleToggleMealUpvote(meal.id)}
-                  onSetStatus={(status) => handleSetMealStatus(meal.id, status)}
-                  onAddComment={(comment) => handleAddMealComment(meal.id, comment)}
-                  onMergeIngredients={() => handleMergeIngredients(meal)}
-                  canDecide={canDecideMeals}
-                  getUserName={(userId) => {
-                    if (!userId) {
-                      return "Trip member";
-                    }
-                    return userId === user?.id
-                      ? currentUserName
-                      : getUserDisplayName(memberLookup.get(userId) ?? null);
-                  }}
-                  existingItemNames={existingItemNames}
-                />
-              ))}
-            </div>
-          )}
-
-          {declinedMeals.length > 0 && (
-            <div className="rounded-md border">
-              <details>
-                <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium">
-                  Declined <span className="text-muted-foreground">({declinedMeals.length})</span>
-                </summary>
-                <div className="space-y-4 border-t px-4 py-3">
-                  {declinedMeals.map((meal) => (
+              {activeMeals.length === 0 && declinedMeals.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+                  No meal ideas yet. Propose your first group dinner.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {activeMeals.map((meal) => (
                     <GroupMealCard
                       key={meal.id}
                       meal={meal}
@@ -662,26 +652,60 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
                     />
                   ))}
                 </div>
-              </details>
+              )}
+
+              {declinedMeals.length > 0 && (
+                <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/40">
+                  <details>
+                    <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium">
+                      Declined <span className="text-muted-foreground">({declinedMeals.length})</span>
+                    </summary>
+                    <div className="space-y-4 border-t border-border/50 bg-background/40 px-4 py-3">
+                      {declinedMeals.map((meal) => (
+                        <GroupMealCard
+                          key={meal.id}
+                          meal={meal}
+                          currentUserId={user?.id}
+                          currentUserName={currentUserName}
+                          onToggleUpvote={() => handleToggleMealUpvote(meal.id)}
+                          onSetStatus={(status) => handleSetMealStatus(meal.id, status)}
+                          onAddComment={(comment) => handleAddMealComment(meal.id, comment)}
+                          onMergeIngredients={() => handleMergeIngredients(meal)}
+                          canDecide={canDecideMeals}
+                          getUserName={(userId) => {
+                            if (!userId) {
+                              return "Trip member";
+                            }
+                            return userId === user?.id
+                              ? currentUserName
+                              : getUserDisplayName(memberLookup.get(userId) ?? null);
+                          }}
+                          existingItemNames={existingItemNames}
+                        />
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              )}
             </div>
-          )}
-        </section>
+          </section>
 
-        <AddItemDialog
-          mode={addMode}
-          open={isAddDialogOpen}
-          onOpenChange={setIsAddDialogOpen}
-          onModeChange={setAddMode}
-          onAddItem={handleAddItem}
-          onAddMeal={handleAddMeal}
-        />
+          <AddItemDialog
+            mode={addMode}
+            open={isAddDialogOpen}
+            onOpenChange={setIsAddDialogOpen}
+            onModeChange={setAddMode}
+            onAddItem={handleAddItem}
+            onAddMeal={handleAddMeal}
+          />
 
-        <EditItemDialog
-          item={editingItem}
-          open={isEditDialogOpen}
-          onOpenChange={setIsEditDialogOpen}
-          onSubmit={(values) => editingItem && handleUpdateItem(editingItem.id, values)}
-        />
+          <EditItemDialog
+            item={editingItem}
+            open={isEditDialogOpen}
+            onOpenChange={setIsEditDialogOpen}
+            onSubmit={(values) => editingItem && handleUpdateItem(editingItem.id, values)}
+          />
+        </div>
       </div>
     </TooltipProvider>
   );
@@ -970,7 +994,7 @@ const GroupMealCard = ({
   return (
     <Card
       className={cn(
-        "border-border/60",
+        "group relative overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-[3px] hover:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] focus-within:-translate-y-[3px] focus-within:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/50",
         meal.status === "accepted" && "border-emerald-300 bg-emerald-50/40",
         meal.status === "declined" && "border-destructive/40 bg-destructive/5",
       )}
