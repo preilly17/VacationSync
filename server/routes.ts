@@ -6,12 +6,12 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
-import { insertTripCalendarSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityWithDetails } from "@shared/schema";
+import { insertTripCalendarSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityType, type ActivityWithDetails } from "@shared/schema";
 import { validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
 import { registerCoverPhotoUploadRoutes } from "./coverPhotoUpload";
-import { logCoverPhotoFailure, logActivityCreationFailure } from "./observability";
+import { logCoverPhotoFailure, logActivityCreationFailure, trackActivityCreationMetric } from "./observability";
 import { nanoid } from "nanoid";
 
 type PostgresError = Error & {
@@ -1904,34 +1904,62 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.post('/api/trips/:id/activities', async (req: any, res) => {
+  const getTripMemberDisplayName = (
+    member?: { user?: { firstName?: string | null; lastName?: string | null; username?: string | null; email?: string | null } },
+  ): string => {
+    if (!member?.user) {
+      return "A trip member";
+    }
+
+    return getUserDisplayName({
+      firstName: member.user.firstName,
+      lastName: member.user.lastName,
+      username: member.user.username,
+      email: member.user.email,
+    });
+  };
+
+  const handleTripActivityCreation = async (
+    req: any,
+    res: any,
+    { tripIdParam, mode }: { tripIdParam: "id" | "tripId"; mode: ActivityType },
+  ) => {
     let tripId: number | null = null;
     let userId: string | null = null;
     let attemptedInviteeIds: string[] = [];
+
     try {
-      tripId = parseInt(req.params.id);
-      if (isNaN(tripId)) {
-        return res.status(400).json({ message: "Invalid trip ID" });
+      tripId = Number.parseInt(req.params[tripIdParam], 10);
+      if (Number.isNaN(tripId)) {
+        res.status(400).json({ message: "Invalid trip ID" });
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "invalid-trip" });
+        return;
       }
 
       userId = getRequestUserId(req);
 
-      if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
-        userId = 'demo-user';
+      if (process.env.NODE_ENV === "development" && !req.isAuthenticated?.()) {
+        userId = "demo-user";
       }
 
       if (!userId) {
-        return res.status(401).json({ message: "User ID not found" });
+        res.status(401).json({ message: "User ID not found" });
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "no-user" });
+        return;
       }
 
       const trip = await storage.getTripById(tripId);
       if (!trip) {
-        return res.status(404).json({ message: "Trip not found" });
+        res.status(404).json({ message: "Trip not found" });
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "missing-trip" });
+        return;
       }
 
       const isMember = trip.members.some((member) => member.userId === userId);
       if (!isMember) {
-        return res.status(403).json({ message: "You are no longer a member of this trip" });
+        res.status(403).json({ message: "You are no longer a member of this trip" });
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "not-member" });
+        return;
       }
 
       const validMemberIds = new Set(trip.members.map((member) => member.userId));
@@ -1939,6 +1967,7 @@ export function setupRoutes(app: Express) {
       const rawData = {
         ...req.body,
         tripCalendarId: tripId,
+        type: mode,
       } as Record<string, unknown>;
 
       const validationResult = validateActivityInput(rawData, {
@@ -1949,19 +1978,32 @@ export function setupRoutes(app: Express) {
 
       if (validationResult.errors || !validationResult.data || !validationResult.attendeeIds) {
         const correlationId = nanoid();
+        const validationFields = Array.isArray(validationResult.errors)
+          ? validationResult.errors.map((issue) => issue.field).filter(Boolean)
+          : [];
+
         logActivityCreationFailure({
           correlationId,
           step: "validate",
           userId,
           tripId,
           error: validationResult.errors ?? "Unknown validation error",
+          mode,
+          validationFields,
+        });
+        trackActivityCreationMetric({
+          mode,
+          outcome: "failure",
+          reason: "validation",
+          validationFields,
         });
 
-        return res.status(422).json({
+        res.status(422).json({
           message: "Activity could not be created due to validation errors.",
           correlationId,
           errors: validationResult.errors ?? [],
         });
+        return;
       }
 
       const attendeeIdSet = new Set(validationResult.attendeeIds);
@@ -1969,48 +2011,61 @@ export function setupRoutes(app: Express) {
       const inviteeIds = Array.from(attendeeIdSet);
       attemptedInviteeIds = inviteeIds;
 
-      const activity = await storage.createActivityWithInvites(
-        validationResult.data,
-        userId,
-        inviteeIds,
-      );
+      const normalizedData = { ...validationResult.data, type: mode };
+
+      const activity = await storage.createActivityWithInvites(normalizedData, userId, inviteeIds);
 
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
       if (attendeesToNotify.length > 0) {
         const eventDate = new Date(activity.startTime);
-        const formattedDate = eventDate.toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
+        const formattedDate = eventDate.toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
         });
+
+        const proposerMember = trip.members.find((member) => member.userId === userId);
+        const proposerName = getTripMemberDisplayName(proposerMember);
+        const notificationType = mode === "PROPOSE" ? "activity_proposal" : "activity_invite";
+        const notificationTitle =
+          mode === "PROPOSE"
+            ? `${proposerName} proposed ${activity.name}`
+            : `You've been invited to ${activity.name}`;
+        const notificationMessage =
+          mode === "PROPOSE"
+            ? `${proposerName} suggested ${activity.name} on ${formattedDate}. Vote when you're ready.`
+            : `You've been invited to ${activity.name} on ${formattedDate}.`;
 
         await Promise.all(
           attendeesToNotify.map((attendeeId) =>
             storage
               .createNotification({
                 userId: attendeeId,
-                type: 'activity_invite',
-                title: `You've been invited to ${activity.name}`,
-                message: `You've been invited to ${activity.name} on ${formattedDate}.`,
+                type: notificationType,
+                title: notificationTitle,
+                message: notificationMessage,
                 tripId: tripId,
                 activityId: activity.id,
               })
               .catch((notificationError) => {
-                console.error('Failed to create activity notification:', notificationError);
+                console.error("Failed to create activity notification:", notificationError);
               }),
           ),
         );
       }
 
       broadcastToTrip(tripId, {
-        type: 'activity_created',
+        type: "activity_created",
         activityId: activity.id,
+        activityType: mode,
       });
 
       const activities = await storage.getTripActivities(tripId, userId);
       const createdActivity = activities.find((item) => item.id === activity.id);
+
+      trackActivityCreationMetric({ mode, outcome: "success" });
 
       res.json(createdActivity ?? activity);
     } catch (error: unknown) {
@@ -2030,33 +2085,48 @@ export function setupRoutes(app: Express) {
 
         logActivityCreationFailure({
           correlationId,
-          step: 'save',
+          step: "save",
           userId,
           tripId,
           error,
+          mode,
         });
 
-        return res.status(422).json({
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "constraint" });
+
+        res.status(422).json({
           message: "One or more invitees are no longer members of this trip.",
           correlationId,
           invalidInviteeIds,
         });
+        return;
       }
 
-      console.error('Error creating activity:', error);
+      console.error("Error creating activity:", error);
       logActivityCreationFailure({
         correlationId,
-        step: 'save',
+        step: "save",
         userId,
         tripId,
         error,
+        mode,
       });
+
+      trackActivityCreationMetric({ mode, outcome: "failure", reason: "exception" });
 
       res.status(500).json({
         message: "We couldn’t create this activity. Nothing was saved. Please try again.",
         correlationId,
       });
     }
+  };
+
+  app.post('/api/trips/:id/activities', async (req: any, res) => {
+    await handleTripActivityCreation(req, res, { tripIdParam: "id", mode: "SCHEDULED" });
+  });
+
+  app.post('/api/trips/:tripId/proposals/activities', async (req: any, res) => {
+    await handleTripActivityCreation(req, res, { tripIdParam: "tripId", mode: "PROPOSE" });
   });
 
   app.post('/api/activities/:activityId/responses', async (req: any, res) => {

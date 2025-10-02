@@ -1,3 +1,4 @@
+import type { ActivityType } from "@shared/schema";
 import { log } from "./vite";
 
 type ActivityFailureStep = "validate" | "save";
@@ -8,7 +9,48 @@ interface ActivityFailureContext {
   userId?: string | null;
   tripId?: number | null;
   error: unknown;
+  mode?: ActivityType;
+  validationFields?: string[];
 }
+
+type ActivityCreationOutcome = "success" | "failure";
+
+type ActivityCreationMetricContext = {
+  mode: ActivityType;
+  outcome: ActivityCreationOutcome;
+  reason?: string;
+  validationFields?: string[];
+};
+
+const activityCreationCounters: Record<string, number> = {
+  activity_create_scheduled_success: 0,
+  activity_create_scheduled_failure: 0,
+  activity_create_proposal_success: 0,
+  activity_create_proposal_failure: 0,
+};
+
+const getActivityMetricKey = (mode: ActivityType, outcome: ActivityCreationOutcome) => {
+  const modeLabel = mode === "PROPOSE" ? "proposal" : "scheduled";
+  return `activity_create_${modeLabel}_${outcome}`;
+};
+
+export const trackActivityCreationMetric = ({
+  mode,
+  outcome,
+  reason,
+  validationFields,
+}: ActivityCreationMetricContext) => {
+  const key = getActivityMetricKey(mode, outcome);
+  activityCreationCounters[key] = (activityCreationCounters[key] ?? 0) + 1;
+
+  const reasonSegment = reason ? ` reason=${reason}` : "";
+  const fieldSegment =
+    validationFields && validationFields.length > 0
+      ? ` fields=${validationFields.slice(0, 3).join("|")}`
+      : "";
+
+  log(`📈 metrics.${key}=${activityCreationCounters[key]}${reasonSegment}${fieldSegment}`, "activity");
+};
 
 type CounterName = "upload_failed" | "save_failed" | "processing_timeout";
 
@@ -77,6 +119,8 @@ export const logActivityCreationFailure = ({
   userId,
   tripId,
   error,
+  mode,
+  validationFields,
 }: ActivityFailureContext) => {
   const timestamp = new Date().toISOString();
   const message =
@@ -86,10 +130,13 @@ export const logActivityCreationFailure = ({
         ? error
         : JSON.stringify(error);
 
+  const modeLabel = mode ?? "SCHEDULED";
+  const fieldSegment = validationFields && validationFields.length > 0 ? ` fields=${validationFields.join("|")}` : "";
+
   log(
     `activity.create failure :: ts=${timestamp} correlation=${correlationId} user=${
       userId ?? "unknown"
-    } trip=${tripId ?? "unknown"} step=${step} :: ${message}`,
+    } trip=${tripId ?? "unknown"} step=${step} mode=${modeLabel} :: ${message}${fieldSegment}`,
     "activity",
   );
 };

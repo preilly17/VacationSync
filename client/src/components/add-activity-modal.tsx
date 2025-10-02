@@ -303,6 +303,7 @@ export function AddActivityModal({
         throw new Error(attendeesResult.error);
       }
 
+      const submissionType = data.type ?? "SCHEDULED";
       const payload = {
         tripCalendarId: tripId,
         name: data.name.trim(),
@@ -314,12 +315,17 @@ export function AddActivityModal({
         maxCapacity: capacityResult.value,
         category: data.category,
         attendeeIds: attendeesResult.value,
-        type: data.type ?? "SCHEDULED",
+        type: submissionType,
       };
 
-      const response = await apiRequest(`/api/trips/${tripId}/activities`, {
-        method: 'POST',
-        body: JSON.stringify(payload),
+      const endpoint =
+        submissionType === "PROPOSE"
+          ? `/api/trips/${tripId}/proposals/activities`
+          : `/api/trips/${tripId}/activities`;
+
+      const response = await apiRequest(endpoint, {
+        method: "POST",
+        body: payload,
       });
       const created = (await response.json()) as ActivityWithDetails;
       return created;
@@ -339,13 +345,20 @@ export function AddActivityModal({
         });
       };
 
-      updateCache([`/api/trips/${tripId}/activities`]);
-      updateCache([`/api/trips/${tripId}/proposals/activities`]);
-      updateCache(["/api/trips", tripId.toString(), "activities"]);
+      if (submissionType === "PROPOSE") {
+        updateCache([`/api/trips/${tripId}/proposals/activities`]);
+        updateCache([`/api/trips/${tripId}/activities`]);
 
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
+      } else {
+        updateCache([`/api/trips/${tripId}/activities`]);
+        updateCache(["/api/trips", tripId.toString(), "activities"]);
+
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
+      }
 
       toast({
         title: submissionType === "PROPOSE" ? "Activity proposed!" : "Activity created!",
