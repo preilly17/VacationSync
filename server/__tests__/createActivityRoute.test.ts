@@ -1,0 +1,200 @@
+import express from "express";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
+
+type RouteHandler = (req: any, res: any, next?: any) => Promise<unknown> | unknown;
+
+let setupRoutes: (app: express.Express) => import("http").Server;
+let storage: any;
+let observabilityModule: any;
+let logActivityCreationFailure: jest.SpyInstance;
+
+const findRouteHandler = (
+  app: express.Express,
+  path: string,
+  method: "get" | "post" | "put" | "delete" | "patch",
+): RouteHandler => {
+  const stack = ((app as unknown as { _router?: { stack?: any[] } })._router?.stack ?? []) as any[];
+
+  for (const layer of stack) {
+    if (layer?.route?.path === path && layer.route?.methods?.[method]) {
+      return layer.route.stack[0].handle as RouteHandler;
+    }
+  }
+
+  throw new Error(`Route handler for ${method.toUpperCase()} ${path} not found`);
+};
+
+const createMockResponse = () => {
+  const res: any = {};
+  res.status = jest.fn().mockReturnValue(res);
+  res.json = jest.fn().mockReturnValue(res);
+  return res;
+};
+
+beforeAll(async () => {
+  jest.resetModules();
+  process.env.DATABASE_URL =
+    process.env.DATABASE_URL ?? "postgres://user:pass@localhost:5432/test";
+
+  await jest.unstable_mockModule("../observability", () => ({
+    __esModule: true,
+    logCoverPhotoFailure: jest.fn(),
+    logActivityCreationFailure: jest.fn(),
+  }));
+
+  await jest.unstable_mockModule("../vite", () => ({
+    __esModule: true,
+    log: jest.fn(),
+    setupVite: jest.fn(),
+    serveStatic: jest.fn(),
+  }));
+
+  await jest.unstable_mockModule("../sessionAuth", () => ({
+    __esModule: true,
+    setupAuth: jest.fn(),
+    isAuthenticated: (_req: any, _res: any, next: any) => next?.(),
+  }));
+
+  await jest.unstable_mockModule("../coverPhotoUpload", () => ({
+    __esModule: true,
+    registerCoverPhotoUploadRoutes: jest.fn(),
+  }));
+
+  await jest.unstable_mockModule("ws", () => ({
+    __esModule: true,
+    WebSocketServer: jest.fn(() => ({
+      on: jest.fn(),
+      close: jest.fn(),
+    })),
+    WebSocket: { OPEN: 1 },
+  }));
+
+  const routesModule: any = await import("../routes");
+  setupRoutes = routesModule.setupRoutes;
+
+  const storageModule: any = await import("../storage");
+  storage = storageModule.storage;
+
+  observabilityModule = await import("../observability");
+});
+
+describe("POST /api/trips/:id/activities", () => {
+  let app: express.Express;
+  let httpServer: import("http").Server;
+  let handler: RouteHandler;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    logActivityCreationFailure = jest.spyOn(
+      observabilityModule,
+      "logActivityCreationFailure",
+    );
+    app = express();
+    app.use(express.json());
+    httpServer = setupRoutes(app);
+    handler = findRouteHandler(app, "/api/trips/:id/activities", "post");
+  });
+
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => resolve());
+    });
+  });
+
+  it("returns 422 with invite details when a constraint violation occurs", async () => {
+    const trip = {
+      id: 123,
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "former-member", user: { firstName: "Former" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Brunch",
+      startTime: new Date("2024-01-01T10:00:00Z").toISOString(),
+      endTime: new Date("2024-01-01T12:00:00Z").toISOString(),
+      category: "food",
+      attendeeIds: ["former-member"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest
+      .spyOn(storage, "getTripById")
+      .mockResolvedValueOnce(trip as any);
+
+    const fkError = Object.assign(new Error("violates foreign key constraint"), {
+      code: "23503",
+      detail:
+        "Key (user_id)=(former-member) is not present in table \"trip_members\".",
+    });
+
+    jest
+      .spyOn(storage, "createActivity")
+      .mockRejectedValueOnce(fkError as never);
+
+    const setInviteStatusSpy = jest
+      .spyOn(storage, "setActivityInviteStatus")
+      .mockResolvedValue(undefined as any);
+
+    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const consoleErrorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(422);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      message: "One or more invitees are no longer members of this trip.",
+      correlationId: expect.any(String),
+      invalidInviteeIds: ["former-member"],
+    });
+
+    expect(logActivityCreationFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        correlationId: payload.correlationId,
+        step: "save",
+        userId: "organizer",
+        tripId: trip.id,
+        error: fkError,
+      }),
+    );
+
+    expect(consoleWarnSpy).toHaveBeenCalledWith(
+      "Activity creation failed due to invite constraint violation",
+      expect.objectContaining({
+        correlationId: payload.correlationId,
+        tripId: trip.id,
+        userId: "organizer",
+        invalidInviteeIds: ["former-member"],
+        attemptedInviteeIds: ["former-member"],
+        error: fkError,
+      }),
+    );
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    expect(setInviteStatusSpy).not.toHaveBeenCalled();
+
+    consoleWarnSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+  });
+});

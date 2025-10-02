@@ -17,6 +17,8 @@ export const ACTIVITY_CATEGORY_MESSAGE = `Category must be one of: ${ACTIVITY_CA
 export const COST_NUMBER_MESSAGE = "Cost per person must be a number (e.g., 12.50).";
 export const MAX_CAPACITY_MESSAGE = "Max participants must be at least 1 or left blank.";
 export const ATTENDEE_REQUIRED_MESSAGE = "Include at least one attendee.";
+export const INVITEE_NOT_MEMBER_MESSAGE =
+  "Some selected invitees are no longer part of this trip.";
 export const END_TIME_AFTER_START_MESSAGE = "End time must be after start time.";
 export const MAX_ACTIVITY_NAME_LENGTH = 120;
 export const MAX_ACTIVITY_DESCRIPTION_LENGTH = 2000;
@@ -302,6 +304,11 @@ export const validateActivityInput = (
   attendeeSet.add(userId);
 
   const filteredAttendees = Array.from(attendeeSet).filter((id) => validMemberIds.has(id));
+  const invalidAttendeeIds = attendeeResult.value.filter((id) => !validMemberIds.has(id));
+
+  if (invalidAttendeeIds.length > 0) {
+    errors.push({ field: "attendeeIds", message: INVITEE_NOT_MEMBER_MESSAGE });
+  }
   if (filteredAttendees.length === 0) {
     errors.push({ field: "attendeeIds", message: ATTENDEE_REQUIRED_MESSAGE });
   }
