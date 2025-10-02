@@ -192,45 +192,8 @@ export function CalendarGrid({
 
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Get unique categories from current activities for the legend
-  const activeCategories = Array.from(new Set(activities.map(a => a.category || 'other')));
-
-  const legendItems = [
-    { category: 'flights', name: 'Flights', icon: '✈️' },
-    { category: 'hotels', name: 'Hotels', icon: '🏨' },
-    { category: 'restaurants', name: 'Restaurants', icon: '🍴' },
-    { category: 'activities', name: 'Activities', icon: '🎯' },
-    { category: 'sightseeing', name: 'Sightseeing', icon: '🏯' },
-    { category: 'entertainment', name: 'Entertainment', icon: '🎤' },
-  ].filter(item => activeCategories.includes(item.category));
-
   return (
     <div className="space-y-5">
-      {activities.length > 0 && legendItems.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-full border border-[color:var(--calendar-line)]/60 bg-[var(--calendar-canvas)]/70 px-4 py-2.5 text-xs text-[color:var(--calendar-muted)] shadow-[0_12px_30px_-22px_rgba(16,24,40,0.25)] transition-colors dark:border-[color:var(--calendar-line)]/70">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--calendar-muted)]">Legend</span>
-          {legendItems.map(({ category, name, icon }) => {
-            const themeKey = getEventThemeKey(category, false);
-            const style = { ...themeVariableMap[themeKey] } as CalendarCssVariables;
-
-            return (
-              <span
-                key={category}
-                className="flex items-center gap-2 rounded-full bg-[var(--calendar-surface)]/80 px-3 py-1.5 shadow-[0_6px_12px_-10px_rgba(15,23,42,0.25)]"
-                style={style}
-              >
-                <span className="flex h-2.5 w-2.5 items-center justify-center">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[var(--chip-dot)]" aria-hidden />
-                </span>
-                <span className="text-[11px] font-medium text-[var(--chip-text)]">
-                  {icon} {name}
-                </span>
-              </span>
-            );
-          })}
-        </div>
-      )}
-
       <div className="rounded-[20px] border border-[color:var(--calendar-line)]/70 bg-[var(--calendar-canvas)]/90 p-4 shadow-[0_10px_30px_-12px_rgba(16,24,40,0.18)] transition-all duration-300 dark:shadow-[0_20px_44px_-18px_rgba(2,6,23,0.9)]">
         <div className="rounded-[18px] border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)]/95 backdrop-blur-xl">
           <div className="grid grid-cols-7 gap-2 px-4 pt-4 pb-3 text-center">
