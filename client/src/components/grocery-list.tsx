@@ -546,24 +546,24 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
   return (
     <TooltipProvider delayDuration={0}>
       <div
-        className="relative overflow-hidden rounded-3xl border border-border/70 bg-indigo-500/5 p-6 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm sm:p-8 dark:border-white/10 dark:bg-indigo-500/15 dark:shadow-[0_32px_56px_-30px_rgba(0,0,0,0.7)]"
+        className="relative overflow-hidden rounded-3xl border border-border/70 bg-indigo-500/5 p-4 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm sm:p-6 dark:border-white/10 dark:bg-indigo-500/15 dark:shadow-[0_32px_56px_-30px_rgba(0,0,0,0.7)]"
       >
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80"
+          className="pointer-events-none absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80"
         />
         <div className="space-y-10">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div>
-              <h1 className="text-3xl font-semibold">Grocery List</h1>
-              <p className="text-muted-foreground">One shared list for personal items and group meals.</p>
+              <h1 className="mb-4 text-3xl font-semibold leading-[1.1]">Grocery List</h1>
+              <p className="text-muted-foreground leading-[1.5]">One shared list for personal items and group meals.</p>
             </div>
             <Button
               onClick={() => {
                 setAddMode("item");
                 setIsAddDialogOpen(true);
               }}
-              className="ml-auto w-full gap-2 md:w-auto"
+              className="w-full gap-2 sm:ml-auto sm:w-auto"
             >
               <Plus className="h-4 w-4" /> Add an item
             </Button>
@@ -574,13 +574,13 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
           >
             <span
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
+              className="pointer-events-none absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
             />
-            <div className="space-y-6">
-              <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-xl font-semibold">Items</h2>
+            <div className="px-4 pb-4 pt-[calc(1rem+6px)]">
+              <header>
+                <h2 className="mb-3 text-xl font-semibold leading-[1.22]">Items</h2>
               </header>
-              <div className="relative max-w-md">
+              <div className="relative mb-3 max-w-md">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchTerm}
@@ -591,7 +591,7 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
               </div>
 
               {activeItems.length === 0 && purchasedItems.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+                <div className="rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
                   Nothing needed yet. Add an item or propose a group meal.
                 </div>
               ) : (
@@ -601,7 +601,7 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
               )}
 
               {purchasedItems.length > 0 && (
-                <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/40">
+                <div className="mt-3 overflow-hidden rounded-xl border border-border/60 bg-muted/40">
                   <button
                     type="button"
                     className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-muted/60"
@@ -634,20 +634,20 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
           >
             <span
               aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
+              className="pointer-events-none absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
             />
-            <div className="space-y-6">
+            <div className="px-4 pb-4 pt-[calc(1rem+6px)]">
               <header>
-                <h2 className="text-xl font-semibold">Group Meals</h2>
-                <p className="text-sm text-muted-foreground">Propose dinners and vote together.</p>
+                <h2 className="text-xl font-semibold leading-[1.22]">Group Meals</h2>
+                <p className="mt-2 text-sm text-muted-foreground leading-[1.5]">Propose dinners and vote together.</p>
               </header>
 
               {activeMeals.length === 0 && declinedMeals.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border/60 bg-background/40 p-6 text-center text-sm text-muted-foreground">
+                <div className="mt-3 rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
                   No meal ideas yet. Propose your first group dinner.
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="mt-3 space-y-3">
                   {activeMeals.map((meal) => (
                     <GroupMealCard
                       key={meal.id}
@@ -674,12 +674,12 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
               )}
 
               {declinedMeals.length > 0 && (
-                <div className="overflow-hidden rounded-xl border border-border/60 bg-muted/40">
+                <div className="mt-3 overflow-hidden rounded-xl border border-border/60 bg-muted/40">
                   <details>
-                    <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium">
+                    <summary className="flex cursor-pointer items-baseline justify-between gap-3 px-4 py-3 text-sm font-medium leading-[1.22]">
                       Declined <span className="text-muted-foreground">({declinedMeals.length})</span>
                     </summary>
-                    <div className="space-y-4 border-t border-border/50 bg-background/40 px-4 py-3">
+                    <div className="space-y-3 border-t border-border/50 bg-background/40 px-4 py-3">
                       {declinedMeals.map((meal) => (
                         <GroupMealCard
                           key={meal.id}
