@@ -221,6 +221,8 @@ export interface TripMember {
   joinedAt: IsoDate | null;
 }
 
+export type ActivityType = "SCHEDULED" | "PROPOSE";
+
 export interface Activity {
   id: number;
   tripCalendarId: number;
@@ -234,6 +236,7 @@ export interface Activity {
   maxCapacity: number | null;
   category: string;
   status: string;
+  type: ActivityType;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
 }
@@ -248,6 +251,7 @@ export const insertActivitySchema = z.object({
   cost: nullableNumberInput("Cost must be a number"),
   maxCapacity: z.union([z.number(), z.string()]).nullable().optional(),
   category: z.string().default("other"),
+  type: z.enum(["SCHEDULED", "PROPOSE"]).default("SCHEDULED"),
 });
 
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
@@ -978,8 +982,6 @@ export type RestaurantProposalWithDetails = RestaurantProposal & {
   currentUserRanking?: RestaurantRanking;
 };
 
-export type ActivityType = "SCHEDULED" | "PROPOSE";
-
 export type ActivityWithDetails = Activity & {
   poster: User;
   invites: (ActivityInvite & { user: User })[];
@@ -989,7 +991,6 @@ export type ActivityWithDetails = Activity & {
   pendingCount: number;
   declinedCount: number;
   waitlistedCount?: number;
-  type?: ActivityType;
   rsvpCloseTime?: IsoDate | null;
   currentUserInvite?: ActivityInvite & { user: User };
   isAccepted?: boolean;

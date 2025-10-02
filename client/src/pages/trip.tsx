@@ -372,7 +372,7 @@ function DayView({
               ?? null;
             const derivedStatus: ActivityInviteStatus = currentInvite?.status
               ?? (activity.isAccepted ? "accepted" : "pending");
-            const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
+            const activityType = activity.type;
             const isProposal = activityType === "PROPOSE";
             const showPersonalProposalChip = Boolean(isPersonalView && isCreator && isProposal);
             const statusLabel = showPersonalProposalChip
@@ -1160,7 +1160,7 @@ export default function Trip() {
         return false;
       }
 
-      const normalizedType = (activity.type ?? "SCHEDULED").toUpperCase();
+      const normalizedType = activity.type;
       const isProposal = normalizedType === "PROPOSE";
       const isCreator = activity.postedBy === user.id || activity.poster.id === user.id;
 

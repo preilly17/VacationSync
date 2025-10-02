@@ -10,6 +10,7 @@ import {
   type InsertTripCalendar,
   type TripMember,
   type Activity,
+  type ActivityType,
   type ActivityInvite,
   type ActivityInviteStatus,
   type ActivityAcceptance,
@@ -209,6 +210,14 @@ const toInviteStatus = (value: unknown): ActivityInviteStatus => {
   return "pending";
 };
 
+const toActivityType = (value: unknown): ActivityType => {
+  if (value === "PROPOSE") {
+    return "PROPOSE";
+  }
+
+  return "SCHEDULED";
+};
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -345,6 +354,7 @@ type ActivityRow = {
   max_capacity: number | null;
   category: string;
   status: string;
+  type: string | null;
   created_at: Date | null;
   updated_at: Date | null;
 };
@@ -1211,6 +1221,7 @@ const mapActivity = (row: ActivityRow): Activity => ({
   maxCapacity: row.max_capacity,
   category: row.category,
   status: row.status,
+  type: toActivityType(row.type),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -1929,6 +1940,10 @@ export class DatabaseStorage implements IStorage {
 
   private proposalLinksInitialized = false;
 
+  private activityTypeInitPromise: Promise<void> | null = null;
+
+  private activityTypeColumnInitialized = false;
+
   private activityInvitesInitPromise: Promise<void> | null = null;
 
   private activityInvitesInitialized = false;
@@ -2086,6 +2101,33 @@ export class DatabaseStorage implements IStorage {
       await this.proposalLinksInitPromise;
     } finally {
       this.proposalLinksInitPromise = null;
+    }
+  }
+
+  private async ensureActivityTypeColumn(): Promise<void> {
+    if (this.activityTypeColumnInitialized) {
+      return;
+    }
+
+    if (this.activityTypeInitPromise) {
+      await this.activityTypeInitPromise;
+      return;
+    }
+
+    this.activityTypeInitPromise = (async () => {
+      await query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS type TEXT`);
+      await query(
+        `ALTER TABLE activities ALTER COLUMN type SET DEFAULT 'SCHEDULED'`,
+      );
+      await query(`UPDATE activities SET type = 'SCHEDULED' WHERE type IS NULL`);
+      await query(`ALTER TABLE activities ALTER COLUMN type SET NOT NULL`);
+      this.activityTypeColumnInitialized = true;
+    })();
+
+    try {
+      await this.activityTypeInitPromise;
+    } finally {
+      this.activityTypeInitPromise = null;
     }
   }
 
@@ -3392,6 +3434,8 @@ export class DatabaseStorage implements IStorage {
     userId: string,
     inviteeIds: string[] = [],
   ): Promise<Activity> {
+    await this.ensureActivityTypeColumn();
+
     const costValue = activity.cost ?? null;
 
     const maxCapacityInput = activity.maxCapacity;
@@ -3403,6 +3447,7 @@ export class DatabaseStorage implements IStorage {
       parsedMaxCapacity === null || Number.isNaN(parsedMaxCapacity)
         ? null
         : parsedMaxCapacity;
+    const typeValue = toActivityType(activity.type);
 
     const { rows } = await query<ActivityRow>(
       `
@@ -3417,9 +3462,10 @@ export class DatabaseStorage implements IStorage {
         cost,
         max_capacity,
         category,
-        status
+        status,
+        type
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING
         id,
         trip_calendar_id,
@@ -3433,6 +3479,7 @@ export class DatabaseStorage implements IStorage {
         max_capacity,
         category,
         status,
+        type,
         created_at,
         updated_at
       `,
@@ -3448,6 +3495,7 @@ export class DatabaseStorage implements IStorage {
         maxCapacityValue,
         activity.category,
         "active",
+        typeValue,
       ],
     );
 
@@ -3464,6 +3512,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getActivityById(activityId: number): Promise<Activity | undefined> {
+    await this.ensureActivityTypeColumn();
+
     const { rows } = await query<ActivityRow>(
       `
       SELECT
@@ -3479,6 +3529,7 @@ export class DatabaseStorage implements IStorage {
         max_capacity,
         category,
         status,
+        type,
         created_at,
         updated_at
       FROM activities
@@ -3496,6 +3547,8 @@ export class DatabaseStorage implements IStorage {
     tripId: number,
     userId: string,
   ): Promise<ActivityWithDetails[]> {
+    await this.ensureActivityTypeColumn();
+
     const { rows: activityRows } = await query<ActivityWithPosterRow>(
       `
       SELECT
@@ -3511,6 +3564,7 @@ export class DatabaseStorage implements IStorage {
         a.max_capacity,
         a.category,
         a.status,
+        a.type,
         a.created_at,
         a.updated_at,
         u.id AS poster_id,
@@ -4417,6 +4471,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTripExpenses(tripId: number): Promise<ExpenseWithDetails[]> {
+    await this.ensureActivityTypeColumn();
+
     const { rows: expenseRows } = await query<ExpenseWithPaidByRow>(
       `
       SELECT
@@ -4560,6 +4616,7 @@ export class DatabaseStorage implements IStorage {
           max_capacity,
           category,
           status,
+          type,
           created_at,
           updated_at
         FROM activities
@@ -5128,6 +5185,8 @@ export class DatabaseStorage implements IStorage {
   ): Promise<
     (Notification & { trip?: TripCalendar; activity?: Activity; expense?: Expense })[]
   > {
+    await this.ensureActivityTypeColumn();
+
     const { rows } = await query<NotificationWithDetailsRow>(
       `
       SELECT
@@ -5161,6 +5220,7 @@ export class DatabaseStorage implements IStorage {
         a.max_capacity AS activity_max_capacity,
         a.category AS activity_category,
         a.status AS activity_status,
+        a.type AS activity_type,
         a.created_at AS activity_created_at,
         a.updated_at AS activity_updated_at,
         e.id AS joined_expense_id,
@@ -5240,6 +5300,7 @@ export class DatabaseStorage implements IStorage {
           max_capacity: row.activity_max_capacity,
           category: row.activity_category as string,
           status: (row.activity_status ?? "active") as string,
+          type: row.activity_type ?? null,
           created_at: row.activity_created_at,
           updated_at: row.activity_updated_at,
         };
@@ -10413,6 +10474,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return updated;
   }
 }
+
+export const __testables = {
+  mapActivityWithDetails,
+};
 
 export const storage = new DatabaseStorage();
 

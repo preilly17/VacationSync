@@ -563,7 +563,7 @@ function DayActivityList({
         className="group/mode flex h-full flex-col overflow-visible gap-y-1.5 data-[mode=compact]:gap-y-1 data-[mode=micro]:gap-y-0.5"
       >
         {activities.map((activity, index) => {
-          const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
+          const activityType = activity.type;
           const isProposal = activityType === "PROPOSE";
           const isCreator = Boolean(
             currentUserId && (activity.postedBy === currentUserId || activity.poster?.id === currentUserId),
