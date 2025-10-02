@@ -289,6 +289,79 @@ describe("POST /api/trips/:id/activities", () => {
     consoleWarnSpy.mockRestore();
   });
 
+  it("allows inviting the trip creator even if they are not in members", async () => {
+    const trip = {
+      id: 654,
+      createdBy: "trip-owner",
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Owner Dinner",
+      startTime: new Date("2024-05-01T18:00:00Z").toISOString(),
+      endTime: null,
+      category: "food",
+      attendeeIds: ["trip-owner"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const createdActivity = {
+      id: 321,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      description: null,
+      startTime: requestBody.startTime,
+      endTime: requestBody.endTime,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: requestBody.category,
+      type: "SCHEDULED",
+    };
+
+    const createActivitySpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    jest
+      .spyOn(storage, "getTripActivities")
+      .mockResolvedValueOnce([createdActivity] as any);
+
+    jest
+      .spyOn(storage, "createNotification")
+      .mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(createActivitySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripCalendarId: trip.id,
+        name: requestBody.name,
+      }),
+      "organizer",
+      ["trip-owner"],
+    );
+
+    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "SCHEDULED", outcome: "success" }),
+    );
+
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
+  });
+
   it("allows manual entry activities to be created", async () => {
     const trip = {
       id: 456,
