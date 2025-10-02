@@ -1,27 +1,59 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { buildApiUrl } from "./api";
 
-async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    
-    // Check if it's a session expired error
-    let errorData;
-    try {
-      errorData = JSON.parse(text);
-    } catch {
-      throw new Error(`${res.status}: ${text}`);
-    }
-    
-    // Temporarily disable automatic session handling to prevent loops
-    // Users can manually refresh via the refresh button
-    if (res.status === 401 && (errorData.redirectToLogin || errorData.clearSession)) {
-      console.log("Session expired - manual refresh required");
-      // Don't automatically redirect to prevent loops
-    }
-    
-    throw new Error(`${res.status}: ${text}`);
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(status: number, data: unknown, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
   }
+}
+
+async function throwIfResNotOk(res: Response) {
+  if (res.ok) {
+    return;
+  }
+
+  let responseText: string | null = null;
+  let parsedData: unknown = null;
+
+  try {
+    responseText = await res.text();
+    if (responseText) {
+      try {
+        parsedData = JSON.parse(responseText);
+      } catch {
+        parsedData = responseText;
+      }
+    }
+  } catch {
+    responseText = null;
+    parsedData = null;
+  }
+
+  const body = parsedData ?? responseText ?? null;
+
+  if (
+    res.status === 401 &&
+    body &&
+    typeof body === "object" &&
+    ("redirectToLogin" in body || "clearSession" in body)
+  ) {
+    console.log("Session expired - manual refresh required");
+  }
+
+  const message =
+    body && typeof body === "object" && "message" in body && typeof (body as { message: unknown }).message === "string"
+      ? (body as { message: string }).message
+      : typeof body === "string" && body.trim().length > 0
+        ? body
+        : res.statusText;
+
+  throw new ApiError(res.status, body, message);
 }
 
 export async function apiRequest(

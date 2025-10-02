@@ -12,14 +12,21 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { type ActivityType, type ActivityWithDetails, type TripMember, type User } from "@shared/schema";
 import {
-  createActivityWithAttendeesSchema,
-  type ActivityType,
-  type TripMember,
-  type User,
-} from "@shared/schema";
+  ACTIVITY_CATEGORY_MESSAGE,
+  ACTIVITY_CATEGORY_VALUES,
+  ATTENDEE_REQUIRED_MESSAGE,
+  END_TIME_AFTER_START_MESSAGE,
+  MAX_ACTIVITY_DESCRIPTION_LENGTH,
+  MAX_ACTIVITY_LOCATION_LENGTH,
+  MAX_ACTIVITY_NAME_LENGTH,
+  normalizeAttendeeIds,
+  normalizeCostInput,
+  normalizeMaxCapacityInput,
+} from "@shared/activityValidation";
 import { z } from "zod";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
 
 type TripMemberWithUser = TripMember & { user: User };
@@ -34,13 +41,94 @@ interface AddActivityModalProps {
   allowModeToggle?: boolean;
 }
 
-const formSchema = createActivityWithAttendeesSchema.extend({
-  startDate: z.string().min(1, "Start date is required"),
-  startTime: z.string().min(1, "Start time is required"),
-  endTime: z.string().optional(),
-  cost: z.string().optional(),
-  maxCapacity: z.string().optional(),
-});
+const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const formSchema = z
+  .object({
+    name: z
+      .string()
+      .min(1, "Activity name is required")
+      .max(MAX_ACTIVITY_NAME_LENGTH, `Activity name must be ${MAX_ACTIVITY_NAME_LENGTH} characters or fewer.`),
+    description: z
+      .string()
+      .max(
+        MAX_ACTIVITY_DESCRIPTION_LENGTH,
+        `Description must be ${MAX_ACTIVITY_DESCRIPTION_LENGTH} characters or fewer.`,
+      )
+      .optional()
+      .transform((value) => value ?? ""),
+    startDate: z.string().min(1, "Start date is required"),
+    startTime: z
+      .string()
+      .min(1, "Start time is required")
+      .refine((value) => timePattern.test(value), {
+        message: "Start time must be in HH:MM format.",
+      }),
+    endTime: z
+      .string()
+      .optional()
+      .refine((value) => !value || timePattern.test(value), {
+        message: "End time must be in HH:MM format.",
+      }),
+    location: z
+      .string()
+      .max(
+        MAX_ACTIVITY_LOCATION_LENGTH,
+        `Location must be ${MAX_ACTIVITY_LOCATION_LENGTH} characters or fewer.`,
+      )
+      .optional()
+      .transform((value) => value ?? ""),
+    cost: z.string().optional(),
+    maxCapacity: z.string().optional(),
+    attendeeIds: z.array(z.string(), { invalid_type_error: ATTENDEE_REQUIRED_MESSAGE }).min(1, ATTENDEE_REQUIRED_MESSAGE),
+    category: z
+      .string()
+      .refine((value) => ACTIVITY_CATEGORY_VALUES.includes(value as (typeof ACTIVITY_CATEGORY_VALUES)[number]), {
+        message: ACTIVITY_CATEGORY_MESSAGE,
+      }),
+    type: z.enum(["SCHEDULED", "PROPOSE"]).default("SCHEDULED"),
+  })
+  .superRefine((data, ctx) => {
+    if (data.cost) {
+      const { error } = normalizeCostInput(data.cost);
+      if (error) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cost"], message: error });
+      }
+    }
+
+    if (data.maxCapacity) {
+      const { error } = normalizeMaxCapacityInput(data.maxCapacity);
+      if (error) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxCapacity"], message: error });
+      }
+    }
+
+    if (data.endTime) {
+      const startDate = new Date(`${data.startDate}T${data.startTime}`);
+      const endDate = new Date(`${data.startDate}T${data.endTime}`);
+      if (Number.isNaN(endDate.getTime())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["endTime"],
+          message: "End time must be a valid time.",
+        });
+      } else if (!Number.isNaN(startDate.getTime()) && endDate <= startDate) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endTime"], message: END_TIME_AFTER_START_MESSAGE });
+      }
+    }
+
+    const { value: normalizedCapacity } = normalizeMaxCapacityInput(data.maxCapacity);
+    if (normalizedCapacity !== null) {
+      const attendeeCount = new Set([...data.attendeeIds]).size;
+      if (normalizedCapacity < attendeeCount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["maxCapacity"],
+          message: "Max participants cannot be less than the number of selected attendees.",
+        });
+      }
+    }
+  });
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -54,6 +142,19 @@ const categories = [
   { value: "outdoor", label: "Outdoor" },
   { value: "other", label: "Other" },
 ];
+
+const serverFieldMap: Partial<Record<string, keyof FormData>> = {
+  name: "name",
+  description: "description",
+  startTime: "startTime",
+  endTime: "endTime",
+  location: "location",
+  cost: "cost",
+  maxCapacity: "maxCapacity",
+  category: "category",
+  attendeeIds: "attendeeIds",
+  startDate: "startDate",
+};
 
 const getMemberDisplayName = (member?: User | null) => {
   if (!member) return "Trip member";
@@ -102,15 +203,17 @@ export function AddActivityModal({
       cost: "",
       maxCapacity: "",
       category: "other",
-      tripCalendarId: tripId,
       attendeeIds: defaultAttendeeIds,
+      type: defaultMode,
     }),
-    [defaultAttendeeIds, selectedDate, tripId],
+    [defaultAttendeeIds, selectedDate, defaultMode],
   );
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: getDefaultValues(),
+    mode: "onChange",
+    reValidateMode: "onChange",
   });
 
   const [mode, setMode] = useState<ActivityType>(defaultMode);
@@ -120,7 +223,10 @@ export function AddActivityModal({
 
   useEffect(() => {
     if (open) {
-      form.setValue("attendeeIds", defaultAttendeeIds);
+      form.setValue("attendeeIds", defaultAttendeeIds, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
     }
   }, [open, defaultAttendeeIds, form]);
 
@@ -133,7 +239,10 @@ export function AddActivityModal({
   // Update form when selectedDate changes
   useEffect(() => {
     if (selectedDate) {
-      form.setValue("startDate", format(selectedDate, "yyyy-MM-dd"));
+      form.setValue("startDate", format(selectedDate, "yyyy-MM-dd"), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
     } else {
       form.reset(getDefaultValues());
       setMode(defaultMode);
@@ -148,74 +257,90 @@ export function AddActivityModal({
     } else if (checked === false) {
       current.delete(normalizedId);
     }
-    form.setValue("attendeeIds", Array.from(current), { shouldDirty: true });
+    form.setValue("attendeeIds", Array.from(current), { shouldDirty: true, shouldValidate: true });
   };
 
   const handleSelectAll = () => {
-    form.setValue("attendeeIds", defaultAttendeeIds, { shouldDirty: true });
+    form.setValue("attendeeIds", defaultAttendeeIds, { shouldDirty: true, shouldValidate: true });
   };
 
   const handleClearAttendees = () => {
-    form.setValue("attendeeIds", [], { shouldDirty: true });
+    form.setValue("attendeeIds", [], { shouldDirty: true, shouldValidate: true });
   };
 
   const createActivityMutation = useMutation({
-    mutationFn: async (data: any) => {
-      // Validate that we have both date and time
+    mutationFn: async (data: FormData) => {
       if (!data.startDate || !data.startTime) {
         throw new Error("Start date and time are required");
       }
 
-      // Combine date and time into ISO string
       const startDateTime = new Date(`${data.startDate}T${data.startTime}`);
-      const endDateTime = data.endTime 
-        ? new Date(`${data.startDate}T${data.endTime}`)
-        : null;
-
-      // Check if the date is valid
-      if (isNaN(startDateTime.getTime())) {
-        throw new Error("Invalid start date or time");
+      if (Number.isNaN(startDateTime.getTime())) {
+        throw new Error("Start date and time must be valid.");
       }
 
-      if (endDateTime && isNaN(endDateTime.getTime())) {
-        throw new Error("Invalid end time");
+      const endDateTime = data.endTime ? new Date(`${data.startDate}T${data.endTime}`) : null;
+      if (endDateTime && Number.isNaN(endDateTime.getTime())) {
+        throw new Error("End time must be a valid time.");
       }
 
-      const {
-        startDate: _startDate,
-        startTime,
-        endTime,
-        cost,
-        maxCapacity,
-        attendeeIds = [],
-        type,
-        ...rest
-      } = data;
+      const costResult = normalizeCostInput(data.cost);
+      if (costResult.error) {
+        throw new Error(costResult.error);
+      }
 
-      const normalizedAttendeeIds = Array.from(
-        new Set((attendeeIds ?? []).map((id: string) => String(id))),
-      );
+      const capacityResult = normalizeMaxCapacityInput(data.maxCapacity);
+      if (capacityResult.error) {
+        throw new Error(capacityResult.error);
+      }
 
-      const activityData = {
-        ...rest,
+      const attendeesResult = normalizeAttendeeIds(data.attendeeIds);
+      if (attendeesResult.error) {
+        throw new Error(attendeesResult.error);
+      }
+
+      const payload = {
+        tripCalendarId: tripId,
+        name: data.name.trim(),
+        description: data.description?.trim() ? data.description.trim() : null,
         startTime: startDateTime.toISOString(),
-        endTime: endDateTime?.toISOString() || null,
-        cost: cost ? parseFloat(cost) : null,
-        maxCapacity: maxCapacity ? parseInt(maxCapacity) : null,
-        attendeeIds: normalizedAttendeeIds,
-        type: type ?? "SCHEDULED",
+        endTime: endDateTime ? endDateTime.toISOString() : null,
+        location: data.location?.trim() ? data.location.trim() : null,
+        cost: costResult.value,
+        maxCapacity: capacityResult.value,
+        category: data.category,
+        attendeeIds: attendeesResult.value,
+        type: data.type ?? "SCHEDULED",
       };
 
-      await apiRequest(`/api/trips/${tripId}/activities`, {
+      const response = await apiRequest(`/api/trips/${tripId}/activities`, {
         method: 'POST',
-        body: JSON.stringify(activityData),
+        body: JSON.stringify(payload),
       });
+      const created = (await response.json()) as ActivityWithDetails;
+      return created;
     },
-    onSuccess: (_data, variables) => {
-      const submissionType =
-        (variables as { type?: ActivityType } | undefined)?.type ?? "SCHEDULED";
+    onSuccess: (createdActivity, variables) => {
+      const submissionType = variables?.type ?? "SCHEDULED";
+
+      const sortByStartTime = (activities: ActivityWithDetails[]) =>
+        [...activities].sort(
+          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+        );
+
+      const updateCache = (queryKey: unknown[]) => {
+        queryClient.setQueryData<ActivityWithDetails[]>(queryKey, (existing = []) => {
+          const filtered = existing.filter((item) => item.id !== createdActivity.id);
+          return sortByStartTime([...filtered, createdActivity]);
+        });
+      };
+
+      updateCache([`/api/trips/${tripId}/activities`]);
+      updateCache(["/api/trips", tripId.toString(), "activities"]);
+
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
+
       toast({
         title: submissionType === "PROPOSE" ? "Activity proposed!" : "Activity created!",
         description:
@@ -229,17 +354,67 @@ export function AddActivityModal({
     },
     onError: (error) => {
       console.error("Activity creation error:", error);
+
+      if (error instanceof ApiError) {
+        if (error.status === 422) {
+          const data = error.data as
+            | { errors?: { field: string; message: string }[]; message?: string }
+            | undefined;
+          const serverErrors = Array.isArray(data?.errors) ? data?.errors : [];
+
+          if (serverErrors.length > 0) {
+            serverErrors.forEach(({ field, message }) => {
+              const mappedField = serverFieldMap[field];
+              if (mappedField) {
+                form.setError(mappedField, { type: "server", message });
+              }
+            });
+
+            const focusField = serverErrors.find(({ field }) => serverFieldMap[field])?.field;
+            if (focusField) {
+              const mapped = serverFieldMap[focusField];
+              if (mapped) {
+                try {
+                  form.setFocus(mapped);
+                } catch {
+                  // ignore focus errors
+                }
+              }
+            }
+          }
+
+          toast({
+            title: "Please fix the highlighted fields",
+            description:
+              data?.message ?? "Some details need your attention before we can create this activity.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status >= 500) {
+          const data = error.data as { correlationId?: string } | undefined;
+          toast({
+            title: "We couldn’t create this activity. Nothing was saved. Please try again.",
+            description: data?.correlationId ? `Reference: ${data.correlationId}` : undefined,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       toast({
         title: "Error",
-        description: error.message || "Failed to create activity. Please try again.",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to create activity. Please try again.",
         variant: "destructive",
       });
     },
   });
 
   const onSubmit = (data: FormData) => {
-    console.log('Form data:', data);
-    console.log('Form errors:', form.formState.errors);
     createActivityMutation.mutate({ ...data, type: mode });
   };
 
@@ -303,6 +478,9 @@ export function AddActivityModal({
               rows={3}
               {...form.register("description")}
             />
+            {form.formState.errors.description && (
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.description.message}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -337,6 +515,9 @@ export function AddActivityModal({
               type="time"
               {...form.register("endTime")}
             />
+            {form.formState.errors.endTime && (
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.endTime.message}</p>
+            )}
           </div>
 
           <div>
@@ -346,6 +527,9 @@ export function AddActivityModal({
               placeholder="Address or landmark"
               {...form.register("location")}
             />
+            {form.formState.errors.location && (
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.location.message}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -429,13 +613,18 @@ export function AddActivityModal({
                 )}
               </div>
             </ScrollArea>
+            {form.formState.errors.attendeeIds && (
+              <p className="text-sm text-red-600 mt-2">{form.formState.errors.attendeeIds.message}</p>
+            )}
           </div>
 
           <div>
             <Label htmlFor="category">Category</Label>
             <Select
               value={form.watch("category")}
-              onValueChange={(value) => form.setValue("category", value)}
+              onValueChange={(value) =>
+                form.setValue("category", value, { shouldDirty: true, shouldValidate: true })
+              }
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select category" />
@@ -448,6 +637,9 @@ export function AddActivityModal({
                 ))}
               </SelectContent>
             </Select>
+            {form.formState.errors.category && (
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.category.message}</p>
+            )}
           </div>
 
           {Object.keys(form.formState.errors).length > 0 && (
@@ -473,7 +665,7 @@ export function AddActivityModal({
             <Button
               type="submit"
               className="flex-1 bg-primary hover:bg-red-600 text-white"
-              disabled={createActivityMutation.isPending}
+              disabled={createActivityMutation.isPending || !form.formState.isValid}
             >
               {createActivityMutation.isPending ? "Creating..." : "Create Activity"}
             </Button>
