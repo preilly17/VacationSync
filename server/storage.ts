@@ -15,6 +15,7 @@ import {
   type ActivityAcceptance,
   type InsertActivity,
   type ActivityWithDetails,
+  type ActivityProposalVoteValue,
   type TripWithDetails,
   type ActivityComment,
   type InsertActivityComment,
@@ -350,6 +351,35 @@ type ActivityRow = {
 };
 
 type ActivityWithPosterRow = ActivityRow & PrefixedUserRow<"poster_">;
+
+type ActivityProposalRow = {
+  id: number;
+  trip_id: number;
+  proposed_by: string;
+  name: string;
+  description: string | null;
+  start_time: Date | null;
+  end_time: Date | null;
+  location: string | null;
+  cost: string | null;
+  max_capacity: number | null;
+  category: string;
+  status: string;
+  time_options: unknown;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
+
+type ActivityProposalWithPosterRow = ActivityProposalRow & PrefixedUserRow<"poster_">;
+
+type ActivityProposalVoteRow = {
+  id: number;
+  proposal_id: number;
+  user_id: string;
+  vote: string;
+  created_at: Date | null;
+  updated_at: Date | null;
+};
 
 type ActivityInviteRow = {
   id: number;
@@ -1213,6 +1243,9 @@ const mapActivity = (row: ActivityRow): Activity => ({
   status: row.status,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
+  type: "SCHEDULED",
+  timeOptions: null,
+  proposalVotes: null,
 });
 
 const mapActivityInvite = (row: ActivityInviteRow): ActivityInvite => ({
@@ -1249,6 +1282,81 @@ const mapActivityWithDetails = (
   isAccepted: row.isAccepted,
   hasResponded: row.hasResponded,
 });
+
+const toActivityProposalVoteValue = (
+  value: string,
+): ActivityProposalVoteValue => {
+  const normalized = value?.toUpperCase?.() ?? "";
+  if (normalized === "YES" || normalized === "NO" || normalized === "MAYBE") {
+    return normalized as ActivityProposalVoteValue;
+  }
+  return "YES";
+};
+
+const mapActivityProposalWithDetails = (
+  row: ActivityProposalWithPosterRow,
+  votes: ActivityProposalVoteRow[],
+  currentUserId?: string,
+): ActivityWithDetails => {
+  const counts: Record<ActivityProposalVoteValue, number> = {
+    YES: 0,
+    NO: 0,
+    MAYBE: 0,
+  };
+
+  let currentUserVote: ActivityProposalVoteValue | null = null;
+
+  for (const vote of votes) {
+    const value = toActivityProposalVoteValue(vote.vote);
+    counts[value] += 1;
+
+    if (currentUserId && vote.user_id === currentUserId) {
+      currentUserVote = value;
+    }
+  }
+
+  const timeOptions = toStringArray(row.time_options).map((option) => {
+    if (option instanceof Date) {
+      return option.toISOString();
+    }
+    return option;
+  });
+
+  return {
+    id: row.id,
+    tripCalendarId: row.trip_id,
+    postedBy: row.proposed_by,
+    name: row.name,
+    description: row.description,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    location: row.location,
+    cost: toNumberOrNull(row.cost),
+    maxCapacity: row.max_capacity,
+    category: row.category,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    type: "PROPOSE",
+    timeOptions: timeOptions.length > 0 ? timeOptions : null,
+    proposalVotes: {
+      counts,
+      total: votes.length,
+      currentUserVote,
+    },
+    poster: mapUserFromPrefix(row, "poster_"),
+    invites: [],
+    acceptances: [],
+    comments: [],
+    acceptedCount: 0,
+    pendingCount: 0,
+    declinedCount: 0,
+    waitlistedCount: 0,
+    currentUserInvite: undefined,
+    isAccepted: undefined,
+    hasResponded: undefined,
+  };
+};
 
 const mapComment = (row: any): ActivityComment => ({
   id: row.id,
@@ -1929,6 +2037,10 @@ export class DatabaseStorage implements IStorage {
 
   private proposalLinksInitialized = false;
 
+  private activityProposalsInitPromise: Promise<void> | null = null;
+
+  private activityProposalsInitialized = false;
+
   private activityInvitesInitPromise: Promise<void> | null = null;
 
   private activityInvitesInitialized = false;
@@ -2128,6 +2240,67 @@ export class DatabaseStorage implements IStorage {
       await this.activityInvitesInitPromise;
     } finally {
       this.activityInvitesInitPromise = null;
+    }
+  }
+
+  private async ensureActivityProposalStructures(): Promise<void> {
+    if (this.activityProposalsInitialized) {
+      return;
+    }
+
+    if (this.activityProposalsInitPromise) {
+      await this.activityProposalsInitPromise;
+      return;
+    }
+
+    this.activityProposalsInitPromise = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS activity_proposals (
+          id SERIAL PRIMARY KEY,
+          trip_id INTEGER NOT NULL REFERENCES trip_calendars(id) ON DELETE CASCADE,
+          proposed_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          description TEXT,
+          start_time TIMESTAMPTZ,
+          end_time TIMESTAMPTZ,
+          location TEXT,
+          cost NUMERIC,
+          max_capacity INTEGER,
+          category TEXT NOT NULL DEFAULT 'other',
+          status TEXT NOT NULL DEFAULT 'proposed',
+          time_options JSONB,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS activity_proposal_votes (
+          id SERIAL PRIMARY KEY,
+          proposal_id INTEGER NOT NULL REFERENCES activity_proposals(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          vote TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          UNIQUE (proposal_id, user_id)
+        )
+      `);
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_activity_proposals_trip ON activity_proposals(trip_id, created_at DESC)`,
+      );
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_activity_proposal_votes_proposal ON activity_proposal_votes(proposal_id)`,
+      );
+
+      this.activityProposalsInitialized = true;
+    })();
+
+    try {
+      await this.activityProposalsInitPromise;
+    } finally {
+      this.activityProposalsInitPromise = null;
     }
   }
 
@@ -3387,11 +3560,120 @@ export class DatabaseStorage implements IStorage {
 
     return rows[0]?.exists ?? false;
   }
+
+  private async fetchActivityProposals(options: {
+    tripId?: number;
+    proposalIds?: number[];
+    currentUserId?: string;
+  }): Promise<ActivityWithDetails[]> {
+    const { tripId, proposalIds, currentUserId } = options;
+
+    const hasTripFilter = typeof tripId === "number";
+    const hasProposalFilter = Array.isArray(proposalIds) && proposalIds.length > 0;
+
+    if (!hasTripFilter && !hasProposalFilter) {
+      return [];
+    }
+
+    await this.ensureActivityProposalStructures();
+
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let index = 1;
+
+    if (hasTripFilter) {
+      conditions.push(`ap.trip_id = $${index}`);
+      values.push(tripId);
+      index += 1;
+    }
+
+    if (hasProposalFilter) {
+      conditions.push(`ap.id = ANY($${index}::int[])`);
+      values.push(proposalIds);
+      index += 1;
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const { rows } = await query<ActivityProposalWithPosterRow>(
+      `
+      SELECT
+        ap.id,
+        ap.trip_id,
+        ap.proposed_by,
+        ap.name,
+        ap.description,
+        ap.start_time,
+        ap.end_time,
+        ap.location,
+        ap.cost,
+        ap.max_capacity,
+        ap.category,
+        ap.status,
+        ap.time_options,
+        ap.created_at,
+        ap.updated_at,
+        ${selectUserColumns("poster", "poster_")}
+      FROM activity_proposals ap
+      JOIN users poster ON poster.id = ap.proposed_by
+      ${whereClause}
+      ORDER BY ap.created_at DESC, ap.id DESC
+      `,
+      values,
+    );
+
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const proposalIdList = rows.map((row) => row.id);
+
+    const { rows: voteRows } = await query<ActivityProposalVoteRow>(
+      `
+      SELECT
+        id,
+        proposal_id,
+        user_id,
+        vote,
+        created_at,
+        updated_at
+      FROM activity_proposal_votes
+      WHERE proposal_id = ANY($1::int[])
+      `,
+      [proposalIdList],
+    );
+
+    const votesByProposal = new Map<number, ActivityProposalVoteRow[]>();
+    for (const vote of voteRows) {
+      const list = votesByProposal.get(vote.proposal_id);
+      if (list) {
+        list.push(vote);
+      } else {
+        votesByProposal.set(vote.proposal_id, [vote]);
+      }
+    }
+
+    return rows.map((row) =>
+      mapActivityProposalWithDetails(
+        row,
+        votesByProposal.get(row.id) ?? [],
+        currentUserId,
+      ),
+    );
+  }
   async createActivity(
     activity: InsertActivity,
     userId: string,
     inviteeIds: string[] = [],
   ): Promise<Activity> {
+    if (activity.type && activity.type !== "SCHEDULED") {
+      throw new Error("createActivity only supports scheduled activities");
+    }
+
+    if (!activity.startTime) {
+      throw new Error("Scheduled activities require a start time");
+    }
+
     const costValue = activity.cost ?? null;
 
     const maxCapacityInput = activity.maxCapacity;
@@ -3403,6 +3685,16 @@ export class DatabaseStorage implements IStorage {
       parsedMaxCapacity === null || Number.isNaN(parsedMaxCapacity)
         ? null
         : parsedMaxCapacity;
+
+    const startTimeValue =
+      activity.startTime instanceof Date
+        ? activity.startTime.toISOString()
+        : activity.startTime;
+
+    const endTimeValue =
+      activity.endTime instanceof Date
+        ? activity.endTime.toISOString()
+        : activity.endTime ?? null;
 
     const { rows } = await query<ActivityRow>(
       `
@@ -3441,8 +3733,8 @@ export class DatabaseStorage implements IStorage {
         userId,
         activity.name,
         activity.description ?? null,
-        activity.startTime,
-        activity.endTime ?? null,
+        startTimeValue,
+        endTimeValue,
         activity.location ?? null,
         costValue,
         maxCapacityValue,
@@ -3461,6 +3753,119 @@ export class DatabaseStorage implements IStorage {
     }
 
     return mapActivity(row);
+  }
+
+  async createActivityProposal(
+    activity: InsertActivity,
+    userId: string,
+  ): Promise<ActivityWithDetails> {
+    if (activity.type && activity.type !== "PROPOSE") {
+      throw new Error("createActivityProposal requires a proposal payload");
+    }
+
+    await this.ensureActivityProposalStructures();
+
+    const costValue = activity.cost ?? null;
+
+    const maxCapacityInput = activity.maxCapacity;
+    const parsedMaxCapacity =
+      maxCapacityInput === undefined || maxCapacityInput === null || maxCapacityInput === ""
+        ? null
+        : Number(maxCapacityInput);
+    const maxCapacityValue =
+      parsedMaxCapacity === null || Number.isNaN(parsedMaxCapacity)
+        ? null
+        : parsedMaxCapacity;
+
+    const startTimeValue =
+      activity.startTime instanceof Date
+        ? activity.startTime.toISOString()
+        : activity.startTime ?? null;
+
+    const endTimeValue =
+      activity.endTime instanceof Date
+        ? activity.endTime.toISOString()
+        : activity.endTime ?? null;
+
+    const normalizedOptions = Array.isArray(activity.timeOptions)
+      ? activity.timeOptions
+          .map((option) =>
+            option instanceof Date ? option.toISOString() : option ?? undefined,
+          )
+          .filter((option): option is string => typeof option === "string" && option.length > 0)
+      : [];
+
+    const timeOptionsValue =
+      normalizedOptions.length > 0 ? toDbJson(normalizedOptions) : toDbJson(null);
+
+    const { rows } = await query<ActivityProposalRow>(
+      `
+      INSERT INTO activity_proposals (
+        trip_id,
+        proposed_by,
+        name,
+        description,
+        start_time,
+        end_time,
+        location,
+        cost,
+        max_capacity,
+        category,
+        status,
+        time_options
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        'proposed', $11
+      )
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        name,
+        description,
+        start_time,
+        end_time,
+        location,
+        cost,
+        max_capacity,
+        category,
+        status,
+        time_options,
+        created_at,
+        updated_at
+      `,
+      [
+        activity.tripCalendarId,
+        userId,
+        activity.name,
+        activity.description ?? null,
+        startTimeValue,
+        endTimeValue,
+        activity.location ?? null,
+        costValue,
+        maxCapacityValue,
+        activity.category,
+        timeOptionsValue,
+      ],
+    );
+
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Failed to create activity proposal");
+    }
+
+    const proposals = await this.fetchActivityProposals({
+      proposalIds: [inserted.id],
+      currentUserId: userId,
+    });
+
+    const proposal = proposals[0];
+    if (!proposal) {
+      throw new Error("Failed to load created activity proposal");
+    }
+
+    return proposal;
   }
 
   async getActivityById(activityId: number): Promise<Activity | undefined> {
@@ -3546,136 +3951,151 @@ export class DatabaseStorage implements IStorage {
       [tripId],
     );
 
-    if (activityRows.length === 0) {
-      return [];
-    }
+    let scheduledActivities: ActivityWithDetails[] = [];
 
-    const activityIds = activityRows.map((row) => row.id);
+    if (activityRows.length > 0) {
+      const activityIds = activityRows.map((row) => row.id);
 
-    await this.ensureActivityInviteStructures();
+      await this.ensureActivityInviteStructures();
 
-    const { rows: inviteRows } = await query<ActivityInviteWithUserRow>(
-      `
-      SELECT
-        ai.id,
-        ai.activity_id,
-        ai.user_id,
-        ai.status,
-        ai.responded_at,
-        ai.created_at,
-        ai.updated_at,
-        ${selectUserColumns("u", "user_")}
-      FROM activity_invites ai
-      JOIN users u ON u.id = ai.user_id
-      WHERE ai.activity_id = ANY($1::int[])
-      ORDER BY
-        CASE ai.status
-          WHEN 'accepted' THEN 0
-          WHEN 'pending' THEN 1
-          ELSE 2
-        END,
-        ai.responded_at ASC NULLS LAST,
-        ai.created_at ASC,
-        ai.id ASC
-      `,
-      [activityIds],
-    );
+      const { rows: inviteRows } = await query<ActivityInviteWithUserRow>(
+        `
+        SELECT
+          ai.id,
+          ai.activity_id,
+          ai.user_id,
+          ai.status,
+          ai.responded_at,
+          ai.created_at,
+          ai.updated_at,
+          ${selectUserColumns("u", "user_")}
+        FROM activity_invites ai
+        JOIN users u ON u.id = ai.user_id
+        WHERE ai.activity_id = ANY($1::int[])
+        ORDER BY
+          CASE ai.status
+            WHEN 'accepted' THEN 0
+            WHEN 'pending' THEN 1
+            ELSE 2
+          END,
+          ai.responded_at ASC NULLS LAST,
+          ai.created_at ASC,
+          ai.id ASC
+        `,
+        [activityIds],
+      );
 
-    const { rows: commentRows } = await query<ActivityCommentWithUserRow>(
-      `
-      SELECT
-        ac.id,
-        ac.activity_id,
-        ac.user_id AS comment_user_id,
-        ac.comment,
-        ac.created_at,
-        u.id AS user_id,
-        u.email AS user_email,
-        u.username AS user_username,
-        u.first_name AS user_first_name,
-        u.last_name AS user_last_name,
-        u.phone_number AS user_phone_number,
-        u.password_hash AS user_password_hash,
-        u.profile_image_url AS user_profile_image_url,
-        u.cashapp_username AS user_cashapp_username,
-        u.cash_app_username AS user_cash_app_username,
-        u.cashapp_phone AS user_cashapp_phone,
-        u.cash_app_phone AS user_cash_app_phone,
-        u.venmo_username AS user_venmo_username,
-        u.venmo_phone AS user_venmo_phone,
-        u.timezone AS user_timezone,
-        u.default_location AS user_default_location,
-        u.default_location_code AS user_default_location_code,
-        u.default_city AS user_default_city,
-        u.default_country AS user_default_country,
-        u.auth_provider AS user_auth_provider,
-        u.notification_preferences AS user_notification_preferences,
-        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
-        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
-        u.created_at AS user_created_at,
-        u.updated_at AS user_updated_at
-      FROM activity_comments ac
-      JOIN users u ON u.id = ac.user_id
-      WHERE ac.activity_id = ANY($1::int[])
-      ORDER BY ac.created_at ASC, ac.id ASC
-      `,
-      [activityIds],
-    );
+      const { rows: commentRows } = await query<ActivityCommentWithUserRow>(
+        `
+        SELECT
+          ac.id,
+          ac.activity_id,
+          ac.user_id AS comment_user_id,
+          ac.comment,
+          ac.created_at,
+          u.id AS user_id,
+          u.email AS user_email,
+          u.username AS user_username,
+          u.first_name AS user_first_name,
+          u.last_name AS user_last_name,
+          u.phone_number AS user_phone_number,
+          u.password_hash AS user_password_hash,
+          u.profile_image_url AS user_profile_image_url,
+          u.cashapp_username AS user_cashapp_username,
+          u.cash_app_username AS user_cash_app_username,
+          u.cashapp_phone AS user_cashapp_phone,
+          u.cash_app_phone AS user_cash_app_phone,
+          u.venmo_username AS user_venmo_username,
+          u.venmo_phone AS user_venmo_phone,
+          u.timezone AS user_timezone,
+          u.default_location AS user_default_location,
+          u.default_location_code AS user_default_location_code,
+          u.default_city AS user_default_city,
+          u.default_country AS user_default_country,
+          u.auth_provider AS user_auth_provider,
+          u.notification_preferences AS user_notification_preferences,
+          u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+          u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+          u.created_at AS user_created_at,
+          u.updated_at AS user_updated_at
+        FROM activity_comments ac
+        JOIN users u ON u.id = ac.user_id
+        WHERE ac.activity_id = ANY($1::int[])
+        ORDER BY ac.created_at ASC, ac.id ASC
+        `,
+        [activityIds],
+      );
 
-    const inviteMap = new Map<number, (ActivityInvite & { user: User })[]>();
-    for (const row of inviteRows) {
-      const invite: ActivityInvite & { user: User } = {
-        ...mapActivityInvite(row),
-        user: mapUserFromPrefix(row, "user_"),
-      };
-      const list = inviteMap.get(row.activity_id) ?? [];
-      list.push(invite);
-      inviteMap.set(row.activity_id, list);
-    }
+      const inviteMap = new Map<number, (ActivityInvite & { user: User })[]>();
+      for (const row of inviteRows) {
+        const invite: ActivityInvite & { user: User } = {
+          ...mapActivityInvite(row),
+          user: mapUserFromPrefix(row, "user_"),
+        };
+        const list = inviteMap.get(row.activity_id) ?? [];
+        list.push(invite);
+        inviteMap.set(row.activity_id, list);
+      }
 
-    const commentMap = new Map<number, (ActivityComment & { user: User })[]>();
-    for (const row of commentRows) {
-      const comment: ActivityComment & { user: User } = {
-        ...mapComment(row),
-        user: mapUserFromPrefix(row, "user_"),
-      };
-      const list = commentMap.get(row.activity_id) ?? [];
-      list.push(comment);
-      commentMap.set(row.activity_id, list);
-    }
+      const commentMap = new Map<number, (ActivityComment & { user: User })[]>();
+      for (const row of commentRows) {
+        const comment: ActivityComment & { user: User } = {
+          ...mapComment(row),
+          user: mapUserFromPrefix(row, "user_"),
+        };
+        const list = commentMap.get(row.activity_id) ?? [];
+        list.push(comment);
+        commentMap.set(row.activity_id, list);
+      }
 
-    return activityRows.map((row) => {
-      const poster = mapUserFromPrefix(row, "poster_");
-      const invites = inviteMap.get(row.id) ?? [];
-      const acceptances = invites
-        .filter((invite) => invite.status === "accepted")
-        .map((invite) => ({
-          id: invite.id,
-          activityId: invite.activityId,
-          userId: invite.userId,
-          acceptedAt: invite.respondedAt,
-          user: invite.user,
-        }));
-      const comments = commentMap.get(row.id) ?? [];
-      const currentUserInvite = invites.find((invite) => invite.userId === userId);
-      const isAccepted =
-        currentUserInvite?.status === "accepted" ? true : undefined;
-      const hasResponded =
-        currentUserInvite && currentUserInvite.status !== "pending"
-          ? true
-          : undefined;
+      scheduledActivities = activityRows.map((row) => {
+        const poster = mapUserFromPrefix(row, "poster_");
+        const invites = inviteMap.get(row.id) ?? [];
+        const acceptances = invites
+          .filter((invite) => invite.status === "accepted")
+          .map((invite) => ({
+            id: invite.id,
+            activityId: invite.activityId,
+            userId: invite.userId,
+            acceptedAt: invite.respondedAt,
+            user: invite.user,
+          }));
+        const comments = commentMap.get(row.id) ?? [];
+        const currentUserInvite = invites.find((invite) => invite.userId === userId);
+        const isAccepted =
+          currentUserInvite?.status === "accepted" ? true : undefined;
+        const hasResponded =
+          currentUserInvite && currentUserInvite.status !== "pending"
+            ? true
+            : undefined;
 
-      return mapActivityWithDetails({
-        ...row,
-        poster,
-        invites,
-        acceptances,
-        comments,
-        currentUserInvite,
-        isAccepted,
-        hasResponded,
+        return mapActivityWithDetails({
+          ...row,
+          poster,
+          invites,
+          acceptances,
+          comments,
+          currentUserInvite,
+          isAccepted,
+          hasResponded,
+        });
       });
+    }
+
+    const proposals = await this.fetchActivityProposals({
+      tripId,
+      currentUserId: userId,
     });
+
+    if (scheduledActivities.length === 0) {
+      return proposals;
+    }
+
+    if (proposals.length === 0) {
+      return scheduledActivities;
+    }
+
+    return [...scheduledActivities, ...proposals];
   }
 
   async cancelActivity(activityId: number, currentUserId: string): Promise<Activity> {

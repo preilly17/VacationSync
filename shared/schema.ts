@@ -221,13 +221,23 @@ export interface TripMember {
   joinedAt: IsoDate | null;
 }
 
+export type ActivityType = "SCHEDULED" | "PROPOSE";
+
+export type ActivityProposalVoteValue = "YES" | "NO" | "MAYBE";
+
+export interface ActivityProposalVoteSummary {
+  counts: Record<ActivityProposalVoteValue, number>;
+  total: number;
+  currentUserVote?: ActivityProposalVoteValue | null;
+}
+
 export interface Activity {
   id: number;
   tripCalendarId: number;
   postedBy: string;
   name: string;
   description: string | null;
-  startTime: IsoDate;
+  startTime: IsoDate | null;
   endTime: IsoDate | null;
   location: string | null;
   cost: number | null;
@@ -236,25 +246,73 @@ export interface Activity {
   status: string;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
+  type: ActivityType;
+  timeOptions?: IsoDate[] | null;
+  proposalVotes?: ActivityProposalVoteSummary | null;
 }
 
-export const insertActivitySchema = z.object({
+const activityDateInput = z.union([z.date(), z.string()]);
+
+const validateActivityInput = (data: Record<string, unknown>, ctx: RefinementCtx) => {
+  const type = (data.type as ActivityType | undefined) ?? "SCHEDULED";
+  const startTime = data.startTime as string | Date | null | undefined;
+  const endTime = data.endTime as string | Date | null | undefined;
+  const timeOptions = data.timeOptions as (string | Date)[] | null | undefined;
+
+  if (type === "SCHEDULED") {
+    if (!startTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Scheduled activities require a start time",
+        path: ["startTime"],
+      });
+    }
+    return;
+  }
+
+  if (type === "PROPOSE") {
+    const hasStartTime = Boolean(startTime);
+    const hasOptions = Array.isArray(timeOptions) && timeOptions.length > 0;
+
+    if (endTime && !hasStartTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "An end time requires a proposed start time",
+        path: ["endTime"],
+      });
+    }
+
+    if (!hasStartTime && !hasOptions) {
+      // Fully unscheduled proposals are allowed; nothing additional to validate.
+    }
+  }
+};
+
+const insertActivityBaseSchema = z.object({
   tripCalendarId: z.number(),
   name: z.string().min(1, "Activity name is required"),
   description: z.string().nullable().optional(),
-  startTime: z.union([z.date(), z.string()]),
-  endTime: z.union([z.date(), z.string()]).nullable().optional(),
+  startTime: activityDateInput.nullable().optional(),
+  endTime: activityDateInput.nullable().optional(),
   location: z.string().nullable().optional(),
   cost: nullableNumberInput("Cost must be a number"),
   maxCapacity: z.union([z.number(), z.string()]).nullable().optional(),
   category: z.string().default("other"),
+  type: z.enum(["SCHEDULED", "PROPOSE"]).default("SCHEDULED"),
+  timeOptions: z.array(activityDateInput).nullable().optional(),
 });
+
+export const insertActivitySchema = insertActivityBaseSchema.superRefine(
+  validateActivityInput,
+);
 
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 
-export const createActivityWithAttendeesSchema = insertActivitySchema.extend({
-  attendeeIds: z.array(z.string()).optional(),
-});
+export const createActivityWithAttendeesSchema = insertActivityBaseSchema
+  .extend({
+    attendeeIds: z.array(z.string()).optional(),
+  })
+  .superRefine(validateActivityInput);
 
 export type CreateActivityWithAttendees = z.infer<
   typeof createActivityWithAttendeesSchema
@@ -978,8 +1036,6 @@ export type RestaurantProposalWithDetails = RestaurantProposal & {
   currentUserRanking?: RestaurantRanking;
 };
 
-export type ActivityType = "SCHEDULED" | "PROPOSE";
-
 export type ActivityWithDetails = Activity & {
   poster: User;
   invites: (ActivityInvite & { user: User })[];
@@ -989,7 +1045,6 @@ export type ActivityWithDetails = Activity & {
   pendingCount: number;
   declinedCount: number;
   waitlistedCount?: number;
-  type?: ActivityType;
   rsvpCloseTime?: IsoDate | null;
   currentUserInvite?: ActivityInvite & { user: User };
   isAccepted?: boolean;

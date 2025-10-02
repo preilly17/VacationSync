@@ -273,14 +273,6 @@ export default function Activities() {
 
   const handleProposeActivity = async (activity: Activity) => {
     try {
-      // Get current date and time
-      const now = new Date();
-      const startDate = now.toISOString().split('T')[0]; // Today's date
-      const startTime = "12:00"; // Default time
-      
-      // Combine date and time into ISO string
-      const startDateTime = new Date(`${startDate}T${startTime}`).toISOString();
-      
       const response = await apiFetch(`/api/trips/${tripId}/activities`, {
         method: 'POST',
         headers: {
@@ -291,13 +283,12 @@ export default function Activities() {
           name: activity.name,
           description: activity.description ?? '',
           location: activity.location ?? '',
-          startTime: startDateTime, // Send as ISO string
-          endTime: null,
           category: activity.category,
           cost: activity.price ? parseFloat(activity.price) : null,
           maxCapacity: 10,
           tripCalendarId: parseInt(tripId!),
           attendeeIds: user ? [user.id] : [],
+          type: 'PROPOSE',
         }),
       });
 
@@ -307,8 +298,8 @@ export default function Activities() {
       }
 
       toast({
-        title: "Activity proposed!",
-        description: "Your group can now see and accept this activity.",
+        title: "Proposal sent!",
+        description: "Your group can review the activity and vote on it.",
       });
     } catch (error) {
       if (isUnauthorizedError(error)) {
