@@ -64,7 +64,7 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
   const memberOptions = useMemo(
     () =>
       members.map((member) => ({
-        id: member.userId,
+        id: String(member.userId),
         name: getMemberDisplayName(member.user),
       })),
     [members],
@@ -115,11 +115,12 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
   }, [selectedDate, form, getDefaultValues]);
 
   const handleToggleAttendee = (userId: string, checked: boolean | "indeterminate") => {
-    const current = new Set(form.getValues("attendeeIds") ?? []);
+    const normalizedId = String(userId);
+    const current = new Set((form.getValues("attendeeIds") ?? []).map(String));
     if (checked === true) {
-      current.add(userId);
+      current.add(normalizedId);
     } else if (checked === false) {
-      current.delete(userId);
+      current.delete(normalizedId);
     }
     form.setValue("attendeeIds", Array.from(current), { shouldDirty: true });
   };
@@ -164,13 +165,17 @@ export function AddActivityModal({ open, onOpenChange, tripId, selectedDate, mem
         ...rest
       } = data;
 
+      const normalizedAttendeeIds = Array.from(
+        new Set((attendeeIds ?? []).map((id: string) => String(id))),
+      );
+
       const activityData = {
         ...rest,
         startTime: startDateTime.toISOString(),
         endTime: endDateTime?.toISOString() || null,
         cost: cost ? parseFloat(cost) : null,
         maxCapacity: maxCapacity ? parseInt(maxCapacity) : null,
-        attendeeIds: Array.from(new Set(attendeeIds)),
+        attendeeIds: normalizedAttendeeIds,
       };
 
       await apiRequest(`/api/trips/${tripId}/activities`, {
