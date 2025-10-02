@@ -3927,39 +3927,31 @@ function FlightCoordination({
         </CardContent>
       </Card>
 
-      {searchResults.length === 0 && !isSearching && !hasSearched && (
+      {searchResults.length === 0 && !isSearching && !hasSearched && flights.length > 0 && (
         <Card>
           <CardContent className="p-6">
-            {flights.length > 0 ? (
-              <div className="space-y-4">
-                {flights.slice(0, 3).map((flight: any) => (
-                  <div key={flight.id} className="flex items-center justify-between rounded-lg border p-4">
-                    <div className="flex items-center space-x-4">
-                      <Plane className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="font-semibold">{flight.flightNumber}</p>
-                        <p className="text-sm text-gray-600">
-                          {flight.departureCode} → {flight.arrivalCode}
-                        </p>
-                        <p className="text-sm text-gray-500">
-                          {format(new Date(flight.departureTime), "MMM dd, h:mm a")}
-                        </p>
-                      </div>
+            <div className="space-y-4">
+              {flights.slice(0, 3).map((flight: any) => (
+                <div key={flight.id} className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="flex items-center space-x-4">
+                    <Plane className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <p className="font-semibold">{flight.flightNumber}</p>
+                      <p className="text-sm text-gray-600">
+                        {flight.departureCode} → {flight.arrivalCode}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {format(new Date(flight.departureTime), "MMM dd, h:mm a")}
+                      </p>
                     </div>
-                    <Badge variant="outline">{flight.status}</Badge>
                   </div>
-                ))}
-                {flights.length > 3 && (
-                  <p className="text-center text-sm text-gray-500">+{flights.length - 3} more flights</p>
-                )}
-              </div>
-            ) : (
-              <div className="py-8 text-center">
-                <Plane className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-                <h3 className="mb-2 text-lg font-medium text-gray-900">No flights added yet</h3>
-                <p className="text-gray-600">Use the search form above or log a flight manually to get started.</p>
-              </div>
-            )}
+                  <Badge variant="outline">{flight.status}</Badge>
+                </div>
+              ))}
+              {flights.length > 3 && (
+                <p className="text-center text-sm text-gray-500">+{flights.length - 3} more flights</p>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
