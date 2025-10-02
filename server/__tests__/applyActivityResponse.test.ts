@@ -10,10 +10,17 @@ import {
 
 let applyActivityResponse: any;
 let storage: any;
+let dbQueryMock: jest.Mock;
 
 beforeAll(async () => {
   process.env.DATABASE_URL =
     process.env.DATABASE_URL ?? "postgres://user:pass@localhost:5432/test";
+
+  jest.resetModules();
+
+  dbQueryMock = jest.fn().mockResolvedValue({ rows: [] });
+
+  (globalThis as any).__TEST_DB_QUERY__ = dbQueryMock;
 
   await jest.unstable_mockModule("../observability", () => ({
     logCoverPhotoFailure: jest.fn(),
@@ -30,6 +37,10 @@ beforeAll(async () => {
 
   const storageModule: any = await import("../storage");
   storage = storageModule.storage;
+});
+
+afterAll(() => {
+  delete (globalThis as any).__TEST_DB_QUERY__;
 });
 
 describe("applyActivityResponse", () => {

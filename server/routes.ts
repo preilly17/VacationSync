@@ -1898,7 +1898,25 @@ export function setupRoutes(app: Express) {
       };
 
       const validatedData = createActivityWithAttendeesSchema.parse(rawData);
-      const { attendeeIds = [], ...activityData } = validatedData;
+      const { attendeeIds = [], type = 'SCHEDULED', timeOptions, ...activityData } = validatedData;
+
+      if (type === 'PROPOSE') {
+        const proposal = await storage.createActivityProposal(
+          {
+            ...activityData,
+            type,
+            timeOptions,
+          },
+          userId,
+        );
+
+        broadcastToTrip(tripId, {
+          type: 'activity_proposal_created',
+          activityId: proposal.id,
+        });
+
+        return res.status(201).json(proposal);
+      }
 
       const validMemberIds = new Set(trip.members.map((member) => member.userId));
       const filteredAttendeeIds = Array.from(
@@ -1908,14 +1926,22 @@ export function setupRoutes(app: Express) {
       attendeeIdSet.delete(userId);
       const inviteeIds = Array.from(attendeeIdSet);
 
-      const activity = await storage.createActivity(activityData, userId, inviteeIds);
+      const activity = await storage.createActivity(
+        {
+          ...activityData,
+          type: 'SCHEDULED',
+          timeOptions,
+        },
+        userId,
+        inviteeIds,
+      );
 
       await storage.setActivityInviteStatus(activity.id, userId, "accepted");
 
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
       if (attendeesToNotify.length > 0) {
-        const eventDate = new Date(activity.startTime);
+        const eventDate = new Date(activity.startTime ?? new Date());
         const formattedDate = eventDate.toLocaleString('en-US', {
           month: 'short',
           day: 'numeric',
