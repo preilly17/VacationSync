@@ -140,6 +140,7 @@ import {
   markExternalRedirect,
   FLIGHT_REDIRECT_STORAGE_KEY,
   HOTEL_REDIRECT_STORAGE_KEY,
+  ACTIVITY_REDIRECT_STORAGE_KEY,
 } from "@/lib/externalRedirects";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
@@ -711,9 +712,11 @@ export default function Trip() {
   const [summaryPanel, setSummaryPanel] = useState<SummaryPanel | null>(null);
   const [shouldShowFlightReturnPrompt, setShouldShowFlightReturnPrompt] = useState(false);
   const [shouldShowHotelReturnPrompt, setShouldShowHotelReturnPrompt] = useState(false);
-  const [activeRedirectModal, setActiveRedirectModal] = useState<"flight" | "hotel" | null>(null);
+  const [shouldShowActivityReturnPrompt, setShouldShowActivityReturnPrompt] = useState(false);
+  const [activeRedirectModal, setActiveRedirectModal] = useState<"flight" | "hotel" | "activity" | null>(null);
   const [flightManualOpenSignal, setFlightManualOpenSignal] = useState(0);
   const [hotelManualOpenSignal, setHotelManualOpenSignal] = useState(0);
+  const [activityManualOpenSignal, setActivityManualOpenSignal] = useState(0);
   const [dayDetailsState, setDayDetailsState] = useState<DayDetailsState | null>(null);
   const [isDayDetailsOpen, setIsDayDetailsOpen] = useState(false);
   const dayDetailsContentRef = useRef<HTMLDivElement>(null);
@@ -738,6 +741,7 @@ export default function Trip() {
       clearExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
       setShouldShowFlightReturnPrompt(true);
       setShouldShowHotelReturnPrompt(false);
+      setShouldShowActivityReturnPrompt(false);
       return;
     }
 
@@ -745,7 +749,21 @@ export default function Trip() {
       clearExternalRedirect(HOTEL_REDIRECT_STORAGE_KEY);
       setShouldShowHotelReturnPrompt(true);
       setShouldShowFlightReturnPrompt(false);
+      setShouldShowActivityReturnPrompt(false);
+      return;
     }
+
+    if (hasExternalRedirect(ACTIVITY_REDIRECT_STORAGE_KEY)) {
+      clearExternalRedirect(ACTIVITY_REDIRECT_STORAGE_KEY);
+      setShouldShowActivityReturnPrompt(true);
+      setShouldShowFlightReturnPrompt(false);
+      setShouldShowHotelReturnPrompt(false);
+      return;
+    }
+
+    setShouldShowFlightReturnPrompt(false);
+    setShouldShowHotelReturnPrompt(false);
+    setShouldShowActivityReturnPrompt(false);
   }, []);
 
   useEffect(() => {
@@ -786,8 +804,13 @@ export default function Trip() {
       return;
     }
 
+    if (shouldShowActivityReturnPrompt) {
+      setActiveRedirectModal("activity");
+      return;
+    }
+
     setActiveRedirectModal(null);
-  }, [shouldShowFlightReturnPrompt, shouldShowHotelReturnPrompt]);
+  }, [shouldShowFlightReturnPrompt, shouldShowHotelReturnPrompt, shouldShowActivityReturnPrompt]);
 
   const handleFlightReturnNo = useCallback(() => {
     clearExternalRedirect(FLIGHT_REDIRECT_STORAGE_KEY);
@@ -817,6 +840,19 @@ export default function Trip() {
 
   const flightDialogOpen = activeRedirectModal === "flight";
   const hotelDialogOpen = activeRedirectModal === "hotel";
+  const activityDialogOpen = activeRedirectModal === "activity";
+
+  const handleActivityReturnNo = useCallback(() => {
+    clearExternalRedirect(ACTIVITY_REDIRECT_STORAGE_KEY);
+    setShouldShowActivityReturnPrompt(false);
+  }, []);
+
+  const handleActivityReturnYes = useCallback(() => {
+    clearExternalRedirect(ACTIVITY_REDIRECT_STORAGE_KEY);
+    setShouldShowActivityReturnPrompt(false);
+    setActiveTab("activities");
+    setActivityManualOpenSignal((value) => value + 1);
+  }, []);
 
   const openDayDetails = useCallback(
     (
@@ -2084,7 +2120,12 @@ export default function Trip() {
 
                 {activeTab === "activities" && (
                   <div className="p-6">
-                    <ActivitySearch tripId={parseInt(id || "0")} trip={trip} user={user ?? undefined} />
+                    <ActivitySearch
+                      tripId={parseInt(id || "0")}
+                      trip={trip}
+                      user={user ?? undefined}
+                      manualFormOpenSignal={activityManualOpenSignal}
+                    />
                   </div>
                 )}
 
@@ -2567,6 +2608,39 @@ export default function Trip() {
                 variant="outline"
                 className="sm:flex-1 border border-neutral-200 bg-white text-neutral-700 hover:border-primary hover:text-primary"
                 onClick={handleHotelReturnNo}
+              >
+                No
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={activityDialogOpen}
+          onOpenChange={(open) => {
+            if (!open && activityDialogOpen && shouldShowActivityReturnPrompt) {
+              handleActivityReturnNo();
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Didn't find what you were looking for?</DialogTitle>
+              <DialogDescription>
+                Add the activity details manually so everyone stays in sync.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:flex-row">
+              <Button
+                className="sm:flex-1 bg-gradient-to-r from-primary via-rose-500 to-orange-500 text-white shadow-md hover:opacity-90"
+                onClick={handleActivityReturnYes}
+              >
+                Yes
+              </Button>
+              <Button
+                variant="outline"
+                className="sm:flex-1 border border-neutral-200 bg-white text-neutral-700 hover:border-primary hover:text-primary"
+                onClick={handleActivityReturnNo}
               >
                 No
               </Button>

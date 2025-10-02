@@ -1,5 +1,6 @@
 export const FLIGHT_REDIRECT_STORAGE_KEY = "vacationsync:flight_redirect";
 export const HOTEL_REDIRECT_STORAGE_KEY = "vacationsync:hotel_redirect";
+export const ACTIVITY_REDIRECT_STORAGE_KEY = "vacationsync:activity_redirect";
 
 export const markExternalRedirect = (storageKey: string) => {
   if (typeof window === "undefined") {
