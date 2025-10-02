@@ -245,9 +245,13 @@ export function AddActivityModal({
       });
     } else {
       form.reset(getDefaultValues());
-      setMode(defaultMode);
     }
-  }, [selectedDate, form, getDefaultValues, defaultMode]);
+  }, [selectedDate, form, getDefaultValues]);
+
+  useEffect(() => {
+    setMode(defaultMode);
+    form.setValue("type", defaultMode, { shouldDirty: false, shouldValidate: true });
+  }, [defaultMode, form]);
 
   const handleToggleAttendee = (userId: string, checked: boolean | "indeterminate") => {
     const normalizedId = String(userId);
