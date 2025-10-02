@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useMemo, useRef, useCallback, type FormEvent } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
@@ -15,10 +15,75 @@ import {
   Clock,
   MapPin,
   DollarSign,
-  ExternalLink
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import type { TripWithDetails } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/utils";
+import { markExternalRedirect, ACTIVITY_REDIRECT_STORAGE_KEY } from "@/lib/externalRedirects";
+import { format } from "date-fns";
+import type { ActivityWithDetails, TripWithDetails, User } from "@shared/schema";
+
+const MANUAL_ACTIVITY_CATEGORY = "manual";
+
+const MANUAL_STATUS_OPTIONS = [
+  { value: "planned", label: "Planned" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "completed", label: "Completed" },
+  { value: "canceled", label: "Canceled" },
+] as const;
+
+type ManualStatusValue = (typeof MANUAL_STATUS_OPTIONS)[number]["value"];
+
+const MANUAL_STATUS_LABELS: Record<ManualStatusValue, string> = MANUAL_STATUS_OPTIONS.reduce(
+  (acc, option) => {
+    acc[option.value] = option.label;
+    return acc;
+  },
+  {} as Record<ManualStatusValue, string>,
+);
+
+const MANUAL_CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY"] as const;
+
+const parseManualActivityDescription = (description?: string | null) => {
+  const fallbackStatus: ManualStatusValue = "planned";
+  const fallbackCurrency = "USD";
+
+  if (!description) {
+    return {
+      statusValue: fallbackStatus,
+      statusLabel: MANUAL_STATUS_LABELS[fallbackStatus],
+      currency: fallbackCurrency,
+    };
+  }
+
+  const statusMatch = description.match(/Status:\s*([A-Za-z ]+)/i);
+  const currencyMatch = description.match(/Currency:\s*([A-Za-z]{3})/i);
+
+  const matchedStatusLabel = statusMatch?.[1]?.trim() || MANUAL_STATUS_LABELS[fallbackStatus];
+  const normalizedStatusValue = matchedStatusLabel.toLowerCase() as ManualStatusValue;
+  const statusValue = MANUAL_STATUS_LABELS[normalizedStatusValue]
+    ? normalizedStatusValue
+    : fallbackStatus;
+
+  return {
+    statusValue,
+    statusLabel: MANUAL_STATUS_LABELS[statusValue],
+    currency: currencyMatch?.[1]?.trim().toUpperCase() || fallbackCurrency,
+  };
+};
+
+const isManualActivity = (activity: ActivityWithDetails) => {
+  const category = activity.category?.toLowerCase();
+  if (category === MANUAL_ACTIVITY_CATEGORY) {
+    return true;
+  }
+
+  const description = activity.description?.toLowerCase() ?? "";
+  return description.includes("manual entry");
+};
 
 interface Activity {
   id: string;
@@ -40,11 +105,15 @@ interface Activity {
 
 interface ActivitySearchProps {
   tripId: number;
-  trip: TripWithDetails;
-  user: any;
+  trip?: TripWithDetails | null;
+  user?: User | null;
+  manualFormOpenSignal?: number;
 }
 
-export default function ActivitySearch({ tripId, trip, user }: ActivitySearchProps) {
+export default function ActivitySearch({ tripId, trip, user: _user, manualFormOpenSignal }: ActivitySearchProps) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [priceRange, setPriceRange] = useState("all");
@@ -56,7 +125,24 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [shouldAutoSearch, setShouldAutoSearch] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [manualFormData, setManualFormData] = useState<{
+    name: string;
+    location: string;
+    dateTime: string;
+    price: string;
+    currency: string;
+    status: ManualStatusValue;
+  }>({
+    name: "",
+    location: trip?.destination ?? "",
+    dateTime: trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd'T'HH:mm") : "",
+    price: "",
+    currency: MANUAL_CURRENCY_OPTIONS[0],
+    status: MANUAL_STATUS_OPTIONS[0].value,
+  });
   const locationInputRef = useRef<HTMLInputElement | null>(null);
+  const manualSignalRef = useRef(manualFormOpenSignal ?? 0);
 
   const focusLocationInput = useCallback(() => {
     if (typeof window === "undefined") {
@@ -75,6 +161,111 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
     setLocationSearch(locationName);
     focusLocationInput();
   };
+
+  const resetManualForm = useCallback(() => {
+    setManualFormData({
+      name: "",
+      location: trip?.destination ?? "",
+      dateTime: trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd'T'HH:mm") : "",
+      price: "",
+      currency: MANUAL_CURRENCY_OPTIONS[0],
+      status: MANUAL_STATUS_OPTIONS[0].value,
+    });
+  }, [trip?.destination, trip?.startDate]);
+
+  const openManualForm = useCallback(() => {
+    resetManualForm();
+    setIsManualModalOpen(true);
+  }, [resetManualForm]);
+
+  const closeManualForm = useCallback(() => {
+    setIsManualModalOpen(false);
+    resetManualForm();
+  }, [resetManualForm]);
+
+  const getTripDateRange = useCallback(() => {
+    const start = trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd") : "";
+    const end = trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : "";
+
+    return {
+      start,
+      end: end || start,
+    };
+  }, [trip?.endDate, trip?.startDate]);
+
+  const handleViatorLink = useCallback(() => {
+    const location = (locationSearch.trim() || trip?.destination || "").trim();
+    if (!location) {
+      toast({
+        title: "Add a destination",
+        description: "Enter a destination to search on Viator.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { start, end } = getTripDateRange();
+    if (!start) {
+      toast({
+        title: "Add trip dates",
+        description: "Add trip dates to build a Viator search link.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL("https://www.viator.com/search");
+    url.searchParams.set("q", location);
+    url.searchParams.set("startDate", start);
+    if (end) {
+      url.searchParams.set("endDate", end);
+    }
+    url.searchParams.set("sort", "relevance");
+
+    markExternalRedirect(ACTIVITY_REDIRECT_STORAGE_KEY);
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+  }, [getTripDateRange, locationSearch, toast, trip?.destination]);
+
+  const handleAirbnbLink = useCallback(() => {
+    const location = (locationSearch.trim() || trip?.destination || "").trim();
+    if (!location) {
+      toast({
+        title: "Add a destination",
+        description: "Enter a destination to search on Airbnb Experiences.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const { start, end } = getTripDateRange();
+    if (!start) {
+      toast({
+        title: "Add trip dates",
+        description: "Add trip dates to build an Airbnb Experiences link.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const url = new URL("https://www.airbnb.com/s/experiences");
+    url.searchParams.set("query", location);
+    url.searchParams.set("checkin", start);
+    if (end) {
+      url.searchParams.set("checkout", end);
+    }
+    url.searchParams.set("adults", "1");
+
+    markExternalRedirect(ACTIVITY_REDIRECT_STORAGE_KEY);
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
+  }, [getTripDateRange, locationSearch, toast, trip?.destination]);
 
   // Prefill destination from query params if provided
   useEffect(() => {
@@ -110,6 +301,14 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
     }
   }, [shouldAutoSearch, locationSearch]);
 
+  useEffect(() => {
+    const currentSignal = manualFormOpenSignal ?? 0;
+    if (currentSignal > manualSignalRef.current) {
+      openManualForm();
+    }
+    manualSignalRef.current = currentSignal;
+  }, [manualFormOpenSignal, openManualForm]);
+
   const handleSearch = () => {
     if (!locationSearch.trim()) {
       setHasSearched(false);
@@ -122,6 +321,96 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
   };
 
   const trimmedLocation = useMemo(() => submittedLocation.trim(), [submittedLocation]);
+
+  const { data: tripActivities = [], isLoading: tripActivitiesLoading } = useQuery<ActivityWithDetails[]>({
+    queryKey: [`/api/trips/${tripId}/activities`],
+    enabled: !!tripId,
+  });
+
+  const manualActivities = useMemo(
+    () => tripActivities.filter((activity) => isManualActivity(activity)),
+    [tripActivities],
+  );
+
+  const sortedManualActivities = useMemo(() => {
+    return [...manualActivities].sort((a, b) => {
+      const aTime = new Date(a.startTime as string).getTime();
+      const bTime = new Date(b.startTime as string).getTime();
+      return aTime - bTime;
+    });
+  }, [manualActivities]);
+
+  const manualActivitiesLoading = tripActivitiesLoading;
+  const hasManualActivities = sortedManualActivities.length > 0;
+  const canBuildExternalLink = Boolean((locationSearch.trim() || trip?.destination) && trip?.startDate);
+
+  const createManualActivityMutation = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const response = await apiRequest(`/api/trips/${tripId}/activities`, {
+        method: "POST",
+        body: payload,
+      });
+
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Activity saved",
+        description: "We added your manual activity to the trip.",
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      closeManualForm();
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Please try again.";
+      toast({
+        title: "Unable to save activity",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const isSavingManualActivity = createManualActivityMutation.isPending;
+
+  const handleManualFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedName = manualFormData.name.trim();
+    const trimmedLocation = manualFormData.location.trim();
+
+    if (!trimmedName || !trimmedLocation || !manualFormData.dateTime) {
+      toast({
+        title: "Missing details",
+        description: "Add a name, location, and date/time to save the activity.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const parsedDate = new Date(manualFormData.dateTime);
+    if (Number.isNaN(parsedDate.getTime())) {
+      toast({
+        title: "Invalid date",
+        description: "Choose a valid date and time for the activity.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const payload = {
+      name: trimmedName,
+      location: trimmedLocation,
+      startTime: parsedDate.toISOString(),
+      endTime: null,
+      description: `Manual entry · Status: ${MANUAL_STATUS_LABELS[manualFormData.status]} · Currency: ${manualFormData.currency}`,
+      cost: manualFormData.price ? Number(manualFormData.price) : null,
+      category: MANUAL_ACTIVITY_CATEGORY,
+      type: "SCHEDULED" as const,
+    };
+
+    createManualActivityMutation.mutate(payload);
+  };
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
     queryKey: ["/api/activities/discover", trimmedLocation, searchTerm, selectedCategory, priceRange, sortBy],
@@ -208,6 +497,30 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
           </div>
 
           {/* Search Filters */}
+          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center">
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              onClick={handleViatorLink}
+              disabled={!canBuildExternalLink}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Search on Viator
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="w-full sm:w-auto"
+              onClick={handleAirbnbLink}
+              disabled={!canBuildExternalLink}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Search on Airbnb Experiences
+            </Button>
+          </div>
+
+          {/* Search Filters */}
           {hasSearched && (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Input
@@ -255,6 +568,82 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
                   <SelectItem value="duration">Duration</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-lg">Manually Added Activities</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Keep track of activities you booked outside of VacationSync.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={openManualForm}>
+            Add activity
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {manualActivitiesLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
+            </div>
+          ) : hasManualActivities ? (
+            <div className="grid gap-4">
+              {sortedManualActivities.map((activity) => {
+                const metadata = parseManualActivityDescription(activity.description);
+                const startLabel = activity.startTime
+                  ? (() => {
+                      const date = new Date(activity.startTime as string);
+                      return Number.isNaN(date.getTime())
+                        ? "Date TBD"
+                        : format(date, "MMM d, yyyy • h:mm a");
+                    })()
+                  : "Date TBD";
+                const priceLabel =
+                  typeof activity.cost === "number"
+                    ? formatCurrency(activity.cost, {
+                        currency: metadata.currency,
+                        fallback: "",
+                      })
+                    : "";
+
+                return (
+                  <div
+                    key={activity.id}
+                    className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
+                        <p className="text-sm text-neutral-600">
+                          {activity.location || "Location TBD"}
+                        </p>
+                        <p className="text-sm text-neutral-500">{startLabel}</p>
+                      </div>
+                      <div className="flex flex-col items-start gap-2 sm:items-end">
+                        <Badge variant="outline" className="uppercase tracking-wide">
+                          {metadata.statusLabel}
+                        </Badge>
+                        {priceLabel ? (
+                          <span className="text-sm font-medium text-neutral-900">{priceLabel}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-200 p-6 text-center">
+              <p className="text-sm text-neutral-600">
+                Log activities you booked elsewhere to keep everyone aligned.
+              </p>
+              <Button variant="outline" onClick={openManualForm}>
+                Add activity manually
+              </Button>
             </div>
           )}
         </CardContent>
@@ -333,6 +722,139 @@ export default function ActivitySearch({ tripId, trip, user }: ActivitySearchPro
           </Card>
         )
       ) : null}
+
+      <Dialog
+        open={isManualModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeManualForm();
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add activity manually</DialogTitle>
+            <DialogDescription>
+              Log a confirmed booking or experience you found outside VacationSync.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleManualFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="manual-activity-name">Activity name</Label>
+              <Input
+                id="manual-activity-name"
+                value={manualFormData.name}
+                onChange={(event) =>
+                  setManualFormData((prev) => ({ ...prev, name: event.target.value }))
+                }
+                placeholder="Morning walking tour"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="manual-activity-location">Location</Label>
+              <Input
+                id="manual-activity-location"
+                value={manualFormData.location}
+                onChange={(event) =>
+                  setManualFormData((prev) => ({ ...prev, location: event.target.value }))
+                }
+                placeholder="Paris, France"
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="manual-activity-datetime">Date &amp; time</Label>
+                <Input
+                  id="manual-activity-datetime"
+                  type="datetime-local"
+                  value={manualFormData.dateTime}
+                  onChange={(event) =>
+                    setManualFormData((prev) => ({ ...prev, dateTime: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manual-activity-price">Price</Label>
+                <Input
+                  id="manual-activity-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={manualFormData.price}
+                  onChange={(event) =>
+                    setManualFormData((prev) => ({ ...prev, price: event.target.value }))
+                  }
+                  placeholder="150"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="manual-activity-currency">Currency</Label>
+                <Select
+                  value={manualFormData.currency}
+                  onValueChange={(value) =>
+                    setManualFormData((prev) => ({ ...prev, currency: value }))
+                  }
+                >
+                  <SelectTrigger id="manual-activity-currency">
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MANUAL_CURRENCY_OPTIONS.map((currency) => (
+                      <SelectItem key={currency} value={currency}>
+                        {currency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manual-activity-status">Status</Label>
+                <Select
+                  value={manualFormData.status}
+                  onValueChange={(value) =>
+                    setManualFormData((prev) => ({
+                      ...prev,
+                      status: value as ManualStatusValue,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="manual-activity-status">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MANUAL_STATUS_OPTIONS.map((status) => (
+                      <SelectItem key={status.value} value={status.value}>
+                        {status.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter className="gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeManualForm}
+                disabled={isSavingManualActivity}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSavingManualActivity}>
+                {isSavingManualActivity ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving...
+                  </>
+                ) : (
+                  "Save activity"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Activity Details Dialog */}
       {selectedActivity && (
