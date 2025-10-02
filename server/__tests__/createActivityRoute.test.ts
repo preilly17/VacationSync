@@ -15,6 +15,7 @@ let setupRoutes: (app: express.Express) => import("http").Server;
 let storage: any;
 let observabilityModule: any;
 let logActivityCreationFailure: jest.SpyInstance;
+let trackActivityCreationMetric: jest.SpyInstance;
 
 const findRouteHandler = (
   app: express.Express,
@@ -48,6 +49,7 @@ beforeAll(async () => {
     __esModule: true,
     logCoverPhotoFailure: jest.fn(),
     logActivityCreationFailure: jest.fn(),
+    trackActivityCreationMetric: jest.fn(),
   }));
 
   await jest.unstable_mockModule("../vite", () => ({
@@ -93,10 +95,8 @@ describe("POST /api/trips/:id/activities", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    logActivityCreationFailure = jest.spyOn(
-      observabilityModule,
-      "logActivityCreationFailure",
-    );
+    logActivityCreationFailure = jest.spyOn(observabilityModule, "logActivityCreationFailure");
+    trackActivityCreationMetric = jest.spyOn(observabilityModule, "trackActivityCreationMetric");
     app = express();
     app.use(express.json());
     httpServer = setupRoutes(app);
@@ -147,7 +147,7 @@ describe("POST /api/trips/:id/activities", () => {
     });
 
     jest
-      .spyOn(storage, "createActivity")
+      .spyOn(storage, "createActivityWithInvites")
       .mockRejectedValueOnce(fkError as never);
 
     const setInviteStatusSpy = jest
@@ -176,7 +176,12 @@ describe("POST /api/trips/:id/activities", () => {
         userId: "organizer",
         tripId: trip.id,
         error: fkError,
+        mode: "SCHEDULED",
       }),
+    );
+
+    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "SCHEDULED", outcome: "failure", reason: "constraint" }),
     );
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(

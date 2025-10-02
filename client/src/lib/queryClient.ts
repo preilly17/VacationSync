@@ -63,17 +63,34 @@ export async function apiRequest(
     body?: any;
   } = { method: "GET" },
 ): Promise<Response> {
-  const body = options.body ? (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)) : undefined;
-  
-  const res = await fetch(buildApiUrl(url), {
-    method: options.method,
-    headers: body ? { "Content-Type": "application/json" } : {},
-    body,
-    credentials: "include",
-  });
+  const body =
+    options.body !== undefined
+      ? typeof options.body === "string"
+        ? options.body
+        : JSON.stringify(options.body)
+      : undefined;
 
-  await throwIfResNotOk(res);
-  return res;
+  try {
+    const res = await fetch(buildApiUrl(url), {
+      method: options.method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body,
+      credentials: "include",
+    });
+
+    await throwIfResNotOk(res);
+    return res;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    if (error instanceof Error) {
+      throw new Error("We couldn’t reach the server. Check your connection and try again.");
+    }
+
+    throw error;
+  }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
