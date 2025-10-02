@@ -94,6 +94,7 @@ import type {
   HotelWithDetails,
   TripWithDates,
   FlightWithDetails,
+  ActivityType,
 } from "@shared/schema";
 import {
   format,
@@ -693,6 +694,8 @@ export default function Trip() {
   const queryClient = useQueryClient();
 
   const [showAddActivity, setShowAddActivity] = useState(false);
+  const [addActivityMode, setAddActivityMode] = useState<ActivityType>("SCHEDULED");
+  const [isAddActivityModeToggleEnabled, setIsAddActivityModeToggleEnabled] = useState(true);
   const [showEditTrip, setShowEditTrip] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
@@ -1286,7 +1289,11 @@ export default function Trip() {
     setSelectedDate(next);
   };
 
-  const openAddActivityModal = (date?: Date | null) => {
+  const openAddActivityModal = (
+    options: { date?: Date | null; mode?: ActivityType; allowModeToggle?: boolean } = {},
+  ) => {
+    const { date, mode = "SCHEDULED", allowModeToggle = true } = options;
+
     const baseDate = date ?? selectedDate ?? tripStartDate;
     const targetDate = baseDate ? clampDateToTrip(baseDate) : null;
 
@@ -1296,6 +1303,8 @@ export default function Trip() {
       setScheduleViewDate(targetDate);
     }
 
+    setAddActivityMode(mode);
+    setIsAddActivityModeToggleEnabled(allowModeToggle);
     setShowAddActivity(true);
   };
 
@@ -1305,7 +1314,7 @@ export default function Trip() {
         ? currentGroupDay ?? tripStartDate
         : selectedDate ?? currentGroupDay ?? tripStartDate;
 
-    openAddActivityModal(baseDate);
+    openAddActivityModal({ date: baseDate, mode: "SCHEDULED", allowModeToggle: true });
   };
 
   const handleOpenAddActivityForSchedule = () => {
@@ -1314,7 +1323,7 @@ export default function Trip() {
         ? currentScheduleDay ?? tripStartDate
         : selectedDate ?? currentScheduleDay ?? tripStartDate;
 
-    openAddActivityModal(baseDate);
+    openAddActivityModal({ date: baseDate, mode: "SCHEDULED", allowModeToggle: false });
   };
 
   const totalMembers = trip?.members?.length ?? 0;
@@ -1912,7 +1921,7 @@ export default function Trip() {
                               trip={trip}
                               selectedDate={selectedDate}
                               onDayClick={(date) => {
-                                openAddActivityModal(clampDateToTrip(date));
+                                openAddActivityModal({ date: clampDateToTrip(date) });
                               }}
                               onActivityClick={handleActivityClick}
                               onDayOverflowClick={handleGroupDayOverflow}
@@ -2044,7 +2053,11 @@ export default function Trip() {
                             currentUserId={user?.id}
                             highlightPersonalProposals
                             onDayClick={(date) => {
-                              openAddActivityModal(clampDateToTrip(date));
+                              openAddActivityModal({
+                                date: clampDateToTrip(date),
+                                mode: "SCHEDULED",
+                                allowModeToggle: false,
+                              });
                             }}
                             onActivityClick={handleActivityClick}
                             onDayOverflowClick={handlePersonalDayOverflow}
@@ -2155,7 +2168,15 @@ export default function Trip() {
           {/* // MOBILE-ONLY floating action button */}
           <button
             type="button"
-            onClick={() => setShowAddActivity(true)}
+            onClick={() => {
+              if (activeTab === "schedule") {
+                openAddActivityModal({ mode: "SCHEDULED", allowModeToggle: false });
+              } else if (activeTab === "proposals") {
+                openAddActivityModal({ mode: "PROPOSE", allowModeToggle: false });
+              } else {
+                openAddActivityModal({});
+              }
+            }}
             className="md:hidden fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary shadow-lg shadow-primary/40 transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/60 active:scale-95"
             aria-label="Add Activity"
           >
@@ -2646,6 +2667,8 @@ export default function Trip() {
           tripId={parseInt(id || "0")}
           selectedDate={selectedDate}
           members={trip?.members ?? []}
+          defaultMode={addActivityMode}
+          allowModeToggle={isAddActivityModeToggleEnabled}
         />
 
         {trip && (
