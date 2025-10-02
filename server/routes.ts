@@ -14,6 +14,43 @@ import { registerCoverPhotoUploadRoutes } from "./coverPhotoUpload";
 import { logCoverPhotoFailure, logActivityCreationFailure } from "./observability";
 import { nanoid } from "nanoid";
 
+type PostgresError = Error & {
+  code?: string;
+  detail?: string;
+};
+
+const CONSTRAINT_VIOLATION_CODES = new Set(["23503", "23514", "23505", "23502"]);
+
+const isPostgresConstraintViolation = (error: unknown): error is PostgresError => {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as PostgresError;
+  return typeof maybeError.code === "string" && CONSTRAINT_VIOLATION_CODES.has(maybeError.code);
+};
+
+const extractInviteeIdsFromDetail = (detail?: string): string[] => {
+  if (!detail || typeof detail !== "string") {
+    return [];
+  }
+
+  const matches = new Set<string>();
+  const regex = /\(([^)]+)\)=\(([^)]+)\)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(detail)) !== null) {
+    const column = match[1];
+    const value = match[2];
+
+    if (column && /user|member|invitee/i.test(column) && value) {
+      matches.add(value);
+    }
+  }
+
+  return Array.from(matches);
+};
+
 // Validation schemas for route parameters
 const notificationIdSchema = z.object({
   id: z.string().transform((val) => {
@@ -1870,6 +1907,7 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/activities', async (req: any, res) => {
     let tripId: number | null = null;
     let userId: string | null = null;
+    let attemptedInviteeIds: string[] = [];
     try {
       tripId = parseInt(req.params.id);
       if (isNaN(tripId)) {
@@ -1929,6 +1967,7 @@ export function setupRoutes(app: Express) {
       const attendeeIdSet = new Set(validationResult.attendeeIds);
       attendeeIdSet.delete(userId);
       const inviteeIds = Array.from(attendeeIdSet);
+      attemptedInviteeIds = inviteeIds;
 
       const activity = await storage.createActivity(validationResult.data, userId, inviteeIds);
 
@@ -1974,6 +2013,34 @@ export function setupRoutes(app: Express) {
       res.json(createdActivity ?? activity);
     } catch (error: unknown) {
       const correlationId = nanoid();
+
+      if (isPostgresConstraintViolation(error)) {
+        const invalidInviteeIds = extractInviteeIdsFromDetail(error.detail);
+
+        console.warn("Activity creation failed due to invite constraint violation", {
+          correlationId,
+          tripId,
+          userId,
+          invalidInviteeIds,
+          attemptedInviteeIds,
+          error,
+        });
+
+        logActivityCreationFailure({
+          correlationId,
+          step: 'save',
+          userId,
+          tripId,
+          error,
+        });
+
+        return res.status(422).json({
+          message: "One or more invitees are no longer members of this trip.",
+          correlationId,
+          invalidInviteeIds,
+        });
+      }
+
       console.error('Error creating activity:', error);
       logActivityCreationFailure({
         correlationId,

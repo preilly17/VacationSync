@@ -1,9 +1,12 @@
-export const log = {
-  info: (..._args: unknown[]) => {},
-  error: (..._args: unknown[]) => {},
-  warn: (..._args: unknown[]) => {},
-  debug: (..._args: unknown[]) => {},
-};
+export const log = Object.assign(
+  (..._args: unknown[]) => {},
+  {
+    info: (..._args: unknown[]) => {},
+    error: (..._args: unknown[]) => {},
+    warn: (..._args: unknown[]) => {},
+    debug: (..._args: unknown[]) => {},
+  },
+);
 
 export const setupVite = async () => ({
   app: { use: () => {} },
