@@ -27,6 +27,7 @@ import {
 } from "@shared/activityValidation";
 import { z } from "zod";
 import { ApiError, apiRequest } from "@/lib/queryClient";
+import { buildActivitySubmission } from "@/lib/activitySubmission";
 import { format } from "date-fns";
 
 type TripMemberWithUser = TripMember & { user: User };
@@ -308,49 +309,22 @@ export function AddActivityModal({
 
   const createActivityMutation = useMutation({
     mutationFn: async (data: FormData) => {
-      if (!data.startDate || !data.startTime) {
-        throw new Error("Start date and time are required");
-      }
-
-      const startDateTime = new Date(`${data.startDate}T${data.startTime}`);
-      if (Number.isNaN(startDateTime.getTime())) {
-        throw new Error("Start date and time must be valid.");
-      }
-
-      const endDateTime = data.endTime ? new Date(`${data.startDate}T${data.endTime}`) : null;
-      if (endDateTime && Number.isNaN(endDateTime.getTime())) {
-        throw new Error("End time must be a valid time.");
-      }
-
-      const costResult = normalizeCostInput(data.cost);
-      if (costResult.error) {
-        throw new Error(costResult.error);
-      }
-
-      const capacityResult = normalizeMaxCapacityInput(data.maxCapacity);
-      if (capacityResult.error) {
-        throw new Error(capacityResult.error);
-      }
-
-      const attendeesResult = normalizeAttendeeIds(data.attendeeIds);
-      if (attendeesResult.error) {
-        throw new Error(attendeesResult.error);
-      }
-
       const submissionType = data.type ?? "SCHEDULED";
-      const payload = {
-        tripCalendarId: tripId,
-        name: data.name.trim(),
-        description: data.description?.trim() ? data.description.trim() : null,
-        startTime: startDateTime.toISOString(),
-        endTime: endDateTime ? endDateTime.toISOString() : null,
-        location: data.location?.trim() ? data.location.trim() : null,
-        cost: costResult.value,
-        maxCapacity: capacityResult.value,
+
+      const { payload } = buildActivitySubmission({
+        tripId,
+        name: data.name,
+        description: data.description,
+        date: data.startDate,
+        startTime: data.startTime,
+        endTime: data.endTime ?? null,
+        location: data.location,
+        cost: data.cost,
+        maxCapacity: data.maxCapacity,
         category: data.category,
-        attendeeIds: attendeesResult.value,
+        attendeeIds: data.attendeeIds,
         type: submissionType,
-      };
+      });
 
       const endpoint =
         submissionType === "PROPOSE"
