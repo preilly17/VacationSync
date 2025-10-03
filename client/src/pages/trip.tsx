@@ -167,6 +167,38 @@ const isTripTab = (value: string): value is TripTab =>
 
 type SummaryPanel = "activities" | "rsvps" | "next";
 
+const formatFlightProposalDateTime = (
+  value?: string | Date | null,
+  locale: string = "en-US",
+): string => {
+  if (!value) {
+    return "TBD";
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "TBD";
+  }
+
+  try {
+    return date.toLocaleString(locale, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    try {
+      return format(date, "MMM d, yyyy, h:mm a");
+    } catch {
+      return "TBD";
+    }
+  }
+};
+
 const inviteStatusLabelMap: Record<ActivityInviteStatus, string> = {
   accepted: "Accepted",
   pending: "Pending",
@@ -2311,7 +2343,12 @@ export default function Trip() {
 
                 {activeTab === "proposals" && trip && (
                   <div className="space-y-6" data-testid="proposals-section">
-                    <Proposals tripId={trip.id} embedded includeUserProposalsInCategories />
+                    <Proposals
+                      tripId={trip.id}
+                      embedded
+                      includeUserProposalsInCategories
+                      formatFlightDateTime={formatFlightProposalDateTime}
+                    />
                   </div>
                 )}
 
@@ -4104,12 +4141,8 @@ function FlightCoordination({
               const formattedArrivalLabel = flight.arrivalCode
                 ? `${flight.arrivalAirport ?? flight.arrivalCode} (${flight.arrivalCode})`
                 : flight.arrivalAirport || flight.arrivalCode || "TBD";
-              const departureTimeLabel = flight.departureTime
-                ? format(new Date(flight.departureTime), "MMM d, yyyy h:mm a")
-                : "Time TBD";
-              const arrivalTimeLabel = flight.arrivalTime
-                ? format(new Date(flight.arrivalTime), "MMM d, yyyy h:mm a")
-                : "Time TBD";
+              const departureTimeLabel = formatFlightProposalDateTime(flight.departureTime);
+              const arrivalTimeLabel = formatFlightProposalDateTime(flight.arrivalTime);
               const priceLabel = formatCurrency(flight.price, {
                 currency: flight.currency ?? "USD",
                 fallback: "—",

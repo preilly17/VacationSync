@@ -133,6 +133,7 @@ interface ProposalsPageProps {
   tripId?: number;
   embedded?: boolean;
   includeUserProposalsInCategories?: boolean;
+  formatFlightDateTime?: (value?: string | Date | null) => string;
 }
 
 type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
@@ -185,6 +186,7 @@ function ProposalsPage({
   tripId,
   embedded = false,
   includeUserProposalsInCategories = true,
+  formatFlightDateTime,
 }: ProposalsPageProps = {}) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
@@ -1578,6 +1580,31 @@ function ProposalsPage({
     );
   };
 
+  const getFlightDateLabel = useCallback(
+    (value?: string | Date | null) => {
+      if (formatFlightDateTime) {
+        return formatFlightDateTime(value);
+      }
+
+      if (!value) {
+        return "TBD";
+      }
+
+      const date = value instanceof Date ? value : new Date(value);
+
+      if (Number.isNaN(date.getTime())) {
+        return "TBD";
+      }
+
+      try {
+        return format(date, "MMM d, yyyy, h:mm a");
+      } catch {
+        return "TBD";
+      }
+    },
+    [formatFlightDateTime],
+  );
+
   // Flight proposal card component
   const FlightProposalCard = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
     const userRanking = getUserRanking(proposal.rankings || [], user?.id || "");
@@ -1628,10 +1655,10 @@ function ProposalsPage({
               <Clock className="w-4 h-4 text-blue-600" />
               <div>
                 <div className="font-medium" data-testid={`text-flight-departure-${proposal.id}`}>
-                  Departs: {proposal.departureTime}
+                  Departs: {getFlightDateLabel(proposal.departureTime)}
                 </div>
                 <div className="text-sm text-neutral-600" data-testid={`text-flight-arrival-${proposal.id}`}>
-                  Arrives: {proposal.arrivalTime}
+                  Arrives: {getFlightDateLabel(proposal.arrivalTime)}
                 </div>
               </div>
             </div>
