@@ -185,15 +185,35 @@ export function AddActivityModal({
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const memberOptions = useMemo<MemberOption[]>(
-    () =>
-      members.map((member) => ({
-        id: String(member.userId),
-        name: getMemberDisplayName(member.user, member.userId === currentUserId),
-        isCurrentUser: member.userId === currentUserId,
-      })),
-    [members, currentUserId],
-  );
+  const memberOptions = useMemo<MemberOption[]>(() => {
+    const baseOptions = members.map((member) => ({
+      id: String(member.userId),
+      name: getMemberDisplayName(member.user, member.userId === currentUserId),
+      isCurrentUser: member.userId === currentUserId,
+    }));
+
+    const hasCurrentUserOption = baseOptions.some((member) => member.isCurrentUser);
+    if (hasCurrentUserOption || !currentUserId) {
+      return baseOptions;
+    }
+
+    const fallbackName = (() => {
+      const matchingMember = members.find((member) => member.userId === currentUserId);
+      if (matchingMember) {
+        return getMemberDisplayName(matchingMember.user, true);
+      }
+      return "You";
+    })();
+
+    return [
+      {
+        id: String(currentUserId),
+        name: fallbackName,
+        isCurrentUser: true,
+      },
+      ...baseOptions,
+    ];
+  }, [members, currentUserId]);
 
   const defaultAttendeeIds = useMemo(
     () => memberOptions.map((member) => member.id),
