@@ -838,7 +838,8 @@ export function AddActivityModal({
             <Button
               type="submit"
               className="flex-1 bg-primary hover:bg-red-600 text-white"
-              disabled={isSubmitting || !form.formState.isValid}
+              disabled={isSubmitting}
+              aria-disabled={isSubmitting || !form.formState.isValid}
             >
               {isSubmitting
                 ? "Submitting..."
