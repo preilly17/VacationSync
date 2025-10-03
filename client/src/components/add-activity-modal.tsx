@@ -28,6 +28,12 @@ import {
 import { z } from "zod";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { buildActivitySubmission } from "@/lib/activitySubmission";
+import {
+  useCreateActivity,
+  type ActivityCreateFormValues,
+  type ActivityValidationError,
+} from "@/lib/activities/createActivity";
+import { useNewActivityCreate } from "@/hooks/use-new-activity-create";
 import { format } from "date-fns";
 
 type TripMemberWithUser = TripMember & { user: User };
@@ -227,6 +233,12 @@ export function AddActivityModal({
     () => [`/api/trips/${tripId}/proposals/activities`],
     [tripId],
   );
+  const calendarActivitiesQueryKey = useMemo(
+    () => ["/api/trips", tripId.toString(), "activities"],
+    [tripId],
+  );
+
+  const isNewActivityCreateEnabled = useNewActivityCreate();
 
   const getDefaultValues = useCallback(
     () => ({
@@ -254,6 +266,53 @@ export function AddActivityModal({
 
   const [mode, setMode] = useState<ActivityType>(defaultMode);
   const isProposalMode = mode === "PROPOSE";
+
+  const handleActivityValidationError = useCallback(
+    (error: ActivityValidationError) => {
+      error.fieldErrors.forEach(({ field, message }) => {
+        form.setError(field, { type: "server", message });
+      });
+
+      if (error.fieldErrors.length > 0) {
+        const [first] = error.fieldErrors;
+        if (first) {
+          try {
+            form.setFocus(first.field);
+          } catch {
+            // ignore focus errors
+          }
+        }
+      }
+
+      toast({
+        title: "Please fix the highlighted fields",
+        description:
+          error.formMessage ?? "Some details need your attention before we can create this activity.",
+        variant: "destructive",
+      });
+    },
+    [form, toast],
+  );
+
+  const handleCreateSuccess = useCallback(() => {
+    onOpenChange(false);
+    form.reset(getDefaultValues());
+    setMode(defaultMode);
+  }, [defaultMode, form, getDefaultValues, onOpenChange]);
+
+  const newCreateActivityMutation = useCreateActivity({
+    tripId,
+    scheduledActivitiesQueryKey,
+    proposalActivitiesQueryKey,
+    calendarActivitiesQueryKey,
+    members,
+    currentUserId,
+    enabled: isNewActivityCreateEnabled,
+    onSuccess: () => {
+      handleCreateSuccess();
+    },
+    onValidationError: handleActivityValidationError,
+  });
 
   const selectedAttendeeIds = form.watch("attendeeIds") ?? [];
 
@@ -327,7 +386,7 @@ export function AddActivityModal({
     form.setValue("attendeeIds", [], { shouldDirty: true, shouldValidate: true });
   };
 
-  const createActivityMutation = useMutation({
+  const legacyCreateActivityMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const submissionType = data.type ?? "SCHEDULED";
 
@@ -395,9 +454,7 @@ export function AddActivityModal({
             ? "Your idea has been shared with the group for feedback."
             : "Your activity has been added to the trip calendar.",
       });
-      onOpenChange(false);
-      form.reset(getDefaultValues());
-      setMode(defaultMode);
+      handleCreateSuccess();
     },
     onError: (error) => {
       console.error("Activity creation error:", error);
@@ -498,6 +555,10 @@ export function AddActivityModal({
     [proposalActivitiesQueryKey, queryClient, scheduledActivitiesQueryKey],
   );
 
+  const isLegacyPending = legacyCreateActivityMutation.isPending;
+  const isNewPending = newCreateActivityMutation.isPending;
+  const isSubmitting = isNewActivityCreateEnabled ? isNewPending : isLegacyPending;
+
   const onSubmit = (data: FormData) => {
     const startDateTime = new Date(`${data.startDate}T${data.startTime}`);
     const duplicate = findDuplicateActivity(data.name, startDateTime);
@@ -513,7 +574,13 @@ export function AddActivityModal({
       });
     }
 
-    createActivityMutation.mutate({ ...data, type: mode });
+    const submissionValues = { ...data, type: mode } as ActivityCreateFormValues;
+
+    if (isNewActivityCreateEnabled) {
+      newCreateActivityMutation.submit(submissionValues);
+    } else {
+      legacyCreateActivityMutation.mutate(submissionValues as FormData);
+    }
   };
 
   return (
@@ -771,12 +838,10 @@ export function AddActivityModal({
             <Button
               type="submit"
               className="flex-1 bg-primary hover:bg-red-600 text-white"
-              disabled={createActivityMutation.isPending || !form.formState.isValid}
+              disabled={isSubmitting || !form.formState.isValid}
             >
-              {createActivityMutation.isPending
-                ? isProposalMode
-                  ? "Sending..."
-                  : "Scheduling..."
+              {isSubmitting
+                ? "Submitting..."
                 : isProposalMode
                   ? "Send proposal"
                   : "Add to schedule"}
