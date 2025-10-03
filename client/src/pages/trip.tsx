@@ -4068,9 +4068,7 @@ function FlightCoordination({
           <h2 className="text-xl font-semibold">Flight Coordination</h2>
           <p className="text-gray-600">Coordinate flights with your group</p>
         </div>
-        <Button variant="outline" onClick={openManualFlightForm}>
-          Manual Entry
-        </Button>
+        {/* Top-right Manual Entry button removed per requirements */}
       </div>
 
       <div className="space-y-4">
