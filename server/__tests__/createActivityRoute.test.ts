@@ -38,6 +38,7 @@ const createMockResponse = () => {
   const res: any = {};
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
+  res.setHeader = jest.fn().mockReturnValue(res);
   return res;
 };
 
@@ -111,7 +112,7 @@ describe("POST /api/trips/:id/activities", () => {
     });
   });
 
-  it("returns 422 with invite details when a constraint violation occurs", async () => {
+  it("returns 400 with invite details when a constraint violation occurs", async () => {
     const trip = {
       id: 123,
       members: [
@@ -162,13 +163,20 @@ describe("POST /api/trips/:id/activities", () => {
 
     await handler(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(422);
+    expect(res.setHeader).toHaveBeenCalledWith("x-correlation-id", expect.any(String));
+    const headerCorrelationId = res.setHeader.mock.calls[0][1];
+
+    expect(res.status).toHaveBeenCalledWith(400);
     const payload = res.json.mock.calls[0][0];
     expect(payload).toMatchObject({
       message: "One or more invitees are no longer members of this trip.",
       correlationId: expect.any(String),
       invalidInviteeIds: ["former-member"],
+      errors: expect.arrayContaining([
+        expect.objectContaining({ field: "attendeeIds" }),
+      ]),
     });
+    expect(payload.correlationId).toBe(headerCorrelationId);
 
     expect(logActivityCreationFailure).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -178,6 +186,10 @@ describe("POST /api/trips/:id/activities", () => {
         tripId: trip.id,
         error: fkError,
         mode: "SCHEDULED",
+        payloadSummary: expect.objectContaining({
+          name: requestBody.name,
+          startTime: requestBody.startTime,
+        }),
       }),
     );
 
@@ -204,7 +216,7 @@ describe("POST /api/trips/:id/activities", () => {
     consoleErrorSpy.mockRestore();
   });
 
-  it("returns 422 when invitees are no longer trip members", async () => {
+  it("returns 400 when invitees are no longer trip members", async () => {
     const trip = {
       id: 789,
       createdBy: "former-member",
@@ -248,14 +260,21 @@ describe("POST /api/trips/:id/activities", () => {
 
     await handler(req, res);
 
-    expect(res.status).toHaveBeenCalledWith(422);
-    expect(res.json).toHaveBeenCalledWith(
+    expect(res.setHeader).toHaveBeenCalledWith("x-correlation-id", expect.any(String));
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    const membershipPayload = res.json.mock.calls[0][0];
+    expect(membershipPayload).toEqual(
       expect.objectContaining({
         message: "One or more invitees are no longer members of this trip.",
         correlationId: expect.any(String),
         invalidInviteeIds: ["former-member"],
+        errors: expect.arrayContaining([
+          expect.objectContaining({ field: "attendeeIds" }),
+        ]),
       }),
     );
+    expect(membershipPayload.correlationId).toBe(res.setHeader.mock.calls[0][1]);
 
     expect(logActivityCreationFailure).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -265,11 +284,15 @@ describe("POST /api/trips/:id/activities", () => {
         tripId: trip.id,
         error: membershipError,
         mode: "SCHEDULED",
+        payloadSummary: expect.objectContaining({
+          name: requestBody.name,
+          startTime: requestBody.startTime,
+        }),
       }),
     );
 
     expect(trackActivityCreationMetric).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "SCHEDULED", outcome: "failure", reason: "constraint" }),
+      expect.objectContaining({ mode: "SCHEDULED", outcome: "failure", reason: "invalid-invite" }),
     );
 
     expect(consoleWarnSpy).toHaveBeenCalledWith(

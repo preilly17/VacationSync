@@ -24,6 +24,8 @@ export const END_TIME_AFTER_START_MESSAGE = "End time must be after start time."
 export const MAX_ACTIVITY_NAME_LENGTH = 120;
 export const MAX_ACTIVITY_DESCRIPTION_LENGTH = 2000;
 export const MAX_ACTIVITY_LOCATION_LENGTH = 255;
+export const TIMEZONE_REQUIRED_MESSAGE =
+  "Date and time must include a timezone offset (for example, 2024-05-01T09:00:00-04:00).";
 
 export type ValidationIssue = {
   field: string;
@@ -181,13 +183,6 @@ const normalizeDateTimeInput = (
       : { value: null };
   }
 
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) {
-      return { value: null, error: `${fieldLabel} must be a valid date/time.` };
-    }
-    return { value: value.toISOString() };
-  }
-
   if (typeof value === "string") {
     const trimmed = value.trim();
     if (trimmed === "") {
@@ -196,12 +191,24 @@ const normalizeDateTimeInput = (
         : { value: null };
     }
 
+    const hasTimezone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(trimmed);
+    if (!hasTimezone) {
+      return { value: null, error: TIMEZONE_REQUIRED_MESSAGE };
+    }
+
     const parsed = new Date(trimmed);
     if (Number.isNaN(parsed.getTime())) {
       return { value: null, error: `${fieldLabel} must be a valid date/time.` };
     }
 
     return { value: parsed.toISOString() };
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return { value: null, error: `${fieldLabel} must be a valid date/time.` };
+    }
+    return { value: value.toISOString() };
   }
 
   return { value: null, error: `${fieldLabel} must be a valid date/time.` };

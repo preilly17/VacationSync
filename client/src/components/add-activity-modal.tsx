@@ -170,6 +170,11 @@ const serverFieldMap: Partial<Record<string, keyof FormData>> = {
   startDate: "startDate",
 };
 
+const legacyPermissionMessage = "You don’t have permission to perform this action.";
+const legacyNotMemberMessage = "You’re not a member of this trip.";
+const legacyTripMissingMessage = "We couldn’t find this trip. Please refresh or check with the organizer.";
+const legacyDuplicateMessage = "This looks like a duplicate activity.";
+
 const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: boolean) => {
   if (!member) return isCurrentUser ? "You" : "Trip member";
   const first = member.firstName?.trim();
@@ -460,7 +465,7 @@ export function AddActivityModal({
       console.error("Activity creation error:", error);
 
       if (error instanceof ApiError) {
-        if (error.status === 422) {
+        if (error.status === 400) {
           const data = error.data as
             | { errors?: { field: string; message: string }[]; message?: string }
             | undefined;
@@ -496,11 +501,49 @@ export function AddActivityModal({
           return;
         }
 
+        if (error.status === 401) {
+          toast({
+            title: "Permission required",
+            description: legacyPermissionMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status === 403) {
+          toast({
+            title: "Access denied",
+            description: legacyNotMemberMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status === 404) {
+          toast({
+            title: "Trip not found",
+            description: legacyTripMissingMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status === 409) {
+          toast({
+            title: "Possible duplicate",
+            description: legacyDuplicateMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
         if (error.status >= 500) {
           const data = error.data as { correlationId?: string } | undefined;
           toast({
             title: "We couldn’t create this activity. Nothing was saved. Please try again.",
-            description: data?.correlationId ? `Reference: ${data.correlationId}` : undefined,
+            description: data?.correlationId
+              ? `We hit an unexpected error. Reference: ${data.correlationId}`
+              : undefined,
             variant: "destructive",
           });
           return;
