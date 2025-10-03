@@ -33,8 +33,10 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
+import { ApiError, apiRequest } from "@/lib/queryClient";
+import { buildActivitySubmission } from "@/lib/activitySubmission";
+import { ACTIVITY_CATEGORY_VALUES } from "@shared/activityValidation";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
 
@@ -272,15 +274,24 @@ export default function Activities() {
   );
 
   const handleProposeActivity = async (activity: Activity) => {
+    if (!tripId) {
+      toast({
+        title: "Unable to create activity",
+        description: "We couldn't determine which trip to update.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const permissionErrorMessage = "You don’t have permission to perform this action.";
+    const serverErrorMessage = "Something went wrong on our side. Please try again.";
+    const networkErrorMessage = "We couldn’t reach the server. Check your connection and try again.";
+
     try {
-      // Get current date and time
       const now = new Date();
-      const startDate = now.toISOString().split('T')[0]; // Today's date
-      const startTime = "12:00"; // Default time
-      
-      // Combine date and time into ISO string
-      const startDateTime = new Date(`${startDate}T${startTime}`).toISOString();
-      
+      const startDate = now.toISOString().split("T")[0];
+      const startTime = "12:00";
+
       const attendeeIds = trip?.members
         ? Array.from(
             new Set(
@@ -294,51 +305,89 @@ export default function Activities() {
           ? [user.id]
           : [];
 
-      const response = await apiFetch(`/api/trips/${tripId}/activities`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: activity.name,
-          description: activity.description ?? '',
-          location: activity.location ?? '',
-          startTime: startDateTime, // Send as ISO string
-          endTime: null,
-          category: activity.category,
-          cost: activity.price ? parseFloat(activity.price) : null,
-          maxCapacity: 10,
-          tripCalendarId: parseInt(tripId!),
-          attendeeIds,
-        }),
-      });
+      const sanitizedCost = (() => {
+        if (!activity.price) return null;
+        const numeric = Number.parseFloat(activity.price.replace(/[^0-9.]/g, ""));
+        return Number.isFinite(numeric) ? numeric : null;
+      })();
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to propose activity');
+      const parsedTripId = Number.parseInt(tripId, 10);
+      if (Number.isNaN(parsedTripId)) {
+        throw new Error("We couldn't determine which trip to update.");
       }
 
+      const normalizedCategory = (() => {
+        const candidate = activity.category?.toLowerCase?.() ?? "";
+        return (ACTIVITY_CATEGORY_VALUES as readonly string[]).includes(candidate)
+          ? (candidate as (typeof ACTIVITY_CATEGORY_VALUES)[number])
+          : "other";
+      })();
+
+      const { payload } = buildActivitySubmission({
+        tripId: parsedTripId,
+        name: activity.name,
+        description: activity.description ?? "",
+        date: startDate,
+        startTime,
+        endTime: null,
+        location: activity.location ?? "",
+        cost: sanitizedCost,
+        maxCapacity: 10,
+        category: normalizedCategory,
+        attendeeIds,
+        type: "SCHEDULED",
+      });
+
+      await apiRequest(`/api/trips/${tripId}/activities`, {
+        method: "POST",
+        body: payload,
+      });
+
       toast({
-        title: "Activity proposed!",
-        description: "Your group can now see and accept this activity.",
+        title: "Activity created!",
+        description: "Your activity has been added to the trip calendar.",
       });
     } catch (error) {
-      if (isUnauthorizedError(error)) {
+      if (error instanceof ApiError) {
+        if (error.status === 401 || error.status === 403) {
+          toast({
+            title: "Permission required",
+            description: permissionErrorMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status >= 500) {
+          toast({
+            title: "We ran into a problem",
+            description: serverErrorMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        const data = error.data as { message?: string } | undefined;
         toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
+          title: "Unable to create activity",
+          description: data?.message ?? error.message,
           variant: "destructive",
         });
-        setTimeout(() => {
-          window.location.href = "/login";
-        }, 500);
         return;
       }
-      
+
+      if (error instanceof Error) {
+        toast({
+          title: "Unable to create activity",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
       toast({
-        title: "Error",
-        description: "Failed to propose activity",
+        title: "Request failed",
+        description: networkErrorMessage,
         variant: "destructive",
       });
     }

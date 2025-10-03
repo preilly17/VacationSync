@@ -44,7 +44,6 @@ export interface UseCreateActivityOptions {
 
 type InternalActivityCreateVariables = ActivityCreateFormValues & {
   __meta: {
-    idempotencyKey: string;
     payload: ReturnType<typeof buildActivitySubmission>["payload"];
     optimisticId: number;
   };
@@ -103,13 +102,6 @@ const generateOptimisticId = (() => {
     return counter;
   };
 })();
-
-const generateIdempotencyKey = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-};
 
 const buildOptimisticActivity = (
   values: ActivityCreateFormValues,
@@ -268,9 +260,6 @@ export function useCreateActivity({
       const response = await apiRequest(endpoint, {
         method: "POST",
         body: variables.__meta.payload,
-        headers: {
-          "Idempotency-Key": variables.__meta.idempotencyKey,
-        },
       });
 
       const created = (await response.json()) as ActivityWithDetails;
@@ -318,7 +307,6 @@ export function useCreateActivity({
       trackEvent("activity_create_submit", {
         trip_id: tripId,
         submission_type: variables.type,
-        idempotency_key: variables.__meta.idempotencyKey,
       });
 
       return {
@@ -355,7 +343,6 @@ export function useCreateActivity({
       trackEvent("activity_create_success", {
         trip_id: tripId,
         submission_type: variables.type,
-        idempotency_key: variables.__meta.idempotencyKey,
         activity_id: result.activity.id,
       });
 
@@ -393,7 +380,6 @@ export function useCreateActivity({
       trackEvent("activity_create_failure", {
         trip_id: tripId,
         submission_type: variables.type,
-        idempotency_key: variables.__meta.idempotencyKey,
         error_message: error instanceof Error ? error.message : String(error),
       });
 
@@ -439,7 +425,6 @@ export function useCreateActivity({
         return;
       }
 
-      const idempotencyKey = generateIdempotencyKey();
       const optimisticId = generateOptimisticId();
 
       const { payload } = buildActivitySubmission({
@@ -460,7 +445,6 @@ export function useCreateActivity({
       mutation.mutate({
         ...values,
         __meta: {
-          idempotencyKey,
           payload,
           optimisticId,
         },
