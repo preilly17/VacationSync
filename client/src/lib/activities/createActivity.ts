@@ -4,6 +4,7 @@ import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-quer
 import { useToast } from "@/hooks/use-toast";
 import { buildActivitySubmission } from "@/lib/activitySubmission";
 import { ApiError, apiRequest } from "@/lib/queryClient";
+import { CLIENT_VALIDATION_FALLBACK_MESSAGE, mapClientErrorToValidation } from "./clientValidation";
 import type { ActivityType, ActivityWithDetails, TripMember, User } from "@shared/schema";
 
 export interface ActivityCreateFormValues {
@@ -460,20 +461,53 @@ export function useCreateActivity({
 
       const optimisticId = generateOptimisticId();
 
-      const { payload } = buildActivitySubmission({
-        tripId,
-        name: values.name,
-        description: values.description,
-        date: values.startDate,
-        startTime: values.startTime,
-        endTime: values.endTime ?? null,
-        location: values.location,
-        cost: values.cost,
-        maxCapacity: values.maxCapacity,
-        category: values.category,
-        attendeeIds: values.attendeeIds,
-        type: values.type,
-      });
+      let payload: ReturnType<typeof buildActivitySubmission>["payload"];
+      try {
+        ({ payload } = buildActivitySubmission({
+          tripId,
+          name: values.name,
+          description: values.description,
+          date: values.startDate,
+          startTime: values.startTime,
+          endTime: values.endTime ?? null,
+          location: values.location,
+          cost: values.cost,
+          maxCapacity: values.maxCapacity,
+          category: values.category,
+          attendeeIds: values.attendeeIds,
+          type: values.type,
+        }));
+      } catch (error) {
+        console.error("Failed to prepare activity submission:", error);
+
+        const validationError = mapClientErrorToValidation(error);
+
+        if (onValidationError) {
+          onValidationError(validationError);
+        } else {
+          const message =
+            validationError.formMessage
+            ?? validationError.fieldErrors[0]?.message
+            ?? CLIENT_VALIDATION_FALLBACK_MESSAGE;
+
+          toast({
+            title: "Please fix the highlighted fields",
+            description: message,
+            variant: "destructive",
+          });
+        }
+
+        trackEvent("activity_create_failure", {
+          trip_id: tripId,
+          submission_type: values.type,
+          error_message:
+            validationError.formMessage
+            ?? validationError.fieldErrors[0]?.message
+            ?? CLIENT_VALIDATION_FALLBACK_MESSAGE,
+        });
+
+        return;
+      }
 
       mutation.mutate({
         ...values,
