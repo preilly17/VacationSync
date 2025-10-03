@@ -11,11 +11,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { CalendarIcon, Plane, Hotel, MapPin, CheckCircle, X, Utensils, Star, Phone, ExternalLink, Clock } from "lucide-react";
+import { CalendarIcon, Plane, Hotel, MapPin, CheckCircle, X, Utensils, Star, Phone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
+import type { ActivityType } from "@shared/schema";
+import { normalizeCostInput, normalizeMaxCapacityInput } from "@shared/activityValidation";
 
 interface BookingConfirmationModalProps {
   isOpen: boolean;
@@ -45,21 +47,6 @@ const bookingSchema = z.object({
 });
 
 type BookingFormData = z.infer<typeof bookingSchema>;
-
-// Utility function to convert 12h format to 24h format
-const convertTo24Hour = (time12h: string): string => {
-  const [time, modifier] = time12h.split(' ');
-  let [hours, minutes] = time.split(':');
-  let hoursInt = parseInt(hours);
-  
-  if (modifier === 'PM' && hoursInt !== 12) {
-    hoursInt += 12;
-  } else if (modifier === 'AM' && hoursInt === 12) {
-    hoursInt = 0;
-  }
-  
-  return `${hoursInt.toString().padStart(2, '0')}:${minutes}`;
-};
 
 // Time options with 12h display but 24h values
 const timeOptions = [
@@ -152,17 +139,49 @@ export function BookingConfirmationModal({
         return;
       }
 
+      const submissionType: ActivityType = confirmed ? 'SCHEDULED' : 'PROPOSE';
+
+      const reservationDate = format(data.startDate, 'yyyy-MM-dd');
+      const startTimeValue = data.reservationTime ?? '19:00';
+      const startDateTime = new Date(`${reservationDate}T${startTimeValue}`);
+      if (Number.isNaN(startDateTime.getTime())) {
+        throw new Error('Reservation time must be a valid date/time.');
+      }
+
+      const endDateSource = data.endDate ?? data.startDate;
+      const endTimeValue = data.endTime ?? null;
+      let endDateTime: Date | null = null;
+      if (endTimeValue) {
+        const endDate = format(endDateSource, 'yyyy-MM-dd');
+        endDateTime = new Date(`${endDate}T${endTimeValue}`);
+        if (Number.isNaN(endDateTime.getTime())) {
+          throw new Error('End time must be a valid date/time.');
+        }
+      }
+
+      const costResult = normalizeCostInput(data.price ?? null);
+      if (costResult.error) {
+        throw new Error(costResult.error);
+      }
+
+      const capacityResult = normalizeMaxCapacityInput(data.partySize ?? null);
+      if (capacityResult.error) {
+        throw new Error(capacityResult.error);
+      }
+
       const payload = {
+        tripCalendarId: tripId,
         name: data.name || bookingData?.data?.name || 'Restaurant Reservation',
-        description: `Restaurant reservation at ${data.name || bookingData?.data?.name}${data.additionalDetails ? '. ' + data.additionalDetails : ''}`,
-        startDate: format(data.startDate, 'yyyy-MM-dd'),
-        startTime: data.reservationTime || '19:00',
-        endDate: format(data.startDate, 'yyyy-MM-dd'),
-        endTime: data.endTime || '21:00',
+        description: (data.description && data.description.trim().length > 0)
+          ? data.description
+          : `Restaurant reservation at ${data.name || bookingData?.data?.name}${data.additionalDetails ? '. ' + data.additionalDetails : ''}`,
+        startTime: startDateTime.toISOString(),
+        endTime: endDateTime ? endDateTime.toISOString() : null,
         location: data.location || bookingData?.data?.address || '',
-        category: 'dining',
-        cost: parseFloat(data.price || '0'),
-        capacity: data.partySize || 2,
+        cost: costResult.value,
+        maxCapacity: capacityResult.value,
+        category: 'food',
+        type: submissionType,
         additionalInfo: JSON.stringify({
           restaurant: {
             name: data.name || bookingData?.data?.name,
@@ -175,8 +194,8 @@ export function BookingConfirmationModal({
             bookingLinks: bookingData?.data?.bookingLinks || []
           },
           reservation: {
-            date: format(data.startDate, 'yyyy-MM-dd'),
-            time: data.reservationTime || '19:00',
+            date: reservationDate,
+            time: startTimeValue,
             partySize: data.partySize || 2,
             specialRequests: data.additionalDetails || ''
           }
@@ -184,7 +203,11 @@ export function BookingConfirmationModal({
         attendeeIds: user ? [user.id] : [],
       };
 
-      await apiRequest(`/api/trips/${tripId}/activities`, {
+      const endpoint = submissionType === 'PROPOSE'
+        ? `/api/trips/${tripId}/proposals/activities`
+        : `/api/trips/${tripId}/activities`;
+
+      await apiRequest(endpoint, {
         method: 'POST',
         body: payload,
       });
