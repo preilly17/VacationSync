@@ -23,16 +23,13 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { apiRequest } from "@/lib/queryClient";
+import { buildActivitySubmission } from "@/lib/activitySubmission";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { markExternalRedirect, ACTIVITY_REDIRECT_STORAGE_KEY } from "@/lib/externalRedirects";
 import { format } from "date-fns";
 import type { ActivityWithDetails, ActivityType, TripWithDetails, User } from "@shared/schema";
-import {
-  ATTENDEE_REQUIRED_MESSAGE,
-  normalizeAttendeeIds,
-  normalizeCostInput,
-} from "@shared/activityValidation";
+import { ATTENDEE_REQUIRED_MESSAGE } from "@shared/activityValidation";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
 
@@ -475,39 +472,31 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       return;
     }
 
-    const costResult = normalizeCostInput(manualFormData.price);
-    if (costResult.error) {
+    try {
+      const { payload } = buildActivitySubmission({
+        tripId,
+        name: trimmedName,
+        description: `Manual entry · Status: ${MANUAL_STATUS_LABELS[manualFormData.status]} · Currency: ${manualFormData.currency}`,
+        date: format(parsedDate, "yyyy-MM-dd"),
+        startTime: format(parsedDate, "HH:mm"),
+        endTime: null,
+        location: trimmedLocation,
+        cost: manualFormData.price,
+        maxCapacity: null,
+        category: MANUAL_ACTIVITY_CATEGORY,
+        attendeeIds: manualAttendeeIds,
+        type: manualMode,
+      });
+
+      createManualActivityMutation.mutate({ payload, submissionType: manualMode });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ATTENDEE_REQUIRED_MESSAGE;
       toast({
-        title: "Price looks off",
-        description: costResult.error,
+        title: "Unable to save activity",
+        description: message,
         variant: "destructive",
       });
-      return;
     }
-
-    const attendeeResult = normalizeAttendeeIds(manualAttendeeIds);
-    if (attendeeResult.error || attendeeResult.value.length === 0) {
-      toast({
-        title: "Select attendees",
-        description: attendeeResult.error ?? ATTENDEE_REQUIRED_MESSAGE,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const payload = {
-      name: trimmedName,
-      location: trimmedLocation,
-      startTime: parsedDate.toISOString(),
-      endTime: null,
-      description: `Manual entry · Status: ${MANUAL_STATUS_LABELS[manualFormData.status]} · Currency: ${manualFormData.currency}`,
-      cost: costResult.value,
-      category: MANUAL_ACTIVITY_CATEGORY,
-      attendeeIds: attendeeResult.value,
-      type: manualMode,
-    };
-
-    createManualActivityMutation.mutate({ payload, submissionType: manualMode });
   };
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
