@@ -2008,9 +2008,23 @@ export function setupRoutes(app: Express) {
         return;
       }
 
-      const validMemberIds = new Set(trip.members.map((member) => member.userId));
+      const validMemberIds = new Set(
+        trip.members
+          .map((member) => member.userId)
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+          .map((id) => id.trim()),
+      );
       if (trip.createdBy) {
-        validMemberIds.add(trip.createdBy);
+        const creatorId = String(trip.createdBy).trim();
+        if (creatorId) {
+          validMemberIds.add(creatorId);
+        }
+      }
+      if (userId) {
+        const normalizedUserId = String(userId).trim();
+        if (normalizedUserId) {
+          validMemberIds.add(normalizedUserId);
+        }
       }
 
       const rawData = {

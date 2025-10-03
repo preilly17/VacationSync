@@ -3565,7 +3565,13 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Failed to create activity");
       }
 
-      const uniqueInviteeIds = Array.from(new Set(inviteeIds));
+      const uniqueInviteeIds = Array.from(
+        new Set(
+          inviteeIds
+            .map((id) => String(id).trim())
+            .filter((id) => id.length > 0),
+        ),
+      );
       if (uniqueInviteeIds.length > 0) {
         const [{ rows: memberRows }, { rows: creatorRows }] = await Promise.all([
           client.query<{ user_id: string }>(
@@ -3587,10 +3593,18 @@ export class DatabaseStorage implements IStorage {
           ),
         ]);
 
-        const validMemberIds = new Set(memberRows.map((row) => row.user_id));
+        const validMemberIds = new Set(
+          memberRows
+            .map((row) => row.user_id)
+            .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+            .map((id) => id.trim()),
+        );
         const tripCreatorId = creatorRows[0]?.created_by ?? null;
         if (tripCreatorId) {
-          validMemberIds.add(tripCreatorId);
+          const normalizedCreatorId = String(tripCreatorId).trim();
+          if (normalizedCreatorId) {
+            validMemberIds.add(normalizedCreatorId);
+          }
         }
 
         const invalidInviteeIds = uniqueInviteeIds.filter((id) => !validMemberIds.has(id));
