@@ -61,6 +61,7 @@ export async function apiRequest(
   options: {
     method: string;
     body?: any;
+    headers?: Record<string, string>;
   } = { method: "GET" },
 ): Promise<Response> {
   const body =
@@ -70,10 +71,13 @@ export async function apiRequest(
         : JSON.stringify(options.body)
       : undefined;
 
+  const baseHeaders: Record<string, string> = body ? { "Content-Type": "application/json" } : {};
+  const headers = { ...baseHeaders, ...(options.headers ?? {}) };
+
   try {
     const res = await fetch(buildApiUrl(url), {
       method: options.method,
-      headers: body ? { "Content-Type": "application/json" } : {},
+      headers,
       body,
       credentials: "include",
     });
