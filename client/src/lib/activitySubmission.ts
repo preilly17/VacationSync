@@ -109,9 +109,16 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
 
   const baseDate = toDateInput(input.date, "Date");
   const startTimeString = toTimeString(input.startTime, "Start time");
-  const endTimeString = input.endTime === null || input.endTime === undefined
-    ? null
-    : toTimeString(input.endTime, "End time");
+  const endTimeInput = input.endTime;
+  const shouldUseEndTime = !(
+    endTimeInput === null
+    || endTimeInput === undefined
+    || (typeof endTimeInput === "string" && endTimeInput.trim() === "")
+  );
+
+  const endTimeString = shouldUseEndTime
+    ? toTimeString(endTimeInput, "End time")
+    : null;
 
   const startDateTime = buildDateTime(baseDate, startTimeString, "Start time");
   const endDateTime = endTimeString ? buildDateTime(baseDate, endTimeString, "End time") : null;

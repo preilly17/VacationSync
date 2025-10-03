@@ -60,4 +60,13 @@ describe("buildActivitySubmission", () => {
       }),
     ).toThrow();
   });
+
+  it("treats a blank end time as optional", () => {
+    const { payload } = buildActivitySubmission({
+      ...baseInput,
+      endTime: "",
+    });
+
+    expect(payload.endTime).toBeNull();
+  });
 });
