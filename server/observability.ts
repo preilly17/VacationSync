@@ -1,7 +1,7 @@
 import type { ActivityType } from "@shared/schema";
 import { log } from "./vite";
 
-type ActivityFailureStep = "validate" | "save";
+type ActivityFailureStep = "validate" | "save" | "notify";
 
 interface ActivityFailureContext {
   correlationId: string;
@@ -11,6 +11,7 @@ interface ActivityFailureContext {
   error: unknown;
   mode?: ActivityType;
   validationFields?: string[];
+  payloadSummary?: Record<string, unknown>;
 }
 
 type ActivityCreationOutcome = "success" | "failure";
@@ -121,6 +122,7 @@ export const logActivityCreationFailure = ({
   error,
   mode,
   validationFields,
+  payloadSummary,
 }: ActivityFailureContext) => {
   const timestamp = new Date().toISOString();
   const message =
@@ -132,11 +134,14 @@ export const logActivityCreationFailure = ({
 
   const modeLabel = mode ?? "SCHEDULED";
   const fieldSegment = validationFields && validationFields.length > 0 ? ` fields=${validationFields.join("|")}` : "";
+  const payloadSegment = payloadSummary
+    ? ` payload=${JSON.stringify(payloadSummary, (_key, value) => (value instanceof Date ? value.toISOString() : value))}`
+    : "";
 
   log(
     `activity.create failure :: ts=${timestamp} correlation=${correlationId} user=${
       userId ?? "unknown"
-    } trip=${tripId ?? "unknown"} step=${step} mode=${modeLabel} :: ${message}${fieldSegment}`,
+    } trip=${tripId ?? "unknown"} step=${step} mode=${modeLabel} :: ${message}${fieldSegment}${payloadSegment}`,
     "activity",
   );
 };

@@ -13,6 +13,28 @@ export class ApiError extends Error {
   }
 }
 
+const generateRequestId = (): string => {
+  try {
+    if (typeof crypto !== "undefined") {
+      if (typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+      }
+
+      if (typeof crypto.getRandomValues === "function") {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes)
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  return `req_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+};
+
 async function throwIfResNotOk(res: Response) {
   if (res.ok) {
     return;
@@ -73,6 +95,9 @@ export async function apiRequest(
 
   const baseHeaders: Record<string, string> = body ? { "Content-Type": "application/json" } : {};
   const headers = { ...baseHeaders, ...(options.headers ?? {}) };
+  if (!headers["X-Request-ID"] && !headers["x-request-id"]) {
+    headers["X-Request-ID"] = generateRequestId();
+  }
 
   try {
     const res = await fetch(buildApiUrl(url), {

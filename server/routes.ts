@@ -2,7 +2,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { ActivityInviteMembershipError, storage } from "./storage";
+import { ActivityInviteMembershipError, ActivityDuplicateError, storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
@@ -49,6 +49,28 @@ const extractInviteeIdsFromDetail = (detail?: string): string[] => {
   }
 
   return Array.from(matches);
+};
+
+const CORRELATION_HEADER_CANDIDATES = ["x-correlation-id", "x-request-id", "x-idempotency-key"];
+
+const getCorrelationIdFromRequest = (req: { headers?: Record<string, unknown> }): string => {
+  const headers = req?.headers ?? {};
+
+  for (const key of CORRELATION_HEADER_CANDIDATES) {
+    const rawValue = headers[key];
+    if (typeof rawValue === "string" && rawValue.trim().length > 0) {
+      return rawValue.trim();
+    }
+
+    if (Array.isArray(rawValue) && rawValue.length > 0) {
+      const [first] = rawValue;
+      if (typeof first === "string" && first.trim().length > 0) {
+        return first.trim();
+      }
+    }
+  }
+
+  return nanoid();
 };
 
 // Validation schemas for route parameters
@@ -1972,11 +1994,14 @@ export function setupRoutes(app: Express) {
     let tripId: number | null = null;
     let userId: string | null = null;
     let attemptedInviteeIds: string[] = [];
+    const correlationId = getCorrelationIdFromRequest(req);
+    res.setHeader("x-correlation-id", correlationId);
+    let payloadSummary: Record<string, unknown> | undefined;
 
     try {
       tripId = Number.parseInt(req.params[tripIdParam], 10);
       if (Number.isNaN(tripId)) {
-        res.status(400).json({ message: "Invalid trip ID" });
+        res.status(400).json({ message: "Invalid trip ID", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "invalid-trip" });
         return;
       }
@@ -1988,14 +2013,14 @@ export function setupRoutes(app: Express) {
       }
 
       if (!userId) {
-        res.status(401).json({ message: "User ID not found" });
+        res.status(401).json({ message: "User ID not found", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "no-user" });
         return;
       }
 
       const trip = await storage.getTripById(tripId);
       if (!trip) {
-        res.status(404).json({ message: "Trip not found" });
+        res.status(404).json({ message: "Trip not found", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "missing-trip" });
         return;
       }
@@ -2003,7 +2028,7 @@ export function setupRoutes(app: Express) {
       const isMember = trip.members.some((member) => member.userId === userId);
       const isCreator = trip.createdBy === userId;
       if (!isMember && !isCreator) {
-        res.status(403).json({ message: "You are no longer a member of this trip" });
+        res.status(403).json({ message: "You are no longer a member of this trip", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "not-member" });
         return;
       }
@@ -2033,6 +2058,13 @@ export function setupRoutes(app: Express) {
         type: mode,
       } as Record<string, unknown>;
 
+      payloadSummary = {
+        name: typeof rawData.name === "string" ? rawData.name : "",
+        startTime: typeof rawData.startTime === "string" ? rawData.startTime : "",
+        type: mode,
+        attendeeCount: Array.isArray(rawData.attendeeIds) ? rawData.attendeeIds.length : 0,
+      };
+
       const validationResult = validateActivityInput(rawData, {
         tripCalendarId: tripId,
         userId,
@@ -2040,7 +2072,6 @@ export function setupRoutes(app: Express) {
       });
 
       if (validationResult.errors || !validationResult.data || !validationResult.attendeeIds) {
-        const correlationId = nanoid();
         const validationFields = Array.isArray(validationResult.errors)
           ? validationResult.errors.map((issue) => issue.field).filter(Boolean)
           : [];
@@ -2053,6 +2084,7 @@ export function setupRoutes(app: Express) {
           error: validationResult.errors ?? "Unknown validation error",
           mode,
           validationFields,
+          payloadSummary,
         });
         trackActivityCreationMetric({
           mode,
@@ -2061,7 +2093,7 @@ export function setupRoutes(app: Express) {
           validationFields,
         });
 
-        res.status(422).json({
+        res.status(400).json({
           message: "Activity could not be created due to validation errors.",
           correlationId,
           errors: validationResult.errors ?? [],
@@ -2074,9 +2106,21 @@ export function setupRoutes(app: Express) {
       const inviteeIds = Array.from(attendeeIdSet);
       attemptedInviteeIds = inviteeIds;
 
+      payloadSummary = {
+        name: validationResult.data.name,
+        startTime: validationResult.data.startTime,
+        type: validationResult.data.type,
+        attendeeCount: validationResult.attendeeIds.length,
+      };
+
       const normalizedData = { ...validationResult.data, type: mode };
 
       const activity = await storage.createActivityWithInvites(normalizedData, userId, inviteeIds);
+
+      payloadSummary = {
+        ...payloadSummary,
+        activityId: activity.id,
+      };
 
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
@@ -2101,22 +2145,42 @@ export function setupRoutes(app: Express) {
             ? `${proposerName} suggested ${activity.name} on ${formattedDate}. Vote when you're ready.`
             : `You've been invited to ${activity.name} on ${formattedDate}.`;
 
-        await Promise.all(
+        const notificationResults = await Promise.allSettled(
           attendeesToNotify.map((attendeeId) =>
-            storage
-              .createNotification({
-                userId: attendeeId,
-                type: notificationType,
-                title: notificationTitle,
-                message: notificationMessage,
-                tripId: tripId,
-                activityId: activity.id,
-              })
-              .catch((notificationError) => {
-                console.error("Failed to create activity notification:", notificationError);
-              }),
+            storage.createNotification({
+              userId: attendeeId,
+              type: notificationType,
+              title: notificationTitle,
+              message: notificationMessage,
+              tripId: tripId,
+              activityId: activity.id,
+            }),
           ),
         );
+
+        const failedNotification = notificationResults.find(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+
+        if (failedNotification) {
+          console.warn("Activity notification dispatch failed", {
+            correlationId,
+            tripId,
+            userId,
+            failedCount: notificationResults.filter((result) => result.status === "rejected").length,
+            error: failedNotification.reason,
+          });
+
+          logActivityCreationFailure({
+            correlationId,
+            step: "notify",
+            userId,
+            tripId,
+            error: failedNotification.reason,
+            mode,
+            payloadSummary,
+          });
+        }
       }
 
       broadcastToTrip(tripId, {
@@ -2130,19 +2194,17 @@ export function setupRoutes(app: Express) {
 
       trackActivityCreationMetric({ mode, outcome: "success" });
 
-      res.json(createdActivity ?? activity);
+      res.status(201).json(createdActivity ?? activity);
     } catch (error: unknown) {
-      const correlationId = nanoid();
-
       if (error instanceof ActivityInviteMembershipError) {
-        const { invalidInviteeIds, attemptedInviteeIds } = error;
+        const { invalidInviteeIds, attemptedInviteeIds: invalidAttemptedInviteeIds } = error;
 
         console.warn("Activity creation blocked due to non-member invites", {
           correlationId,
           tripId,
           userId,
           invalidInviteeIds,
-          attemptedInviteeIds,
+          attemptedInviteeIds: invalidAttemptedInviteeIds,
           error,
         });
 
@@ -2153,14 +2215,62 @@ export function setupRoutes(app: Express) {
           tripId,
           error,
           mode,
+          payloadSummary,
         });
 
-        trackActivityCreationMetric({ mode, outcome: "failure", reason: "constraint" });
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "invalid-invite" });
 
-        res.status(422).json({
+        res.status(400).json({
           message: error.message,
           correlationId,
           invalidInviteeIds,
+          errors: [
+            {
+              field: "attendeeIds",
+              message: error.message,
+            },
+          ],
+        });
+        return;
+      }
+
+      if (error instanceof ActivityDuplicateError) {
+        console.warn("Activity creation blocked due to duplicate activity", {
+          correlationId,
+          tripId,
+          userId,
+          activityId: error.existingActivityId,
+          activityName: error.activityName,
+          startTime: error.startTime,
+          mode,
+        });
+
+        logActivityCreationFailure({
+          correlationId,
+          step: "save",
+          userId,
+          tripId,
+          error,
+          mode,
+          payloadSummary,
+        });
+
+        trackActivityCreationMetric({ mode, outcome: "failure", reason: "duplicate" });
+
+        res.status(409).json({
+          message: "This looks like a duplicate activity.",
+          correlationId,
+          duplicateActivityId: error.existingActivityId,
+          errors: [
+            {
+              field: "name",
+              message: "An activity with this name and start time already exists for this trip.",
+            },
+            {
+              field: "startTime",
+              message: "Pick a different time or rename the activity to avoid duplicates.",
+            },
+          ],
         });
         return;
       }
@@ -2184,14 +2294,21 @@ export function setupRoutes(app: Express) {
           tripId,
           error,
           mode,
+          payloadSummary,
         });
 
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "constraint" });
 
-        res.status(422).json({
+        res.status(400).json({
           message: "One or more invitees are no longer members of this trip.",
           correlationId,
           invalidInviteeIds,
+          errors: [
+            {
+              field: "attendeeIds",
+              message: "Some selected invitees are no longer part of this trip.",
+            },
+          ],
         });
         return;
       }
@@ -2204,6 +2321,7 @@ export function setupRoutes(app: Express) {
         tripId,
         error,
         mode,
+        payloadSummary,
       });
 
       trackActivityCreationMetric({ mode, outcome: "failure", reason: "exception" });

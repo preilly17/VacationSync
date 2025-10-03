@@ -238,6 +238,41 @@ export class ActivityInviteMembershipError extends Error {
   }
 }
 
+export class ActivityDuplicateError extends Error {
+  readonly existingActivityId: number;
+
+  readonly tripCalendarId: number;
+
+  readonly activityName: string;
+
+  readonly startTime: string;
+
+  readonly type: ActivityType;
+
+  constructor({
+    existingActivityId,
+    tripCalendarId,
+    name,
+    startTime,
+    type,
+  }: {
+    existingActivityId: number;
+    tripCalendarId: number;
+    name: string;
+    startTime: string;
+    type: ActivityType;
+  }) {
+    super("A matching activity already exists for this trip.");
+    this.name = "ActivityDuplicateError";
+    this.existingActivityId = existingActivityId;
+    this.tripCalendarId = tripCalendarId;
+    this.activityName = name;
+    this.startTime = startTime;
+    this.type = type;
+    Object.setPrototypeOf(this, ActivityDuplicateError.prototype);
+  }
+}
+
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
@@ -3509,6 +3544,46 @@ export class DatabaseStorage implements IStorage {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      const { rows: duplicateRows } = await client.query<ActivityRow>(
+        `
+        SELECT
+          id,
+          trip_calendar_id,
+          posted_by,
+          name,
+          description,
+          start_time,
+          end_time,
+          location,
+          cost,
+          max_capacity,
+          category,
+          status,
+          type,
+          created_at,
+          updated_at
+        FROM activities
+        WHERE trip_calendar_id = $1
+          AND LOWER(name) = LOWER($2)
+          AND start_time = $3
+          AND COALESCE(type, 'SCHEDULED') = $4
+        LIMIT 1
+        FOR SHARE
+        `,
+        [activity.tripCalendarId, activity.name, activity.startTime, typeValue],
+      );
+
+      const duplicateRow = duplicateRows[0];
+      if (duplicateRow) {
+        throw new ActivityDuplicateError({
+          existingActivityId: duplicateRow.id,
+          tripCalendarId: activity.tripCalendarId,
+          name: duplicateRow.name,
+          startTime: toIsoString(duplicateRow.start_time),
+          type: typeValue,
+        });
+      }
 
       const { rows } = await client.query<ActivityRow>(
         `

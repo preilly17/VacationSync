@@ -64,6 +64,9 @@ interface MutationResult {
 const networkErrorMessage = "We couldn’t reach the server. Check your connection and try again.";
 const permissionErrorMessage = "You don’t have permission to perform this action.";
 const serverErrorMessage = "Something went wrong on our side. Please try again.";
+const tripMembershipErrorMessage = "You’re not a member of this trip.";
+const tripMissingErrorMessage = "We couldn’t find this trip. Please refresh or check with the organizer.";
+const duplicateActivityErrorMessage = "This looks like a duplicate activity.";
 
 const serverFieldMap: Partial<Record<string, keyof ActivityCreateFormValues>> = {
   name: "name",
@@ -206,7 +209,7 @@ const buildOptimisticActivity = (
 };
 
 const mapApiErrorToValidation = (error: ApiError): ActivityValidationError | null => {
-  if (error.status !== 400 && error.status !== 422) {
+  if (error.status !== 400) {
     return null;
   }
 
@@ -390,7 +393,7 @@ export function useCreateActivity({
           return;
         }
 
-        if (error.status === 401 || error.status === 403) {
+        if (error.status === 401) {
           toast({
             title: "Permission required",
             description: permissionErrorMessage,
@@ -399,10 +402,40 @@ export function useCreateActivity({
           return;
         }
 
+        if (error.status === 403) {
+          toast({
+            title: "Access denied",
+            description: tripMembershipErrorMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status === 404) {
+          toast({
+            title: "Trip not found",
+            description: tripMissingErrorMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status === 409) {
+          toast({
+            title: "Possible duplicate",
+            description: duplicateActivityErrorMessage,
+            variant: "destructive",
+          });
+          return;
+        }
+
         if (error.status >= 500) {
+          const data = error.data as { correlationId?: string } | undefined;
           toast({
             title: "We ran into a problem",
-            description: serverErrorMessage,
+            description: data?.correlationId
+              ? `${serverErrorMessage} Reference: ${data.correlationId}.`
+              : serverErrorMessage,
             variant: "destructive",
           });
           return;
