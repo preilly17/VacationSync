@@ -1,4 +1,4 @@
-import { query } from "./db";
+import { pool, query } from "./db";
 import {
   computeSplits,
   minorUnitsToAmount,
@@ -3506,9 +3506,11 @@ export class DatabaseStorage implements IStorage {
         : parsedMaxCapacity;
     const typeValue = toActivityType(activity.type);
 
-    await query("BEGIN");
+    const client = await pool.connect();
     try {
-      const { rows } = await query<ActivityRow>(
+      await client.query("BEGIN");
+
+      const { rows } = await client.query<ActivityRow>(
         `
         INSERT INTO activities (
           trip_calendar_id,
@@ -3566,7 +3568,7 @@ export class DatabaseStorage implements IStorage {
       const uniqueInviteeIds = Array.from(new Set(inviteeIds));
       if (uniqueInviteeIds.length > 0) {
         const [{ rows: memberRows }, { rows: creatorRows }] = await Promise.all([
-          query<{ user_id: string }>(
+          client.query<{ user_id: string }>(
             `
             SELECT user_id
             FROM trip_members
@@ -3575,7 +3577,7 @@ export class DatabaseStorage implements IStorage {
             `,
             [activity.tripCalendarId, uniqueInviteeIds],
           ),
-          query<{ created_by: string | null }>(
+          client.query<{ created_by: string | null }>(
             `
             SELECT created_by
             FROM trip_calendars
@@ -3600,7 +3602,7 @@ export class DatabaseStorage implements IStorage {
           });
         }
 
-        await query(
+        await client.query(
           `
           INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
           SELECT
@@ -3618,7 +3620,7 @@ export class DatabaseStorage implements IStorage {
         );
       }
 
-      const { rows: organizerInviteRows } = await query<ActivityInviteRow>(
+      const { rows: organizerInviteRows } = await client.query<ActivityInviteRow>(
         `
         INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
         VALUES ($1, $2, $3, CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END)
@@ -3643,12 +3645,14 @@ export class DatabaseStorage implements IStorage {
         throw new Error("Failed to update activity invite");
       }
 
-      await query("COMMIT");
+      await client.query("COMMIT");
 
       return mapActivity(row);
     } catch (error) {
-      await query("ROLLBACK");
+      await client.query("ROLLBACK");
       throw error;
+    } finally {
+      client.release();
     }
   }
 
