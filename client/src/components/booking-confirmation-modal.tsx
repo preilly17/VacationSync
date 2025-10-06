@@ -215,8 +215,8 @@ export function BookingConfirmationModal({
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-      queryClient.invalidateQueries({ queryKey: ['/api/trips', tripId.toString(), 'activities'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/trips', tripId.toString()] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trips', tripId, 'activities'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/trips', tripId] });
 
       toast({
         title: "Booking Added",
