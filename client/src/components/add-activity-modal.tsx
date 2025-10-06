@@ -19,7 +19,7 @@ import {
   type ActivityCreateFormValues,
   type ActivityValidationError,
 } from "@/lib/activities/createActivity";
-import { type ActivityType, type TripMember, type User } from "@shared/schema";
+import { type ActivityType, type ActivityWithDetails, type TripMember, type User } from "@shared/schema";
 import {
   ACTIVITY_CATEGORY_MESSAGE,
   ACTIVITY_CATEGORY_VALUES,
@@ -336,13 +336,20 @@ export function AddActivityModal({
     (error: ActivityValidationError) => {
       if (error.fieldErrors.length > 0) {
         error.fieldErrors.forEach(({ field, message }) => {
-          form.setError(field, { type: "server", message });
+          if (field === "type") {
+            return;
+          }
+
+          form.setError(field as Exclude<keyof FormValues, "type">, {
+            type: "server",
+            message,
+          });
         });
 
         const focusField = error.fieldErrors[0]?.field;
-        if (focusField) {
+        if (focusField && focusField !== "type") {
           try {
-            form.setFocus(focusField);
+            form.setFocus(focusField as Exclude<keyof FormValues, "type">);
           } catch (focusError) {
             console.error("Failed to focus field", focusError);
           }
@@ -362,7 +369,7 @@ export function AddActivityModal({
   );
 
   const handleSuccess = useCallback(
-    (_activity, values: ActivityCreateFormValues) => {
+    (_activity: ActivityWithDetails, values: ActivityCreateFormValues) => {
       toast({
         title: values.type === "PROPOSE" ? "Activity proposed" : "Activity added",
         description:

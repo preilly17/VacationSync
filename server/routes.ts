@@ -7,6 +7,8 @@ import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
 import { insertTripCalendarSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityType, type ActivityWithDetails } from "@shared/schema";
+import { createActivityV2 } from "./activitiesV2";
+import type { CreateActivityRequest } from "@shared/activitiesV2";
 import { validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
@@ -52,6 +54,8 @@ const extractInviteeIdsFromDetail = (detail?: string): string[] => {
 };
 
 const CORRELATION_HEADER_CANDIDATES = ["x-correlation-id", "x-request-id", "x-idempotency-key"];
+
+const ACTIVITIES_V2_ENABLED = process.env.FEATURE_ACTIVITIES_V2 === "true";
 
 const getCorrelationIdFromRequest = (req: { headers?: Record<string, unknown> }): string => {
   const headers = req?.headers ?? {};
@@ -2151,6 +2155,287 @@ export function setupRoutes(app: Express) {
         res.status(403).json({ message: "You are no longer a member of this trip", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "not-member" });
         return;
+      }
+
+      if (ACTIVITIES_V2_ENABLED) {
+        const rawBody = req.body ?? {};
+        const headerIdempotency = (() => {
+          const headerValue = req?.headers?.["x-idempotency-key"];
+          if (typeof headerValue === "string") {
+            return headerValue;
+          }
+          if (Array.isArray(headerValue) && headerValue.length > 0) {
+            const [first] = headerValue;
+            if (typeof first === "string") {
+              return first;
+            }
+          }
+          return "";
+        })();
+
+        const rawMode = typeof rawBody.mode === "string" ? rawBody.mode.toLowerCase() : null;
+        const requestMode = rawMode === "scheduled" || rawMode === "proposed"
+          ? rawMode
+          : mode === "PROPOSE"
+            ? "proposed"
+            : "scheduled";
+
+        const inviteeArray = Array.isArray(rawBody.invitee_ids)
+          ? rawBody.invitee_ids
+          : Array.isArray(rawBody.attendeeIds)
+            ? rawBody.attendeeIds
+            : [];
+
+        const normalizedInvitees = Array.from(
+          new Set(
+            inviteeArray
+              .map((id: unknown) => (id === null || id === undefined ? "" : String(id).trim()))
+              .filter((id: string) => id.length > 0),
+          ),
+        );
+
+        const titleFromBody = typeof rawBody.title === "string" ? rawBody.title : rawBody.name;
+        const dateFromBody =
+          typeof rawBody.date === "string"
+            ? rawBody.date
+            : typeof rawBody.startDate === "string"
+              ? rawBody.startDate
+              : "";
+        const startTimeFromBody =
+          typeof rawBody.start_time === "string"
+            ? rawBody.start_time
+            : typeof rawBody.startTime === "string"
+              ? rawBody.startTime
+              : "";
+        const timezoneFromBody =
+          typeof rawBody.timezone === "string"
+            ? rawBody.timezone
+            : typeof rawBody.timeZone === "string"
+              ? rawBody.timeZone
+              : "";
+
+        const createPayload: CreateActivityRequest = {
+          mode: requestMode,
+          title: typeof titleFromBody === "string" ? titleFromBody : "",
+          description: typeof rawBody.description === "string" ? rawBody.description : rawBody.description ?? null,
+          category: typeof rawBody.category === "string" ? rawBody.category : rawBody.category ?? null,
+          date: dateFromBody,
+          start_time: startTimeFromBody,
+          end_time:
+            typeof rawBody.end_time === "string"
+              ? rawBody.end_time
+              : typeof rawBody.endTime === "string"
+                ? rawBody.endTime
+                : null,
+          timezone: timezoneFromBody,
+          location: typeof rawBody.location === "string" ? rawBody.location : rawBody.location ?? null,
+          cost_per_person:
+            rawBody.cost_per_person ?? rawBody.costPerPerson ?? rawBody.cost ?? null,
+          max_participants:
+            rawBody.max_participants ?? rawBody.maxParticipants ?? rawBody.maxCapacity ?? null,
+          invitee_ids: normalizedInvitees,
+          idempotency_key:
+            typeof rawBody.idempotency_key === "string" && rawBody.idempotency_key.trim().length > 0
+              ? rawBody.idempotency_key.trim()
+              : headerIdempotency,
+        };
+
+        attemptedInviteeIds = normalizedInvitees;
+        payloadSummary = {
+          name: createPayload.title,
+          startTime: createPayload.start_time,
+          type: requestMode,
+          attendeeCount: createPayload.invitee_ids.length,
+        };
+
+        const missingRequired =
+          createPayload.title.trim().length === 0 ||
+          createPayload.date.trim().length === 0 ||
+          createPayload.start_time.trim().length === 0 ||
+          createPayload.timezone.trim().length === 0 ||
+          createPayload.invitee_ids.length === 0 ||
+          createPayload.idempotency_key.trim().length === 0;
+
+        const metricMode = requestMode === "proposed" ? "PROPOSE" : "SCHEDULED";
+
+        if (missingRequired) {
+          logActivityCreationFailure({
+            correlationId,
+            step: "validate",
+            userId,
+            tripId,
+            error: "missing_required_fields",
+            mode: metricMode,
+            validationFields: ["title", "date", "start_time", "timezone", "invitee_ids"],
+            payloadSummary,
+          });
+          trackActivityCreationMetric({
+            mode: metricMode,
+            outcome: "failure",
+            reason: "validation",
+            validationFields: ["title", "date", "start_time", "timezone", "invitee_ids"],
+          });
+
+          res.status(400).json({
+            message: "Please provide a title, date, start time, and at least one invitee.",
+            correlationId,
+          });
+          return;
+        }
+
+        try {
+          const creationResult = await createActivityV2({
+            trip,
+            creatorId: userId,
+            body: createPayload,
+          });
+
+          payloadSummary = {
+            ...payloadSummary,
+            activityId: creationResult.id,
+          };
+
+          if (creationResult.wasDeduplicated) {
+            trackActivityCreationMetric({ mode: metricMode, outcome: "failure", reason: "duplicate" });
+            res.status(409).json({
+              message: "We already created this activity. Try refreshing.",
+              correlationId,
+              activity: creationResult,
+            });
+            return;
+          }
+
+          const attendeesToNotify = creationResult.invitees
+            .filter((invitee) => invitee.role === "participant")
+            .map((invitee) => invitee.userId)
+            .filter((inviteeId) => inviteeId !== userId);
+
+          if (attendeesToNotify.length > 0) {
+            const formatter = (() => {
+              try {
+                return new Intl.DateTimeFormat("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                  timeZone: createPayload.timezone,
+                });
+              } catch (error) {
+                console.warn("Invalid timezone provided for activity notification", {
+                  correlationId,
+                  timezone: createPayload.timezone,
+                  error,
+                });
+                return new Intl.DateTimeFormat("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                });
+              }
+            })();
+
+            const eventDate = new Date(`${createPayload.date}T${createPayload.start_time}`);
+            const formattedDate = formatter.format(eventDate);
+
+            const proposerMember = trip.members.find((member) => member.userId === userId);
+            const proposerName = getTripMemberDisplayName(proposerMember);
+            const notificationType = requestMode === "proposed" ? "activity_proposal" : "activity_invite";
+            const notificationTitle =
+              requestMode === "proposed"
+                ? `${proposerName} proposed ${creationResult.title}`
+                : `You've been invited to ${creationResult.title}`;
+            const notificationMessage =
+              requestMode === "proposed"
+                ? `${proposerName} suggested ${creationResult.title} on ${formattedDate}. Vote when you're ready.`
+                : `You've been invited to ${creationResult.title} on ${formattedDate}.`;
+
+            const notificationResults = await Promise.allSettled(
+              attendeesToNotify.map((attendeeId) =>
+                storage.createNotification({
+                  userId: attendeeId,
+                  type: notificationType,
+                  title: notificationTitle,
+                  message: notificationMessage,
+                  tripId,
+                  activityId: creationResult.id,
+                }),
+              ),
+            );
+
+            const failedNotification = notificationResults.find(
+              (result): result is PromiseRejectedResult => result.status === "rejected",
+            );
+
+            if (failedNotification) {
+              console.warn("Activity notification dispatch failed", {
+                correlationId,
+                tripId,
+                userId,
+                failedCount: notificationResults.filter((result) => result.status === "rejected").length,
+                error: failedNotification.reason,
+              });
+
+              logActivityCreationFailure({
+                correlationId,
+                step: "notify",
+                userId,
+                tripId,
+                error: failedNotification.reason,
+                mode: metricMode,
+                payloadSummary,
+              });
+            }
+          }
+
+          broadcastToTrip(tripId, {
+            type: "activity_created",
+            activityId: creationResult.id,
+            activityType: metricMode,
+          });
+
+          trackActivityCreationMetric({ mode: metricMode, outcome: "success" });
+
+          res.status(201).json(creationResult);
+          return;
+        } catch (error: unknown) {
+          const details = (error as any)?.details;
+          const validationFields = Array.isArray(details)
+            ? details
+                .map((issue: any) => issue?.field)
+                .filter((field: unknown): field is string => typeof field === "string" && field.length > 0)
+            : [];
+
+          const reason = (error as any)?.code === "VALIDATION" ? "validation" : "exception";
+
+          logActivityCreationFailure({
+            correlationId,
+            step: reason === "validation" ? "validate" : "create",
+            userId,
+            tripId,
+            error,
+            mode: metricMode,
+            validationFields,
+            payloadSummary,
+          });
+
+          trackActivityCreationMetric({ mode: metricMode, outcome: "failure", reason, validationFields });
+
+          if ((error as any)?.code === "VALIDATION") {
+            res.status(422).json({
+              message: "Please review the fields below.",
+              correlationId,
+              errors: Array.isArray(details) ? details : [],
+            });
+            return;
+          }
+
+          res.status(500).json({
+            message: "We couldn’t create this activity. Nothing was saved.",
+            correlationId,
+          });
+          return;
+        }
       }
 
       const validMemberIds = new Set(
