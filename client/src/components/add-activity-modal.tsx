@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { format, isValid } from "date-fns";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { type ActivityType, type ActivityWithDetails, type TripMember, type User } from "@shared/schema";
+import {
+  useCreateActivity,
+  type ActivityCreateFormValues,
+  type ActivityValidationError,
+} from "@/lib/activities/createActivity";
+import { type ActivityType, type TripMember, type User } from "@shared/schema";
 import {
   ACTIVITY_CATEGORY_MESSAGE,
   ACTIVITY_CATEGORY_VALUES,
@@ -21,35 +28,23 @@ import {
   MAX_ACTIVITY_DESCRIPTION_LENGTH,
   MAX_ACTIVITY_LOCATION_LENGTH,
   MAX_ACTIVITY_NAME_LENGTH,
-  normalizeAttendeeIds,
   normalizeCostInput,
   normalizeMaxCapacityInput,
 } from "@shared/activityValidation";
-import { z } from "zod";
-import { ApiError, apiRequest } from "@/lib/queryClient";
-import { buildActivitySubmission } from "@/lib/activitySubmission";
-import { format } from "date-fns";
-
-type TripMemberWithUser = TripMember & { user: User };
-
-interface MemberOption {
-  id: string;
-  name: string;
-  isCurrentUser: boolean;
-}
-
-interface AddActivityModalProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  tripId: number;
-  selectedDate?: Date | null;
-  members: TripMemberWithUser[];
-  defaultMode?: ActivityType;
-  allowModeToggle?: boolean;
-  currentUserId?: string;
-}
 
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const categories = [
+  { value: "food", label: "Food & Dining" },
+  { value: "sightseeing", label: "Sightseeing" },
+  { value: "transport", label: "Transportation" },
+  { value: "entertainment", label: "Entertainment" },
+  { value: "shopping", label: "Shopping" },
+  { value: "culture", label: "Culture" },
+  { value: "outdoor", label: "Outdoor" },
+  { value: "manual", label: "Manual" },
+  { value: "other", label: "Other" },
+] as const;
 
 const formSchema = z
   .object({
@@ -69,9 +64,7 @@ const formSchema = z
     startTime: z
       .string()
       .min(1, "Start time is required")
-      .refine((value) => timePattern.test(value), {
-        message: "Start time must be in HH:MM format.",
-      }),
+      .refine((value) => timePattern.test(value), { message: "Start time must be in HH:MM format." }),
     endTime: z
       .string()
       .optional()
@@ -94,7 +87,6 @@ const formSchema = z
       .refine((value) => ACTIVITY_CATEGORY_VALUES.includes(value as (typeof ACTIVITY_CATEGORY_VALUES)[number]), {
         message: ACTIVITY_CATEGORY_MESSAGE,
       }),
-    type: z.enum(["SCHEDULED", "PROPOSE"]).default("SCHEDULED"),
   })
   .superRefine((data, ctx) => {
     if (data.cost) {
@@ -138,43 +130,74 @@ const formSchema = z
     }
   });
 
-type FormData = z.infer<typeof formSchema>;
+type FormValues = z.infer<typeof formSchema>;
 
-const categories = [
-  { value: "food", label: "Food & Dining" },
-  { value: "sightseeing", label: "Sightseeing" },
-  { value: "transport", label: "Transportation" },
-  { value: "entertainment", label: "Entertainment" },
-  { value: "shopping", label: "Shopping" },
-  { value: "culture", label: "Culture" },
-  { value: "outdoor", label: "Outdoor" },
-  { value: "other", label: "Other" },
-];
-
-const serverFieldMap: Partial<Record<string, keyof FormData>> = {
-  name: "name",
-  description: "description",
-  startTime: "startTime",
-  endTime: "endTime",
-  location: "location",
-  cost: "cost",
-  maxCapacity: "maxCapacity",
-  category: "category",
-  attendeeIds: "attendeeIds",
-  startDate: "startDate",
+export type ActivityComposerPrefill = {
+  name?: string;
+  description?: string | null;
+  startDate?: string | Date | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  location?: string | null;
+  cost?: string | null;
+  maxCapacity?: string | null;
+  category?: string | null;
+  attendeeIds?: Array<string | number>;
+  type?: ActivityType;
 };
 
-const legacyPermissionMessage = "You don’t have permission to perform this action.";
-const legacyNotMemberMessage = "You’re not a member of this trip.";
-const legacyTripMissingMessage = "We couldn’t find this trip. Please refresh or check with the organizer.";
-const legacyDuplicateMessage = "This looks like a duplicate activity.";
+type TripMemberWithUser = TripMember & { user: User };
+
+type MemberOption = {
+  id: string;
+  name: string;
+  isCurrentUser: boolean;
+};
+
+interface AddActivityModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tripId: number;
+  selectedDate?: Date | null;
+  members: TripMemberWithUser[];
+  defaultMode?: ActivityType;
+  allowModeToggle?: boolean;
+  currentUserId?: string;
+  prefill?: ActivityComposerPrefill | null;
+}
 
 const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: boolean) => {
-  if (!member) return isCurrentUser ? "You" : "Trip member";
+  if (!member) {
+    return isCurrentUser ? "You" : "Trip member";
+  }
+
   const first = member.firstName?.trim();
   const last = member.lastName?.trim();
-  const baseName = first && last ? `${first} ${last}` : first ?? member.username ?? member.email ?? "Trip member";
-  return isCurrentUser ? `${baseName} (You)` : baseName;
+  const base = first && last ? `${first} ${last}` : first ?? member.username ?? member.email ?? "Trip member";
+
+  return isCurrentUser ? `${base} (You)` : base;
+};
+
+const formatDateValue = (value: string | Date | null | undefined) => {
+  if (value instanceof Date) {
+    if (!isValid(value)) {
+      return "";
+    }
+    return format(value, "yyyy-MM-dd");
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  return "";
+};
+
+const sanitizeOptional = (value: string | null | undefined) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value ?? "";
 };
 
 export function AddActivityModal({
@@ -186,401 +209,275 @@ export function AddActivityModal({
   defaultMode = "SCHEDULED",
   allowModeToggle = true,
   currentUserId,
+  prefill,
 }: AddActivityModalProps) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
+
+  const scheduledActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/activities`], [tripId]);
+  const proposalActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/proposals/activities`], [tripId]);
+  const calendarActivitiesQueryKey = useMemo(() => ["/api/trips", tripId, "activities"], [tripId]);
 
   const memberOptions = useMemo<MemberOption[]>(() => {
-    const baseOptions = members.map((member) => ({
+    const base = members.map((member) => ({
       id: String(member.userId),
       name: getMemberDisplayName(member.user, member.userId === currentUserId),
       isCurrentUser: member.userId === currentUserId,
     }));
 
-    const hasCurrentUserOption = baseOptions.some((member) => member.isCurrentUser);
-    if (hasCurrentUserOption || !currentUserId) {
-      return baseOptions;
+    const hasCurrentUser = base.some((member) => member.isCurrentUser);
+
+    if (hasCurrentUser || !currentUserId) {
+      return base;
     }
 
     const fallbackName = (() => {
-      const matchingMember = members.find((member) => member.userId === currentUserId);
-      if (matchingMember) {
-        return getMemberDisplayName(matchingMember.user, true);
-      }
-      return "You";
+      const found = members.find((member) => member.userId === currentUserId);
+      return getMemberDisplayName(found?.user, true);
     })();
 
     return [
-      {
-        id: String(currentUserId),
-        name: fallbackName,
-        isCurrentUser: true,
-      },
-      ...baseOptions,
+      { id: String(currentUserId), name: fallbackName, isCurrentUser: true },
+      ...base,
     ];
   }, [members, currentUserId]);
 
-  const defaultAttendeeIds = useMemo(
-    () => memberOptions.map((member) => member.id),
+  const defaultAttendeeIds = useMemo(() => memberOptions.map((member) => member.id), [memberOptions]);
+  const creatorMemberId = useMemo(
+    () => memberOptions.find((member) => member.isCurrentUser)?.id ?? null,
     [memberOptions],
   );
 
-  const creatorMemberId = useMemo(() => memberOptions.find((member) => member.isCurrentUser)?.id ?? null, [memberOptions]);
+  const computeDefaults = useCallback(() => {
+    const attendeePrefill = Array.isArray(prefill?.attendeeIds)
+      ? Array.from(
+          new Set(
+            prefill.attendeeIds
+              .map((id) => (id === null || id === undefined ? "" : String(id)))
+              .filter((id) => id.length > 0),
+          ),
+        )
+      : undefined;
 
-  const scheduledActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/activities`], [tripId]);
-  const proposalActivitiesQueryKey = useMemo(
-    () => [`/api/trips/${tripId}/proposals/activities`],
-    [tripId],
-  );
-  const calendarActivitiesQueryKey = useMemo(
-    () => ["/api/trips", tripId, "activities"],
-    [tripId],
-  );
+    const dateSource = prefill?.startDate ?? selectedDate ?? null;
 
-  const getDefaultValues = useCallback(
-    () => ({
-      name: "",
-      description: "",
-      startDate: selectedDate ? format(selectedDate, "yyyy-MM-dd") : "",
-      startTime: "",
-      endTime: "",
-      location: "",
-      cost: "",
-      maxCapacity: "",
-      category: "other",
-      attendeeIds: defaultAttendeeIds,
-      type: defaultMode,
-    }),
-    [defaultAttendeeIds, selectedDate, defaultMode],
-  );
+    const values: FormValues = {
+      name: prefill?.name ?? "",
+      description: sanitizeOptional(prefill?.description),
+      startDate: formatDateValue(dateSource),
+      startTime: sanitizeOptional(prefill?.startTime ?? ""),
+      endTime: sanitizeOptional(prefill?.endTime ?? ""),
+      location: sanitizeOptional(prefill?.location),
+      cost: sanitizeOptional(prefill?.cost),
+      maxCapacity: sanitizeOptional(prefill?.maxCapacity),
+      attendeeIds: attendeePrefill?.length ? attendeePrefill : defaultAttendeeIds,
+      category: (() => {
+        const candidate = (prefill?.category ?? "other")?.toLowerCase?.() ?? "other";
+        return ACTIVITY_CATEGORY_VALUES.includes(candidate as (typeof ACTIVITY_CATEGORY_VALUES)[number])
+          ? candidate
+          : "other";
+      })(),
+    } satisfies FormValues;
 
-  const form = useForm<FormData>({
+    const initialMode = prefill?.type ?? defaultMode;
+
+    return { values, mode: initialMode };
+  }, [defaultAttendeeIds, defaultMode, prefill, selectedDate]);
+
+  const { values: defaultValues, mode: initialMode } = computeDefaults();
+
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: getDefaultValues(),
     mode: "onChange",
     reValidateMode: "onChange",
+    defaultValues: defaultValues,
   });
 
-  const [mode, setMode] = useState<ActivityType>(defaultMode);
-  const isProposalMode = mode === "PROPOSE";
-
-  const handleCreateSuccess = useCallback(() => {
-    onOpenChange(false);
-    form.reset(getDefaultValues());
-    setMode(defaultMode);
-  }, [defaultMode, form, getDefaultValues, onOpenChange]);
-
-  const selectedAttendeeIds = form.watch("attendeeIds") ?? [];
+  const [mode, setMode] = useState<ActivityType>(initialMode);
 
   useEffect(() => {
     if (open) {
-      form.setValue("attendeeIds", defaultAttendeeIds, {
-        shouldDirty: false,
-        shouldValidate: true,
-      });
+      const { values, mode: nextMode } = computeDefaults();
+      form.reset(values);
+      setMode(nextMode);
     }
-  }, [open, defaultAttendeeIds, form]);
+  }, [open, computeDefaults, form]);
 
   useEffect(() => {
-    if (open) {
+    if (!allowModeToggle) {
       setMode(defaultMode);
     }
-  }, [defaultMode, open]);
+  }, [allowModeToggle, defaultMode]);
 
-  // Update form when selectedDate changes
   useEffect(() => {
-    if (selectedDate) {
-      form.setValue("startDate", format(selectedDate, "yyyy-MM-dd"), {
+    if (open && !prefill?.startDate && selectedDate) {
+      form.setValue("startDate", formatDateValue(selectedDate), {
         shouldDirty: true,
         shouldValidate: true,
       });
-    } else {
-      form.reset(getDefaultValues());
     }
-  }, [selectedDate, form, getDefaultValues]);
-
-  useEffect(() => {
-    setMode(defaultMode);
-    form.setValue("type", defaultMode, { shouldDirty: false, shouldValidate: true });
-  }, [defaultMode, form]);
+  }, [open, selectedDate, prefill?.startDate, form]);
 
   useEffect(() => {
     if (mode === "SCHEDULED" && creatorMemberId) {
-      const attendees = new Set((form.getValues("attendeeIds") ?? []).map(String));
+      const attendees = new Set(form.getValues("attendeeIds") ?? []);
       if (!attendees.has(creatorMemberId)) {
         attendees.add(creatorMemberId);
-        form.setValue("attendeeIds", Array.from(attendees), { shouldDirty: true, shouldValidate: true });
-      }
-    }
-  }, [creatorMemberId, form, mode]);
-
-  const handleToggleAttendee = (userId: string, checked: boolean | "indeterminate") => {
-    const normalizedId = String(userId);
-    if (mode === "SCHEDULED" && creatorMemberId && normalizedId === creatorMemberId && checked !== true) {
-      return;
-    }
-    const current = new Set((form.getValues("attendeeIds") ?? []).map(String));
-    if (checked === true) {
-      current.add(normalizedId);
-    } else if (checked === false) {
-      current.delete(normalizedId);
-    }
-    form.setValue("attendeeIds", Array.from(current), { shouldDirty: true, shouldValidate: true });
-  };
-
-  const handleSelectAll = () => {
-    form.setValue("attendeeIds", defaultAttendeeIds, { shouldDirty: true, shouldValidate: true });
-  };
-
-  const handleClearAttendees = () => {
-    if (mode === "SCHEDULED") {
-      if (creatorMemberId) {
-        form.setValue("attendeeIds", [creatorMemberId], { shouldDirty: true, shouldValidate: true });
-      }
-      return;
-    }
-    form.setValue("attendeeIds", [], { shouldDirty: true, shouldValidate: true });
-  };
-
-  const legacyCreateActivityMutation = useMutation({
-    mutationFn: async (data: FormData) => {
-      const submissionType = data.type ?? "SCHEDULED";
-
-      const { payload } = buildActivitySubmission({
-        tripId,
-        name: data.name,
-        description: data.description,
-        date: data.startDate,
-        startTime: data.startTime,
-        endTime: data.endTime ?? null,
-        location: data.location,
-        cost: data.cost,
-        maxCapacity: data.maxCapacity,
-        category: data.category,
-        attendeeIds: data.attendeeIds,
-        type: submissionType,
-      });
-
-      const endpoint =
-        submissionType === "PROPOSE"
-          ? `/api/trips/${tripId}/proposals/activities`
-          : `/api/trips/${tripId}/activities`;
-
-      const response = await apiRequest(endpoint, {
-        method: "POST",
-        body: payload,
-      });
-      const created = (await response.json()) as ActivityWithDetails;
-      return created;
-    },
-    onSuccess: (createdActivity, variables) => {
-      const submissionType = variables?.type ?? "SCHEDULED";
-
-      const sortByStartTime = (activities: ActivityWithDetails[]) =>
-        [...activities].sort(
-          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-        );
-
-      const updateCache = (queryKey: unknown[]) => {
-        queryClient.setQueryData<ActivityWithDetails[]>(queryKey, (existing = []) => {
-          const filtered = existing.filter((item) => item.id !== createdActivity.id);
-          return sortByStartTime([...filtered, createdActivity]);
+        form.setValue("attendeeIds", Array.from(attendees), {
+          shouldDirty: true,
+          shouldValidate: true,
         });
-      };
-
-      if (submissionType === "PROPOSE") {
-        updateCache(proposalActivitiesQueryKey);
-        updateCache(scheduledActivitiesQueryKey);
-
-        queryClient.invalidateQueries({ queryKey: proposalActivitiesQueryKey });
-        queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
-        queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
-      } else {
-        updateCache(scheduledActivitiesQueryKey);
-        updateCache(calendarActivitiesQueryKey);
-
-        queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
-        queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
       }
+    }
+  }, [mode, creatorMemberId, form]);
 
-      toast({
-        title: submissionType === "PROPOSE" ? "Activity proposed!" : "Activity created!",
-        description:
-          submissionType === "PROPOSE"
-            ? "Your idea has been shared with the group for feedback."
-            : "Your activity has been added to the trip calendar.",
-      });
-      handleCreateSuccess();
-    },
-    onError: (error) => {
-      console.error("Activity creation error:", error);
+  const handleValidationError = useCallback(
+    (error: ActivityValidationError) => {
+      if (error.fieldErrors.length > 0) {
+        error.fieldErrors.forEach(({ field, message }) => {
+          form.setError(field, { type: "server", message });
+        });
 
-      if (error instanceof ApiError) {
-        if (error.status === 400) {
-          const data = error.data as
-            | { errors?: { field: string; message: string }[]; message?: string }
-            | undefined;
-          const serverErrors = Array.isArray(data?.errors) ? data?.errors : [];
-
-          if (serverErrors.length > 0) {
-            serverErrors.forEach(({ field, message }) => {
-              const mappedField = serverFieldMap[field];
-              if (mappedField) {
-                form.setError(mappedField, { type: "server", message });
-              }
-            });
-
-            const focusField = serverErrors.find(({ field }) => serverFieldMap[field])?.field;
-            if (focusField) {
-              const mapped = serverFieldMap[focusField];
-              if (mapped) {
-                try {
-                  form.setFocus(mapped);
-                } catch {
-                  // ignore focus errors
-                }
-              }
-            }
+        const focusField = error.fieldErrors[0]?.field;
+        if (focusField) {
+          try {
+            form.setFocus(focusField);
+          } catch (focusError) {
+            console.error("Failed to focus field", focusError);
           }
-
-          toast({
-            title: "Please fix the highlighted fields",
-            description:
-              data?.message ?? "Some details need your attention before we can create this activity.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status === 401) {
-          toast({
-            title: "Permission required",
-            description: legacyPermissionMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status === 403) {
-          toast({
-            title: "Access denied",
-            description: legacyNotMemberMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status === 404) {
-          toast({
-            title: "Trip not found",
-            description: legacyTripMissingMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status === 409) {
-          toast({
-            title: "Possible duplicate",
-            description: legacyDuplicateMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status >= 500) {
-          const data = error.data as { correlationId?: string } | undefined;
-          toast({
-            title: "We couldn’t create this activity. Nothing was saved. Please try again.",
-            description: data?.correlationId
-              ? `We hit an unexpected error. Reference: ${data.correlationId}`
-              : undefined,
-            variant: "destructive",
-          });
-          return;
         }
       }
 
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error
-            ? error.message
-            : "Failed to create activity. Please try again.",
-        variant: "destructive",
-      });
+      const message = error.formMessage ?? error.fieldErrors[0]?.message;
+      if (message) {
+        toast({
+          title: "Please review the activity details",
+          description: message,
+          variant: "destructive",
+        });
+      }
     },
-  });
-
-  const findDuplicateActivity = useCallback(
-    (name: string, startDateTime: Date) => {
-      const normalizedName = name.trim().toLowerCase();
-      if (!normalizedName) {
-        return null;
-      }
-
-      const targetTime = startDateTime.getTime();
-      if (!Number.isFinite(targetTime)) {
-        return null;
-      }
-
-      const scheduled = queryClient.getQueryData<ActivityWithDetails[]>(scheduledActivitiesQueryKey) ?? [];
-      const proposals = queryClient.getQueryData<ActivityWithDetails[]>(proposalActivitiesQueryKey) ?? [];
-      const combined = [...scheduled, ...proposals];
-
-      for (const activity of combined) {
-        const activityName = (activity.name ?? "").trim().toLowerCase();
-        if (activityName !== normalizedName) {
-          continue;
-        }
-
-        const activityStart = new Date(activity.startTime).getTime();
-        if (!Number.isFinite(activityStart)) {
-          continue;
-        }
-
-        if (Math.abs(activityStart - targetTime) <= 60_000) {
-          return activity;
-        }
-      }
-
-      return null;
-    },
-    [proposalActivitiesQueryKey, queryClient, scheduledActivitiesQueryKey],
+    [form, toast],
   );
 
-  const isSubmitting = legacyCreateActivityMutation.isPending;
-
-  const onSubmit = (data: FormData) => {
-    const startDateTime = new Date(`${data.startDate}T${data.startTime}`);
-    const duplicate = findDuplicateActivity(data.name, startDateTime);
-
-    if (duplicate) {
-      const duplicateStart = new Date(duplicate.startTime);
-      const friendlyTime = Number.isNaN(duplicateStart.getTime())
-        ? "the same time"
-        : format(duplicateStart, "MMM d 'at' h:mm a");
+  const handleSuccess = useCallback(
+    (_activity, values: ActivityCreateFormValues) => {
       toast({
-        title: "Heads up — possible duplicate",
-        description: `"${duplicate.name}" is already on the books for ${friendlyTime}. We'll still save this if you'd like to continue.`,
+        title: values.type === "PROPOSE" ? "Activity proposed" : "Activity added",
+        description:
+          values.type === "PROPOSE"
+            ? "We shared this idea with your group for feedback."
+            : "Your activity has been added to the schedule.",
       });
+
+      const { values: resetValues, mode: resetMode } = computeDefaults();
+      form.reset(resetValues);
+      setMode(resetMode);
+      onOpenChange(false);
+    },
+    [computeDefaults, form, onOpenChange, toast],
+  );
+
+  const createActivity = useCreateActivity({
+    tripId,
+    scheduledActivitiesQueryKey,
+    proposalActivitiesQueryKey,
+    calendarActivitiesQueryKey,
+    members,
+    currentUserId,
+    enabled: tripId > 0,
+    onValidationError: handleValidationError,
+    onSuccess: handleSuccess,
+  });
+
+  const selectedAttendeeIds = form.watch("attendeeIds") ?? [];
+
+  const handleToggleAttendee = useCallback(
+    (userId: string, checked: boolean | "indeterminate") => {
+      const normalized = String(userId);
+      if (mode === "SCHEDULED" && creatorMemberId && normalized === creatorMemberId && checked !== true) {
+        return;
+      }
+
+      const current = new Set(form.getValues("attendeeIds") ?? []);
+      if (checked === true) {
+        current.add(normalized);
+      } else if (checked === false) {
+        current.delete(normalized);
+      }
+
+      form.setValue("attendeeIds", Array.from(current), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    },
+    [creatorMemberId, form, mode],
+  );
+
+  const handleSelectAll = useCallback(() => {
+    form.setValue("attendeeIds", defaultAttendeeIds, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [defaultAttendeeIds, form]);
+
+  const handleClearAttendees = useCallback(() => {
+    if (mode === "SCHEDULED" && creatorMemberId) {
+      form.setValue("attendeeIds", [creatorMemberId], {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      return;
     }
 
-    const submissionValues = { ...data, type: mode } as FormData;
-    legacyCreateActivityMutation.mutate(submissionValues);
+    form.setValue("attendeeIds", [], {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [creatorMemberId, form, mode]);
+
+  const submitForm = form.handleSubmit((values) => {
+    const sanitized: ActivityCreateFormValues = {
+      name: values.name,
+      description: values.description,
+      startDate: values.startDate,
+      startTime: values.startTime,
+      endTime: values.endTime?.trim() ? values.endTime : undefined,
+      location: values.location,
+      cost: values.cost?.trim() ? values.cost : undefined,
+      maxCapacity: values.maxCapacity?.trim() ? values.maxCapacity : undefined,
+      attendeeIds: values.attendeeIds,
+      category: values.category,
+      type: mode,
+    };
+
+    createActivity.submit(sanitized);
+  });
+
+  const isSubmitting = createActivity.isPending;
+
+  const handleDialogChange = (next: boolean) => {
+    if (!next) {
+      const { values, mode: resetMode } = computeDefaults();
+      onOpenChange(false);
+      form.reset(values);
+      setMode(resetMode);
+      return;
+    }
+
+    onOpenChange(true);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create an activity</DialogTitle>
           <DialogDescription>
-            Decide whether you&apos;re proposing an idea for feedback or locking plans onto the schedule.
+            Choose whether you&apos;re proposing an idea or locking plans onto the schedule.
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={submitForm} className="space-y-4">
           <div>
             <Label htmlFor="mode">Share it with the group</Label>
             {allowModeToggle ? (
@@ -603,27 +500,23 @@ export function AddActivityModal({
               </ToggleGroup>
             ) : (
               <p className="mt-2 text-sm text-neutral-600">
-                {isProposalMode
+                {mode === "PROPOSE"
                   ? "This activity will be proposed to the group."
                   : "This activity will be added directly to the schedule."}
               </p>
             )}
             <p className="mt-2 text-xs text-neutral-500">
-              {isProposalMode
-                ? "Invitees get a 👍 / 👎 vote. You can schedule it later if the group is in."
-                : "Invitees receive an RSVP request right away so their schedules stay in sync."}
+              {mode === "PROPOSE"
+                ? "Selected travelers will get a vote to weigh in."
+                : "Everyone selected will receive an RSVP request."}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="name">Activity Name</Label>
-            <Input
-              id="name"
-              placeholder="e.g., Tokyo Skytree Visit"
-              {...form.register("name")}
-            />
+            <Label htmlFor="name">Activity name</Label>
+            <Input id="name" placeholder="e.g., Tokyo Skytree visit" {...form.register("name")} />
             {form.formState.errors.name && (
-              <p className="text-sm text-red-600 mt-1">{form.formState.errors.name.message}</p>
+              <p className="mt-1 text-sm text-red-600">{form.formState.errors.name.message}</p>
             )}
           </div>
 
@@ -631,90 +524,61 @@ export function AddActivityModal({
             <Label htmlFor="description">Description</Label>
             <Textarea
               id="description"
-              placeholder="Describe what you'll be doing..."
+              placeholder="Share any important details or notes"
               rows={3}
               {...form.register("description")}
             />
             {form.formState.errors.description && (
-              <p className="text-sm text-red-600 mt-1">{form.formState.errors.description.message}</p>
+              <p className="mt-1 text-sm text-red-600">{form.formState.errors.description.message}</p>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="startDate">Date</Label>
-              <Input
-                id="startDate"
-                type="date"
-                {...form.register("startDate")}
-              />
+              <Input id="startDate" type="date" {...form.register("startDate")} />
               {form.formState.errors.startDate && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.startDate.message}</p>
+                <p className="mt-1 text-sm text-red-600">{form.formState.errors.startDate.message}</p>
               )}
             </div>
             <div>
-              <Label htmlFor="startTime">Start Time</Label>
-              <Input
-                id="startTime"
-                type="time"
-                {...form.register("startTime")}
-              />
+              <Label htmlFor="startTime">Start time</Label>
+              <Input id="startTime" type="time" {...form.register("startTime")} />
               {form.formState.errors.startTime && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.startTime.message}</p>
+                <p className="mt-1 text-sm text-red-600">{form.formState.errors.startTime.message}</p>
               )}
             </div>
           </div>
 
           <div>
-            <Label htmlFor="endTime">End Time (Optional)</Label>
-            <Input
-              id="endTime"
-              type="time"
-              {...form.register("endTime")}
-            />
+            <Label htmlFor="endTime">End time (optional)</Label>
+            <Input id="endTime" type="time" {...form.register("endTime")} />
             {form.formState.errors.endTime && (
-              <p className="text-sm text-red-600 mt-1">{form.formState.errors.endTime.message}</p>
+              <p className="mt-1 text-sm text-red-600">{form.formState.errors.endTime.message}</p>
             )}
           </div>
 
           <div>
             <Label htmlFor="location">Location</Label>
-            <Input
-              id="location"
-              placeholder="Address or landmark"
-              {...form.register("location")}
-            />
+            <Input id="location" placeholder="Add where everyone should meet" {...form.register("location")} />
             {form.formState.errors.location && (
-              <p className="text-sm text-red-600 mt-1">{form.formState.errors.location.message}</p>
+              <p className="mt-1 text-sm text-red-600">{form.formState.errors.location.message}</p>
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <Label htmlFor="cost">Cost per Person</Label>
-              <Input
-                id="cost"
-                type="number"
-                step="0.01"
-                inputMode="decimal"
-                placeholder="0.00"
-                {...form.register("cost")}
-              />
+              <Label htmlFor="cost">Cost per person (optional)</Label>
+              <Input id="cost" placeholder="$50" {...form.register("cost")} />
               {form.formState.errors.cost && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.cost.message}</p>
+                <p className="mt-1 text-sm text-red-600">{form.formState.errors.cost.message}</p>
               )}
             </div>
             <div>
-              <Label htmlFor="maxCapacity">Max Participants</Label>
-              <Input
-                id="maxCapacity"
-                type="number"
-                inputMode="numeric"
-                placeholder="No limit"
-                {...form.register("maxCapacity")}
-              />
+              <Label htmlFor="maxCapacity">Max participants (optional)</Label>
+              <Input id="maxCapacity" placeholder="Leave blank for unlimited" {...form.register("maxCapacity")} />
               {form.formState.errors.maxCapacity && (
-                <p className="text-sm text-red-600 mt-1">{form.formState.errors.maxCapacity.message}</p>
+                <p className="mt-1 text-sm text-red-600">{form.formState.errors.maxCapacity.message}</p>
               )}
             </div>
           </div>
@@ -724,12 +588,12 @@ export function AddActivityModal({
               <Label htmlFor="attendees">Who&apos;s going?</Label>
               <span className="text-xs text-neutral-500">{selectedAttendeeIds.length} selected</span>
             </div>
-            <p className="text-xs text-neutral-500 mt-1">
-              {isProposalMode
-                ? "We’ll ping the selected travelers to vote 👍 or 👎."
-                : "We’ll send RSVP requests to everyone selected and keep their calendars updated."}
+            <p className="mt-1 text-xs text-neutral-500">
+              {mode === "PROPOSE"
+                ? "We&apos;ll ask everyone selected to vote on this idea."
+                : "We&apos;ll send RSVP requests so calendars stay in sync."}
             </p>
-            <div className="flex items-center gap-2 mt-3">
+            <div className="mt-3 flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -744,24 +608,27 @@ export function AddActivityModal({
                 variant="ghost"
                 size="sm"
                 onClick={handleClearAttendees}
-                disabled={selectedAttendeeIds.length === 0}
+                disabled={
+                  selectedAttendeeIds.length === 0
+                  || (mode === "SCHEDULED" && creatorMemberId !== null && selectedAttendeeIds.length === 1)
+                }
               >
                 Clear
               </Button>
             </div>
             <ScrollArea className="mt-3 max-h-40 rounded-lg border border-neutral-200">
-              <div className="p-3 space-y-2">
+              <div className="space-y-2 p-3">
                 {memberOptions.length === 0 ? (
-                  <p className="text-sm text-neutral-500">Invite friends to your trip to pick attendees.</p>
+                  <p className="text-sm text-neutral-500">Invite friends to your trip to choose attendees.</p>
                 ) : (
                   memberOptions.map((member) => {
-                    const isChecked = selectedAttendeeIds.includes(member.id);
+                    const checked = selectedAttendeeIds.includes(member.id);
                     return (
                       <div key={member.id} className="flex items-center space-x-3">
                         <Checkbox
                           id={`attendee-${member.id}`}
-                          checked={isChecked}
-                          onCheckedChange={(checked) => handleToggleAttendee(member.id, checked)}
+                          checked={checked}
+                          onCheckedChange={(checkedState) => handleToggleAttendee(member.id, checkedState)}
                           disabled={mode === "SCHEDULED" && member.isCurrentUser}
                         />
                         <Label htmlFor={`attendee-${member.id}`} className="text-sm text-neutral-700">
@@ -774,7 +641,7 @@ export function AddActivityModal({
               </div>
             </ScrollArea>
             {form.formState.errors.attendeeIds && (
-              <p className="text-sm text-red-600 mt-2">{form.formState.errors.attendeeIds.message}</p>
+              <p className="mt-2 text-sm text-red-600">{form.formState.errors.attendeeIds.message}</p>
             )}
           </div>
 
@@ -782,9 +649,7 @@ export function AddActivityModal({
             <Label htmlFor="category">Category</Label>
             <Select
               value={form.watch("category")}
-              onValueChange={(value) =>
-                form.setValue("category", value, { shouldDirty: true, shouldValidate: true })
-              }
+              onValueChange={(value) => form.setValue("category", value, { shouldDirty: true, shouldValidate: true })}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select category" />
@@ -798,41 +663,27 @@ export function AddActivityModal({
               </SelectContent>
             </Select>
             {form.formState.errors.category && (
-              <p className="text-sm text-red-600 mt-1">{form.formState.errors.category.message}</p>
+              <p className="mt-1 text-sm text-red-600">{form.formState.errors.category.message}</p>
             )}
           </div>
 
           {Object.keys(form.formState.errors).length > 0 && (
-            <div className="p-3 bg-red-50 rounded-lg">
-              <p className="text-sm font-medium text-red-800 mb-2">Please fix these errors:</p>
-              <ul className="text-sm text-red-600 space-y-1">
-                {Object.entries(form.formState.errors).map(([field, error]) => (
-                  <li key={field}>• {field}: {error?.message}</li>
-                ))}
-              </ul>
+            <div className="rounded-lg bg-red-50 p-3">
+              <p className="mb-1 text-sm font-medium text-red-800">Please fix the highlighted fields.</p>
             </div>
           )}
 
           <div className="flex space-x-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => onOpenChange(false)}
-            >
+            <Button type="button" variant="outline" className="flex-1" onClick={() => handleDialogChange(false)}>
               Cancel
             </Button>
             <Button
               type="submit"
-              className="flex-1 bg-primary hover:bg-red-600 text-white"
+              className="flex-1 bg-primary text-white hover:bg-red-600"
               disabled={isSubmitting}
-              aria-disabled={isSubmitting || !form.formState.isValid}
+              aria-disabled={isSubmitting}
             >
-              {isSubmitting
-                ? "Submitting..."
-                : isProposalMode
-                  ? "Send proposal"
-                  : "Add to schedule"}
+              {isSubmitting ? "Submitting..." : mode === "PROPOSE" ? "Send proposal" : "Add to schedule"}
             </Button>
           </div>
         </form>
