@@ -10,11 +10,14 @@ const queryMock = jest.fn();
 let storageModule: typeof import("../storage");
 let storage: typeof import("../storage")["storage"];
 let dbQuerySpy: jest.SpiedFunction<typeof import("../db")["query"]>;
+let poolConnectSpy: jest.SpiedFunction<typeof import("../db")["pool"]["connect"]>;
+let mockClient: { query: typeof queryMock; release: jest.Mock };
 
 beforeAll(async () => {
   jest.resetModules();
   const dbModule: any = await import("../db");
   dbQuerySpy = jest.spyOn(dbModule, "query").mockImplementation(queryMock as any);
+  poolConnectSpy = jest.spyOn(dbModule.pool, "connect");
   storageModule = await import("../storage");
   storage = storageModule.storage;
 });
@@ -22,6 +25,11 @@ beforeAll(async () => {
 beforeEach(() => {
   queryMock.mockReset();
   dbQuerySpy.mockImplementation(queryMock as any);
+  mockClient = {
+    query: queryMock,
+    release: jest.fn(),
+  } as any;
+  poolConnectSpy.mockResolvedValue(mockClient as any);
   (storage as any).activityTypeColumnInitialized = true;
   (storage as any).activityInvitesInitialized = true;
 });
@@ -63,8 +71,10 @@ describe("createActivityWithInvites", () => {
 
     queryMock
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rows: [] }) // duplicate check
       .mockResolvedValueOnce({ rows: [activityRow] }) // insert activity
       .mockResolvedValueOnce({ rows: [{ user_id: "friend" }] }) // validate members
+      .mockResolvedValueOnce({ rows: [{ created_by: "organizer" }] }) // fetch creator
       .mockRejectedValueOnce(error) // insert invites
       .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
@@ -73,7 +83,7 @@ describe("createActivityWithInvites", () => {
     ).rejects.toThrow("failed to persist invites");
 
     expect(queryMock).toHaveBeenNthCalledWith(1, "BEGIN");
-    expect(queryMock).toHaveBeenNthCalledWith(5, "ROLLBACK");
+    expect(queryMock).toHaveBeenNthCalledWith(7, "ROLLBACK");
     expect(
       queryMock.mock.calls.map(([sql]) => sql),
     ).not.toContain("COMMIT");
@@ -113,14 +123,16 @@ describe("createActivityWithInvites", () => {
 
     queryMock
       .mockResolvedValueOnce({ rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rows: [] }) // duplicate check
       .mockResolvedValueOnce({ rows: [activityRow] }) // insert activity
       .mockResolvedValueOnce({ rows: [] }) // validate members returns none
+      .mockResolvedValueOnce({ rows: [{ created_by: "organizer" }] }) // fetch creator
       .mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
     await expect(
       storage.createActivityWithInvites(activityInput, "organizer", ["former-member"]),
     ).rejects.toBeInstanceOf(storageModule.ActivityInviteMembershipError);
 
-    expect(queryMock).toHaveBeenNthCalledWith(4, "ROLLBACK");
+    expect(queryMock).toHaveBeenNthCalledWith(6, "ROLLBACK");
   });
 });

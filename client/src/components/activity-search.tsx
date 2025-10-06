@@ -382,7 +382,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       payload,
       submissionType,
     }: {
-      payload: Record<string, unknown>;
+      payload: ReturnType<typeof buildActivitySubmission>["payload"];
       submissionType: ActivityType;
     }) => {
       const endpoint =

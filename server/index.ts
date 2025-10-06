@@ -43,19 +43,19 @@ const allowedOrigins = envConfiguredOrigins.size
 
 // ✅ FIXED CORS CONFIG
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow curl/postman without origin
-    if (
-      allowedOrigins.some((allowed) =>
-        allowed instanceof RegExp ? allowed.test(origin) : allowed === origin
-      )
-    ) {
+  origin(origin, callback) {
+    if (!origin) {
       return callback(null, true);
     }
-    // allow *.tripsyncbeta.com subdomains
-    if (/\.tripsyncbeta\.com$/.test(origin)) {
+
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
+
+    if (/\.tripsyncbeta\.com$/i.test(origin)) {
+      return callback(null, true);
+    }
+
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,

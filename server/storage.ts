@@ -575,6 +575,7 @@ type NotificationWithDetailsRow = NotificationRow & {
   activity_max_capacity: number | null;
   activity_category: string | null;
   activity_status: string | null;
+  activity_type: string | null;
   activity_created_at: Date | null;
   activity_updated_at: Date | null;
   joined_expense_id: number | null;
