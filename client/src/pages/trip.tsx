@@ -73,6 +73,7 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { NotificationIcon } from "@/components/notification-icon";
 import { LeaveTripButton } from "@/components/leave-trip-button";
@@ -123,7 +124,7 @@ import {
   stringifyJsonValue,
   type HotelFormValues,
 } from "@/lib/hotel-form";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, ApiError } from "@/lib/queryClient";
 import SmartLocationSearch, { type LocationResult } from "@/components/SmartLocationSearch";
 import { fetchNearestAirportsForLocation, type NearbyAirport, extractCoordinates } from "@/lib/nearestAirports";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
@@ -3014,6 +3015,8 @@ const POINTHOUND_CABIN_CLASS_MAP: Record<TripCabinClass, string> = {
   first: "First",
 };
 
+const TRIP_ADMIN_ROLES = new Set(["admin", "owner", "organizer"]);
+
 interface TripFlightSearchFormState {
   departure: string;
   departureCity: string;
@@ -3051,6 +3054,63 @@ function FlightCoordination({
   });
 
   const flights = Array.isArray(flightsData) ? flightsData : [];
+  const currentUserId = user?.id ?? null;
+  const isTripAdmin = useMemo(() => {
+    if (!trip || !currentUserId) {
+      return false;
+    }
+
+    if (trip.createdBy === currentUserId) {
+      return true;
+    }
+
+    const membership = trip.members?.find((member) => member.userId === currentUserId);
+    if (!membership) {
+      return false;
+    }
+
+    return TRIP_ADMIN_ROLES.has(membership.role);
+  }, [trip, currentUserId]);
+
+  const getFlightCreatorId = useCallback((flight: FlightWithDetails): string | null => {
+    if (typeof flight.userId === "string" && flight.userId) {
+      return flight.userId;
+    }
+
+    if (flight.user && typeof flight.user.id === "string" && flight.user.id) {
+      return flight.user.id;
+    }
+
+    const candidate = flight as FlightWithDetails & {
+      createdBy?: string | null;
+      created_by?: string | null;
+    };
+
+    if (typeof candidate.createdBy === "string" && candidate.createdBy) {
+      return candidate.createdBy;
+    }
+
+    if (typeof candidate.created_by === "string" && candidate.created_by) {
+      return candidate.created_by;
+    }
+
+    return null;
+  }, []);
+
+  const getFlightPermissions = useCallback(
+    (flight: FlightWithDetails) => {
+      const creatorId = getFlightCreatorId(flight);
+      const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
+      const canManage = Boolean(currentUserId && (isCreator || isTripAdmin));
+
+      return {
+        canEdit: canManage,
+        canDelete: canManage,
+        isAdminOverride: Boolean(canManage && !isCreator && isTripAdmin),
+      };
+    },
+    [currentUserId, getFlightCreatorId, isTripAdmin],
+  );
   const manualFlights = useMemo(
     () =>
       flights.filter((flight: FlightWithDetails) =>
@@ -3778,10 +3838,22 @@ function FlightCoordination({
         description: "The flight has been deleted.",
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      let title = "Unable to delete flight";
+      let description = "Please try again.";
+
+      if (error instanceof ApiError) {
+        description = error.message;
+        if (error.status === 403) {
+          title = "Permission denied";
+        }
+      } else if (error instanceof Error && error.message) {
+        description = error.message;
+      }
+
       toast({
-        title: "Unable to delete flight",
-        description: error?.message || "Please try again.",
+        title,
+        description,
         variant: "destructive",
       });
     },
@@ -4145,6 +4217,7 @@ function FlightCoordination({
                 currency: flight.currency ?? "USD",
                 fallback: "—",
               });
+              const permissions = getFlightPermissions(flight);
 
               return (
                 <Card key={flight.id}>
@@ -4168,9 +4241,11 @@ function FlightCoordination({
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEditFlight(flight)}>
-                        Edit
-                      </Button>
+                      {permissions.canEdit ? (
+                        <Button variant="outline" size="sm" onClick={() => handleEditFlight(flight)}>
+                          Edit
+                        </Button>
+                      ) : null}
                       <Button
                         variant="secondary"
                         size="sm"
@@ -4191,35 +4266,54 @@ function FlightCoordination({
                           "Propose to Group"
                         )}
                       </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                          >
-                            Delete
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete flight?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will remove the flight from your trip plan. This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteFlightMutation.mutate(flight.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                              disabled={deleteFlightMutation.isPending}
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      {permissions.canDelete ? (
+                        <AlertDialog>
+                          {permissions.isAdminOverride ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                  >
+                                    Delete
+                                  </Button>
+                                </AlertDialogTrigger>
+                              </TooltipTrigger>
+                              <TooltipContent>Admin</TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              >
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                          )}
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete flight?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will remove the flight from your trip plan. This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => deleteFlightMutation.mutate(flight.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                                disabled={deleteFlightMutation.isPending}
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      ) : null}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">

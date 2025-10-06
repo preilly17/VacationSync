@@ -2012,6 +2012,10 @@ export class DatabaseStorage implements IStorage {
 
   private coverPhotoColumnsInitialized = false;
 
+  private flightDeletionAuditInitPromise: Promise<void> | null = null;
+
+  private flightDeletionAuditInitialized = false;
+
   private async ensureWishListStructures(): Promise<void> {
     if (this.wishListInitialized) {
       return;
@@ -2333,6 +2337,45 @@ export class DatabaseStorage implements IStorage {
     })();
 
     await this.coverPhotoInitPromise;
+  }
+
+  private async ensureFlightDeletionAuditTable(): Promise<void> {
+    if (this.flightDeletionAuditInitialized) {
+      return;
+    }
+
+    if (this.flightDeletionAuditInitPromise) {
+      await this.flightDeletionAuditInitPromise;
+      return;
+    }
+
+    this.flightDeletionAuditInitPromise = (async () => {
+      await query(`
+        CREATE TABLE IF NOT EXISTS flight_deletion_audit (
+          id SERIAL PRIMARY KEY,
+          flight_id INTEGER NOT NULL,
+          trip_id INTEGER NOT NULL,
+          requester_id TEXT NOT NULL,
+          created_by TEXT NOT NULL,
+          deleted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_flight_deletion_audit_trip ON flight_deletion_audit(trip_id)`,
+      );
+
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_flight_deletion_audit_flight ON flight_deletion_audit(flight_id)`,
+      );
+    })();
+
+    try {
+      await this.flightDeletionAuditInitPromise;
+      this.flightDeletionAuditInitialized = true;
+    } finally {
+      this.flightDeletionAuditInitPromise = null;
+    }
   }
 
   private async upsertActivityInvites(
@@ -2844,7 +2887,7 @@ export class DatabaseStorage implements IStorage {
           FROM trip_members tm
           WHERE tm.trip_calendar_id = $1
             AND tm.user_id = $2
-            AND (tm.role = 'admin' OR tm.role = 'owner')
+            AND tm.role IN ('admin', 'owner', 'organizer')
         ) THEN TRUE
         ELSE FALSE
       END AS is_admin
@@ -6700,9 +6743,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async deleteFlight(flightId: number, userId: string): Promise<void> {
-    const { rows } = await query<{ user_id: string }>(
+    const { rows } = await query<{ user_id: string; trip_id: number }>(
       `
-      SELECT user_id
+      SELECT user_id, trip_id
       FROM flights
       WHERE id = $1
       `,
@@ -6714,9 +6757,33 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Flight not found");
     }
 
-    if (existing.user_id !== userId) {
-      throw new Error("Only the creator can delete this flight");
+    const tripId = existing.trip_id;
+    const createdBy = existing.user_id;
+
+    const [isAdmin, isMember] = await Promise.all([
+      this.isTripAdmin(tripId, userId),
+      this.isTripMember(tripId, userId),
+    ]);
+
+    if (!isMember && !isAdmin) {
+      throw new Error("Flight not found");
     }
+
+    const isCreator = createdBy === userId;
+
+    if (!isCreator && !isAdmin) {
+      throw new Error("Only the creator can delete this flight.");
+    }
+
+    await this.ensureFlightDeletionAuditTable();
+
+    await query(
+      `
+      INSERT INTO flight_deletion_audit (flight_id, trip_id, requester_id, created_by)
+      VALUES ($1, $2, $3, $4)
+      `,
+      [flightId, tripId, userId, createdBy],
+    );
 
     await query(
       `

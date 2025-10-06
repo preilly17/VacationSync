@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiRequest } from "@/lib/queryClient";
@@ -198,6 +199,71 @@ const getSearchFlightKey = (flight: any): string => {
   }
 
   return identifierParts.join("-");
+};
+
+const TRIP_ADMIN_ROLES = new Set(["admin", "owner", "organizer"]);
+
+type FlightOwnershipCandidate = Partial<FlightWithDetails> & {
+  user?: Partial<User> | null;
+  createdBy?: string | null;
+  created_by?: string | null;
+};
+
+const getFlightCreatorId = (flight: FlightOwnershipCandidate): string | null => {
+  if (typeof flight.userId === "string" && flight.userId) {
+    return flight.userId;
+  }
+
+  if (flight.user && typeof flight.user.id === "string" && flight.user.id) {
+    return flight.user.id;
+  }
+
+  if (typeof flight.createdBy === "string" && flight.createdBy) {
+    return flight.createdBy;
+  }
+
+  if (typeof flight.created_by === "string" && flight.created_by) {
+    return flight.created_by;
+  }
+
+  return null;
+};
+
+const isUserTripAdmin = (
+  trip: TripWithDetails | null | undefined,
+  userId: string | null | undefined,
+): boolean => {
+  if (!trip || !userId) {
+    return false;
+  }
+
+  if (trip.createdBy === userId) {
+    return true;
+  }
+
+  const membership = trip.members?.find((member) => member.userId === userId);
+  if (!membership) {
+    return false;
+  }
+
+  return TRIP_ADMIN_ROLES.has(membership.role);
+};
+
+const getFlightPermissions = (
+  flight: FlightOwnershipCandidate,
+  trip: TripWithDetails | null | undefined,
+  currentUserId: string | null | undefined,
+) => {
+  const creatorId = getFlightCreatorId(flight);
+  const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
+  const admin = isUserTripAdmin(trip, currentUserId);
+  const canManage = Boolean(currentUserId && (isCreator || admin));
+
+  return {
+    canEdit: canManage,
+    canDelete: canManage,
+    isAdminOverride: Boolean(canManage && !isCreator && admin),
+  };
 };
 
 const AIRLINE_IATA_MAP: Record<string, string> = {
@@ -423,6 +489,7 @@ function FlightSearchPanel({
   const [isLoadingArrivalAirports, setIsLoadingArrivalAirports] = useState(false);
   const [selectedDepartureAirport, setSelectedDepartureAirport] = useState(searchFormData.departure);
   const [selectedArrivalAirport, setSelectedArrivalAirport] = useState(searchFormData.arrival);
+  const currentUserId = user?.id ?? null;
 
   const createLocationFromForm = (direction: 'departure' | 'arrival'): LocationResult | null => {
     const code = direction === 'departure' ? searchFormData.departure : searchFormData.arrival;
@@ -1463,29 +1530,47 @@ function FlightSearchPanel({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {flights.map((flight) => (
-                      <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
-                        <div className="mb-2 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2">
-                              <Plane className="h-4 w-4 text-blue-600" />
-                              <span className="font-semibold">{flight.airline}</span>
-                              <span className="text-gray-500">{flight.flightNumber}</span>
+                    {flights.map((flight) => {
+                      const permissions = getFlightPermissions(flight, trip, currentUserId);
+
+                      return (
+                        <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
+                          <div className="mb-2 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <Plane className="h-4 w-4 text-blue-600" />
+                                <span className="font-semibold">{flight.airline}</span>
+                                <span className="text-gray-500">{flight.flightNumber}</span>
+                              </div>
+                              <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
                             </div>
-                            <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
+                            <div className="flex items-center gap-2">
+                              {permissions.canEdit ? (
+                                <Button variant="ghost" size="sm" onClick={() => onEditFlight(flight)}>
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              ) : null}
+                              {permissions.canDelete ? (
+                                permissions.isAdminOverride ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="sm" onClick={() => onDeleteFlight(flight.id)}>
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Admin</TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <Button variant="ghost" size="sm" onClick={() => onDeleteFlight(flight.id)}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )
+                              ) : null}
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" onClick={() => onEditFlight(flight)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm" onClick={() => onDeleteFlight(flight.id)}>
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
-                          <div className="flex items-center gap-2">
-                            <PlaneTakeoff className="h-4 w-4 text-green-600" />
+                          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+                            <div className="flex items-center gap-2">
+                              <PlaneTakeoff className="h-4 w-4 text-green-600" />
                             <div>
                               <div className="font-medium">{flight.departureAirport}</div>
                               <div className="text-gray-500">
@@ -1510,14 +1595,15 @@ function FlightSearchPanel({
                             </div>
                           </div>
                         </div>
-                        {flight.price != null && (
-                          <div className="mt-2 text-sm text-gray-600">
-                            Price: {formatPriceDisplay(flight.price, flight.currency)}
-                            {flight.seatClass && ` • ${flight.seatClass}`}
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                          {flight.price != null && (
+                            <div className="mt-2 text-sm text-gray-600">
+                              Price: {formatPriceDisplay(flight.price, flight.currency)}
+                              {flight.seatClass && ` • ${flight.seatClass}`}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -1681,13 +1767,16 @@ function FlightSearchPanel({
               </Card>
             ) : (
               <div className="grid gap-4">
-                {flights.map((flight) => (
-                  <Card key={flight.id} className="relative">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-lg">
-                            {flight.airline} {flight.flightNumber}
+                {flights.map((flight) => {
+                  const permissions = getFlightPermissions(flight, trip, currentUserId);
+
+                  return (
+                    <Card key={flight.id} className="relative">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <CardTitle className="text-lg">
+                              {flight.airline} {flight.flightNumber}
                           </CardTitle>
                           <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
                             <MapPin className="h-3 w-3" />
@@ -1699,39 +1788,55 @@ function FlightSearchPanel({
                         </Badge>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-sm text-muted-foreground">Departure</div>
-                          <div className="font-medium">
-                            {format(new Date(flight.departureTime), "MMM d, h:mm a")}
+                      <CardContent className="space-y-3">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <div className="text-sm text-muted-foreground">Departure</div>
+                            <div className="font-medium">
+                              {format(new Date(flight.departureTime), "MMM d, h:mm a")}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-sm text-muted-foreground">Arrival</div>
+                            <div className="font-medium">
+                              {format(new Date(flight.arrivalTime), "MMM d, h:mm a")}
+                            </div>
                           </div>
                         </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground">Arrival</div>
-                          <div className="font-medium">
-                            {format(new Date(flight.arrivalTime), "MMM d, h:mm a")}
+                        <div className="flex items-center justify-between pt-2">
+                          <div className="flex items-center gap-2">
+                            {permissions.canEdit ? (
+                              <Button variant="outline" size="sm" onClick={() => onEditFlight(flight)}>
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                            ) : null}
+                            {permissions.canDelete ? (
+                              permissions.isAdminOverride ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="outline" size="sm" onClick={() => onDeleteFlight(flight.id)}>
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Admin</TooltipContent>
+                                </Tooltip>
+                              ) : (
+                                <Button variant="outline" size="sm" onClick={() => onDeleteFlight(flight.id)}>
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )
+                            ) : null}
                           </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => onEditFlight(flight)}>
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => onDeleteFlight(flight.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                        {flight.price != null && (
-                          <div className="text-lg font-semibold text-green-600">
-                            {formatPriceDisplay(flight.price, flight.currency)}
-                          </div>
+                          {flight.price != null && (
+                            <div className="text-lg font-semibold text-green-600">
+                              {formatPriceDisplay(flight.price, flight.currency)}
+                            </div>
                         )}
                       </div>
                     </CardContent>
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </TabsContent>
@@ -1871,6 +1976,7 @@ export default function FlightsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
+  const currentUserId = user?.id ?? null;
 
   const handleFlightSearch = useCallback(async (trigger: FlightSearchTrigger = "manual") => {
     if (!searchFormData.departure || !searchFormData.arrival || !searchFormData.departureDate) {
@@ -2218,7 +2324,7 @@ export default function FlightsPage() {
   // Ensure flights is always an array
   const flightsArray = Array.isArray(flights) ? flights : [];
 
-  const { data: trip } = useQuery({
+  const { data: trip } = useQuery<TripWithDetails | undefined>({
     queryKey: [`/api/trips/${tripId}`],
     enabled: !!tripId,
   });
@@ -2414,10 +2520,22 @@ export default function FlightsPage() {
         description: "Flight deleted successfully!",
       });
     },
-    onError: () => {
+    onError: (error: unknown) => {
+      let title = "Error";
+      let description = "Failed to delete flight";
+
+      if (error instanceof ApiError) {
+        description = error.message;
+        if (error.status === 403) {
+          title = "Permission denied";
+        }
+      } else if (error instanceof Error && error.message) {
+        description = error.message;
+      }
+
       toast({
-        title: "Error",
-        description: "Failed to delete flight",
+        title,
+        description,
         variant: "destructive",
       });
     },
@@ -3143,29 +3261,55 @@ export default function FlightsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {flightsArray.map((flight: any) => (
-                  <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
-                    <div className="mb-2 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2">
-                          <Plane className="h-4 w-4 text-blue-600" />
-                          <span className="font-semibold">{flight.airline}</span>
-                          <span className="text-gray-500">{flight.flightNumber}</span>
+                {flightsArray.map((flight: any) => {
+                  const permissions = getFlightPermissions(flight, trip, currentUserId);
+
+                  return (
+                    <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
+                      <div className="mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            <Plane className="h-4 w-4 text-blue-600" />
+                            <span className="font-semibold">{flight.airline}</span>
+                            <span className="text-gray-500">{flight.flightNumber}</span>
+                          </div>
+                          <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
                         </div>
-                        <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
+                        <div className="flex items-center gap-2">
+                          {permissions.canEdit ? (
+                            <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                          {permissions.canDelete ? (
+                            permissions.isAdminOverride ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => deleteFlightMutation.mutate(flight.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Admin</TooltipContent>
+                              </Tooltip>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => deleteFlightMutation.mutate(flight.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )
+                          ) : null}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => deleteFlightMutation.mutate(flight.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
-                      <div className="flex items-center gap-2">
-                        <PlaneTakeoff className="h-4 w-4 text-green-600" />
+                      <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
+                        <div className="flex items-center gap-2">
+                          <PlaneTakeoff className="h-4 w-4 text-green-600" />
                         <div>
                           <div className="font-medium">{flight.departureAirport}</div>
                           <div className="text-gray-500">
@@ -3190,14 +3334,15 @@ export default function FlightsPage() {
                         </div>
                       </div>
                     </div>
-                    {flight.price != null && (
-                      <div className="mt-2 text-sm text-gray-600">
-                        Price: {formatPriceDisplay(flight.price, flight.currency)}
-                        {flight.seatClass && ` • ${flight.seatClass}`}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                        {flight.price != null && (
+                          <div className="mt-2 text-sm text-gray-600">
+                            Price: {formatPriceDisplay(flight.price, flight.currency)}
+                            {flight.seatClass && ` • ${flight.seatClass}`}
+                          </div>
+                        )}
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
