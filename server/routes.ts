@@ -971,7 +971,7 @@ export function setupRoutes(app: Express) {
   app.post("/api/trips", async (req: any, res) => {
     try {
       let userId = getRequestUserId(req);
-      
+
       // Development bypass - use demo user
       if (process.env.NODE_ENV === 'development' && !req.isAuthenticated()) {
         console.log("Development mode: using demo user for trip creation");
@@ -983,19 +983,84 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      // Parse and convert dates
-      const tripData = {
-        ...req.body,
-        startDate: new Date(req.body.startDate),
-        endDate: new Date(req.body.endDate),
+      const parseDate = (value: unknown): Date | null => {
+        if (value instanceof Date) {
+          return Number.isNaN(value.getTime()) ? null : value;
+        }
+
+        if (typeof value === "string" && value.trim().length > 0) {
+          const parsed = new Date(value);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        return null;
       };
 
-      const validatedData = insertTripCalendarSchema.parse(tripData);
-      const trip = await storage.createTrip(validatedData, userId);
+      const startDate = parseDate(req.body?.startDate);
+      const endDate = parseDate(req.body?.endDate);
+
+      if (!startDate) {
+        return res.status(400).json({ message: "Start date must be a valid date." });
+      }
+
+      if (!endDate) {
+        return res.status(400).json({ message: "End date must be a valid date." });
+      }
+
+      if (endDate < startDate) {
+        return res.status(400).json({ message: "End date cannot be before the start date." });
+      }
+
+      const tripData = {
+        ...req.body,
+        name: typeof req.body?.name === "string" ? req.body.name.trim() : req.body?.name,
+        destination:
+          typeof req.body?.destination === "string" ? req.body.destination.trim() : req.body?.destination,
+        startDate,
+        endDate,
+      };
+
+      const validationResult = insertTripCalendarSchema.safeParse(tripData);
+
+      if (!validationResult.success) {
+        const issues = validationResult.error.issues ?? [];
+        const firstIssue = issues[0];
+        return res.status(400).json({
+          message: firstIssue?.message ?? "Trip details are invalid.",
+          errors: issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        });
+      }
+
+      const trip = await storage.createTrip(validationResult.data, userId);
 
       res.json(trip);
     } catch (error: unknown) {
       console.error("Error creating trip:", error);
+      if (error instanceof z.ZodError) {
+        const issues = error.issues ?? [];
+        const firstIssue = issues[0];
+        return res.status(400).json({
+          message: firstIssue?.message ?? "Trip details are invalid.",
+          errors: issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        });
+      }
+
+      if (isPostgresConstraintViolation(error)) {
+        return res.status(400).json({
+          message: "We couldn't save this trip because some details were invalid.",
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(500).json({ message: error.message || "Failed to create trip" });
+      }
+
       res.status(500).json({ message: "Failed to create trip" });
     }
   });
