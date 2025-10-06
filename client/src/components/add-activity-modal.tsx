@@ -233,7 +233,7 @@ export function AddActivityModal({
     [tripId],
   );
   const calendarActivitiesQueryKey = useMemo(
-    () => ["/api/trips", tripId.toString(), "activities"],
+    () => ["/api/trips", tripId, "activities"],
     [tripId],
   );
 
@@ -394,13 +394,13 @@ export function AddActivityModal({
 
         queryClient.invalidateQueries({ queryKey: proposalActivitiesQueryKey });
         queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
+        queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
       } else {
         updateCache(scheduledActivitiesQueryKey);
-        updateCache(["/api/trips", tripId.toString(), "activities"]);
+        updateCache(calendarActivitiesQueryKey);
 
         queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "activities"] });
+        queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
       }
 
       toast({
