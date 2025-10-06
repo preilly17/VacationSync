@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,6 +61,7 @@ export default function Activities() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -276,7 +277,7 @@ export default function Activities() {
   const handleProposeActivity = async (activity: Activity) => {
     if (!tripId) {
       toast({
-        title: "Unable to create activity",
+        title: "Unable to propose activity",
         description: "We couldn't determine which trip to update.",
         variant: "destructive",
       });
@@ -335,18 +336,22 @@ export default function Activities() {
         maxCapacity: 10,
         category: normalizedCategory,
         attendeeIds,
-        type: "SCHEDULED",
+        type: "PROPOSE",
       });
 
-      await apiRequest(`/api/trips/${tripId}/activities`, {
+      await apiRequest(`/api/trips/${tripId}/proposals/activities`, {
         method: "POST",
         body: payload,
       });
 
       toast({
-        title: "Activity created!",
-        description: "Your activity has been added to the trip calendar.",
+        title: "Activity proposed!",
+        description: "Your idea has been shared with the group for feedback.",
       });
+
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
     } catch (error) {
       if (error instanceof ApiError) {
         if (error.status === 401 || error.status === 403) {
@@ -369,7 +374,7 @@ export default function Activities() {
 
         const data = error.data as { message?: string } | undefined;
         toast({
-          title: "Unable to create activity",
+          title: "Unable to propose activity",
           description: data?.message ?? error.message,
           variant: "destructive",
         });
@@ -378,7 +383,7 @@ export default function Activities() {
 
       if (error instanceof Error) {
         toast({
-          title: "Unable to create activity",
+          title: "Unable to propose activity",
           description: error.message,
           variant: "destructive",
         });
