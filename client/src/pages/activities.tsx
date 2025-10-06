@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
+import { AddActivityModal, type ActivityComposerPrefill } from "@/components/add-activity-modal";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
 import {
   ArrowLeft,
@@ -34,10 +35,8 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
-import { ApiError, apiRequest } from "@/lib/queryClient";
-import { buildActivitySubmission } from "@/lib/activitySubmission";
 import { ACTIVITY_CATEGORY_VALUES } from "@shared/activityValidation";
-import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
+import type { ActivityType, ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
 
 interface Activity {
@@ -61,7 +60,6 @@ export default function Activities() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -82,7 +80,12 @@ export default function Activities() {
   const [durationFilter, setDurationFilter] = useState("all");
   const [ratingFilter, setRatingFilter] = useState("all");
   const [freeCancellationOnly, setFreeCancellationOnly] = useState(false);
+  const [showActivityComposer, setShowActivityComposer] = useState(false);
+  const [activityComposerPrefill, setActivityComposerPrefill] = useState<ActivityComposerPrefill | null>(null);
+  const [activityComposerMode, setActivityComposerMode] = useState<ActivityType>("PROPOSE");
+  const [activityComposerDate, setActivityComposerDate] = useState<Date | null>(null);
   const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
+  const parsedTripId = useMemo(() => (tripId ? Number.parseInt(tripId, 10) || 0 : 0), [tripId]);
   const [shouldAutoSearch, setShouldAutoSearch] = useState(false);
   useEffect(() => {
     if (isSearchPanelOpen || typeof window === "undefined") {
@@ -274,47 +277,24 @@ export default function Activities() {
     [handleSearch],
   );
 
-  const handleProposeActivity = async (activity: Activity) => {
-    if (!tripId) {
-      toast({
-        title: "Unable to propose activity",
-        description: "We couldn't determine which trip to update.",
-        variant: "destructive",
-      });
-      return;
-    }
+  const handleProposeActivity = useCallback(
+    (activity: Activity) => {
+      if (!parsedTripId) {
+        toast({
+          title: "Unable to propose activity",
+          description: "We couldn't determine which trip to update.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    const permissionErrorMessage = "You don’t have permission to perform this action.";
-    const serverErrorMessage = "Something went wrong on our side. Please try again.";
-    const networkErrorMessage = "We couldn’t reach the server. Check your connection and try again.";
-
-    try {
-      const now = new Date();
-      const startDate = now.toISOString().split("T")[0];
-      const startTime = "12:00";
-
-      const attendeeIds = trip?.members
-        ? Array.from(
-            new Set(
-              trip.members
-                .map((member) => member.userId)
-                .filter((memberId): memberId is string => Boolean(memberId))
-                .concat(user?.id ? [user.id] : []),
-            ),
-          )
-        : user
-          ? [user.id]
-          : [];
-
-      const sanitizedCost = (() => {
-        if (!activity.price) return null;
-        const numeric = Number.parseFloat(activity.price.replace(/[^0-9.]/g, ""));
-        return Number.isFinite(numeric) ? numeric : null;
-      })();
-
-      const parsedTripId = Number.parseInt(tripId, 10);
-      if (Number.isNaN(parsedTripId)) {
-        throw new Error("We couldn't determine which trip to update.");
+      if (!trip) {
+        toast({
+          title: "Trip still loading",
+          description: "Please wait a moment and try proposing the activity again.",
+          variant: "destructive",
+        });
+        return;
       }
 
       const normalizedCategory = (() => {
@@ -324,79 +304,34 @@ export default function Activities() {
           : "other";
       })();
 
-      const { payload } = buildActivitySubmission({
-        tripId: parsedTripId,
+      const defaultDate = (() => {
+        if (dateRange?.from) {
+          return dateRange.from;
+        }
+
+        if (trip.startDate) {
+          const parsed = new Date(trip.startDate);
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+
+        return null;
+      })();
+
+      setActivityComposerPrefill({
         name: activity.name,
-        description: activity.description ?? "",
-        date: startDate,
-        startTime,
-        endTime: null,
-        location: activity.location ?? "",
-        cost: sanitizedCost,
-        maxCapacity: 10,
+        description: activity.description ?? undefined,
+        location: activity.location ?? undefined,
         category: normalizedCategory,
-        attendeeIds,
+        cost: activity.price ?? undefined,
         type: "PROPOSE",
       });
-
-      await apiRequest(`/api/trips/${tripId}/proposals/activities`, {
-        method: "POST",
-        body: payload,
-      });
-
-      toast({
-        title: "Activity proposed!",
-        description: "Your idea has been shared with the group for feedback.",
-      });
-
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
-    } catch (error) {
-      if (error instanceof ApiError) {
-        if (error.status === 401 || error.status === 403) {
-          toast({
-            title: "Permission required",
-            description: permissionErrorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status >= 500) {
-          toast({
-            title: "We ran into a problem",
-            description: serverErrorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        const data = error.data as { message?: string } | undefined;
-        toast({
-          title: "Unable to propose activity",
-          description: data?.message ?? error.message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (error instanceof Error) {
-        toast({
-          title: "Unable to propose activity",
-          description: error.message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      toast({
-        title: "Request failed",
-        description: networkErrorMessage,
-        variant: "destructive",
-      });
-    }
-  };
+      setActivityComposerMode("PROPOSE");
+      setActivityComposerDate(defaultDate);
+      setShowActivityComposer(true);
+      setShowDetailsDialog(false);
+    },
+    [parsedTripId, trip, dateRange, toast],
+  );
 
   if (authLoading || tripLoading || activitiesLoading) {
     return (
@@ -1044,7 +979,7 @@ export default function Activities() {
                         provider: selectedActivity.provider || 'Amadeus'
                       };
 
-                      storeBookingIntent('activity', activityData, parseInt(tripId!));
+                      storeBookingIntent('activity', activityData, parsedTripId);
                       window.open(selectedActivity.bookingUrl, '_blank');
                       setShowBookingDialog(false);
                       toast({
@@ -1064,13 +999,32 @@ export default function Activities() {
         </DialogContent>
       </Dialog>
 
+      <AddActivityModal
+        open={showActivityComposer}
+        onOpenChange={(open) => {
+          setShowActivityComposer(open);
+          if (!open) {
+            setActivityComposerPrefill(null);
+            setActivityComposerDate(null);
+            setActivityComposerMode("PROPOSE");
+          }
+        }}
+        tripId={parsedTripId}
+        selectedDate={activityComposerDate}
+        members={trip?.members ?? []}
+        defaultMode={activityComposerMode}
+        allowModeToggle
+        currentUserId={user?.id}
+        prefill={activityComposerPrefill}
+      />
+
       {/* Booking Confirmation Modal */}
       <BookingConfirmationModal
         isOpen={showModal}
         onClose={closeModal}
         bookingType={bookingData?.type || 'activity'}
         bookingData={bookingData?.data}
-        tripId={parseInt(tripId!)}
+        tripId={parsedTripId}
         onSuccess={() => {
           // You could refetch activities data here if needed
           console.log('Activity booking confirmed');
