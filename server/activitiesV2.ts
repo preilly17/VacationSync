@@ -16,11 +16,14 @@ import {
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-const ensureActivitiesTablePromise = (async () => {
-  await query(`
-    CREATE TABLE IF NOT EXISTS activities_v2 (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      trip_id TEXT NOT NULL,
+const shouldEnsureTables = process.env.NODE_ENV !== "test";
+
+const ensureActivitiesTablePromise = shouldEnsureTables
+  ? (async () => {
+    await query(`
+      CREATE TABLE IF NOT EXISTS activities_v2 (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        trip_id TEXT NOT NULL,
       creator_id TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT NULL,
@@ -42,10 +45,10 @@ const ensureActivitiesTablePromise = (async () => {
     )
   `);
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS activity_invitees_v2 (
-      activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
-      user_id TEXT NOT NULL,
+    await query(`
+      CREATE TABLE IF NOT EXISTS activity_invitees_v2 (
+        activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'participant',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -53,26 +56,27 @@ const ensureActivitiesTablePromise = (async () => {
     )
   `);
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS activity_votes_v2 (
-      activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
-      user_id TEXT NOT NULL,
+    await query(`
+      CREATE TABLE IF NOT EXISTS activity_votes_v2 (
+        activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
       value TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (activity_id, user_id)
     )
   `);
 
-  await query(`
-    CREATE TABLE IF NOT EXISTS activity_rsvps_v2 (
-      activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
-      user_id TEXT NOT NULL,
-      response TEXT NOT NULL,
-      responded_at TIMESTAMPTZ NULL,
-      PRIMARY KEY (activity_id, user_id)
-    )
-  `);
-})();
+    await query(`
+      CREATE TABLE IF NOT EXISTS activity_rsvps_v2 (
+        activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL,
+        response TEXT NOT NULL,
+        responded_at TIMESTAMPTZ NULL,
+        PRIMARY KEY (activity_id, user_id)
+      )
+    `);
+  })()
+  : Promise.resolve();
 
 const toTimeValue = (value: string): number => {
   const match = TIME_PATTERN.exec(value);
