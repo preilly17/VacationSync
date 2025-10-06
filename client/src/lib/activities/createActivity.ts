@@ -79,15 +79,23 @@ const duplicateActivityErrorMessage = "This looks like a duplicate activity.";
 
 const serverFieldMap: Partial<Record<string, keyof ActivityCreateFormValues>> = {
   name: "name",
+  title: "name",
   description: "description",
   startTime: "startTime",
+  start_time: "startTime",
   endTime: "endTime",
+  end_time: "endTime",
   location: "location",
   cost: "cost",
+  cost_per_person: "cost",
   maxCapacity: "maxCapacity",
+  max_participants: "maxCapacity",
   category: "category",
   attendeeIds: "attendeeIds",
+  invitee_ids: "attendeeIds",
   startDate: "startDate",
+  date: "startDate",
+  mode: "type",
 };
 
 const createAnalyticsTracker = () => {

@@ -24,6 +24,8 @@ interface BaseActivitySubmissionInput {
   category: string;
   attendeeIds: Array<string | number>;
   type: ActivityType;
+  timezone?: string | null;
+  idempotencyKey?: string | null;
 }
 
 interface ActivitySubmissionPayload {
@@ -38,6 +40,24 @@ interface ActivitySubmissionPayload {
   category: ActivityCategoryValue;
   attendeeIds: string[];
   type: ActivityType;
+  /**
+   * Fields required by the Activities V2 API. Duplicates are intentional so the
+   * server can consume either camelCase or snake_case payloads while we phase
+   * out the legacy endpoint.
+   */
+  title: string;
+  mode: "scheduled" | "proposed";
+  date: string;
+  start_time: string;
+  end_time: string | null;
+  timezone: string;
+  timeZone: string;
+  cost_per_person: number | null;
+  max_participants: number | null;
+  invitee_ids: string[];
+  idempotency_key: string;
+  idempotencyKey: string;
+  startDate: string;
 }
 
 export interface ActivitySubmissionResult {
@@ -92,6 +112,47 @@ const buildDateTime = (date: Date, time: string, label: string): Date => {
     throw new Error(`${label} must be a valid date/time.`);
   }
   return combined;
+};
+
+const resolveTimezone = (explicit?: string | null): string => {
+  const candidate = typeof explicit === "string" ? explicit.trim() : "";
+  if (candidate.length > 0) {
+    return candidate;
+  }
+
+  if (typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function") {
+    try {
+      const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (resolved && resolved.trim().length > 0) {
+        return resolved;
+      }
+    } catch (error) {
+      // Swallow resolution errors and fall back to UTC.
+    }
+  }
+
+  return "UTC";
+};
+
+const generateIdempotencyKey = (provided?: string | null): string => {
+  const candidate = typeof provided === "string" ? provided.trim() : "";
+  if (candidate.length > 0) {
+    return candidate;
+  }
+
+  try {
+    const globalCrypto = typeof globalThis !== "undefined" ? (globalThis as typeof globalThis & {
+      crypto?: { randomUUID?: () => string };
+    }).crypto : undefined;
+
+    if (globalCrypto && typeof globalCrypto.randomUUID === "function") {
+      return globalCrypto.randomUUID();
+    }
+  } catch (error) {
+    // Swallow generation errors and fall back to a timestamp-based key.
+  }
+
+  return `activity-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
 export function buildActivitySubmission(input: BaseActivitySubmissionInput): ActivitySubmissionResult {
@@ -153,6 +214,10 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
   const trimmedLocation = location.length > 0 ? location : null;
 
   const type = input.type === "PROPOSE" ? "PROPOSE" : "SCHEDULED";
+  const mode = type === "PROPOSE" ? "proposed" : "scheduled";
+  const timezone = resolveTimezone(input.timezone);
+  const idempotencyKey = generateIdempotencyKey(input.idempotencyKey);
+  const startDate = format(baseDate, "yyyy-MM-dd");
 
   return {
     payload: {
@@ -167,6 +232,19 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
       category: categoryResult.value,
       attendeeIds: attendeeResult.value,
       type,
+      title: name,
+      mode,
+      date: startDate,
+      start_time: startTimeString,
+      end_time: endTimeString,
+      timezone,
+      timeZone: timezone,
+      cost_per_person: costResult.value,
+      max_participants: capacityResult.value,
+      invitee_ids: attendeeResult.value,
+      idempotency_key: idempotencyKey,
+      idempotencyKey,
+      startDate,
     },
   };
 }

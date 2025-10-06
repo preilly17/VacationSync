@@ -811,12 +811,6 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Simple test route to verify Express is working
-  app.get("/api/test", (req, res) => {
-    console.log("Test route called");
-    res.json({ message: "API is working", timestamp: new Date().toISOString() });
-  });
-
   // 🚨 SECURITY FIX: Google Maps Photo Proxy Endpoint
   // This endpoint prevents API key exposure by proxying photo requests server-side
   app.get("/api/gmaps/photo", async (req, res) => {
