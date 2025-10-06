@@ -101,7 +101,7 @@ export const createActivityRequestSchema = z.object({
       const parsed = typeof value === "number" ? value : Number(value);
       return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
     }),
-  invitee_ids: z.array(z.string().min(1)).min(1),
+  invitee_ids: z.array(z.string().min(1)).default([]),
   idempotency_key: z.string().min(1),
 });
 

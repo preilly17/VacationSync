@@ -2248,13 +2248,16 @@ export function setupRoutes(app: Express) {
           attendeeCount: createPayload.invitee_ids.length,
         };
 
-        const missingRequired =
-          createPayload.title.trim().length === 0 ||
-          createPayload.date.trim().length === 0 ||
-          createPayload.start_time.trim().length === 0 ||
-          createPayload.timezone.trim().length === 0 ||
-          createPayload.invitee_ids.length === 0 ||
-          createPayload.idempotency_key.trim().length === 0;
+        const missingFields: string[] = [];
+        if (createPayload.title.trim().length === 0) missingFields.push("title");
+        if (createPayload.date.trim().length === 0) missingFields.push("date");
+        if (createPayload.start_time.trim().length === 0) missingFields.push("start_time");
+        if (createPayload.timezone.trim().length === 0) missingFields.push("timezone");
+        if (createPayload.idempotency_key.trim().length === 0) {
+          missingFields.push("idempotency_key");
+        }
+
+        const missingRequired = missingFields.length > 0;
 
         const metricMode = requestMode === "proposed" ? "PROPOSE" : "SCHEDULED";
 
@@ -2266,18 +2269,18 @@ export function setupRoutes(app: Express) {
             tripId,
             error: "missing_required_fields",
             mode: metricMode,
-            validationFields: ["title", "date", "start_time", "timezone", "invitee_ids"],
+            validationFields: missingFields,
             payloadSummary,
           });
           trackActivityCreationMetric({
             mode: metricMode,
             outcome: "failure",
             reason: "validation",
-            validationFields: ["title", "date", "start_time", "timezone", "invitee_ids"],
+            validationFields: missingFields,
           });
 
           res.status(400).json({
-            message: "Please provide a title, date, start time, and at least one invitee.",
+            message: "Please provide a title, date, start time, and timezone.",
             correlationId,
           });
           return;
