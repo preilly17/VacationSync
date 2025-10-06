@@ -5,7 +5,15 @@ import { useToast } from "@/hooks/use-toast";
 import { buildActivitySubmission } from "@/lib/activitySubmission";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { CLIENT_VALIDATION_FALLBACK_MESSAGE, mapClientErrorToValidation } from "./clientValidation";
-import type { ActivityType, ActivityWithDetails, TripMember, User } from "@shared/schema";
+import type {
+  ActivityAcceptance,
+  ActivityInvite,
+  ActivityInviteStatus,
+  ActivityType,
+  ActivityWithDetails,
+  TripMember,
+  User,
+} from "@shared/schema";
 
 export interface ActivityCreateFormValues {
   name: string;
@@ -152,31 +160,43 @@ const buildOptimisticActivity = (
     attendeeLookup.set(String(member.userId), member);
   });
 
-  const invites = values.attendeeIds.map((attendeeId, index) => {
-    const member = attendeeLookup.get(String(attendeeId));
-    const inviteUser = member?.user ?? poster;
-    const isCreator = String(attendeeId) === String(currentUserId ?? "");
-    return {
-      id: optimisticId * 100 - index,
-      activityId: optimisticId,
-      userId: String(attendeeId),
-      status: values.type === "SCHEDULED" && isCreator ? "accepted" : "pending",
-      respondedAt: values.type === "SCHEDULED" && isCreator ? now : null,
-      createdAt: now,
-      updatedAt: now,
-      user: inviteUser,
-    };
-  });
+  const invites: (ActivityInvite & { user: User })[] = values.attendeeIds.map(
+    (attendeeId, index): ActivityInvite & { user: User } => {
+      const member = attendeeLookup.get(String(attendeeId));
+      const inviteUser = member?.user ?? poster;
+      const isCreator = String(attendeeId) === String(currentUserId ?? "");
+      const status: ActivityInviteStatus =
+        values.type === "SCHEDULED" && isCreator ? "accepted" : "pending";
+      return {
+        id: optimisticId * 100 - index,
+        activityId: optimisticId,
+        userId: String(attendeeId),
+        status,
+        respondedAt: status === "accepted" ? now : null,
+        createdAt: now,
+        updatedAt: now,
+        user: inviteUser,
+      };
+    },
+  );
 
-  const acceptances = invites
+  const acceptances: (ActivityAcceptance & { user: User })[] = invites
     .filter((invite) => invite.status === "accepted")
-    .map((invite, index) => ({
-      id: optimisticId * 1000 - index,
-      activityId: optimisticId,
-      userId: invite.userId,
-      acceptedAt: now,
-      user: invite.user,
-    }));
+    .map(
+      (invite, index): ActivityAcceptance & { user: User } => ({
+        id: optimisticId * 1000 - index,
+        activityId: optimisticId,
+        userId: invite.userId,
+        acceptedAt: now,
+        user: invite.user,
+      }),
+    );
+
+  const currentUserInvite = invites.find(
+    (invite) => invite.userId === String(currentUserId ?? ""),
+  );
+  const currentUserResponded =
+    currentUserInvite !== undefined && currentUserInvite.status !== "pending";
 
   return {
     id: optimisticId,
@@ -203,9 +223,9 @@ const buildOptimisticActivity = (
     declinedCount: 0,
     waitlistedCount: 0,
     rsvpCloseTime: null,
-    currentUserInvite: invites.find((invite) => invite.userId === String(currentUserId ?? "")) ?? null,
-    isAccepted: acceptances.some((invite) => invite.userId === String(currentUserId ?? "")),
-    hasResponded: acceptances.some((invite) => invite.userId === String(currentUserId ?? "")),
+    currentUserInvite,
+    isAccepted: currentUserInvite?.status === "accepted" || false,
+    hasResponded: currentUserResponded,
   } satisfies ActivityWithDetails;
 };
 
@@ -326,6 +346,10 @@ export function useCreateActivity({
         return;
       }
 
+      if (!context) {
+        return;
+      }
+
       const replaceOptimisticActivity = (queryKey: QueryKey, shouldReplace: boolean) => {
         if (!shouldReplace) return;
         queryClient.setQueryData<ActivityWithDetails[]>(queryKey, (existing = []) => {
@@ -365,13 +389,13 @@ export function useCreateActivity({
         return;
       }
 
-      if (context.previousScheduled) {
+      if (context?.previousScheduled) {
         queryClient.setQueryData(scheduledActivitiesQueryKey, context.previousScheduled);
       }
-      if (context.previousProposals) {
+      if (context?.previousProposals) {
         queryClient.setQueryData(proposalActivitiesQueryKey, context.previousProposals);
       }
-      if (context.previousCalendar) {
+      if (context?.previousCalendar) {
         queryClient.setQueryData(calendarActivitiesQueryKey, context.previousCalendar);
       }
 

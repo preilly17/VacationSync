@@ -1175,21 +1175,38 @@ class LocationService {
       ORDER BY population DESC
       LIMIT $2
     `;
-    const rows = (await query(sql, [queryText, limit])).rows;
-    return rows.map(row => this.normalizeResultShape({
-      id: row.geoname_id ?? row.name,
-      geonameId: row.geoname_id,
-      name: row.name,
-      type: 'CITY',
-      countryCode: row.country_code,
-      latitude: row.latitude,
-      longitude: row.longitude,
-      population: row.population,
-      timeZone: row.timezone,
-      displayName: `${row.name}, ${row.country_code}`,
-      detailedName: `${row.name}, ${row.country_code}`,
-      source: 'cities-db',
-    }));
+    const { rows } = await query<{
+      geoname_id: number | string | null;
+      name: string;
+      country_code: string | null;
+      latitude: number | string | null;
+      longitude: number | string | null;
+      population: number | string | null;
+      timezone: string | null;
+    }>(sql, [queryText, limit]);
+
+    return rows.map((row) => {
+      const countryCode = row.country_code ?? undefined;
+      const displayName = countryCode ? `${row.name}, ${countryCode}` : row.name;
+
+      const rawId = row.geoname_id ?? row.name;
+      const normalizedId = typeof rawId === 'number' ? String(rawId) : rawId;
+
+      return this.normalizeResultShape({
+        id: normalizedId,
+        geonameId: row.geoname_id ?? undefined,
+        name: row.name,
+        type: 'CITY',
+        countryCode,
+        latitude: this.normalizeNumber(row.latitude) ?? undefined,
+        longitude: this.normalizeNumber(row.longitude) ?? undefined,
+        population: this.normalizeNumber(row.population) ?? undefined,
+        timeZone: row.timezone ?? undefined,
+        displayName,
+        detailedName: displayName,
+        source: 'cities-db',
+      });
+    });
   }
 
   private async queryAirports(queryText: string, limit: number) {
@@ -1237,18 +1254,21 @@ class LocationService {
       ? `${row.name}, ${row.country_code}`
       : row.name;
 
+    const rawId = row.geoname_id ?? row.name;
+    const normalizedId = typeof rawId === 'number' ? String(rawId) : rawId;
+
     return this.normalizeResultShape({
-      id: row.geoname_id ?? row.name,
+      id: normalizedId,
       type: 'CITY',
       name: row.name,
       displayName,
       detailedName: displayName,
       cityName: row.name,
       countryCode: row.country_code ?? undefined,
-      latitude: row.latitude ?? undefined,
-      longitude: row.longitude ?? undefined,
+      latitude: this.normalizeNumber(row.latitude) ?? undefined,
+      longitude: this.normalizeNumber(row.longitude) ?? undefined,
       geonameId: row.geoname_id ?? undefined,
-      population: row.population ?? undefined,
+      population: this.normalizeNumber(row.population) ?? undefined,
       timeZone: row.timezone ?? undefined,
       source: 'cities-db',
     });
@@ -1266,6 +1286,8 @@ class LocationService {
     const airportName = row.name ?? row.iata_code ?? row.icao_code ?? 'Unknown Airport';
     const iataCode = row.iata_code ?? undefined;
     const displayName = iataCode ? `${airportName} (${iataCode})` : airportName;
+    const latitude = this.normalizeNumber(row.latitude);
+    const longitude = this.normalizeNumber(row.longitude);
 
     return this.normalizeResultShape({
       id: iataCode ?? row.icao_code ?? airportName,
@@ -1277,8 +1299,8 @@ class LocationService {
       icaoCode: row.icao_code ?? undefined,
       cityName: row.municipality ?? undefined,
       countryCode: row.iso_country ?? undefined,
-      latitude: row.latitude ?? undefined,
-      longitude: row.longitude ?? undefined,
+      latitude: latitude ?? undefined,
+      longitude: longitude ?? undefined,
       source: 'airports-db',
     });
   }
@@ -1544,7 +1566,7 @@ class LocationService {
 
       const results: ScoredResult[] = [];
 
-      for (const entry of aggregated.values()) {
+      for (const entry of Array.from(aggregated.values())) {
         const countryName = entry.name ?? entry.code ?? 'Unknown Country';
         const countryCode = entry.code;
         const displayName = countryName && countryCode
