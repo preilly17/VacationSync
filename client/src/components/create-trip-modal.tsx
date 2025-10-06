@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -101,41 +101,105 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
     createTripMutation.mutate(data);
   };
 
-  const handleDestinationSelect = (location: any) => {
-    setSelectedDestination(location);
-    form.setValue("destination", location.displayName || location.name);
-    const geonameIdValue =
-      location?.geonameId !== undefined && location?.geonameId !== null
-        ? Number(location.geonameId)
-        : null;
-    form.setValue("geonameId", Number.isFinite(geonameIdValue ?? NaN) ? geonameIdValue : null);
-    form.setValue("cityName", location?.cityName ?? location?.name ?? null);
-    form.setValue(
-      "countryName",
-      location?.countryName ?? location?.country ?? null,
-    );
-    const latitudeValue =
-      typeof location?.latitude === "number"
-        ? location.latitude
-        : location?.latitude
-        ? Number(location.latitude)
-        : null;
-    const longitudeValue =
-      typeof location?.longitude === "number"
-        ? location.longitude
-        : location?.longitude
-        ? Number(location.longitude)
-        : null;
-    form.setValue("latitude", Number.isFinite(latitudeValue ?? NaN) ? latitudeValue : null);
-    form.setValue("longitude", Number.isFinite(longitudeValue ?? NaN) ? longitudeValue : null);
-    const populationValue =
-      typeof location?.population === "number"
-        ? location.population
-        : location?.population
-        ? Number(location.population)
-        : null;
-    form.setValue("population", Number.isFinite(populationValue ?? NaN) ? populationValue : null);
-  };
+  const destinationValue = form.watch("destination");
+
+  useEffect(() => {
+    form.register("destination");
+    return () => {
+      form.unregister("destination");
+    };
+  }, [form]);
+
+  const resetLocationMetadata = useCallback(() => {
+    form.setValue("geonameId", null);
+    form.setValue("cityName", null);
+    form.setValue("countryName", null);
+    form.setValue("latitude", null);
+    form.setValue("longitude", null);
+    form.setValue("population", null);
+  }, [form]);
+
+  const handleDestinationSelect = useCallback(
+    (location: any) => {
+      setSelectedDestination(location);
+
+      const destinationText = location?.displayName || location?.label || location?.name || "";
+      form.setValue("destination", destinationText, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      form.clearErrors("destination");
+
+      const geonameIdValue =
+        location?.geonameId !== undefined && location?.geonameId !== null
+          ? Number(location.geonameId)
+          : null;
+      form.setValue("geonameId", Number.isFinite(geonameIdValue ?? NaN) ? geonameIdValue : null);
+      form.setValue("cityName", location?.cityName ?? location?.name ?? null);
+      form.setValue(
+        "countryName",
+        location?.countryName ?? location?.country ?? null,
+      );
+      const latitudeValue =
+        typeof location?.latitude === "number"
+          ? location.latitude
+          : location?.latitude
+          ? Number(location.latitude)
+          : null;
+      const longitudeValue =
+        typeof location?.longitude === "number"
+          ? location.longitude
+          : location?.longitude
+          ? Number(location.longitude)
+          : null;
+      form.setValue("latitude", Number.isFinite(latitudeValue ?? NaN) ? latitudeValue : null);
+      form.setValue("longitude", Number.isFinite(longitudeValue ?? NaN) ? longitudeValue : null);
+      const populationValue =
+        typeof location?.population === "number"
+          ? location.population
+          : location?.population
+          ? Number(location.population)
+          : null;
+      form.setValue("population", Number.isFinite(populationValue ?? NaN) ? populationValue : null);
+    },
+    [form],
+  );
+
+  const handleDestinationQueryChange = useCallback(
+    (value: string) => {
+      form.setValue("destination", value, {
+        shouldDirty: true,
+        shouldValidate: false,
+      });
+
+      const trimmed = value.trim();
+      const selectedLabel =
+        selectedDestination?.displayName ||
+        selectedDestination?.label ||
+        selectedDestination?.name ||
+        "";
+      const normalizedSelectedLabel = selectedLabel.trim().toLowerCase();
+      const normalizedTrimmed = trimmed.toLowerCase();
+
+      if (!trimmed) {
+        setSelectedDestination(null);
+        resetLocationMetadata();
+        return;
+      }
+
+      form.clearErrors("destination");
+
+      if (
+        selectedDestination &&
+        normalizedTrimmed.length > 0 &&
+        normalizedTrimmed !== normalizedSelectedLabel
+      ) {
+        setSelectedDestination(null);
+        resetLocationMetadata();
+      }
+    },
+    [form, resetLocationMetadata, selectedDestination],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -164,10 +228,12 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
           <div>
             <Label htmlFor="destination">Destination</Label>
             <SmartLocationSearch
+              id="destination"
               placeholder="e.g., Tokyo, Japan"
-              value={selectedDestination?.name || ""}
+              value={destinationValue ?? ""}
               allowedTypes={['city']}
               onLocationSelect={handleDestinationSelect}
+              onQueryChange={handleDestinationQueryChange}
             />
             {form.formState.errors.destination && (
               <p className="text-sm text-red-600 mt-1">{form.formState.errors.destination.message}</p>
