@@ -436,15 +436,9 @@ export async function createActivityV2({
     }
   }
 
-  const inviteeSet = new Set((data.invitee_ids ?? []).map((id) => String(id).trim()).filter((id) => id.length > 0));
-  if (!inviteeSet.size) {
-    const error = new Error("validation_failed");
-    (error as any).code = "VALIDATION";
-    (error as any).details = [
-      { field: "invitee_ids", message: "Please provide at least one invitee." },
-    ];
-    throw error;
-  }
+  const inviteeSet = new Set(
+    (data.invitee_ids ?? []).map((id) => String(id).trim()).filter((id) => id.length > 0),
+  );
 
   const tripMemberIds = new Set(
     trip.members.map((member) => String(member.userId)).filter((id) => id.trim().length > 0),
@@ -463,7 +457,20 @@ export async function createActivityV2({
     throw error;
   }
 
-  inviteeSet.add(String(creatorId));
+  const creatorIdValue = String(creatorId).trim();
+  if (creatorIdValue.length === 0) {
+    const error = new Error("invalid_creator");
+    (error as any).code = "VALIDATION";
+    (error as any).details = [
+      {
+        field: "creator_id",
+        message: "A valid activity creator is required.",
+      },
+    ];
+    throw error;
+  }
+
+  inviteeSet.add(creatorIdValue);
 
   const participants = Array.from(inviteeSet);
 
@@ -521,7 +528,7 @@ export async function createActivityV2({
       [
         insertedId,
         tripIdValue,
-        String(creatorId),
+        creatorIdValue,
         data.title,
         data.description ?? null,
         data.category ?? null,
@@ -552,7 +559,7 @@ export async function createActivityV2({
 
     if (status === "scheduled") {
       for (const inviteeId of participants) {
-        const response = inviteeId === String(creatorId) ? "yes" : "pending";
+        const response = inviteeId === creatorIdValue ? "yes" : "pending";
         await client.query(
           `
           INSERT INTO activity_rsvps_v2 (activity_id, user_id, response, responded_at)
