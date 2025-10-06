@@ -30,10 +30,19 @@ describe("buildActivitySubmission", () => {
       category: "entertainment",
       attendeeIds: ["abc", "def"],
       type: "SCHEDULED",
+      title: "Sunset Cruise",
+      date: "2025-07-04",
+      start_time: "18:00",
+      end_time: "20:00",
+      invitee_ids: ["abc", "def"],
     });
 
     expect(payload.startTime).toBe(new Date("2025-07-04T18:00:00").toISOString());
     expect(payload.endTime).toBe(new Date("2025-07-04T20:00:00").toISOString());
+    const expectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+    expect(payload.timezone).toBe(expectedTimezone);
+    expect(typeof payload.idempotency_key).toBe("string");
+    expect(payload.idempotency_key.length).toBeGreaterThan(0);
   });
 
   it("throws when the end time is before the start time", () => {
@@ -52,6 +61,7 @@ describe("buildActivitySubmission", () => {
     });
 
     expect(payload.attendeeIds).toEqual([]);
+    expect(payload.invitee_ids).toEqual([]);
   });
 
   it("validates categories", () => {

@@ -38,6 +38,13 @@ interface ActivitySubmissionPayload {
   category: ActivityCategoryValue;
   attendeeIds: string[];
   type: ActivityType;
+  title: string;
+  date: string;
+  start_time: string;
+  end_time: string | null;
+  timezone: string;
+  invitee_ids: string[];
+  idempotency_key: string;
 }
 
 export interface ActivitySubmissionResult {
@@ -92,6 +99,53 @@ const buildDateTime = (date: Date, time: string, label: string): Date => {
     throw new Error(`${label} must be a valid date/time.`);
   }
   return combined;
+};
+
+const resolveClientTimezone = (): string => {
+  try {
+    if (typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function") {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (typeof tz === "string" && tz.trim().length > 0) {
+        return tz;
+      }
+    }
+  } catch {
+    // ignore and fall back to environment variables or UTC
+  }
+
+  try {
+    const envTz =
+      typeof process !== "undefined" && process?.env?.TZ ? String(process.env.TZ) : "";
+    if (envTz.trim().length > 0) {
+      return envTz.trim();
+    }
+  } catch {
+    // ignore and fall back to UTC
+  }
+
+  return "UTC";
+};
+
+const generateIdempotencyKey = (): string => {
+  try {
+    if (typeof crypto !== "undefined") {
+      if (typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+      }
+
+      if (typeof crypto.getRandomValues === "function") {
+        const bytes = new Uint8Array(16);
+        crypto.getRandomValues(bytes);
+        return Array.from(bytes)
+          .map((byte) => byte.toString(16).padStart(2, "0"))
+          .join("");
+      }
+    }
+  } catch {
+    // ignore and use fallback
+  }
+
+  return `activity_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 };
 
 export function buildActivitySubmission(input: BaseActivitySubmissionInput): ActivitySubmissionResult {
@@ -154,6 +208,10 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
 
   const type = input.type === "PROPOSE" ? "PROPOSE" : "SCHEDULED";
 
+  const timezone = resolveClientTimezone();
+  const idempotencyKey = generateIdempotencyKey();
+  const isoDate = format(baseDate, "yyyy-MM-dd");
+
   return {
     payload: {
       tripCalendarId,
@@ -167,6 +225,13 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
       category: categoryResult.value,
       attendeeIds: attendeeResult.value,
       type,
+      title: name,
+      date: isoDate,
+      start_time: startTimeString,
+      end_time: endTimeString,
+      timezone,
+      invitee_ids: attendeeResult.value,
+      idempotency_key: idempotencyKey,
     },
   };
 }
