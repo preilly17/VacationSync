@@ -463,4 +463,79 @@ describe("POST /api/trips/:id/activities", () => {
       expect.objectContaining({ id: createdActivity.id, category: "manual" }),
     );
   });
+
+  it("ensures the demo user exists before creating an activity in development", async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+
+    const trip = {
+      id: 789,
+      createdBy: "demo-user",
+      members: [],
+    };
+
+    const requestBody = {
+      name: "Gallery Visit",
+      startTime: new Date("2024-05-01T18:00:00Z").toISOString(),
+      endTime: null,
+      category: "culture",
+      attendeeIds: ["demo-user"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: {},
+      headers: {},
+      isAuthenticated: jest.fn(() => false),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const getUserSpy = jest
+      .spyOn(storage, "getUser")
+      .mockResolvedValueOnce(undefined as any);
+
+    const upsertUserSpy = jest
+      .spyOn(storage, "upsertUser")
+      .mockResolvedValueOnce({ id: "demo-user" } as any);
+
+    const createdActivity = {
+      id: 321,
+      tripCalendarId: trip.id,
+      postedBy: "demo-user",
+      name: requestBody.name,
+      description: null,
+      startTime: requestBody.startTime,
+      endTime: requestBody.endTime,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: requestBody.category,
+      status: "active",
+      type: "SCHEDULED",
+    };
+
+    jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    jest
+      .spyOn(storage, "getTripActivities")
+      .mockResolvedValueOnce([createdActivity] as any);
+
+    try {
+      await handler(req, res);
+
+      expect(getUserSpy).toHaveBeenCalledWith("demo-user");
+      expect(upsertUserSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "demo-user", email: "demo@example.com" }),
+      );
+      expect(res.status).toHaveBeenCalledWith(201);
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
 });

@@ -474,6 +474,57 @@ function getRequestUserId(req: any): string | undefined {
   return req.user?.claims?.sub;
 }
 
+const DEMO_USER_ID = "demo-user";
+const demoUserSeed = {
+  id: DEMO_USER_ID,
+  email: "demo@example.com",
+  username: "demouser",
+  firstName: "Demo",
+  lastName: "User",
+  phoneNumber: null,
+  passwordHash: null,
+  authProvider: "demo",
+};
+
+let demoUserEnsured = false;
+let demoUserEnsurePromise: Promise<void> | null = null;
+
+const ensureDemoUserExists = async () => {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+
+  if (demoUserEnsured) {
+    return;
+  }
+
+  if (demoUserEnsurePromise) {
+    await demoUserEnsurePromise;
+    return;
+  }
+
+  demoUserEnsurePromise = (async () => {
+    const existingUser = await storage.getUser(DEMO_USER_ID);
+    if (existingUser) {
+      demoUserEnsured = true;
+      return;
+    }
+
+    await storage.upsertUser(demoUserSeed);
+    demoUserEnsured = true;
+  })();
+
+  try {
+    await demoUserEnsurePromise;
+  } catch (error) {
+    demoUserEnsured = false;
+    console.error("Failed to ensure demo user exists:", error);
+    throw error;
+  } finally {
+    demoUserEnsurePromise = null;
+  }
+};
+
 function parseBooleanQueryParam(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.some((item) => parseBooleanQueryParam(item));
@@ -2081,6 +2132,10 @@ export function setupRoutes(app: Express) {
         res.status(401).json({ message: "User ID not found", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "no-user" });
         return;
+      }
+
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
       }
 
       const trip = await storage.getTripById(tripId);
