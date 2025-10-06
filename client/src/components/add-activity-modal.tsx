@@ -81,7 +81,9 @@ const formSchema = z
       .transform((value) => value ?? ""),
     cost: z.string().optional(),
     maxCapacity: z.string().optional(),
-    attendeeIds: z.array(z.string(), { invalid_type_error: ATTENDEE_REQUIRED_MESSAGE }).min(1, ATTENDEE_REQUIRED_MESSAGE),
+    attendeeIds: z
+      .array(z.string(), { invalid_type_error: ATTENDEE_REQUIRED_MESSAGE })
+      .default([]),
     category: z
       .string()
       .refine((value) => ACTIVITY_CATEGORY_VALUES.includes(value as (typeof ACTIVITY_CATEGORY_VALUES)[number]), {
@@ -119,7 +121,7 @@ const formSchema = z
 
     const { value: normalizedCapacity } = normalizeMaxCapacityInput(data.maxCapacity);
     if (normalizedCapacity !== null) {
-      const attendeeCount = new Set([...data.attendeeIds]).size;
+      const attendeeCount = new Set([...(data.attendeeIds ?? [])]).size;
       if (normalizedCapacity < attendeeCount) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

@@ -29,7 +29,6 @@ import { formatCurrency } from "@/lib/utils";
 import { markExternalRedirect, ACTIVITY_REDIRECT_STORAGE_KEY } from "@/lib/externalRedirects";
 import { format } from "date-fns";
 import type { ActivityWithDetails, ActivityType, TripWithDetails, User } from "@shared/schema";
-import { ATTENDEE_REQUIRED_MESSAGE } from "@shared/activityValidation";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
 
@@ -490,7 +489,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
 
       createManualActivityMutation.mutate({ payload, submissionType: manualMode });
     } catch (error) {
-      const message = error instanceof Error ? error.message : ATTENDEE_REQUIRED_MESSAGE;
+      const message = error instanceof Error ? error.message : "Please try again.";
       toast({
         title: "Unable to save activity",
         description: message,
@@ -923,11 +922,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                   Clear
                 </Button>
               </div>
-              <ScrollArea
-                className={`mt-3 max-h-40 rounded-lg border ${
-                  manualAttendeeIds.length === 0 ? "border-red-300" : "border-neutral-200"
-                }`}
-              >
+              <ScrollArea className="mt-3 max-h-40 rounded-lg border border-neutral-200">
                 <div className="p-3 space-y-2">
                   {memberOptions.length === 0 ? (
                     <p className="text-sm text-neutral-500">
@@ -952,11 +947,6 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                   )}
                 </div>
               </ScrollArea>
-              {manualAttendeeIds.length === 0 && (
-                <p className="text-sm text-red-600">
-                  {ATTENDEE_REQUIRED_MESSAGE}
-                </p>
-              )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">

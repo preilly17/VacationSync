@@ -45,14 +45,16 @@ describe("buildActivitySubmission", () => {
     ).toThrow(END_TIME_AFTER_START_MESSAGE);
   });
 
-  it("validates categories and attendee ids", () => {
-    expect(() =>
-      buildActivitySubmission({
-        ...baseInput,
-        attendeeIds: [],
-      }),
-    ).toThrow("Include at least one attendee.");
+  it("allows scheduling without inviting other travelers", () => {
+    const { payload } = buildActivitySubmission({
+      ...baseInput,
+      attendeeIds: [],
+    });
 
+    expect(payload.attendeeIds).toEqual([]);
+  });
+
+  it("validates categories", () => {
     expect(() =>
       buildActivitySubmission({
         ...baseInput,
