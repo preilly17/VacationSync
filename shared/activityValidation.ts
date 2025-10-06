@@ -150,10 +150,6 @@ export const normalizeAttendeeIds = (
     ),
   );
 
-  if (normalized.length === 0) {
-    return { value: [], error: ATTENDEE_REQUIRED_MESSAGE };
-  }
-
   return { value: normalized };
 };
 

@@ -142,10 +142,6 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
     throw new Error(attendeeResult.error ?? ATTENDEE_REQUIRED_MESSAGE);
   }
 
-  if (attendeeResult.value.length === 0) {
-    throw new Error(ATTENDEE_REQUIRED_MESSAGE);
-  }
-
   const categoryResult = normalizeCategoryInput(input.category);
   if (!categoryResult.value) {
     throw new Error(categoryResult.error ?? ACTIVITY_CATEGORY_MESSAGE);
