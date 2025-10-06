@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +13,7 @@ import { z } from "zod";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 interface CreateTripModalProps {
   open: boolean;
@@ -63,6 +64,46 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
   const [, setLocation] = useLocation();
   const [selectedDestination, setSelectedDestination] = useState<any>(null);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const getCreateTripErrorMessage = useCallback((error: unknown): string => {
+    if (error instanceof ApiError) {
+      if (error.status === 403) {
+        return "You don't have permission to create a trip.";
+      }
+
+      if (error.status === 400 || error.status === 422) {
+        const backendMessage =
+          error.data && typeof error.data === "object" && "message" in error.data && typeof error.data.message === "string"
+            ? error.data.message.trim()
+            : "";
+
+        if (backendMessage && !/database|sql|constraint|column|insert/i.test(backendMessage)) {
+          return backendMessage;
+        }
+
+        return "Please double-check the form fields and try again.";
+      }
+
+      if (error.status >= 500) {
+        return "Something went wrong on our side. Please try again in a moment.";
+      }
+
+      const fallbackMessage =
+        error.data && typeof error.data === "object" && "message" in error.data && typeof error.data.message === "string"
+          ? error.data.message.trim()
+          : "";
+
+      if (fallbackMessage && !/database|sql|constraint|column|insert/i.test(fallbackMessage)) {
+        return fallbackMessage;
+      }
+    }
+
+    if (error instanceof Error && error.message.trim().length > 0 && !/database|sql|constraint|column|insert/i.test(error.message)) {
+      return error.message;
+    }
+
+    return "Failed to create trip. Please try again.";
+  }, []);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -118,32 +159,22 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
     },
     onError: (error: unknown) => {
       console.error("Trip creation error:", error);
-      let errorMessage = "Failed to create trip. Please try again.";
-
-      if (error instanceof ApiError) {
-        if (error.status === 401) {
-          errorMessage = "Your session has expired. Redirecting to login...";
-          toast({
-            title: "Session expired",
-            description: errorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.data && typeof error.data === "object" && "message" in error.data && typeof error.data.message === "string") {
-          errorMessage = error.data.message;
-        } else if (typeof error.message === "string" && error.message.trim().length > 0) {
-          errorMessage = error.message;
-        }
-      } else if (error instanceof Error && error.message.trim().length > 0) {
-        errorMessage = error.message;
+      if (error instanceof ApiError && error.status === 401) {
+        const sessionExpiredMessage = "Your session has expired. Redirecting to login...";
+        toast({
+          title: "Session expired",
+          description: sessionExpiredMessage,
+          variant: "destructive",
+        });
+        return;
       }
+
+      const errorMessage = getCreateTripErrorMessage(error);
 
       setFormError(errorMessage);
 
       toast({
-        title: "Error",
+        title: "Unable to create trip",
         description: errorMessage,
         variant: "destructive",
       });
@@ -277,6 +308,14 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
           </DialogDescription>
         </DialogHeader>
 
+        {formError && (
+          <Alert variant="destructive" role="alert" className="text-left">
+            <AlertCircle className="h-4 w-4" aria-hidden="true" />
+            <AlertTitle>We couldn't save your trip</AlertTitle>
+            <AlertDescription>{formError}</AlertDescription>
+          </Alert>
+        )}
+
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" aria-busy={createTripMutation.isPending}>
           <div>
             <Label htmlFor="name">Trip Name</Label>
@@ -329,12 +368,6 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
               )}
             </div>
           </div>
-
-          {formError && (
-            <div role="alert" aria-live="polite" className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-              {formError}
-            </div>
-          )}
 
           <div className="flex space-x-3 pt-4">
             <Button
