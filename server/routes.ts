@@ -55,7 +55,38 @@ const extractInviteeIdsFromDetail = (detail?: string): string[] => {
 
 const CORRELATION_HEADER_CANDIDATES = ["x-correlation-id", "x-request-id", "x-idempotency-key"];
 
-const ACTIVITIES_V2_ENABLED = process.env.FEATURE_ACTIVITIES_V2 === "true";
+const ACTIVITIES_V2_HEADER_KEY = "x-activities-version";
+const isActivitiesV2Enabled = () => process.env.FEATURE_ACTIVITIES_V2 === "true";
+
+const requestUsesActivitiesV2 = (req: { headers?: Record<string, unknown> }): boolean => {
+  if (!isActivitiesV2Enabled()) {
+    return false;
+  }
+
+  const rawValue = req?.headers?.[ACTIVITIES_V2_HEADER_KEY];
+
+  const normalize = (value: unknown): string | null => {
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) {
+      return null;
+    }
+
+    return trimmed;
+  };
+
+  if (Array.isArray(rawValue)) {
+    return rawValue
+      .map((value) => normalize(value))
+      .some((value) => value === "2" || value === "v2" || value === "true");
+  }
+
+  const normalized = normalize(rawValue);
+  return normalized === "2" || normalized === "v2" || normalized === "true";
+};
 
 const getCorrelationIdFromRequest = (req: { headers?: Record<string, unknown> }): string => {
   const headers = req?.headers ?? {};
@@ -2151,7 +2182,9 @@ export function setupRoutes(app: Express) {
         return;
       }
 
-      if (ACTIVITIES_V2_ENABLED) {
+      const useActivitiesV2 = requestUsesActivitiesV2(req);
+
+      if (useActivitiesV2) {
         const rawBody = req.body ?? {};
         const headerIdempotency = (() => {
           const headerValue = req?.headers?.["x-idempotency-key"];

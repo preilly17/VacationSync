@@ -15,6 +15,7 @@ let setupRoutes: (app: express.Express) => import("http").Server;
 let storageModule: any;
 let storage: any;
 let observabilityModule: any;
+let activitiesV2Module: any;
 let logActivityCreationFailure: jest.SpyInstance;
 let trackActivityCreationMetric: jest.SpyInstance;
 
@@ -72,6 +73,11 @@ beforeAll(async () => {
     registerCoverPhotoUploadRoutes: jest.fn(),
   }));
 
+  await jest.unstable_mockModule("../activitiesV2", () => ({
+    __esModule: true,
+    createActivityV2: jest.fn(),
+  }));
+
   await jest.unstable_mockModule("ws", () => ({
     __esModule: true,
     WebSocketServer: jest.fn(() => ({
@@ -88,7 +94,9 @@ beforeAll(async () => {
   storage = storageModule.storage;
 
   observabilityModule = await import("../observability");
+  activitiesV2Module = await import("../activitiesV2");
 });
+
 
 describe("POST /api/trips/:id/activities", () => {
   let app: express.Express;
@@ -462,6 +470,124 @@ describe("POST /api/trips/:id/activities", () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ id: createdActivity.id, category: "manual" }),
     );
+  });
+
+  it("uses the activities v2 pipeline only when the client opts in", async () => {
+    const trip = {
+      id: 987,
+      createdBy: "organizer",
+      members: [
+        { userId: "organizer", user: { firstName: "Org", email: "org@example.com" } },
+        { userId: "friend", user: { firstName: "Friend", email: "friend@example.com" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Morning Run",
+      description: "Shake off the jet lag",
+      category: "outdoor",
+      date: "2024-06-01",
+      start_time: "07:30",
+      timezone: "America/New_York",
+      attendeeIds: ["friend"],
+      idempotency_key: "test-key-123",
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      headers: { "x-activities-version": "2" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
+    process.env.FEATURE_ACTIVITIES_V2 = "true";
+
+    try {
+      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+      const legacyCreateSpy = jest
+        .spyOn(storage, "createActivityWithInvites")
+        .mockResolvedValueOnce(null as any);
+
+      jest
+        .spyOn(storage, "createNotification")
+        .mockResolvedValue(undefined as any);
+
+      const now = new Date().toISOString();
+      const activityId = "activity-v2-id";
+      const v2Response = {
+        id: activityId,
+        tripId: String(trip.id),
+        creatorId: "organizer",
+        title: requestBody.name,
+        description: requestBody.description,
+        category: requestBody.category,
+        date: requestBody.date,
+        startTime: requestBody.start_time,
+        endTime: null,
+        timezone: requestBody.timezone,
+        location: null,
+        costPerPerson: null,
+        maxParticipants: null,
+        status: "scheduled",
+        visibility: "trip",
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        invitees: [
+          {
+            activityId,
+            userId: "organizer",
+            role: "participant",
+            createdAt: now,
+            updatedAt: now,
+            user: trip.members[0]?.user ?? null,
+          },
+          {
+            activityId,
+            userId: "friend",
+            role: "participant",
+            createdAt: now,
+            updatedAt: now,
+            user: trip.members[1]?.user ?? null,
+          },
+        ],
+        votes: [],
+        rsvps: [],
+        creator: trip.members[0]?.user ?? null,
+        initialVoteOrRsvpState: { organizer: "yes", friend: "pending" },
+        wasDeduplicated: false,
+      };
+
+      const createActivityV2Spy = jest
+        .spyOn(activitiesV2Module, "createActivityV2")
+        .mockResolvedValueOnce(v2Response as any);
+
+      await handler(req, res);
+
+      expect(createActivityV2Spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trip,
+          creatorId: "organizer",
+          body: expect.objectContaining({
+            title: requestBody.name,
+            start_time: requestBody.start_time,
+            timezone: requestBody.timezone,
+            invitee_ids: ["friend"],
+            idempotency_key: requestBody.idempotency_key,
+          }),
+        }),
+      );
+
+      expect(legacyCreateSpy).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(v2Response);
+    } finally {
+      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
+    }
   });
 
   it("ensures the demo user exists before creating an activity in development", async () => {
