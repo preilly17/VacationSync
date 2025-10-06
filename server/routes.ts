@@ -4190,11 +4190,11 @@ export function setupRoutes(app: Express) {
       console.error("Error updating flight:", error);
       if (error instanceof Error) {
         if (error.message.includes('Flight not found')) {
-          return res.status(404).json({ error: "Flight not found" });
+          return res.status(404).json({ error: "Flight not found", message: "Flight not found" });
         }
 
         if (error.message.includes('Only the creator')) {
-          return res.status(403).json({ error: error.message });
+          return res.status(403).json({ error: error.message, message: error.message });
         }
       }
 
@@ -4220,11 +4220,11 @@ export function setupRoutes(app: Express) {
       console.error("Error deleting flight:", error);
       if (error instanceof Error) {
         if (error.message.includes('Flight not found')) {
-          return res.status(404).json({ error: "Flight not found" });
+          return res.status(404).json({ error: "Flight not found", message: "Flight not found" });
         }
 
         if (error.message.includes('Only the creator')) {
-          return res.status(403).json({ error: error.message });
+          return res.status(403).json({ error: error.message, message: error.message });
         }
       }
 
