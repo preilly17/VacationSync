@@ -1,3 +1,5 @@
+import { describe, expect, it, jest } from "@jest/globals";
+
 import { buildActivitySubmission } from "../activitySubmission";
 import { END_TIME_AFTER_START_MESSAGE } from "@shared/activityValidation";
 
@@ -83,5 +85,25 @@ describe("buildActivitySubmission", () => {
     });
 
     expect(payload.endTime).toBeNull();
+  });
+
+  it("preserves the selected calendar date for YYYY-MM-DD inputs", async () => {
+    const originalTimeZone = process.env.TZ;
+
+    jest.resetModules();
+    process.env.TZ = "America/Los_Angeles";
+
+    const module = await import("../activitySubmission");
+    const { payload } = module.buildActivitySubmission({
+      ...baseInput,
+      date: "2025-07-04",
+      startTime: "09:30",
+    });
+
+    expect(payload.date).toBe("2025-07-04");
+    expect(payload.startDate).toBe("2025-07-04");
+
+    process.env.TZ = originalTimeZone;
+    jest.resetModules();
   });
 });

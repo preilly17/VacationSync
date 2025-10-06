@@ -77,6 +77,30 @@ const toDateInput = (value: string | Date, label: string): Date => {
     throw new Error(`${label} is required.`);
   }
 
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [yearString, monthString, dayString] = trimmed.split("-");
+    const year = Number(yearString);
+    const month = Number(monthString);
+    const day = Number(dayString);
+
+    if (
+      Number.isInteger(year)
+      && Number.isInteger(month)
+      && Number.isInteger(day)
+    ) {
+      const parsedLocal = new Date(year, month - 1, day);
+      if (
+        parsedLocal.getFullYear() === year
+        && parsedLocal.getMonth() === month - 1
+        && parsedLocal.getDate() === day
+      ) {
+        return parsedLocal;
+      }
+    }
+
+    throw new Error(`${label} must be a valid date/time.`);
+  }
+
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) {
     throw new Error(`${label} must be a valid date/time.`);
