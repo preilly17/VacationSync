@@ -59,7 +59,13 @@ app.use(cors({
     return callback(new Error("Not allowed by CORS"));
   },
   credentials: true,
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Request-ID",
+    "X-Filename",
+    "X-Content-Type",
+  ],
 }));
 
 app.options("*", cors());
