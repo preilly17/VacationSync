@@ -1016,6 +1016,8 @@ export default function Activities() {
         allowModeToggle
         currentUserId={user?.id}
         prefill={activityComposerPrefill}
+        tripStartDate={trip?.startDate ?? null}
+        tripEndDate={trip?.endDate ?? null}
       />
 
       {/* Booking Confirmation Modal */}

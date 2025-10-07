@@ -533,6 +533,8 @@ export default function MemberSchedule() {
         allowModeToggle
         currentUserId={currentUser?.id}
         prefill={activityPrefill}
+        tripStartDate={trip.startDate}
+        tripEndDate={trip.endDate}
       />
     </>
   );

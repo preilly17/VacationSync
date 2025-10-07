@@ -2998,6 +2998,8 @@ export default function Trip() {
           defaultMode={addActivityMode}
           allowModeToggle={isAddActivityModeToggleEnabled}
           currentUserId={user?.id}
+          tripStartDate={trip?.startDate ?? null}
+          tripEndDate={trip?.endDate ?? null}
         />
 
         {trip && (
