@@ -69,6 +69,8 @@ export interface ActivityWithDetails extends Activity {
   currentUserRsvp?: ActivityRsvp | null;
 }
 
+const START_TIME_REQUIRED_MESSAGE = "Start time is required so we can place this on the calendar.";
+
 export const createActivityRequestSchema = z
   .object({
     mode: z.enum(["proposed", "scheduled"]),
@@ -106,14 +108,15 @@ export const createActivityRequestSchema = z
     idempotency_key: z.string().min(1),
   })
   .superRefine((data, ctx) => {
-    if (data.mode === "scheduled") {
-      if (!data.start_time || data.start_time.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["start_time"],
-          message: "Start time is required for scheduled activities.",
-        });
-      }
+    const normalizedStartTime =
+      typeof data.start_time === "string" ? data.start_time.trim() : data.start_time;
+
+    if (!normalizedStartTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["start_time"],
+        message: START_TIME_REQUIRED_MESSAGE,
+      });
     }
   });
 

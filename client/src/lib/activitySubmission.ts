@@ -16,7 +16,7 @@ interface BaseActivitySubmissionInput {
   name: string;
   description?: string | null;
   date: string | Date;
-  startTime?: string | Date | null;
+  startTime: string | Date;
   endTime?: string | Date | null;
   location?: string | null;
   cost?: string | number | null;
@@ -48,7 +48,7 @@ interface ActivitySubmissionPayload {
   title: string;
   mode: "scheduled" | "proposed";
   date: string;
-  start_time: string | null;
+  start_time: string;
   end_time: string | null;
   timezone: string;
   timeZone: string;
@@ -202,11 +202,11 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
     || (typeof rawStartTime === "string" && rawStartTime.trim() === "")
   );
 
-  if (!hasStartTime && !isProposal) {
-    throw new Error("Start time is required for scheduled activities.");
+  if (!hasStartTime) {
+    throw new Error("Start time is required so we can place this on the calendar.");
   }
 
-  const startTimeString = hasStartTime ? toTimeString(rawStartTime as string | Date, "Start time") : null;
+  const startTimeString = toTimeString(rawStartTime as string | Date, "Start time");
 
   const endTimeInput = input.endTime;
   const shouldUseEndTime = !(
@@ -215,20 +215,14 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
     || (typeof endTimeInput === "string" && endTimeInput.trim() === "")
   );
 
-  if (shouldUseEndTime && !startTimeString) {
-    throw new Error("Add a start time before setting an end time.");
-  }
-
   const endTimeString = shouldUseEndTime
     ? toTimeString(endTimeInput as string | Date, "End time")
     : null;
 
-  const startDateTime = startTimeString
-    ? buildDateTime(baseDate, startTimeString, "Start time")
-    : new Date(baseDate);
+  const startDateTime = buildDateTime(baseDate, startTimeString, "Start time");
   const endDateTime = endTimeString ? buildDateTime(baseDate, endTimeString, "End time") : null;
 
-  if (endDateTime && startTimeString && endDateTime <= startDateTime) {
+  if (endDateTime && endDateTime <= startDateTime) {
     throw new Error(END_TIME_AFTER_START_MESSAGE);
   }
 

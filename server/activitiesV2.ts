@@ -472,10 +472,15 @@ export async function createActivityV2({
     throw error;
   }
 
-  if (!startTime && data.mode === "scheduled") {
+  if (!startTime) {
     const error = new Error("missing_start_time");
     (error as any).code = "VALIDATION";
-    (error as any).details = [{ field: "start_time", message: "Start time is required." }];
+    (error as any).details = [
+      {
+        field: "start_time",
+        message: "Start time is required so we can place this on the calendar.",
+      },
+    ];
     throw error;
   }
 

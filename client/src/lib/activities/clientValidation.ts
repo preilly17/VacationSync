@@ -26,7 +26,7 @@ const clientValidationMessageMap: Array<{
   {
     field: "startTime",
     messages: [
-      "Start time is required.",
+      "Start time is required so we can place this on the calendar.",
       "Start time must be in HH:MM format.",
       "Start time must be a valid date/time.",
     ],

@@ -254,22 +254,23 @@ const baseInsertActivitySchema = z.object({
   type: z.enum(["SCHEDULED", "PROPOSE"]).default("SCHEDULED"),
 });
 
-const enforceScheduledStartTime = (
+const enforceRequiredStartTime = (
   data: z.infer<typeof baseInsertActivitySchema>,
   ctx: z.RefinementCtx,
 ) => {
-  if (data.type === "SCHEDULED") {
-    if (data.startTime === null || data.startTime === undefined || data.startTime === "") {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["startTime"],
-        message: "Start time is required for scheduled activities.",
-      });
-    }
+  const normalizedStartTime =
+    typeof data.startTime === "string" ? data.startTime.trim() : data.startTime;
+
+  if (normalizedStartTime === null || normalizedStartTime === undefined || normalizedStartTime === "") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["startTime"],
+      message: "Start time is required so we can place this on the calendar.",
+    });
   }
 };
 
-export const insertActivitySchema = baseInsertActivitySchema.superRefine(enforceScheduledStartTime);
+export const insertActivitySchema = baseInsertActivitySchema.superRefine(enforceRequiredStartTime);
 
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 
@@ -277,7 +278,7 @@ export const createActivityWithAttendeesSchema = baseInsertActivitySchema
   .extend({
     attendeeIds: z.array(z.string()).optional(),
   })
-  .superRefine(enforceScheduledStartTime);
+  .superRefine(enforceRequiredStartTime);
 
 export type CreateActivityWithAttendees = z.infer<
   typeof createActivityWithAttendeesSchema
