@@ -2,42 +2,21 @@ import { useCallback, useMemo } from "react";
 import { useMutation, useQueryClient, type QueryKey } from "@tanstack/react-query";
 
 import { useToast } from "@/hooks/use-toast";
-import { buildActivitySubmission } from "@/lib/activitySubmission";
-import { ApiError, apiRequest } from "@/lib/queryClient";
-import { CLIENT_VALIDATION_FALLBACK_MESSAGE, mapClientErrorToValidation } from "./clientValidation";
-import type {
-  ActivityAcceptance,
-  ActivityInvite,
-  ActivityInviteStatus,
-  ActivityType,
-  ActivityWithDetails,
-  TripMember,
-  User,
-} from "@shared/schema";
+import { ApiError } from "@/lib/queryClient";
+import {
+  ActivitySubmissionError,
+  buildOptimisticActivity,
+  mapApiErrorToValidation,
+  prepareActivitySubmission,
+  sortActivitiesByStartTime,
+  submitActivityRequest,
+  type ActivityCreateFormValues,
+  type ActivityValidationError,
+} from "./activityCreation";
+import { CLIENT_VALIDATION_FALLBACK_MESSAGE } from "./clientValidation";
+import type { ActivityType, ActivityWithDetails, TripMember, User } from "@shared/schema";
 
-export interface ActivityCreateFormValues {
-  name: string;
-  description?: string;
-  startDate: string;
-  startTime: string;
-  endTime?: string | null;
-  location?: string;
-  cost?: string;
-  maxCapacity?: string;
-  attendeeIds: string[];
-  category: string;
-  type: ActivityType;
-}
-
-interface ActivityFieldError {
-  field: keyof ActivityCreateFormValues;
-  message: string;
-}
-
-export interface ActivityValidationError {
-  fieldErrors: ActivityFieldError[];
-  formMessage?: string;
-}
+export type { ActivityCreateFormValues, ActivityValidationError } from "./activityCreation";
 
 export interface UseCreateActivityOptions {
   tripId: number;
@@ -54,7 +33,7 @@ export interface UseCreateActivityOptions {
 
 type InternalActivityCreateVariables = ActivityCreateFormValues & {
   __meta: {
-    payload: ReturnType<typeof buildActivitySubmission>["payload"];
+    payload: ReturnType<typeof prepareActivitySubmission>["payload"];
     optimisticId: number;
   };
 };
@@ -78,27 +57,6 @@ const tripMembershipErrorMessage = "You’re not a member of this trip.";
 const tripMissingErrorMessage = "We couldn’t find this trip. Please refresh or check with the organizer.";
 const duplicateActivityErrorMessage = "This looks like a duplicate activity.";
 
-const serverFieldMap: Partial<Record<string, keyof ActivityCreateFormValues>> = {
-  name: "name",
-  title: "name",
-  description: "description",
-  startTime: "startTime",
-  start_time: "startTime",
-  endTime: "endTime",
-  end_time: "endTime",
-  location: "location",
-  cost: "cost",
-  cost_per_person: "cost",
-  maxCapacity: "maxCapacity",
-  max_participants: "maxCapacity",
-  category: "category",
-  attendeeIds: "attendeeIds",
-  invitee_ids: "attendeeIds",
-  startDate: "startDate",
-  date: "startDate",
-  mode: "type",
-};
-
 const createAnalyticsTracker = () => {
   const analyticsWindow = typeof window !== "undefined"
     ? (window as typeof window & {
@@ -111,19 +69,6 @@ const createAnalyticsTracker = () => {
   };
 };
 
-const sortByStartTime = (activities: ActivityWithDetails[]) =>
-  [...activities].sort((a, b) => {
-    const toTimestamp = (value: ActivityWithDetails["startTime"]) => {
-      if (!value) {
-        return Number.POSITIVE_INFINITY;
-      }
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? Number.POSITIVE_INFINITY : date.getTime();
-    };
-
-    return toTimestamp(a.startTime) - toTimestamp(b.startTime);
-  });
-
 const generateOptimisticId = (() => {
   let counter = -1;
   return () => {
@@ -131,150 +76,6 @@ const generateOptimisticId = (() => {
     return counter;
   };
 })();
-
-const buildOptimisticActivity = (
-  values: ActivityCreateFormValues,
-  payload: ReturnType<typeof buildActivitySubmission>["payload"],
-  optimisticId: number,
-  members: (TripMember & { user: User })[],
-  currentUserId?: string,
-): ActivityWithDetails => {
-  const now = new Date().toISOString();
-  const creator = members.find((member) => member.userId === currentUserId)?.user ?? null;
-
-  const poster: User =
-    creator ??
-    ({
-      id: currentUserId ?? "unknown",
-      email: "",
-      username: null,
-      firstName: null,
-      lastName: null,
-      phoneNumber: null,
-      passwordHash: null,
-      profileImageUrl: null,
-      cashAppUsername: null,
-      cashAppUsernameLegacy: null,
-      cashAppPhone: null,
-      cashAppPhoneLegacy: null,
-      venmoUsername: null,
-      venmoPhone: null,
-      timezone: null,
-      defaultLocation: null,
-      defaultLocationCode: null,
-      defaultCity: null,
-      defaultCountry: null,
-      authProvider: null,
-      notificationPreferences: null,
-      hasSeenHomeOnboarding: false,
-      hasSeenTripOnboarding: false,
-      createdAt: now,
-      updatedAt: now,
-    } satisfies User);
-
-  const attendeeLookup = new Map<string, TripMember & { user: User }>();
-  members.forEach((member) => {
-    attendeeLookup.set(String(member.userId), member);
-  });
-
-  const invites: (ActivityInvite & { user: User })[] = values.attendeeIds.map(
-    (attendeeId, index): ActivityInvite & { user: User } => {
-      const member = attendeeLookup.get(String(attendeeId));
-      const inviteUser = member?.user ?? poster;
-      const isCreator = String(attendeeId) === String(currentUserId ?? "");
-      const status: ActivityInviteStatus =
-        values.type === "SCHEDULED" && isCreator ? "accepted" : "pending";
-      return {
-        id: optimisticId * 100 - index,
-        activityId: optimisticId,
-        userId: String(attendeeId),
-        status,
-        respondedAt: status === "accepted" ? now : null,
-        createdAt: now,
-        updatedAt: now,
-        user: inviteUser,
-      };
-    },
-  );
-
-  const acceptances: (ActivityAcceptance & { user: User })[] = invites
-    .filter((invite) => invite.status === "accepted")
-    .map(
-      (invite, index): ActivityAcceptance & { user: User } => ({
-        id: optimisticId * 1000 - index,
-        activityId: optimisticId,
-        userId: invite.userId,
-        acceptedAt: now,
-        user: invite.user,
-      }),
-    );
-
-  const currentUserInvite = invites.find(
-    (invite) => invite.userId === String(currentUserId ?? ""),
-  );
-  const currentUserResponded =
-    currentUserInvite !== undefined && currentUserInvite.status !== "pending";
-
-  return {
-    id: optimisticId,
-    tripCalendarId: payload.tripCalendarId,
-    postedBy: poster.id,
-    name: payload.name,
-    description: payload.description,
-    startTime: payload.startTime,
-    endTime: payload.endTime,
-    location: payload.location,
-    cost: payload.cost,
-    maxCapacity: payload.maxCapacity,
-    category: payload.category,
-    status: "active",
-    type: payload.type,
-    createdAt: now,
-    updatedAt: now,
-    poster,
-    invites,
-    acceptances,
-    comments: [],
-    acceptedCount: acceptances.length,
-    pendingCount: invites.filter((invite) => invite.status === "pending").length,
-    declinedCount: 0,
-    waitlistedCount: 0,
-    rsvpCloseTime: null,
-    currentUserInvite,
-    isAccepted: currentUserInvite?.status === "accepted" || false,
-    hasResponded: currentUserResponded,
-  } satisfies ActivityWithDetails;
-};
-
-const mapApiErrorToValidation = (error: ApiError): ActivityValidationError | null => {
-  if (error.status !== 400) {
-    return null;
-  }
-
-  const data = error.data as
-    | {
-        errors?: { field: string; message: string }[];
-        message?: string;
-      }
-    | undefined;
-
-  const serverErrors = Array.isArray(data?.errors) ? data?.errors : [];
-
-  const fieldErrors: ActivityFieldError[] = serverErrors
-    .map(({ field, message }) => {
-      const mappedField = field ? serverFieldMap[field] : undefined;
-      if (!mappedField) {
-        return null;
-      }
-      return { field: mappedField, message } satisfies ActivityFieldError;
-    })
-    .filter((value): value is ActivityFieldError => Boolean(value));
-
-  return {
-    fieldErrors,
-    formMessage: data?.message,
-  };
-};
 
 export function useCreateActivity({
   tripId,
@@ -301,24 +102,13 @@ export function useCreateActivity({
   >({
     mutationKey: ["create-activity", tripId, useActivitiesV2 ? "v2" : "legacy"],
     mutationFn: async (variables) => {
-      const endpoint =
-        variables.type === "PROPOSE"
-          ? `/api/trips/${tripId}/proposals/activities`
-          : `/api/trips/${tripId}/activities`;
-
-      const response = await apiRequest(endpoint, {
-        method: "POST",
-        body: variables.__meta.payload,
-        headers: useActivitiesV2
-          ? {
-              "x-activities-version": "2",
-            }
-          : undefined,
+      const activity = await submitActivityRequest<ActivityWithDetails>({
+        tripId,
+        version: useActivitiesV2 ? "v2" : "legacy",
+        payload: variables.__meta.payload,
       });
 
-      const created = (await response.json()) as ActivityWithDetails;
-
-      return { activity: created } satisfies MutationResult;
+      return { activity } satisfies MutationResult;
     },
     onMutate: async (variables) => {
       if (!enabled) {
@@ -350,7 +140,7 @@ export function useCreateActivity({
         if (!shouldAdd) return;
         queryClient.setQueryData<ActivityWithDetails[]>(queryKey, (existing = []) => {
           const filtered = existing.filter((item) => item.id !== optimisticActivity.id);
-          return sortByStartTime([...filtered, optimisticActivity]);
+          return sortActivitiesByStartTime([...filtered, optimisticActivity]);
         });
       };
 
@@ -384,7 +174,7 @@ export function useCreateActivity({
         if (!shouldReplace) return;
         queryClient.setQueryData<ActivityWithDetails[]>(queryKey, (existing = []) => {
           const withoutOptimistic = existing.filter((item) => item.id !== context.optimisticId);
-          return sortByStartTime([...withoutOptimistic, result.activity]);
+          return sortActivitiesByStartTime([...withoutOptimistic, result.activity]);
         });
       };
 
@@ -515,63 +305,54 @@ export function useCreateActivity({
 
       const optimisticId = generateOptimisticId();
 
-      let payload: ReturnType<typeof buildActivitySubmission>["payload"];
+      let submission;
       try {
-        ({ payload } = buildActivitySubmission({
-          tripId,
-          name: values.name,
-          description: values.description,
-          date: values.startDate,
-          startTime: values.startTime,
-          endTime: values.endTime ?? null,
-          location: values.location,
-          cost: values.cost,
-          maxCapacity: values.maxCapacity,
-          category: values.category,
-          attendeeIds: values.attendeeIds,
-          type: values.type,
-        }));
+        submission = prepareActivitySubmission({ tripId, values });
       } catch (error) {
         console.error("Failed to prepare activity submission:", error);
 
-        const validationError = mapClientErrorToValidation(error);
+        if (error instanceof ActivitySubmissionError) {
+          if (onValidationError) {
+            onValidationError(error.validation);
+          } else {
+            toast({
+              title: "Please fix the highlighted fields",
+              description: error.message,
+              variant: "destructive",
+            });
+          }
 
-        if (onValidationError) {
-          onValidationError(validationError);
+          trackEvent("activity_create_failure", {
+            trip_id: tripId,
+            submission_type: values.type,
+            error_message: error.message,
+          });
         } else {
-          const message =
-            validationError.formMessage
-            ?? validationError.fieldErrors[0]?.message
-            ?? CLIENT_VALIDATION_FALLBACK_MESSAGE;
-
           toast({
             title: "Please fix the highlighted fields",
-            description: message,
+            description: CLIENT_VALIDATION_FALLBACK_MESSAGE,
             variant: "destructive",
           });
-        }
 
-        trackEvent("activity_create_failure", {
-          trip_id: tripId,
-          submission_type: values.type,
-          error_message:
-            validationError.formMessage
-            ?? validationError.fieldErrors[0]?.message
-            ?? CLIENT_VALIDATION_FALLBACK_MESSAGE,
-        });
+          trackEvent("activity_create_failure", {
+            trip_id: tripId,
+            submission_type: values.type,
+            error_message: CLIENT_VALIDATION_FALLBACK_MESSAGE,
+          });
+        }
 
         return;
       }
 
       mutation.mutate({
-        ...values,
+        ...submission.sanitizedValues,
         __meta: {
-          payload,
+          payload: submission.payload,
           optimisticId,
         },
       });
     },
-    [enabled, mutation, tripId],
+    [enabled, mutation, onValidationError, toast, trackEvent, tripId],
   );
 
   return {
@@ -583,4 +364,3 @@ export function useCreateActivity({
     isSuccess: mutation.isSuccess,
   };
 }
-

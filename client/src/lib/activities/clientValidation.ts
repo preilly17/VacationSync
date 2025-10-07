@@ -1,4 +1,4 @@
-import type { ActivityCreateFormValues, ActivityValidationError } from "./createActivity";
+import type { ActivityCreateFormValues, ActivityValidationError } from "./activityCreation";
 
 import {
   ACTIVITY_CATEGORY_MESSAGE,
