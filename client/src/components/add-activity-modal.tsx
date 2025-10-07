@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { format, isValid } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -48,54 +48,140 @@ const categories = [
   { value: "other", label: "Other" },
 ] as const;
 
-const formSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1, "Activity name is required")
-      .max(MAX_ACTIVITY_NAME_LENGTH, `Activity name must be ${MAX_ACTIVITY_NAME_LENGTH} characters or fewer.`),
-    description: z
-      .string()
-      .max(
-        MAX_ACTIVITY_DESCRIPTION_LENGTH,
-        `Description must be ${MAX_ACTIVITY_DESCRIPTION_LENGTH} characters or fewer.`,
-      )
-      .optional()
-      .transform((value) => value ?? ""),
-    startDate: z.string().min(1, "Start date is required"),
-    startTime: z
-      .string()
-      .optional()
-      .transform((value) => (value ?? "").trim())
-      .refine((value) => value === "" || timePattern.test(value), {
-        message: "Start time must be in HH:MM format.",
-      }),
-    endTime: z
-      .string()
-      .optional()
-      .refine((value) => !value || timePattern.test(value), {
-        message: "End time must be in HH:MM format.",
-      }),
-    location: z
-      .string()
-      .max(
-        MAX_ACTIVITY_LOCATION_LENGTH,
-        `Location must be ${MAX_ACTIVITY_LOCATION_LENGTH} characters or fewer.`,
-      )
-      .optional()
-      .transform((value) => value ?? ""),
-    cost: z.string().optional(),
-    maxCapacity: z.string().optional(),
-    attendeeIds: z
-      .array(z.string(), { invalid_type_error: ATTENDEE_REQUIRED_MESSAGE })
-      .default([]),
-    category: z
-      .string()
-      .refine((value) => ACTIVITY_CATEGORY_VALUES.includes(value as (typeof ACTIVITY_CATEGORY_VALUES)[number]), {
-        message: ACTIVITY_CATEGORY_MESSAGE,
-      }),
-  })
-  .superRefine((data, ctx) => {
+const dateInputPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+const formatReadableDate = (value: string | null | undefined) => {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = parseISO(value);
+    if (!isValid(parsed)) {
+      return null;
+    }
+
+    return format(parsed, "MMM d, yyyy");
+  } catch {
+    return null;
+  }
+};
+
+const buildDateRangeMessage = (min?: string | null, max?: string | null) => {
+  const minLabel = formatReadableDate(min ?? null);
+  const maxLabel = formatReadableDate(max ?? null);
+
+  if (minLabel && maxLabel) {
+    return `Pick a date between ${minLabel} and ${maxLabel}.`;
+  }
+
+  if (minLabel) {
+    return `Pick a date on or after ${minLabel}.`;
+  }
+
+  if (maxLabel) {
+    return `Pick a date on or before ${maxLabel}.`;
+  }
+
+  return "Pick a valid date for this trip.";
+};
+
+const buildDateRangeHint = (min?: string | null, max?: string | null) => {
+  const minLabel = formatReadableDate(min ?? null);
+  const maxLabel = formatReadableDate(max ?? null);
+
+  if (minLabel && maxLabel) {
+    return `Trip dates: ${minLabel} – ${maxLabel}.`;
+  }
+
+  if (minLabel) {
+    return `Trip starts ${minLabel}.`;
+  }
+
+  if (maxLabel) {
+    return `Trip ends ${maxLabel}.`;
+  }
+
+  return null;
+};
+
+const clampDateToRange = (value: string, min?: string | null, max?: string | null) => {
+  if (!value) {
+    return value;
+  }
+
+  let normalized = value;
+  if (min && normalized < min) {
+    normalized = min;
+  }
+
+  if (max && normalized > max) {
+    normalized = max;
+  }
+
+  return normalized;
+};
+
+const formFieldsSchema = z.object({
+  name: z
+    .string()
+    .min(1, "Activity name is required")
+    .max(MAX_ACTIVITY_NAME_LENGTH, `Activity name must be ${MAX_ACTIVITY_NAME_LENGTH} characters or fewer.`),
+  description: z
+    .string()
+    .max(
+      MAX_ACTIVITY_DESCRIPTION_LENGTH,
+      `Description must be ${MAX_ACTIVITY_DESCRIPTION_LENGTH} characters or fewer.`,
+    )
+    .optional()
+    .transform((value) => value ?? ""),
+  startDate: z.string().min(1, "Start date is required"),
+  startTime: z
+    .string()
+    .optional()
+    .transform((value) => (value ?? "").trim())
+    .refine((value) => value === "" || timePattern.test(value), {
+      message: "Start time must be in HH:MM format.",
+    }),
+  endTime: z
+    .string()
+    .optional()
+    .refine((value) => !value || timePattern.test(value), {
+      message: "End time must be in HH:MM format.",
+    }),
+  location: z
+    .string()
+    .max(
+      MAX_ACTIVITY_LOCATION_LENGTH,
+      `Location must be ${MAX_ACTIVITY_LOCATION_LENGTH} characters or fewer.`,
+    )
+    .optional()
+    .transform((value) => value ?? ""),
+  cost: z.string().optional(),
+  maxCapacity: z.string().optional(),
+  attendeeIds: z
+    .array(z.string(), { invalid_type_error: ATTENDEE_REQUIRED_MESSAGE })
+    .default([]),
+  category: z
+    .string()
+    .refine((value) => ACTIVITY_CATEGORY_VALUES.includes(value as (typeof ACTIVITY_CATEGORY_VALUES)[number]), {
+      message: ACTIVITY_CATEGORY_MESSAGE,
+    }),
+});
+
+type FormValues = z.infer<typeof formFieldsSchema>;
+
+interface FormSchemaOptions {
+  startDateMin?: string | null;
+  startDateMax?: string | null;
+}
+
+const createFormSchema = (options: FormSchemaOptions = {}) => {
+  const { startDateMin, startDateMax } = options;
+  const hasDateBounds = Boolean(startDateMin) || Boolean(startDateMax);
+  const dateRangeMessage = hasDateBounds ? buildDateRangeMessage(startDateMin, startDateMax) : null;
+
+  return formFieldsSchema.superRefine((data, ctx) => {
     if (data.cost) {
       const { error } = normalizeCostInput(data.cost);
       if (error) {
@@ -120,15 +206,15 @@ const formSchema = z
         return;
       }
 
-      const startDate = new Date(`${data.startDate}T${data.startTime}`);
-      const endDate = new Date(`${data.startDate}T${data.endTime}`);
-      if (Number.isNaN(endDate.getTime())) {
+      const startDateTime = new Date(`${data.startDate}T${data.startTime}`);
+      const endDateTime = new Date(`${data.startDate}T${data.endTime}`);
+      if (Number.isNaN(endDateTime.getTime())) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["endTime"],
           message: "End time must be a valid time.",
         });
-      } else if (!Number.isNaN(startDate.getTime()) && endDate <= startDate) {
+      } else if (!Number.isNaN(startDateTime.getTime()) && endDateTime <= startDateTime) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endTime"], message: END_TIME_AFTER_START_MESSAGE });
       }
     }
@@ -144,9 +230,27 @@ const formSchema = z
         });
       }
     }
-  });
 
-type FormValues = z.infer<typeof formSchema>;
+    if (hasDateBounds) {
+      const trimmedDate = typeof data.startDate === "string" ? data.startDate.trim() : data.startDate;
+      if (trimmedDate && dateInputPattern.test(trimmedDate)) {
+        if (startDateMin && trimmedDate < startDateMin) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["startDate"],
+            message: dateRangeMessage ?? buildDateRangeMessage(startDateMin, startDateMax),
+          });
+        } else if (startDateMax && trimmedDate > startDateMax) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["startDate"],
+            message: dateRangeMessage ?? buildDateRangeMessage(startDateMin, startDateMax),
+          });
+        }
+      }
+    }
+  });
+};
 
 export type ActivityComposerPrefill = {
   name?: string;
@@ -180,6 +284,8 @@ interface AddActivityModalProps {
   allowModeToggle?: boolean;
   currentUserId?: string;
   prefill?: ActivityComposerPrefill | null;
+  tripStartDate?: string | Date | null;
+  tripEndDate?: string | Date | null;
 }
 
 const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: boolean) => {
@@ -226,6 +332,8 @@ export function AddActivityModal({
   allowModeToggle = true,
   currentUserId,
   prefill,
+  tripStartDate,
+  tripEndDate,
 }: AddActivityModalProps) {
   const { toast } = useToast();
 
@@ -236,6 +344,17 @@ export function AddActivityModal({
     () => ["/api/trips", tripIdString, "activities"],
     [tripIdString],
   );
+  const startDateMin = useMemo(() => formatDateValue(tripStartDate), [tripStartDate]);
+  const startDateMax = useMemo(() => formatDateValue(tripEndDate), [tripEndDate]);
+  const dateRangeHint = useMemo(
+    () => buildDateRangeHint(startDateMin, startDateMax),
+    [startDateMin, startDateMax],
+  );
+  const formSchema = useMemo(
+    () => createFormSchema({ startDateMin, startDateMax }),
+    [startDateMin, startDateMax],
+  );
+  const formResolver = useMemo(() => zodResolver(formSchema), [formSchema]);
 
   const memberOptions = useMemo<MemberOption[]>(() => {
     const base = members.map((member) => ({
@@ -279,11 +398,13 @@ export function AddActivityModal({
       : undefined;
 
     const dateSource = prefill?.startDate ?? selectedDate ?? null;
+    const rawStartDate = formatDateValue(dateSource);
+    const normalizedStartDate = clampDateToRange(rawStartDate, startDateMin, startDateMax);
 
     const values: FormValues = {
       name: prefill?.name ?? "",
       description: sanitizeOptional(prefill?.description),
-      startDate: formatDateValue(dateSource),
+      startDate: normalizedStartDate,
       startTime: sanitizeOptional(prefill?.startTime ?? ""),
       endTime: sanitizeOptional(prefill?.endTime ?? ""),
       location: sanitizeOptional(prefill?.location),
@@ -301,12 +422,12 @@ export function AddActivityModal({
     const initialMode = prefill?.type ?? defaultMode;
 
     return { values, mode: initialMode };
-  }, [defaultAttendeeIds, defaultMode, prefill, selectedDate]);
+  }, [defaultAttendeeIds, defaultMode, prefill, selectedDate, startDateMax, startDateMin]);
 
   const { values: defaultValues, mode: initialMode } = computeDefaults();
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: formResolver,
     mode: "onChange",
     reValidateMode: "onChange",
     defaultValues: defaultValues,
@@ -332,12 +453,17 @@ export function AddActivityModal({
 
   useEffect(() => {
     if (open && !prefill?.startDate && selectedDate) {
-      form.setValue("startDate", formatDateValue(selectedDate), {
+      const nextStartDate = clampDateToRange(
+        formatDateValue(selectedDate),
+        startDateMin,
+        startDateMax,
+      );
+      form.setValue("startDate", nextStartDate, {
         shouldDirty: true,
         shouldValidate: true,
       });
     }
-  }, [open, selectedDate, prefill?.startDate, form]);
+  }, [open, selectedDate, prefill?.startDate, form, startDateMax, startDateMin]);
 
   useEffect(() => {
     if (mode === "SCHEDULED" && creatorMemberId) {
@@ -492,7 +618,7 @@ export function AddActivityModal({
     const sanitized: ActivityCreateFormValues = {
       name: values.name,
       description: values.description,
-      startDate: values.startDate,
+      startDate: values.startDate.trim(),
       startTime: normalizedStart.length > 0 ? normalizedStart : undefined,
       endTime: values.endTime?.trim() ? values.endTime : undefined,
       location: values.location,
@@ -590,7 +716,16 @@ export function AddActivityModal({
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="startDate">Date</Label>
-              <Input id="startDate" type="date" {...form.register("startDate")} />
+              <Input
+                id="startDate"
+                type="date"
+                min={startDateMin || undefined}
+                max={startDateMax || undefined}
+                {...form.register("startDate")}
+              />
+              {dateRangeHint && (
+                <p className="mt-1 text-xs text-neutral-500">{dateRangeHint}</p>
+              )}
               {formErrors.startDate && (
                 <p className="mt-1 text-sm text-red-600">{formErrors.startDate.message}</p>
               )}
