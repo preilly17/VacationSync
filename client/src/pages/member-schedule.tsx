@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -19,6 +19,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { CalendarGrid } from "@/components/calendar-grid";
+import { AddActivityModal, type ActivityComposerPrefill } from "@/components/add-activity-modal";
 import { Sidebar } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
 import type { TripWithDetails, ActivityWithDetails, User as UserType } from "@shared/schema";
@@ -80,10 +81,18 @@ export default function MemberSchedule() {
   const [, setLocation] = useLocation();
   const { user: currentUser, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
-  
+
   const [selectedMemberId, setSelectedMemberId] = useState<string>("");
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showAddActivityModal, setShowAddActivityModal] = useState(false);
+  const [activityPrefill, setActivityPrefill] = useState<ActivityComposerPrefill | null>(null);
+
+  const numericTripId = useMemo(() => {
+    if (!tripId) return 0;
+    const parsed = Number(tripId);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [tripId]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -158,6 +167,28 @@ export default function MemberSchedule() {
     return trip.members.find(member => member.userId === selectedMemberId);
   };
 
+  const handleDayClick = useCallback(
+    (date: Date) => {
+      setSelectedDate(date);
+
+      const attendeeIds = new Set<string>();
+      if (currentUser?.id) {
+        attendeeIds.add(String(currentUser.id));
+      }
+      if (selectedMemberId) {
+        attendeeIds.add(String(selectedMemberId));
+      }
+
+      setActivityPrefill({
+        startDate: date,
+        attendeeIds: attendeeIds.size > 0 ? Array.from(attendeeIds) : undefined,
+        type: "SCHEDULED",
+      });
+      setShowAddActivityModal(true);
+    },
+    [currentUser?.id, selectedMemberId],
+  );
+
   const parseIsoDate = (value: TripWithDetails["startDate"]) =>
     value instanceof Date ? value : new Date(value);
 
@@ -220,14 +251,15 @@ export default function MemberSchedule() {
   }, [activities, selectedMemberId]);
 
   return (
-    <div className="min-h-dvh lg:min-h-screen bg-neutral-100">
-      {/* Mobile Navigation */}
-      <MobileNav
-        trip={trip}
-        user={currentUser ?? undefined}
-      />
+    <>
+      <div className="min-h-dvh lg:min-h-screen bg-neutral-100">
+        {/* Mobile Navigation */}
+        <MobileNav
+          trip={trip}
+          user={currentUser ?? undefined}
+        />
 
-      <div className="lg:flex lg:h-screen">
+        <div className="lg:flex lg:h-screen">
         {/* Desktop Sidebar */}
         <Sidebar
           trip={trip}
@@ -366,7 +398,7 @@ export default function MemberSchedule() {
                     activities={memberSchedule}
                     trip={trip}
                     selectedDate={selectedDate}
-                    onDayClick={(date) => setSelectedDate(date)}
+                    onDayClick={handleDayClick}
                   />
                   {memberSchedule.length === 0 ? (
                     <div className="p-8 text-center">
@@ -484,7 +516,24 @@ export default function MemberSchedule() {
           </div>
         </div>
       </main>
-    </div>
-  </div>
+        </div>
+      </div>
+      <AddActivityModal
+        open={showAddActivityModal}
+        onOpenChange={(open) => {
+          setShowAddActivityModal(open);
+          if (!open) {
+            setActivityPrefill(null);
+          }
+        }}
+        tripId={numericTripId}
+        selectedDate={selectedDate}
+        members={trip.members}
+        defaultMode="SCHEDULED"
+        allowModeToggle
+        currentUserId={currentUser?.id}
+        prefill={activityPrefill}
+      />
+    </>
   );
 }
