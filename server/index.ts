@@ -1,5 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import { setupRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { createSessionMiddleware } from "./sessionAuth";
@@ -41,8 +41,7 @@ const allowedOrigins = envConfiguredOrigins.size
   ? Array.from(envConfiguredOrigins)
   : Array.from(defaultOrigins);
 
-// ✅ FIXED CORS CONFIG
-app.use(cors({
+const corsOptions: CorsOptions = {
   origin(origin, callback) {
     if (!origin) {
       return callback(null, true);
@@ -66,9 +65,12 @@ app.use(cors({
     "X-Filename",
     "X-Content-Type",
   ],
-}));
+};
 
-app.options("*", cors());
+// ✅ FIXED CORS CONFIG
+app.use(cors(corsOptions));
+
+app.options("*", cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
