@@ -22,26 +22,26 @@ const ensureActivitiesTablePromise = shouldEnsureTables
   ? (async () => {
     await query(`
       CREATE TABLE IF NOT EXISTS activities_v2 (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        id UUID PRIMARY KEY,
         trip_id TEXT NOT NULL,
-      creator_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      description TEXT NULL,
-      category TEXT NULL,
-      date DATE NOT NULL,
-      start_time TIME NOT NULL,
-      end_time TIME NULL,
-      timezone TEXT NOT NULL,
-      location TEXT NULL,
-      cost_per_person NUMERIC NULL,
-      max_participants INTEGER NULL,
-      status TEXT NOT NULL,
-      visibility TEXT NOT NULL DEFAULT 'trip',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      version INTEGER NOT NULL DEFAULT 1,
-      idempotency_key TEXT NOT NULL,
-      UNIQUE (trip_id, idempotency_key)
+        creator_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NULL,
+        category TEXT NULL,
+        date DATE NOT NULL,
+        start_time TIME NOT NULL,
+        end_time TIME NULL,
+        timezone TEXT NOT NULL,
+        location TEXT NULL,
+        cost_per_person NUMERIC NULL,
+        max_participants INTEGER NULL,
+        status TEXT NOT NULL,
+        visibility TEXT NOT NULL DEFAULT 'trip',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        version INTEGER NOT NULL DEFAULT 1,
+        idempotency_key TEXT NOT NULL,
+        UNIQUE (trip_id, idempotency_key)
     )
   `);
 
@@ -49,10 +49,10 @@ const ensureActivitiesTablePromise = shouldEnsureTables
       CREATE TABLE IF NOT EXISTS activity_invitees_v2 (
         activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
         user_id TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'participant',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (activity_id, user_id)
+        role TEXT NOT NULL DEFAULT 'participant',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (activity_id, user_id)
     )
   `);
 
@@ -60,9 +60,9 @@ const ensureActivitiesTablePromise = shouldEnsureTables
       CREATE TABLE IF NOT EXISTS activity_votes_v2 (
         activity_id UUID NOT NULL REFERENCES activities_v2(id) ON DELETE CASCADE,
         user_id TEXT NOT NULL,
-      value TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (activity_id, user_id)
+        value TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (activity_id, user_id)
     )
   `);
 
@@ -416,23 +416,26 @@ export async function createActivityV2({
   }
 
   const data = validation.data;
+  const startTime = data.start_time.trim();
+  const rawEndTime = typeof data.end_time === "string" ? data.end_time.trim() : data.end_time;
+  const normalizedEndTime = rawEndTime && rawEndTime.length > 0 ? rawEndTime : null;
 
-  if (!TIME_PATTERN.test(data.start_time)) {
+  if (!TIME_PATTERN.test(startTime)) {
     const error = new Error("invalid_time");
     (error as any).code = "VALIDATION";
     (error as any).details = [{ field: "start_time", message: "Start time must be in HH:MM format." }];
     throw error;
   }
 
-  if (data.end_time) {
-    if (!TIME_PATTERN.test(data.end_time)) {
+  if (normalizedEndTime) {
+    if (!TIME_PATTERN.test(normalizedEndTime)) {
       const error = new Error("invalid_time");
       (error as any).code = "VALIDATION";
       (error as any).details = [{ field: "end_time", message: "End time must be in HH:MM format." }];
       throw error;
     }
 
-    if (toTimeValue(data.end_time) <= toTimeValue(data.start_time)) {
+    if (toTimeValue(normalizedEndTime) <= toTimeValue(startTime)) {
       const error = new Error("invalid_time_order");
       (error as any).code = "VALIDATION";
       (error as any).details = [{ field: "end_time", message: "End time must be after the start time." }];
@@ -537,8 +540,8 @@ export async function createActivityV2({
         data.description ?? null,
         data.category ?? null,
         data.date,
-        data.start_time,
-        data.end_time ?? null,
+        startTime,
+        normalizedEndTime,
         data.timezone,
         data.location ?? null,
         data.cost_per_person ?? null,
