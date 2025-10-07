@@ -2176,10 +2176,50 @@ export class DatabaseStorage implements IStorage {
 
     this.activityTypeInitPromise = (async () => {
       await query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS type TEXT`);
-      await query(
-        `ALTER TABLE activities ALTER COLUMN type SET DEFAULT 'SCHEDULED'`,
+
+      const { rows: typeInfoRows } = await query<{
+        data_type: string | null;
+        udt_name: string | null;
+      }>(
+        `
+        SELECT data_type, udt_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'activities'
+          AND column_name = 'type'
+        LIMIT 1
+        `,
       );
-      await query(`UPDATE activities SET type = 'SCHEDULED' WHERE type IS NULL`);
+
+      const typeInfo = typeInfoRows[0];
+      const dataType = typeInfo?.data_type ?? null;
+      const udtName = typeInfo?.udt_name ?? null;
+      const isUserDefinedEnum =
+        dataType === "USER-DEFINED" && typeof udtName === "string" && /^[A-Za-z_][A-Za-z0-9_]*$/.test(udtName);
+
+      if (isUserDefinedEnum && udtName) {
+        await query(
+          `ALTER TABLE activities ALTER COLUMN type SET DEFAULT 'SCHEDULED'::${udtName}`,
+        );
+        await query(
+          `UPDATE activities SET type = 'SCHEDULED'::${udtName} WHERE type IS NULL`,
+        );
+      } else {
+        await query(
+          `ALTER TABLE activities ALTER COLUMN type SET DEFAULT 'SCHEDULED'`,
+        );
+
+        const shouldTrimBlanks =
+          dataType === "text" || dataType === "character varying" || dataType === "character";
+        const updateCondition = shouldTrimBlanks
+          ? "type IS NULL OR TRIM(type) = ''"
+          : "type IS NULL";
+
+        await query(
+          `UPDATE activities SET type = 'SCHEDULED' WHERE ${updateCondition}`,
+        );
+      }
+
       await query(`ALTER TABLE activities ALTER COLUMN type SET NOT NULL`);
       this.activityTypeColumnInitialized = true;
     })();
