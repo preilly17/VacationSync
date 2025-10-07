@@ -49,6 +49,7 @@ export interface UseCreateActivityOptions {
   onSuccess?: (activity: ActivityWithDetails, values: ActivityCreateFormValues) => void;
   onValidationError?: (error: ActivityValidationError) => void;
   enabled?: boolean;
+  activitiesVersion?: "legacy" | "v2";
 }
 
 type InternalActivityCreateVariables = ActivityCreateFormValues & {
@@ -277,10 +278,12 @@ export function useCreateActivity({
   onSuccess,
   onValidationError,
   enabled = true,
+  activitiesVersion = "legacy",
 }: UseCreateActivityOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const trackEvent = useMemo(createAnalyticsTracker, []);
+  const useActivitiesV2 = activitiesVersion === "v2";
 
   const mutation = useMutation<MutationResult, Error, InternalActivityCreateVariables, OptimisticContext>({
     mutationFn: async (variables) => {
@@ -292,9 +295,11 @@ export function useCreateActivity({
       const response = await apiRequest(endpoint, {
         method: "POST",
         body: variables.__meta.payload,
-        headers: {
-          "x-activities-version": "2",
-        },
+        headers: useActivitiesV2
+          ? {
+              "x-activities-version": "2",
+            }
+          : undefined,
       });
 
       const created = (await response.json()) as ActivityWithDetails;
