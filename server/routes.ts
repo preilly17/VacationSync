@@ -1,4 +1,5 @@
 // @ts-nocheck
+import { randomUUID } from "crypto";
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
@@ -2189,12 +2190,12 @@ export function setupRoutes(app: Express) {
         const headerIdempotency = (() => {
           const headerValue = req?.headers?.["x-idempotency-key"];
           if (typeof headerValue === "string") {
-            return headerValue;
+            return headerValue.trim();
           }
           if (Array.isArray(headerValue) && headerValue.length > 0) {
             const [first] = headerValue;
             if (typeof first === "string") {
-              return first;
+              return first.trim();
             }
           }
           return "";
@@ -2241,6 +2242,23 @@ export function setupRoutes(app: Express) {
               ? rawBody.timeZone
               : "";
 
+        const idempotencyFromBody = (() => {
+          if (typeof rawBody.idempotency_key === "string") {
+            return rawBody.idempotency_key.trim();
+          }
+          if (typeof rawBody.idempotencyKey === "string") {
+            return rawBody.idempotencyKey.trim();
+          }
+          return "";
+        })();
+
+        const resolvedIdempotencyKey =
+          idempotencyFromBody.length > 0
+            ? idempotencyFromBody
+            : headerIdempotency.length > 0
+              ? headerIdempotency
+              : randomUUID();
+
         const createPayload: CreateActivityRequest = {
           mode: requestMode,
           title: typeof titleFromBody === "string" ? titleFromBody : "",
@@ -2261,10 +2279,7 @@ export function setupRoutes(app: Express) {
           max_participants:
             rawBody.max_participants ?? rawBody.maxParticipants ?? rawBody.maxCapacity ?? null,
           invitee_ids: normalizedInvitees,
-          idempotency_key:
-            typeof rawBody.idempotency_key === "string" && rawBody.idempotency_key.trim().length > 0
-              ? rawBody.idempotency_key.trim()
-              : headerIdempotency,
+          idempotency_key: resolvedIdempotencyKey,
         };
 
         attemptedInviteeIds = normalizedInvitees;
@@ -2280,10 +2295,6 @@ export function setupRoutes(app: Express) {
         if (createPayload.date.trim().length === 0) missingFields.push("date");
         if (createPayload.start_time.trim().length === 0) missingFields.push("start_time");
         if (createPayload.timezone.trim().length === 0) missingFields.push("timezone");
-        if (createPayload.idempotency_key.trim().length === 0) {
-          missingFields.push("idempotency_key");
-        }
-
         const missingRequired = missingFields.length > 0;
 
         const metricMode = requestMode === "proposed" ? "PROPOSE" : "SCHEDULED";
