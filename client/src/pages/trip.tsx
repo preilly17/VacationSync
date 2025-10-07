@@ -897,6 +897,15 @@ export default function Trip() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+
+  const numericTripIdFromRoute = useMemo(() => {
+    if (!id) {
+      return 0;
+    }
+
+    const parsed = Number(id);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [id]);
   const queryClient = useQueryClient();
 
   const [showAddActivity, setShowAddActivity] = useState(false);
@@ -1155,6 +1164,14 @@ export default function Trip() {
     queryKey: [`/api/trips/${id}/activities`],
     enabled: !!id && isAuthenticated,
   });
+
+  const numericTripId = useMemo(() => {
+    if (trip?.id && Number.isFinite(trip.id)) {
+      return trip.id;
+    }
+
+    return numericTripIdFromRoute;
+  }, [trip?.id, numericTripIdFromRoute]);
 
   const selectedActivity = useMemo(() => {
     if (!selectedActivityId) {
@@ -2354,17 +2371,17 @@ export default function Trip() {
                 )}
 
                 {activeTab === "packing" && (
-                  <PackingList tripId={parseInt(id || "0")} />
+                  <PackingList tripId={numericTripId} />
                 )}
 
                 {activeTab === "expenses" && (
-                  <ExpenseTracker tripId={parseInt(id || "0")} user={user ?? undefined} />
+                  <ExpenseTracker tripId={numericTripId} user={user ?? undefined} />
                 )}
 
                 {activeTab === "activities" && (
                   <div className="p-6">
                     <ActivitySearch
-                      tripId={parseInt(id || "0")}
+                      tripId={numericTripId}
                       trip={trip}
                       user={user ?? undefined}
                       manualFormOpenSignal={activityManualOpenSignal}
@@ -2374,7 +2391,7 @@ export default function Trip() {
 
                 {activeTab === "groceries" && (
                   <GroceryList
-                    tripId={parseInt(id || "0")}
+                    tripId={numericTripId}
                     user={user ?? undefined}
                     members={trip?.members ?? []}
                   />
@@ -2393,13 +2410,13 @@ export default function Trip() {
 
                 {activeTab === "wish-list" && (
                   <div className="space-y-6" data-testid="wish-list-section">
-                    <WishListBoard tripId={parseInt(id || "0")} />
+                    <WishListBoard tripId={numericTripId} />
                   </div>
                 )}
 
                 {activeTab === "flights" && (
                   <FlightCoordination
-                    tripId={parseInt(id || "0")}
+                    tripId={numericTripId}
                     user={user ?? undefined}
                     trip={trip}
                     manualFormOpenSignal={flightManualOpenSignal}
@@ -2408,7 +2425,7 @@ export default function Trip() {
 
                 {activeTab === "hotels" && (
                   <HotelBooking
-                    tripId={parseInt(id || "0")}
+                    tripId={numericTripId}
                     user={user ?? undefined}
                     trip={trip}
                     manualFormOpenSignal={hotelManualOpenSignal}
@@ -2416,7 +2433,7 @@ export default function Trip() {
                 )}
                 
                 {activeTab === "restaurants" && (
-                  <RestaurantBooking tripId={parseInt(id || "0")} user={user ?? undefined} trip={trip as TripWithDetails | undefined} />
+                  <RestaurantBooking tripId={numericTripId} user={user ?? undefined} trip={trip as TripWithDetails | undefined} />
                 )}
 
 
@@ -2975,7 +2992,7 @@ export default function Trip() {
               setSelectedDate(null);
             }
           }}
-          tripId={parseInt(id || "0")}
+          tripId={numericTripId}
           selectedDate={selectedDate}
           members={trip?.members ?? []}
           defaultMode={addActivityMode}
