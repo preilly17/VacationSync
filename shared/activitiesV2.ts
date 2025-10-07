@@ -69,41 +69,53 @@ export interface ActivityWithDetails extends Activity {
   currentUserRsvp?: ActivityRsvp | null;
 }
 
-export const createActivityRequestSchema = z.object({
-  mode: z.enum(["proposed", "scheduled"]),
-  title: z.string().min(1).max(120),
-  description: z.string().max(5000).optional().nullable(),
-  category: z.string().max(120).optional().nullable(),
-  date: z.string().min(1),
-  start_time: z.string().min(1),
-  end_time: z.string().optional().nullable(),
-  timezone: z.string().min(1),
-  location: z.string().max(500).optional().nullable(),
-  cost_per_person: z
-    .union([z.number(), z.string()])
-    .optional()
-    .nullable()
-    .transform((value) => {
-      if (value === null || value === undefined || value === "") {
-        return null;
+export const createActivityRequestSchema = z
+  .object({
+    mode: z.enum(["proposed", "scheduled"]),
+    title: z.string().min(1).max(120),
+    description: z.string().max(5000).optional().nullable(),
+    category: z.string().max(120).optional().nullable(),
+    date: z.string().min(1),
+    start_time: z.string().optional().nullable(),
+    end_time: z.string().optional().nullable(),
+    timezone: z.string().min(1),
+    location: z.string().max(500).optional().nullable(),
+    cost_per_person: z
+      .union([z.number(), z.string()])
+      .optional()
+      .nullable()
+      .transform((value) => {
+        if (value === null || value === undefined || value === "") {
+          return null;
+        }
+        const parsed = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }),
+    max_participants: z
+      .union([z.number(), z.string()])
+      .optional()
+      .nullable()
+      .transform((value) => {
+        if (value === null || value === undefined || value === "") {
+          return null;
+        }
+        const parsed = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+      }),
+    invitee_ids: z.array(z.string().min(1)).default([]),
+    idempotency_key: z.string().min(1),
+  })
+  .superRefine((data, ctx) => {
+    if (data.mode === "scheduled") {
+      if (!data.start_time || data.start_time.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["start_time"],
+          message: "Start time is required for scheduled activities.",
+        });
       }
-      const parsed = typeof value === "number" ? value : Number(value);
-      return Number.isFinite(parsed) ? parsed : null;
-    }),
-  max_participants: z
-    .union([z.number(), z.string()])
-    .optional()
-    .nullable()
-    .transform((value) => {
-      if (value === null || value === undefined || value === "") {
-        return null;
-      }
-      const parsed = typeof value === "number" ? value : Number(value);
-      return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
-    }),
-  invitee_ids: z.array(z.string().min(1)).default([]),
-  idempotency_key: z.string().min(1),
-});
+    }
+  });
 
 export type CreateActivityRequest = z.infer<typeof createActivityRequestSchema>;
 

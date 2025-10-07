@@ -64,8 +64,11 @@ const formSchema = z
     startDate: z.string().min(1, "Start date is required"),
     startTime: z
       .string()
-      .min(1, "Start time is required")
-      .refine((value) => timePattern.test(value), { message: "Start time must be in HH:MM format." }),
+      .optional()
+      .transform((value) => value ?? "")
+      .refine((value) => value.length === 0 || timePattern.test(value), {
+        message: "Start time must be in HH:MM format.",
+      }),
     endTime: z
       .string()
       .optional()
@@ -107,6 +110,15 @@ const formSchema = z
     }
 
     if (data.endTime) {
+      if (!data.startTime || data.startTime.trim().length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["endTime"],
+          message: "Add a start time before setting an end time.",
+        });
+        return;
+      }
+
       const startDate = new Date(`${data.startDate}T${data.startTime}`);
       const endDate = new Date(`${data.startDate}T${data.endTime}`);
       if (Number.isNaN(endDate.getTime())) {
@@ -339,6 +351,26 @@ export function AddActivityModal({
     }
   }, [mode, creatorMemberId, form]);
 
+  const watchedStartTime = form.watch("startTime") ?? "";
+
+  useEffect(() => {
+    if (mode === "PROPOSE") {
+      form.clearErrors("startTime");
+      return;
+    }
+
+    const normalized = typeof watchedStartTime === "string" ? watchedStartTime.trim() : "";
+    if (normalized.length === 0) {
+      form.setError("startTime", {
+        type: "manual",
+        message: "Start time is required for scheduled activities.",
+      });
+      return;
+    }
+
+    form.clearErrors("startTime");
+  }, [form, mode, watchedStartTime]);
+
   const handleValidationError = useCallback(
     (error: ActivityValidationError) => {
       if (error.fieldErrors.length > 0) {
@@ -378,11 +410,11 @@ export function AddActivityModal({
   const handleSuccess = useCallback(
     (_activity: ActivityWithDetails, values: ActivityCreateFormValues) => {
       toast({
-        title: values.type === "PROPOSE" ? "Activity proposed" : "Activity added",
+        title: values.type === "PROPOSE" ? "Proposal posted" : "Scheduled and invites sent",
         description:
           values.type === "PROPOSE"
             ? "We shared this idea with your group for feedback."
-            : "Your activity has been added to the schedule.",
+            : "RSVPs are on the way to everyone selected.",
       });
 
       const { values: resetValues, mode: resetMode } = computeDefaults();
@@ -453,11 +485,25 @@ export function AddActivityModal({
   }, [creatorMemberId, form, mode]);
 
   const submitForm = form.handleSubmit((values) => {
+    const normalizedStart = (values.startTime ?? "").trim();
+    if (mode === "SCHEDULED" && normalizedStart.length === 0) {
+      form.setError("startTime", {
+        type: "manual",
+        message: "Start time is required for scheduled activities.",
+      });
+      try {
+        form.setFocus("startTime");
+      } catch (error) {
+        console.error("Failed to focus start time field", error);
+      }
+      return;
+    }
+
     const sanitized: ActivityCreateFormValues = {
       name: values.name,
       description: values.description,
       startDate: values.startDate,
-      startTime: values.startTime,
+      startTime: normalizedStart.length > 0 ? normalizedStart : undefined,
       endTime: values.endTime?.trim() ? values.endTime : undefined,
       location: values.location,
       cost: values.cost?.trim() ? values.cost : undefined,
@@ -524,7 +570,7 @@ export function AddActivityModal({
             )}
             <p className="mt-2 text-xs text-neutral-500">
               {mode === "PROPOSE"
-                ? "Selected travelers will get a vote to weigh in."
+                ? "We'll ask everyone selected to vote yes or no."
                 : "Everyone selected will receive an RSVP request."}
             </p>
           </div>
@@ -559,7 +605,10 @@ export function AddActivityModal({
               )}
             </div>
             <div>
-              <Label htmlFor="startTime">Start time</Label>
+              <Label htmlFor="startTime">
+                Start time
+                {mode === "PROPOSE" ? " (optional)" : ""}
+              </Label>
               <Input id="startTime" type="time" {...form.register("startTime")} />
               {form.formState.errors.startTime && (
                 <p className="mt-1 text-sm text-red-600">{form.formState.errors.startTime.message}</p>
@@ -700,7 +749,7 @@ export function AddActivityModal({
               disabled={isSubmitting}
               aria-disabled={isSubmitting}
             >
-              {isSubmitting ? "Submitting..." : mode === "PROPOSE" ? "Send proposal" : "Add to schedule"}
+              {isSubmitting ? "Saving..." : mode === "PROPOSE" ? "Propose to group" : "Add to schedule"}
             </Button>
           </div>
         </form>
