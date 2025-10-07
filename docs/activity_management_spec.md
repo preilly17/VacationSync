@@ -11,6 +11,73 @@ Unless explicitly noted, components described in "Shared Systems" apply to both 
 
 ---
 
+## Activity Creation – End-to-End Behavior
+
+### Entry Points
+
+Activity creation can be launched from three primary surfaces. Each surface pre-fills the creation modal with contextual data to reduce effort:
+
+1. **Calendar cell click** — Selecting a day cell in either **Group Calendar** or **My Schedule** opens the modal with the chosen date and trip destination already selected.
+2. **Add/New Activity button** — Available on the trip dashboard and both calendars. Defaults the date to "today" (or the next day that still lies within the trip window) until the user changes it.
+3. **Discover Activities tab** — Pressing **Propose** or **Add to schedule** on a discovery result fills the modal with the activity title, location, and any supplied schedule metadata. If the search card includes a datetime range it becomes the default; otherwise the time remains empty for the creator to decide.
+
+### Unified Activity Modal
+
+There is a single activity modal with a toggle at the top that switches between **Propose to group (voting)** and **Add to schedule (RSVP)** modes. Both modes share a common field set and validation copy:
+
+* **Required:** Activity name, date (pre-filled from entry point), and start time when the mode is Scheduled. Proposals treat start time as optional but collect it when supplied.
+* **Optional:** Description, location, end time, cost per person, max participants (defaults to "No limit"), attendee selection (multi-select defaults to the entire trip, including the creator who cannot be removed), and category.
+* **Validation copy:**
+  * Missing required fields → “Please add a name and date.”
+  * Invalid time ordering → “End time must be after start time.”
+  * Date outside the trip window → “Pick a date between Trip Start and Trip End.”
+  * Zero invitees → “We can’t invite zero people—add at least one attendee.”
+
+Submission buttons show `Saving…` while requests are in flight to prevent duplicates. Successful submissions close the modal, toast “Proposal sent” or “Activity scheduled,” and immediately refresh calendars, proposal lists, and schedules.
+
+### Proposal Submission Flow
+
+When the creator submits in **Propose** mode:
+
+* A proposal entity is persisted and surfaces on the **Proposals tab** under Activities.
+* Lightweight "Proposed" chips appear on both the **Group Calendar** and the creator’s **My Schedule** for the selected date.
+* Notifications ping selected invitees with thumbs-up / thumbs-down voting actions. Any member of the trip can vote.
+* Proposals stay visible until the creator (or a trip admin) converts them to scheduled or cancels them.
+
+**Conversion** keeps the existing details while allowing final tweaks to timing and attendees. Converting removes the proposal chip/listing and creates a scheduled activity (see below), triggering RSVP requests for the finalized invitees.
+
+### Scheduled Submission Flow
+
+When the creator submits in **Scheduled** mode:
+
+* A scheduled activity record is stored for the trip with the selected attendees.
+* Calendar placement:
+  * **Group Calendar** shows the activity with solid styling, category color, and RSVP counts.
+  * **My Schedule** shows the activity for the creator and every invitee immediately, annotated with their RSVP state. Declined members can hide the item unless they opt to view declined entries.
+* Notifications send RSVP requests (Accept / Decline) to all invitees. Accepted attendees stay on their personal calendar; declining hides it (unless they opt in to view declined items).
+* If a max participant cap exists, auto-limit accepts and return "Waitlist full" once capacity is reached.
+
+### Visibility & Sync Rules
+
+| Surface | Proposal | Scheduled |
+| --- | --- | --- |
+| **Proposals tab** | Lives here until converted or canceled with title, date, proposer, vote counts, and actions (Vote, Convert, Cancel). | Not shown. |
+| **Group Calendar** | Light "Proposed" chip on the target date. | Full card with RSVP counts and category color. |
+| **Creator’s My Schedule** | Always shows proposals and scheduled activities created by them. | Always shows, matching proposal rule. |
+| **Invitee My Schedule** | Default behavior: proposals remain off invitee schedules until they vote “Yes” (teams can choose to never show proposals to invitees). | Always shown with RSVP state; declined items hide unless the member toggles visibility. |
+
+Edits by the creator or a trip admin propagate updates, send notifications, and refresh all calendar chips and list rows. Canceling an activity removes the associated entries and surfaces a confirmation toast.
+
+### Notifications & Badges
+
+* Proposal posted → notify invitees with a voting link.
+* Proposal converted → notify invitees with RSVP controls.
+* Scheduled activity created → notify invitees to RSVP.
+* Edits → send “Activity updated” notifications and refresh UI surfaces.
+* Max participants reached → display a "Waitlist full" badge on the activity card/chip.
+
+---
+
 ## Shared Systems
 
 ### Creation Modal
@@ -37,12 +104,12 @@ The same activity should appear in different parts of the product depending on i
 #### Proposed Activities
 
 * **Creation:** As soon as a proposal is created it appears in the **Proposals tab** for every invitee (and trip admins/creator) with 👍/👎 voting. A lightweight "Proposed" chip is also placed on the **Group Calendar** date; clicking it opens the proposal and allows inline voting.
-* **Personal calendar:** Proposals never show on **My Schedule**—even if the member has already voted—so the surface stays focused on confirmed plans.
+* **Personal calendar:** Proposals stay off **My Schedule** for invitees by default to keep the surface focused on confirmed plans. Teams may opt into showing them only after the member votes “Yes,” but one rule must be applied consistently.
 * **Conversion:** When the organizer converts a proposal, it disappears from the proposal list (or receives a "Scheduled" tag in historical views), leaves the calendar chip state, and becomes a scheduled activity that now drives RSVP collection.
 
 #### Scheduled Activities
 
-* **Creation:** Scheduled activities render as full event cards on the **Group Calendar** for invitees, with RSVP state (Invited / Going / Not going) shown inline or on hover. They also appear on **My Schedule** for each invited member (recommended) or, if the stricter rule is selected, only once the member RSVPs "Going"—the product should pick one rule and apply it consistently. They do not appear in the Proposals tab.
+* **Creation:** Scheduled activities render as full event cards on the **Group Calendar** for invitees, with RSVP state (Invited / Going / Not going) shown inline or on hover. They immediately appear on **My Schedule** for the creator and every invitee with the appropriate RSVP chip. They do not appear in the Proposals tab.
 * **Updates:** Changing date, time, or location updates both calendar surfaces instantly and sends notifications to invitees whose schedules are affected. The personal schedule mirrors those changes for every member who sees the event.
 * **Cancellation:** Canceling removes the activity from both calendar views (optionally leaving a brief "Canceled" state) without reintroducing it to the Proposals tab.
 
@@ -52,7 +119,7 @@ The same activity should appear in different parts of the product depending on i
 | --- | --- | --- | --- |
 | **Proposals tab** | ✅ | ❌ | ❌ |
 | **Group Calendar** | ✅ (light chip) | ✅ (full card) | ✅ (full card) |
-| **My Schedule** | ❌ | ✅ *(or hide until Going — choose one rule)* | ✅ |
+| **My Schedule** | ❌ *(or ✅ after "Yes" vote if that variant is chosen)* | ✅ | ✅ |
 
 #### Edge Case Handling
 
