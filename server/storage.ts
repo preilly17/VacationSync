@@ -3651,7 +3651,7 @@ export class DatabaseStorage implements IStorage {
         FROM activities
         WHERE trip_calendar_id = $1
           AND LOWER(name) = LOWER($2)
-          AND start_time = $3
+          AND start_time IS NOT DISTINCT FROM $3
           AND COALESCE(type, 'SCHEDULED') = $4
         LIMIT 1
         FOR SHARE

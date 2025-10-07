@@ -8,6 +8,7 @@ import {
   MAX_ACTIVITY_DESCRIPTION_LENGTH,
   MAX_ACTIVITY_LOCATION_LENGTH,
   MAX_CAPACITY_MESSAGE,
+  START_TIME_REQUIRED_FOR_END_MESSAGE,
 } from "@shared/activityValidation";
 
 export const CLIENT_VALIDATION_FALLBACK_MESSAGE =
@@ -37,6 +38,7 @@ const clientValidationMessageMap: Array<{
       "End time must be in HH:MM format.",
       "End time must be a valid date/time.",
       END_TIME_AFTER_START_MESSAGE,
+      START_TIME_REQUIRED_FOR_END_MESSAGE,
     ],
   },
   {

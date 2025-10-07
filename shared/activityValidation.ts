@@ -21,6 +21,7 @@ export const ATTENDEE_REQUIRED_MESSAGE = "Include at least one attendee.";
 export const INVITEE_NOT_MEMBER_MESSAGE =
   "Some selected invitees are no longer part of this trip.";
 export const END_TIME_AFTER_START_MESSAGE = "End time must be after start time.";
+export const START_TIME_REQUIRED_FOR_END_MESSAGE = "Add a start time before setting an end time.";
 export const MAX_ACTIVITY_NAME_LENGTH = 120;
 export const MAX_ACTIVITY_DESCRIPTION_LENGTH = 2000;
 export const MAX_ACTIVITY_LOCATION_LENGTH = 255;
@@ -36,7 +37,7 @@ export interface NormalizedActivityInput {
   tripCalendarId: number;
   name: string;
   description: string | null;
-  startTime: string;
+  startTime: string | null;
   endTime: string | null;
   location: string | null;
   cost: number | null;
@@ -264,26 +265,6 @@ export const validateActivityInput = (
     });
   }
 
-  const startResult = normalizeDateTimeInput(rawData.startTime, "Start time", {
-    required: true,
-    requiredMessage: "Start time is required so we can place this on the calendar.",
-  });
-  if (startResult.error) {
-    errors.push({ field: "startTime", message: startResult.error });
-  }
-
-  const endResult = normalizeDateTimeInput(rawData.endTime, "End time", { required: false });
-  if (endResult.error) {
-    errors.push({ field: "endTime", message: endResult.error });
-  }
-
-  if (startResult.value && endResult.value) {
-    const orderingError = ensureEndAfterStart(startResult.value, endResult.value);
-    if (orderingError) {
-      errors.push({ field: "endTime", message: orderingError });
-    }
-  }
-
   const costResult = normalizeCostInput(rawData.cost ?? null);
   if (costResult.error) {
     errors.push({ field: "cost", message: costResult.error });
@@ -306,6 +287,31 @@ export const validateActivityInput = (
 
   const typeValue = typeof rawData.type === "string" ? rawData.type : "SCHEDULED";
   const normalizedType = typeValue === "PROPOSE" ? "PROPOSE" : "SCHEDULED";
+  const requiresStartTime = normalizedType !== "PROPOSE";
+
+  const startResult = normalizeDateTimeInput(rawData.startTime, "Start time", {
+    required: requiresStartTime,
+    requiredMessage: "Start time is required so we can place this on the calendar.",
+  });
+  if (startResult.error) {
+    errors.push({ field: "startTime", message: startResult.error });
+  }
+
+  const endResult = normalizeDateTimeInput(rawData.endTime, "End time", { required: false });
+  if (endResult.error) {
+    errors.push({ field: "endTime", message: endResult.error });
+  }
+
+  if (endResult.value && !startResult.value) {
+    errors.push({ field: "endTime", message: START_TIME_REQUIRED_FOR_END_MESSAGE });
+  }
+
+  if (startResult.value && endResult.value) {
+    const orderingError = ensureEndAfterStart(startResult.value, endResult.value);
+    if (orderingError) {
+      errors.push({ field: "endTime", message: orderingError });
+    }
+  }
 
   const attendeeSet = new Set(attendeeResult.value ?? []);
   attendeeSet.add(userId);
@@ -327,7 +333,9 @@ export const validateActivityInput = (
     });
   }
 
-  if (errors.length > 0 || !startResult.value || !filteredAttendees.length || !categoryResult.value) {
+  const hasValidStartTime = requiresStartTime ? Boolean(startResult.value) : true;
+
+  if (errors.length > 0 || !hasValidStartTime || !filteredAttendees.length || !categoryResult.value) {
     return { errors };
   }
 
@@ -336,7 +344,7 @@ export const validateActivityInput = (
       tripCalendarId,
       name: nameValue,
       description: descriptionValue,
-      startTime: startResult.value,
+      startTime: startResult.value ?? null,
       endTime: endResult.value,
       location: locationValue,
       cost: costResult.value,

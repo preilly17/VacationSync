@@ -2571,13 +2571,31 @@ export function setupRoutes(app: Express) {
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
       if (attendeesToNotify.length > 0) {
-        const eventDate = new Date(activity.startTime);
-        const formattedDate = eventDate.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        });
+        const eventDate = activity.startTime ? new Date(activity.startTime) : null;
+        const fallbackDateString = (() => {
+          if (typeof rawData.startDate === "string" && rawData.startDate.trim().length > 0) {
+            return rawData.startDate.trim();
+          }
+          if (typeof rawData.date === "string" && rawData.date.trim().length > 0) {
+            return rawData.date.trim();
+          }
+          return null;
+        })();
+        const fallbackDate = fallbackDateString ? new Date(`${fallbackDateString}T00:00:00Z`) : null;
+        const hasValidFallbackDate = fallbackDate && !Number.isNaN(fallbackDate.getTime());
+        const formattedDate = eventDate
+          ? eventDate.toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })
+          : hasValidFallbackDate
+            ? fallbackDate.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })
+            : "the selected date";
 
         const proposerMember = trip.members.find((member) => member.userId === userId);
         const proposerName = getTripMemberDisplayName(proposerMember);
@@ -2588,8 +2606,8 @@ export function setupRoutes(app: Express) {
             : `You've been invited to ${activity.name}`;
         const notificationMessage =
           mode === "PROPOSE"
-            ? `${proposerName} suggested ${activity.name} on ${formattedDate}. Vote when you're ready.`
-            : `You've been invited to ${activity.name} on ${formattedDate}.`;
+            ? `${proposerName} suggested ${activity.name} on ${formattedDate}${eventDate ? "" : " (time TBD)"}. Vote when you're ready.`
+            : `You've been invited to ${activity.name} on ${formattedDate}${eventDate ? "" : " (time TBD)"}.`;
 
         const notificationResults = await Promise.allSettled(
           attendeesToNotify.map((attendeeId) =>

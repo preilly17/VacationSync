@@ -28,6 +28,7 @@ import {
   MAX_ACTIVITY_DESCRIPTION_LENGTH,
   MAX_ACTIVITY_LOCATION_LENGTH,
   MAX_ACTIVITY_NAME_LENGTH,
+  START_TIME_REQUIRED_FOR_END_MESSAGE,
   normalizeCostInput,
   normalizeMaxCapacityInput,
 } from "@shared/activityValidation";
@@ -63,10 +64,10 @@ const formSchema = z
       .transform((value) => value ?? ""),
     startDate: z.string().min(1, "Start date is required"),
     startTime: z
-      .string({ required_error: START_TIME_REQUIRED_MESSAGE })
-      .trim()
-      .min(1, START_TIME_REQUIRED_MESSAGE)
-      .refine((value) => timePattern.test(value), {
+      .string()
+      .optional()
+      .transform((value) => (value ?? "").trim())
+      .refine((value) => value === "" || timePattern.test(value), {
         message: "Start time must be in HH:MM format.",
       }),
     endTime: z
@@ -114,7 +115,7 @@ const formSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["endTime"],
-          message: "Add a start time before setting an end time.",
+          message: START_TIME_REQUIRED_FOR_END_MESSAGE,
         });
         return;
       }
@@ -352,10 +353,11 @@ export function AddActivityModal({
   }, [mode, creatorMemberId, form]);
 
   const formErrors = form.formState.errors;
+  const requireStartTime = mode === "SCHEDULED";
   const watchedStartTime = form.watch("startTime") ?? "";
   const normalizedWatchedStartTime =
     typeof watchedStartTime === "string" ? watchedStartTime.trim() : "";
-  const isStartTimeMissing = normalizedWatchedStartTime.length === 0;
+  const isStartTimeMissing = requireStartTime && normalizedWatchedStartTime.length === 0;
   const hasFormErrors = Object.keys(formErrors).length > 0;
 
   const handleValidationError = useCallback(
@@ -474,7 +476,7 @@ export function AddActivityModal({
   const submitForm = form.handleSubmit((values) => {
     const normalizedStart =
       typeof values.startTime === "string" ? values.startTime.trim() : "";
-    if (normalizedStart.length === 0) {
+    if (mode === "SCHEDULED" && normalizedStart.length === 0) {
       form.setError("startTime", {
         type: "manual",
         message: START_TIME_REQUIRED_MESSAGE,
@@ -491,7 +493,7 @@ export function AddActivityModal({
       name: values.name,
       description: values.description,
       startDate: values.startDate,
-      startTime: normalizedStart,
+      startTime: normalizedStart.length > 0 ? normalizedStart : undefined,
       endTime: values.endTime?.trim() ? values.endTime : undefined,
       location: values.location,
       cost: values.cost?.trim() ? values.cost : undefined,
@@ -596,11 +598,15 @@ export function AddActivityModal({
             <div>
               <Label htmlFor="startTime">
                 Start time
-                <span aria-hidden="true" className="ml-1 text-red-500">
-                  *
-                </span>
-                {" "}
-                <span className="sr-only">Required field</span>
+                {mode === "SCHEDULED" && (
+                  <>
+                    <span aria-hidden="true" className="ml-1 text-red-500">
+                      *
+                    </span>
+                    {" "}
+                    <span className="sr-only">Required field</span>
+                  </>
+                )}
               </Label>
               <Input id="startTime" type="time" {...form.register("startTime")} />
               {formErrors.startTime && (

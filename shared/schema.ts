@@ -229,7 +229,7 @@ export interface Activity {
   postedBy: string;
   name: string;
   description: string | null;
-  startTime: IsoDate;
+  startTime: IsoDate | null;
   endTime: IsoDate | null;
   location: string | null;
   cost: number | null;
@@ -258,10 +258,14 @@ const enforceRequiredStartTime = (
   data: z.infer<typeof baseInsertActivitySchema>,
   ctx: z.RefinementCtx,
 ) => {
+  const normalizedType = data.type === "PROPOSE" ? "PROPOSE" : "SCHEDULED";
   const normalizedStartTime =
     typeof data.startTime === "string" ? data.startTime.trim() : data.startTime;
 
-  if (normalizedStartTime === null || normalizedStartTime === undefined || normalizedStartTime === "") {
+  if (
+    normalizedType !== "PROPOSE"
+    && (normalizedStartTime === null || normalizedStartTime === undefined || normalizedStartTime === "")
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["startTime"],
