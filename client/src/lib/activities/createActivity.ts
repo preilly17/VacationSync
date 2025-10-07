@@ -292,6 +292,9 @@ export function useCreateActivity({
       const response = await apiRequest(endpoint, {
         method: "POST",
         body: variables.__meta.payload,
+        headers: {
+          "x-activities-version": "2",
+        },
       });
 
       const created = (await response.json()) as ActivityWithDetails;
