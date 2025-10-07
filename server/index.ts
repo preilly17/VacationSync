@@ -41,21 +41,82 @@ const allowedOrigins = envConfiguredOrigins.size
   ? Array.from(envConfiguredOrigins)
   : Array.from(defaultOrigins);
 
+type ParsedOrigin = {
+  normalized: string;
+  hostname: string;
+};
+
+const parseOriginValue = (origin: string): ParsedOrigin | null => {
+  const trimmed = origin.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    const url = new URL(trimmed);
+    const protocol = url.protocol.toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") {
+      return null;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    const isHttps = protocol === "https:";
+    const defaultPort = isHttps ? "443" : "80";
+    const port = url.port && url.port !== defaultPort ? `:${url.port}` : "";
+
+    return {
+      normalized: `${protocol}//${hostname}${port}`,
+      hostname,
+    };
+  } catch {
+    const lower = trimmed.toLowerCase();
+    return {
+      normalized: lower,
+      hostname: lower,
+    };
+  }
+};
+
+const normalizedAllowedOrigins = new Set(
+  allowedOrigins
+    .map((origin) => parseOriginValue(origin)?.normalized)
+    .filter((value): value is string => Boolean(value)),
+);
+
+const isTripsyncBetaDomain = (hostname: string) =>
+  hostname === "tripsyncbeta.com" || hostname.endsWith(".tripsyncbeta.com");
+
+const isOriginAllowed = (origin?: string | null): boolean => {
+  if (!origin) {
+    return true;
+  }
+
+  const parsed = parseOriginValue(origin);
+  if (!parsed) {
+    return false;
+  }
+
+  if (normalizedAllowedOrigins.has(parsed.normalized)) {
+    return true;
+  }
+
+  if (isTripsyncBetaDomain(parsed.hostname)) {
+    return true;
+  }
+
+  return false;
+};
+
 const corsOptions: CorsOptions = {
   origin(origin, callback) {
-    if (!origin) {
+    if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-
-    if (/\.tripsyncbeta\.com$/i.test(origin)) {
-      return callback(null, true);
-    }
-
-    return callback(new Error("Not allowed by CORS"));
+    const error = new Error(
+      origin ? `Not allowed by CORS: ${origin}` : "Not allowed by CORS",
+    );
+    return callback(error);
   },
   credentials: true,
   allowedHeaders: [
@@ -65,6 +126,8 @@ const corsOptions: CorsOptions = {
     "X-Filename",
     "X-Content-Type",
   ],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  optionsSuccessStatus: 204,
 };
 
 // ✅ FIXED CORS CONFIG
