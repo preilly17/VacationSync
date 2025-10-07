@@ -125,6 +125,31 @@ const normalizeTime = (value: unknown): string => {
   return "00:00";
 };
 
+const normalizeUserProvidedTime = (value: string): string => {
+  const trimmed = value.trim();
+  if (TIME_PATTERN.test(trimmed)) {
+    return trimmed;
+  }
+
+  const basicMatch = /^([0-2]?\d)(?::([0-5]?\d))?$/.exec(trimmed);
+  if (!basicMatch) {
+    return trimmed;
+  }
+
+  const hours = Number.parseInt(basicMatch[1] ?? "0", 10);
+  const minutes = Number.parseInt(basicMatch[2] ?? "0", 10);
+
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return trimmed;
+  }
+
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return trimmed;
+  }
+
+  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+};
+
 const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
   const base: ActivityWithDetails = {
     id: String(row.id),
@@ -403,7 +428,17 @@ export async function createActivityV2({
 }: CreateActivityParams): Promise<CreateActivityResponse> {
   await ensureActivitiesTablePromise;
 
-  const validation = createActivityRequestSchema.safeParse(body);
+  const sanitizedBody: CreateActivityRequest = {
+    ...body,
+    start_time: body.start_time.trim(),
+    end_time: typeof body.end_time === "string" ? body.end_time.trim() : body.end_time,
+    idempotency_key:
+      typeof body.idempotency_key === "string" && body.idempotency_key.trim().length > 0
+        ? body.idempotency_key.trim()
+        : randomUUID(),
+  };
+
+  const validation = createActivityRequestSchema.safeParse(sanitizedBody);
   if (!validation.success) {
     const friendlyErrors = validation.error.issues.map((issue) => ({
       field: issue.path.join("."),
@@ -416,9 +451,10 @@ export async function createActivityV2({
   }
 
   const data = validation.data;
-  const startTime = data.start_time.trim();
-  const rawEndTime = typeof data.end_time === "string" ? data.end_time.trim() : data.end_time;
-  const normalizedEndTime = rawEndTime && rawEndTime.length > 0 ? rawEndTime : null;
+  const startTime = normalizeUserProvidedTime(data.start_time);
+  const rawEndTime = typeof data.end_time === "string" ? data.end_time : data.end_time;
+  const normalizedEndTime =
+    rawEndTime && rawEndTime.length > 0 ? normalizeUserProvidedTime(rawEndTime) : null;
 
   if (!TIME_PATTERN.test(startTime)) {
     const error = new Error("invalid_time");
