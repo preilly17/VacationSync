@@ -87,16 +87,15 @@ describe("buildActivitySubmission", () => {
     expect(payload.endTime).toBeNull();
   });
 
-  it("allows proposals without a start time", () => {
-    const { payload } = buildActivitySubmission({
-      ...baseInput,
-      type: "PROPOSE",
-      startTime: "",
-      endTime: undefined,
-    });
-
-    expect(payload.startTime).toEqual(expect.any(String));
-    expect(payload.start_time).toBeNull();
+  it("requires a start time for proposals", () => {
+    expect(() =>
+      buildActivitySubmission({
+        ...baseInput,
+        type: "PROPOSE",
+        startTime: "",
+        endTime: undefined,
+      }),
+    ).toThrow("Start time is required so we can place this on the calendar.");
   });
 
   it("preserves the selected calendar date for YYYY-MM-DD inputs", async () => {

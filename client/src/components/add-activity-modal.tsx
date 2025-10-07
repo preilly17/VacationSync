@@ -34,6 +34,7 @@ import {
 } from "@shared/activityValidation";
 
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;
+const START_TIME_REQUIRED_MESSAGE = "Start time is required so we can place this on the calendar.";
 
 const categories = [
   { value: "food", label: "Food & Dining" },
@@ -63,10 +64,10 @@ const formSchema = z
       .transform((value) => value ?? ""),
     startDate: z.string().min(1, "Start date is required"),
     startTime: z
-      .string()
-      .optional()
-      .transform((value) => value ?? "")
-      .refine((value) => value.length === 0 || timePattern.test(value), {
+      .string({ required_error: START_TIME_REQUIRED_MESSAGE })
+      .trim()
+      .min(1, START_TIME_REQUIRED_MESSAGE)
+      .refine((value) => timePattern.test(value), {
         message: "Start time must be in HH:MM format.",
       }),
     endTime: z
@@ -351,25 +352,12 @@ export function AddActivityModal({
     }
   }, [mode, creatorMemberId, form]);
 
+  const formErrors = form.formState.errors;
   const watchedStartTime = form.watch("startTime") ?? "";
-
-  useEffect(() => {
-    if (mode === "PROPOSE") {
-      form.clearErrors("startTime");
-      return;
-    }
-
-    const normalized = typeof watchedStartTime === "string" ? watchedStartTime.trim() : "";
-    if (normalized.length === 0) {
-      form.setError("startTime", {
-        type: "manual",
-        message: "Start time is required for scheduled activities.",
-      });
-      return;
-    }
-
-    form.clearErrors("startTime");
-  }, [form, mode, watchedStartTime]);
+  const normalizedWatchedStartTime =
+    typeof watchedStartTime === "string" ? watchedStartTime.trim() : "";
+  const isStartTimeMissing = normalizedWatchedStartTime.length === 0;
+  const hasFormErrors = Object.keys(formErrors).length > 0;
 
   const handleValidationError = useCallback(
     (error: ActivityValidationError) => {
@@ -485,11 +473,12 @@ export function AddActivityModal({
   }, [creatorMemberId, form, mode]);
 
   const submitForm = form.handleSubmit((values) => {
-    const normalizedStart = (values.startTime ?? "").trim();
-    if (mode === "SCHEDULED" && normalizedStart.length === 0) {
+    const normalizedStart =
+      typeof values.startTime === "string" ? values.startTime.trim() : "";
+    if (normalizedStart.length === 0) {
       form.setError("startTime", {
         type: "manual",
-        message: "Start time is required for scheduled activities.",
+        message: START_TIME_REQUIRED_MESSAGE,
       });
       try {
         form.setFocus("startTime");
@@ -503,7 +492,7 @@ export function AddActivityModal({
       name: values.name,
       description: values.description,
       startDate: values.startDate,
-      startTime: normalizedStart.length > 0 ? normalizedStart : undefined,
+      startTime: normalizedStart,
       endTime: values.endTime?.trim() ? values.endTime : undefined,
       location: values.location,
       cost: values.cost?.trim() ? values.cost : undefined,
@@ -517,6 +506,7 @@ export function AddActivityModal({
   });
 
   const isSubmitting = createActivity.isPending;
+  const isSubmitDisabled = isSubmitting || isStartTimeMissing || hasFormErrors;
 
   const handleDialogChange = (next: boolean) => {
     if (!next) {
@@ -570,16 +560,16 @@ export function AddActivityModal({
             )}
             <p className="mt-2 text-xs text-neutral-500">
               {mode === "PROPOSE"
-                ? "We'll ask everyone selected to vote yes or no."
-                : "Everyone selected will receive an RSVP request."}
+                ? "We’ll post this to Proposals and place it on the date/time in the group calendar."
+                : "We’ll send RSVPs and add this to calendars."}
             </p>
           </div>
 
           <div>
             <Label htmlFor="name">Activity name</Label>
             <Input id="name" placeholder="e.g., Tokyo Skytree visit" {...form.register("name")} />
-            {form.formState.errors.name && (
-              <p className="mt-1 text-sm text-red-600">{form.formState.errors.name.message}</p>
+            {formErrors.name && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.name.message}</p>
             )}
           </div>
 
@@ -591,8 +581,8 @@ export function AddActivityModal({
               rows={3}
               {...form.register("description")}
             />
-            {form.formState.errors.description && (
-              <p className="mt-1 text-sm text-red-600">{form.formState.errors.description.message}</p>
+            {formErrors.description && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.description.message}</p>
             )}
           </div>
 
@@ -600,18 +590,22 @@ export function AddActivityModal({
             <div>
               <Label htmlFor="startDate">Date</Label>
               <Input id="startDate" type="date" {...form.register("startDate")} />
-              {form.formState.errors.startDate && (
-                <p className="mt-1 text-sm text-red-600">{form.formState.errors.startDate.message}</p>
+              {formErrors.startDate && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.startDate.message}</p>
               )}
             </div>
             <div>
               <Label htmlFor="startTime">
                 Start time
-                {mode === "PROPOSE" ? " (optional)" : ""}
+                <span aria-hidden="true" className="ml-1 text-red-500">
+                  *
+                </span>
+                {" "}
+                <span className="sr-only">Required field</span>
               </Label>
               <Input id="startTime" type="time" {...form.register("startTime")} />
-              {form.formState.errors.startTime && (
-                <p className="mt-1 text-sm text-red-600">{form.formState.errors.startTime.message}</p>
+              {formErrors.startTime && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.startTime.message}</p>
               )}
             </div>
           </div>
@@ -619,16 +613,16 @@ export function AddActivityModal({
           <div>
             <Label htmlFor="endTime">End time (optional)</Label>
             <Input id="endTime" type="time" {...form.register("endTime")} />
-            {form.formState.errors.endTime && (
-              <p className="mt-1 text-sm text-red-600">{form.formState.errors.endTime.message}</p>
+            {formErrors.endTime && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.endTime.message}</p>
             )}
           </div>
 
           <div>
             <Label htmlFor="location">Location</Label>
             <Input id="location" placeholder="Add where everyone should meet" {...form.register("location")} />
-            {form.formState.errors.location && (
-              <p className="mt-1 text-sm text-red-600">{form.formState.errors.location.message}</p>
+            {formErrors.location && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.location.message}</p>
             )}
           </div>
 
@@ -636,15 +630,15 @@ export function AddActivityModal({
             <div>
               <Label htmlFor="cost">Cost per person (optional)</Label>
               <Input id="cost" placeholder="$50" {...form.register("cost")} />
-              {form.formState.errors.cost && (
-                <p className="mt-1 text-sm text-red-600">{form.formState.errors.cost.message}</p>
+              {formErrors.cost && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.cost.message}</p>
               )}
             </div>
             <div>
               <Label htmlFor="maxCapacity">Max participants (optional)</Label>
               <Input id="maxCapacity" placeholder="Leave blank for unlimited" {...form.register("maxCapacity")} />
-              {form.formState.errors.maxCapacity && (
-                <p className="mt-1 text-sm text-red-600">{form.formState.errors.maxCapacity.message}</p>
+              {formErrors.maxCapacity && (
+                <p className="mt-1 text-sm text-red-600">{formErrors.maxCapacity.message}</p>
               )}
             </div>
           </div>
@@ -706,8 +700,8 @@ export function AddActivityModal({
                 )}
               </div>
             </ScrollArea>
-            {form.formState.errors.attendeeIds && (
-              <p className="mt-2 text-sm text-red-600">{form.formState.errors.attendeeIds.message}</p>
+            {formErrors.attendeeIds && (
+              <p className="mt-2 text-sm text-red-600">{formErrors.attendeeIds.message}</p>
             )}
           </div>
 
@@ -728,12 +722,12 @@ export function AddActivityModal({
                 ))}
               </SelectContent>
             </Select>
-            {form.formState.errors.category && (
-              <p className="mt-1 text-sm text-red-600">{form.formState.errors.category.message}</p>
+            {formErrors.category && (
+              <p className="mt-1 text-sm text-red-600">{formErrors.category.message}</p>
             )}
           </div>
 
-          {Object.keys(form.formState.errors).length > 0 && (
+          {hasFormErrors && (
             <div className="rounded-lg bg-red-50 p-3">
               <p className="mb-1 text-sm font-medium text-red-800">Please fix the highlighted fields.</p>
             </div>
@@ -746,8 +740,8 @@ export function AddActivityModal({
             <Button
               type="submit"
               className="flex-1 bg-primary text-white hover:bg-red-600"
-              disabled={isSubmitting}
-              aria-disabled={isSubmitting}
+              disabled={isSubmitDisabled}
+              aria-disabled={isSubmitDisabled}
             >
               {isSubmitting ? "Saving..." : mode === "PROPOSE" ? "Propose to group" : "Add to schedule"}
             </Button>

@@ -171,11 +171,11 @@ export const normalizeCategoryInput = (
 const normalizeDateTimeInput = (
   value: unknown,
   fieldLabel: string,
-  { required }: { required: boolean },
+  { required, requiredMessage }: { required: boolean; requiredMessage?: string },
 ): { value: string | null; error?: string } => {
   if (value === undefined || value === null) {
     return required
-      ? { value: null, error: `${fieldLabel} is required.` }
+      ? { value: null, error: requiredMessage ?? `${fieldLabel} is required.` }
       : { value: null };
   }
 
@@ -183,7 +183,7 @@ const normalizeDateTimeInput = (
     const trimmed = value.trim();
     if (trimmed === "") {
       return required
-        ? { value: null, error: `${fieldLabel} is required.` }
+        ? { value: null, error: requiredMessage ?? `${fieldLabel} is required.` }
         : { value: null };
     }
 
@@ -264,7 +264,10 @@ export const validateActivityInput = (
     });
   }
 
-  const startResult = normalizeDateTimeInput(rawData.startTime, "Start time", { required: true });
+  const startResult = normalizeDateTimeInput(rawData.startTime, "Start time", {
+    required: true,
+    requiredMessage: "Start time is required so we can place this on the calendar.",
+  });
   if (startResult.error) {
     errors.push({ field: "startTime", message: startResult.error });
   }

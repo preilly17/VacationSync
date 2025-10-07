@@ -19,7 +19,7 @@ export interface ActivityCreateFormValues {
   name: string;
   description?: string;
   startDate: string;
-  startTime?: string | null;
+  startTime: string;
   endTime?: string | null;
   location?: string;
   cost?: string;
