@@ -37,13 +37,15 @@ import {
   Settings,
   Search,
   Loader2,
+  ThumbsDown,
+  ThumbsUp,
   type LucideIcon
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import {
   TRIP_COVER_GRADIENT,
   buildCoverPhotoSrcSet,
@@ -630,32 +632,68 @@ function DayView({
                 );
               }
 
-              const declineLabel = isProposal ? "Not interested" : "Decline";
-              const acceptLabel = isProposal ? "Interested" : "Accept";
-
               if (isProposal) {
+                const isAccepted = derivedStatus === "accepted";
+                const isDeclined = derivedStatus === "declined";
+
+                const handleThumbsUp = () => {
+                  if (isAccepted) {
+                    handleAction("MAYBE");
+                    return;
+                  }
+                  handleAction("ACCEPT");
+                };
+
+                const handleThumbsDown = () => {
+                  if (isDeclined) {
+                    handleAction("MAYBE");
+                    return;
+                  }
+                  handleAction("DECLINE");
+                };
+
                 return (
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <Button
                       size="sm"
-                      onClick={() => handleAction("ACCEPT")}
+                      variant="outline"
+                      onClick={handleThumbsUp}
                       disabled={isRsvpPending}
-                      aria-label="Accept invitation"
+                      aria-label={isAccepted ? "Remove thumbs up" : "Give thumbs up"}
+                      aria-pressed={isAccepted}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+                        isAccepted
+                          ? "border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90"
+                          : "border-neutral-300 hover:border-emerald-500 hover:text-emerald-600",
+                      )}
                     >
-                      {acceptLabel}
+                      <ThumbsUp className="h-4 w-4" aria-hidden="true" />
+                      <span className="sr-only">Thumbs up</span>
                     </Button>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleAction("DECLINE")}
+                      onClick={handleThumbsDown}
                       disabled={isRsvpPending}
-                      aria-label="Decline invitation"
+                      aria-label={isDeclined ? "Remove thumbs down" : "Give thumbs down"}
+                      aria-pressed={isDeclined}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+                        isDeclined
+                          ? "border-transparent bg-red-600 text-white hover:bg-red-600/90"
+                          : "border-neutral-300 hover:border-red-500 hover:text-red-600",
+                      )}
                     >
-                      {declineLabel}
+                      <ThumbsDown className="h-4 w-4" aria-hidden="true" />
+                      <span className="sr-only">Thumbs down</span>
                     </Button>
                   </div>
                 );
               }
+
+              const declineLabel = "Decline";
+              const acceptLabel = "Accept";
 
               if (derivedStatus === "accepted") {
                 return (

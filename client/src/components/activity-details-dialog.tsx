@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Calendar, MapPin, DollarSign, Users, ChevronDown } from "lucide-react";
+import { Calendar, MapPin, DollarSign, Users, ChevronDown, ThumbsDown, ThumbsUp } from "lucide-react";
 import { format } from "date-fns";
 import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
 import type { User } from "@shared/schema";
@@ -157,32 +157,68 @@ export function ActivityDetailsDialog({
       );
     }
 
-    const declineLabel = isProposal ? "Not interested" : "Decline";
-    const acceptLabel = isProposal ? "Interested" : "Accept";
-
     if (isProposal) {
+      const isAccepted = statusForDisplay === "accepted";
+      const isDeclined = statusForDisplay === "declined";
+
+      const handleThumbsUp = () => {
+        if (isAccepted) {
+          handleRespond("pending");
+          return;
+        }
+        handleRespond("accepted");
+      };
+
+      const handleThumbsDown = () => {
+        if (isDeclined) {
+          handleRespond("pending");
+          return;
+        }
+        handleRespond("declined");
+      };
+
       return (
-        <>
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
-            onClick={() => handleRespond("accepted")}
+            variant="outline"
+            onClick={handleThumbsUp}
             disabled={isResponding}
-            aria-label="Accept invitation"
+            aria-label={isAccepted ? "Remove thumbs up" : "Give thumbs up"}
+            aria-pressed={isAccepted}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+              isAccepted
+                ? "border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90"
+                : "border-neutral-300 hover:border-emerald-500 hover:text-emerald-600",
+            )}
           >
-            {acceptLabel}
+            <ThumbsUp className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Thumbs up</span>
           </Button>
           <Button
             size="sm"
             variant="outline"
-            onClick={() => handleRespond("declined")}
+            onClick={handleThumbsDown}
             disabled={isResponding}
-            aria-label="Decline invitation"
+            aria-label={isDeclined ? "Remove thumbs down" : "Give thumbs down"}
+            aria-pressed={isDeclined}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+              isDeclined
+                ? "border-transparent bg-red-600 text-white hover:bg-red-600/90"
+                : "border-neutral-300 hover:border-red-500 hover:text-red-600",
+            )}
           >
-            {declineLabel}
+            <ThumbsDown className="h-4 w-4" aria-hidden="true" />
+            <span className="sr-only">Thumbs down</span>
           </Button>
-        </>
+        </div>
       );
     }
+
+    const declineLabel = "Decline";
+    const acceptLabel = "Accept";
 
     if (statusForDisplay === "accepted") {
       return (
