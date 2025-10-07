@@ -241,11 +241,11 @@ export interface Activity {
   updatedAt: IsoDate | null;
 }
 
-export const insertActivitySchema = z.object({
+const baseInsertActivitySchema = z.object({
   tripCalendarId: z.number(),
   name: z.string().min(1, "Activity name is required"),
   description: z.string().nullable().optional(),
-  startTime: z.union([z.date(), z.string()]),
+  startTime: z.union([z.date(), z.string()]).nullable().optional(),
   endTime: z.union([z.date(), z.string()]).nullable().optional(),
   location: z.string().nullable().optional(),
   cost: nullableNumberInput("Cost must be a number"),
@@ -254,11 +254,30 @@ export const insertActivitySchema = z.object({
   type: z.enum(["SCHEDULED", "PROPOSE"]).default("SCHEDULED"),
 });
 
+const enforceScheduledStartTime = (
+  data: z.infer<typeof baseInsertActivitySchema>,
+  ctx: z.RefinementCtx,
+) => {
+  if (data.type === "SCHEDULED") {
+    if (data.startTime === null || data.startTime === undefined || data.startTime === "") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startTime"],
+        message: "Start time is required for scheduled activities.",
+      });
+    }
+  }
+};
+
+export const insertActivitySchema = baseInsertActivitySchema.superRefine(enforceScheduledStartTime);
+
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 
-export const createActivityWithAttendeesSchema = insertActivitySchema.extend({
-  attendeeIds: z.array(z.string()).optional(),
-});
+export const createActivityWithAttendeesSchema = baseInsertActivitySchema
+  .extend({
+    attendeeIds: z.array(z.string()).optional(),
+  })
+  .superRefine(enforceScheduledStartTime);
 
 export type CreateActivityWithAttendees = z.infer<
   typeof createActivityWithAttendeesSchema

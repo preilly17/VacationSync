@@ -430,8 +430,14 @@ export async function createActivityV2({
 
   const sanitizedBody: CreateActivityRequest = {
     ...body,
-    start_time: body.start_time.trim(),
-    end_time: typeof body.end_time === "string" ? body.end_time.trim() : body.end_time,
+    start_time:
+      typeof body.start_time === "string"
+        ? body.start_time.trim()
+        : body.start_time ?? null,
+    end_time:
+      typeof body.end_time === "string"
+        ? body.end_time.trim()
+        : body.end_time ?? null,
     idempotency_key:
       typeof body.idempotency_key === "string" && body.idempotency_key.trim().length > 0
         ? body.idempotency_key.trim()
@@ -451,15 +457,25 @@ export async function createActivityV2({
   }
 
   const data = validation.data;
-  const startTime = normalizeUserProvidedTime(data.start_time);
+  const startTime =
+    typeof data.start_time === "string" && data.start_time.trim().length > 0
+      ? normalizeUserProvidedTime(data.start_time)
+      : null;
   const rawEndTime = typeof data.end_time === "string" ? data.end_time : data.end_time;
   const normalizedEndTime =
     rawEndTime && rawEndTime.length > 0 ? normalizeUserProvidedTime(rawEndTime) : null;
 
-  if (!TIME_PATTERN.test(startTime)) {
+  if (startTime && !TIME_PATTERN.test(startTime)) {
     const error = new Error("invalid_time");
     (error as any).code = "VALIDATION";
     (error as any).details = [{ field: "start_time", message: "Start time must be in HH:MM format." }];
+    throw error;
+  }
+
+  if (!startTime && data.mode === "scheduled") {
+    const error = new Error("missing_start_time");
+    (error as any).code = "VALIDATION";
+    (error as any).details = [{ field: "start_time", message: "Start time is required." }];
     throw error;
   }
 
@@ -468,6 +484,13 @@ export async function createActivityV2({
       const error = new Error("invalid_time");
       (error as any).code = "VALIDATION";
       (error as any).details = [{ field: "end_time", message: "End time must be in HH:MM format." }];
+      throw error;
+    }
+
+    if (!startTime) {
+      const error = new Error("invalid_time_order");
+      (error as any).code = "VALIDATION";
+      (error as any).details = [{ field: "end_time", message: "Add a start time before setting an end time." }];
       throw error;
     }
 

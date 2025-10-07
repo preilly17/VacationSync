@@ -19,7 +19,7 @@ export interface ActivityCreateFormValues {
   name: string;
   description?: string;
   startDate: string;
-  startTime: string;
+  startTime?: string | null;
   endTime?: string | null;
   location?: string;
   cost?: string;
@@ -112,9 +112,17 @@ const createAnalyticsTracker = () => {
 };
 
 const sortByStartTime = (activities: ActivityWithDetails[]) =>
-  [...activities].sort(
-    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-  );
+  [...activities].sort((a, b) => {
+    const toTimestamp = (value: ActivityWithDetails["startTime"]) => {
+      if (!value) {
+        return Number.POSITIVE_INFINITY;
+      }
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? Number.POSITIVE_INFINITY : date.getTime();
+    };
+
+    return toTimestamp(a.startTime) - toTimestamp(b.startTime);
+  });
 
 const generateOptimisticId = (() => {
   let counter = -1;

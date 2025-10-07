@@ -16,7 +16,7 @@ interface BaseActivitySubmissionInput {
   name: string;
   description?: string | null;
   date: string | Date;
-  startTime: string | Date;
+  startTime?: string | Date | null;
   endTime?: string | Date | null;
   location?: string | null;
   cost?: string | number | null;
@@ -48,7 +48,7 @@ interface ActivitySubmissionPayload {
   title: string;
   mode: "scheduled" | "proposed";
   date: string;
-  start_time: string;
+  start_time: string | null;
   end_time: string | null;
   timezone: string;
   timeZone: string;
@@ -193,7 +193,21 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
   const description = typeof input.description === "string" ? input.description.trim() : "";
 
   const baseDate = toDateInput(input.date, "Date");
-  const startTimeString = toTimeString(input.startTime, "Start time");
+  const isProposal = input.type === "PROPOSE";
+
+  const rawStartTime = input.startTime;
+  const hasStartTime = !(
+    rawStartTime === null
+    || rawStartTime === undefined
+    || (typeof rawStartTime === "string" && rawStartTime.trim() === "")
+  );
+
+  if (!hasStartTime && !isProposal) {
+    throw new Error("Start time is required for scheduled activities.");
+  }
+
+  const startTimeString = hasStartTime ? toTimeString(rawStartTime as string | Date, "Start time") : null;
+
   const endTimeInput = input.endTime;
   const shouldUseEndTime = !(
     endTimeInput === null
@@ -201,14 +215,20 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
     || (typeof endTimeInput === "string" && endTimeInput.trim() === "")
   );
 
+  if (shouldUseEndTime && !startTimeString) {
+    throw new Error("Add a start time before setting an end time.");
+  }
+
   const endTimeString = shouldUseEndTime
-    ? toTimeString(endTimeInput, "End time")
+    ? toTimeString(endTimeInput as string | Date, "End time")
     : null;
 
-  const startDateTime = buildDateTime(baseDate, startTimeString, "Start time");
+  const startDateTime = startTimeString
+    ? buildDateTime(baseDate, startTimeString, "Start time")
+    : new Date(baseDate);
   const endDateTime = endTimeString ? buildDateTime(baseDate, endTimeString, "End time") : null;
 
-  if (endDateTime && endDateTime <= startDateTime) {
+  if (endDateTime && startTimeString && endDateTime <= startDateTime) {
     throw new Error(END_TIME_AFTER_START_MESSAGE);
   }
 
