@@ -298,6 +298,11 @@ export function AddActivityModal({
 
   const [mode, setMode] = useState<ActivityType>(initialMode);
 
+  const activitiesVersion = useMemo(
+    () => (shouldUseActivitiesV2 && mode === "PROPOSE" ? "v2" : "legacy"),
+    [mode, shouldUseActivitiesV2],
+  );
+
   useEffect(() => {
     if (open) {
       const { values, mode: nextMode } = computeDefaults();
@@ -398,7 +403,7 @@ export function AddActivityModal({
     enabled: tripId > 0,
     onValidationError: handleValidationError,
     onSuccess: handleSuccess,
-    activitiesVersion: shouldUseActivitiesV2 ? "v2" : "legacy",
+    activitiesVersion,
   });
 
   const selectedAttendeeIds = form.watch("attendeeIds") ?? [];

@@ -285,7 +285,13 @@ export function useCreateActivity({
   const trackEvent = useMemo(createAnalyticsTracker, []);
   const useActivitiesV2 = activitiesVersion === "v2";
 
-  const mutation = useMutation<MutationResult, Error, InternalActivityCreateVariables, OptimisticContext>({
+  const mutation = useMutation<
+    MutationResult,
+    Error,
+    InternalActivityCreateVariables,
+    OptimisticContext
+  >({
+    mutationKey: ["create-activity", tripId, useActivitiesV2 ? "v2" : "legacy"],
     mutationFn: async (variables) => {
       const endpoint =
         variables.type === "PROPOSE"
