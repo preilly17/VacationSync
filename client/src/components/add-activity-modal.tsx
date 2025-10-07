@@ -14,7 +14,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
-import { useNewActivityCreate } from "@/hooks/use-new-activity-create";
 import {
   useCreateActivity,
   type ActivityCreateFormValues,
@@ -232,7 +231,6 @@ export function AddActivityModal({
   const scheduledActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/activities`], [tripId]);
   const proposalActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/proposals/activities`], [tripId]);
   const calendarActivitiesQueryKey = useMemo(() => ["/api/trips", tripId, "activities"], [tripId]);
-  const shouldUseActivitiesV2 = useNewActivityCreate();
 
   const memberOptions = useMemo<MemberOption[]>(() => {
     const base = members.map((member) => ({
@@ -311,10 +309,7 @@ export function AddActivityModal({
 
   const [mode, setMode] = useState<ActivityType>(initialMode);
 
-  const activitiesVersion = useMemo(
-    () => (shouldUseActivitiesV2 && mode === "PROPOSE" ? "v2" : "legacy"),
-    [mode, shouldUseActivitiesV2],
-  );
+  const activitiesVersion: "legacy" = "legacy";
 
   useEffect(() => {
     if (open) {
