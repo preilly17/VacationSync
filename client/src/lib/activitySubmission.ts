@@ -9,6 +9,7 @@ import {
   ACTIVITY_CATEGORY_MESSAGE,
   ATTENDEE_REQUIRED_MESSAGE,
   END_TIME_AFTER_START_MESSAGE,
+  START_TIME_REQUIRED_FOR_END_MESSAGE,
 } from "@shared/activityValidation";
 
 interface BaseActivitySubmissionInput {
@@ -16,7 +17,7 @@ interface BaseActivitySubmissionInput {
   name: string;
   description?: string | null;
   date: string | Date;
-  startTime: string | Date;
+  startTime?: string | Date | null;
   endTime?: string | Date | null;
   location?: string | null;
   cost?: string | number | null;
@@ -32,7 +33,7 @@ interface ActivitySubmissionPayload {
   tripCalendarId: number;
   name: string;
   description: string | null;
-  startTime: string;
+  startTime: string | null;
   endTime: string | null;
   location: string | null;
   cost: number | null;
@@ -48,7 +49,7 @@ interface ActivitySubmissionPayload {
   title: string;
   mode: "scheduled" | "proposed";
   date: string;
-  start_time: string;
+  start_time: string | null;
   end_time: string | null;
   timezone: string;
   timeZone: string;
@@ -202,11 +203,13 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
     || (typeof rawStartTime === "string" && rawStartTime.trim() === "")
   );
 
-  if (!hasStartTime) {
+  const startTimeString = hasStartTime
+    ? toTimeString(rawStartTime as string | Date, "Start time")
+    : null;
+
+  if (!startTimeString && !isProposal) {
     throw new Error("Start time is required so we can place this on the calendar.");
   }
-
-  const startTimeString = toTimeString(rawStartTime as string | Date, "Start time");
 
   const endTimeInput = input.endTime;
   const shouldUseEndTime = !(
@@ -219,10 +222,16 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
     ? toTimeString(endTimeInput as string | Date, "End time")
     : null;
 
-  const startDateTime = buildDateTime(baseDate, startTimeString, "Start time");
-  const endDateTime = endTimeString ? buildDateTime(baseDate, endTimeString, "End time") : null;
+  if (shouldUseEndTime && !startTimeString) {
+    throw new Error(START_TIME_REQUIRED_FOR_END_MESSAGE);
+  }
 
-  if (endDateTime && endDateTime <= startDateTime) {
+  const startDateTime = startTimeString ? buildDateTime(baseDate, startTimeString, "Start time") : null;
+  const endDateTime = endTimeString && startTimeString
+    ? buildDateTime(baseDate, endTimeString, "End time")
+    : null;
+
+  if (endDateTime && startDateTime && endDateTime <= startDateTime) {
     throw new Error(END_TIME_AFTER_START_MESSAGE);
   }
 
@@ -262,7 +271,7 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
       tripCalendarId,
       name,
       description: trimmedDescription,
-      startTime: startDateTime.toISOString(),
+      startTime: startDateTime ? startDateTime.toISOString() : null,
       endTime: endDateTime ? endDateTime.toISOString() : null,
       location: trimmedLocation,
       cost: costResult.value,

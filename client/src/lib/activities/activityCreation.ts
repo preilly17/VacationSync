@@ -18,7 +18,7 @@ export interface ActivityCreateFormValues {
   name: string;
   description?: string;
   startDate: string;
-  startTime: string;
+  startTime?: string;
   endTime?: string | null;
   location?: string;
   cost?: string;
@@ -106,6 +106,7 @@ export const prepareActivitySubmission = ({
     const sanitizedValues: ActivityCreateFormValues = {
       ...values,
       description: payload.description ?? undefined,
+      startTime: payload.start_time ?? undefined,
       endTime: payload.endTime ? payload.endTime.slice(11, 16) : undefined,
       location: payload.location ?? undefined,
       cost: values.cost,
