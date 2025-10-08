@@ -472,7 +472,9 @@ export async function createActivityV2({
     throw error;
   }
 
-  if (!startTime) {
+  const requiresStartTime = data.mode !== "proposed";
+
+  if (requiresStartTime && !startTime) {
     const error = new Error("missing_start_time");
     (error as any).code = "VALIDATION";
     (error as any).details = [

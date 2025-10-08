@@ -110,8 +110,9 @@ export const createActivityRequestSchema = z
   .superRefine((data, ctx) => {
     const normalizedStartTime =
       typeof data.start_time === "string" ? data.start_time.trim() : data.start_time;
+    const mode = data.mode === "scheduled" ? "scheduled" : "proposed";
 
-    if (!normalizedStartTime) {
+    if (mode === "scheduled" && (!normalizedStartTime || normalizedStartTime.length === 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["start_time"],
