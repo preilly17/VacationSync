@@ -29,7 +29,7 @@ const ensureActivitiesTablePromise = shouldEnsureTables
         description TEXT NULL,
         category TEXT NULL,
         date DATE NOT NULL,
-        start_time TIME NOT NULL,
+        start_time TIME NULL,
         end_time TIME NULL,
         timezone TEXT NOT NULL,
         location TEXT NULL,
@@ -44,6 +44,11 @@ const ensureActivitiesTablePromise = shouldEnsureTables
         UNIQUE (trip_id, idempotency_key)
     )
   `);
+
+    await query(`
+      ALTER TABLE activities_v2
+        ALTER COLUMN start_time DROP NOT NULL
+    `);
 
     await query(`
       CREATE TABLE IF NOT EXISTS activity_invitees_v2 (
