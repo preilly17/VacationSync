@@ -53,7 +53,7 @@ import {
   useCoverPhotoImage,
 } from "@/lib/tripCover";
 import { CalendarGrid } from "@/components/calendar-grid";
-import { AddActivityModal } from "@/components/add-activity-modal";
+import { AddActivityModal, type ActivityComposerPrefill } from "@/components/add-activity-modal";
 import { EditTripModal } from "@/components/edit-trip-modal";
 import { InviteLinkModal } from "@/components/invite-link-modal";
 import { MobileNav } from "@/components/mobile-nav";
@@ -909,6 +909,7 @@ export default function Trip() {
   const queryClient = useQueryClient();
 
   const [showAddActivity, setShowAddActivity] = useState(false);
+  const [addActivityPrefill, setAddActivityPrefill] = useState<ActivityComposerPrefill | null>(null);
   const [addActivityMode, setAddActivityMode] = useState<ActivityType>("SCHEDULED");
   const [isAddActivityModeToggleEnabled, setIsAddActivityModeToggleEnabled] = useState(true);
   const [showEditTrip, setShowEditTrip] = useState(false);
@@ -1575,6 +1576,9 @@ export default function Trip() {
       setSelectedDate(targetDate);
       setGroupViewDate(targetDate);
       setScheduleViewDate(targetDate);
+      setAddActivityPrefill({ startDate: targetDate });
+    } else {
+      setAddActivityPrefill(null);
     }
 
     setAddActivityMode(mode);
@@ -2990,6 +2994,7 @@ export default function Trip() {
             setShowAddActivity(open);
             if (!open) {
               setSelectedDate(null);
+              setAddActivityPrefill(null);
             }
           }}
           tripId={numericTripId}
@@ -3000,6 +3005,7 @@ export default function Trip() {
           currentUserId={user?.id}
           tripStartDate={trip?.startDate ?? null}
           tripEndDate={trip?.endDate ?? null}
+          prefill={addActivityPrefill}
         />
 
         {trip && (
