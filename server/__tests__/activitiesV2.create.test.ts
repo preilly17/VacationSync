@@ -397,6 +397,54 @@ describe("createActivityV2", () => {
     expect(result.endTime).toBe("10:45");
   });
 
+  it("allows proposed activities without a start time", async () => {
+    const { now, creatorUser, friendUser, trip } = createTripFixture();
+
+    const activityRequest: CreateActivityRequest = {
+      mode: "proposed",
+      title: "Evening Hangout",
+      description: "Let's figure it out",
+      category: "other",
+      date: "2024-04-15",
+      start_time: undefined,
+      end_time: null,
+      timezone: "UTC",
+      location: null,
+      cost_per_person: null,
+      max_participants: null,
+      invitee_ids: [friendUser.id],
+      idempotency_key: "proposal-test",
+    };
+
+    const { connectMock, clientQueryMock } = setupDbMocks({
+      now,
+      creatorUser,
+      friendUser,
+      trip,
+      onInsert: (params) => {
+        expect(params[7]).toBeNull();
+        expect(params[13]).toBe("proposed");
+      },
+    });
+
+    const { createActivityV2 } = await import("../activitiesV2");
+
+    const result = await createActivityV2({
+      trip,
+      creatorId: creatorUser.id,
+      body: activityRequest,
+    });
+
+    expect(connectMock).toHaveBeenCalled();
+    const insertCall = clientQueryMock.mock.calls.find(
+      ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO activities_v2"),
+    );
+    expect(insertCall?.[1]?.[7]).toBeNull();
+    expect(result.status).toBe("proposed");
+    expect(result.initialVoteOrRsvpState[creatorUser.id]).toBeNull();
+    expect(result.initialVoteOrRsvpState[friendUser.id]).toBeNull();
+  });
+
   it("generates an idempotency key when the request omits one", async () => {
     const { now, creatorUser, friendUser, trip } = createTripFixture();
 
