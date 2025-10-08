@@ -309,7 +309,20 @@ const formatDateValue = (value: string | Date | null | undefined) => {
   }
 
   if (typeof value === "string") {
-    return value;
+    if (dateInputPattern.test(value)) {
+      return value;
+    }
+
+    try {
+      const parsed = parseISO(value);
+      if (isValid(parsed)) {
+        return format(parsed, "yyyy-MM-dd");
+      }
+    } catch {
+      // fall through to return empty string
+    }
+
+    return "";
   }
 
   return "";
