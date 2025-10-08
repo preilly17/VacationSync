@@ -2293,7 +2293,9 @@ export function setupRoutes(app: Express) {
         const missingFields: string[] = [];
         if (createPayload.title.trim().length === 0) missingFields.push("title");
         if (createPayload.date.trim().length === 0) missingFields.push("date");
-        if (createPayload.start_time.trim().length === 0) missingFields.push("start_time");
+        const hasStartTime =
+          typeof createPayload.start_time === "string" && createPayload.start_time.trim().length > 0;
+        if (requestMode !== "proposed" && !hasStartTime) missingFields.push("start_time");
         if (createPayload.timezone.trim().length === 0) missingFields.push("timezone");
         const missingRequired = missingFields.length > 0;
 
