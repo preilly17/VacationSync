@@ -44,6 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { parseActivityDate, isActivityPast } from "@/lib/activityTime";
 import {
   TRIP_COVER_GRADIENT,
   buildCoverPhotoSrcSet,
@@ -194,20 +195,6 @@ type DayDetailsState = {
   hiddenCount: number;
   trigger: HTMLButtonElement | null;
   viewMode: "group" | "personal";
-};
-
-const parseActivityDate = (value?: string | null): Date | null => {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return parsed;
 };
 
 // MOBILE-ONLY bottom navigation config
@@ -403,19 +390,13 @@ function DayView({
             const statusBadgeClasses = showPersonalProposalChip
               ? "bg-blue-100 text-blue-800 border-blue-200"
               : inviteStatusBadgeClasses[derivedStatus];
-              const isPastActivity = (() => {
-                const end = parseActivityDate(activity.endTime);
-                const start = parseActivityDate(activity.startTime);
-                const comparisonTarget = end ?? start;
-
-                if (!comparisonTarget) {
-                  return false;
-                }
-
-                return comparisonTarget.getTime() < now.getTime();
-              })();
-              const rsvpCloseDate = parseActivityDate(activity.rsvpCloseTime);
-              const isRsvpClosed = Boolean(rsvpCloseDate && rsvpCloseDate < now);
+            const isPastActivity = isActivityPast(
+              activity.startTime,
+              activity.endTime,
+              now,
+            );
+            const rsvpCloseDate = parseActivityDate(activity.rsvpCloseTime);
+            const isRsvpClosed = Boolean(rsvpCloseDate && rsvpCloseDate < now);
             const capacityFull = Boolean(
               !isProposal && activity.maxCapacity != null
                 && activity.acceptedCount >= activity.maxCapacity,

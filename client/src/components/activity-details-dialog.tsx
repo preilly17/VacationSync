@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
 import type { User } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { parseActivityDate, isActivityPast } from "@/lib/activityTime";
 
 interface ActivityDetailsDialogProps {
   activity: ActivityWithDetails | null;
@@ -36,22 +37,6 @@ const statusBadgeClasses: Record<ActivityInviteStatus, string> = {
   pending: "bg-amber-100 text-amber-800 border-amber-200",
   declined: "bg-red-100 text-red-800 border-red-200",
   waitlisted: "bg-blue-100 text-blue-800 border-blue-200",
-};
-
-const parseActivityDate = (
-  value: ActivityWithDetails["startTime"] | ActivityWithDetails["endTime"] | Date | null | undefined,
-): Date | null => {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = value instanceof Date ? value : new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return parsed;
 };
 
 const getUserDisplayName = (user: User | undefined): string => {
@@ -109,22 +94,9 @@ export function ActivityDetailsDialog({
       && (currentUserId === activity.postedBy || currentUserId === activity.poster.id),
   );
   const now = new Date();
-  const isPastActivity = (() => {
-    if (!activity) {
-      return false;
-    }
-
-    const end = parseActivityDate(activity.endTime);
-    const start = parseActivityDate(activity.startTime);
-
-    const comparisonTarget = end ?? start;
-
-    if (!comparisonTarget) {
-      return false;
-    }
-
-    return comparisonTarget.getTime() < now.getTime();
-  })();
+  const isPastActivity = activity
+    ? isActivityPast(activity.startTime, activity.endTime, now)
+    : false;
   const rsvpCloseDate = parseActivityDate(activity?.rsvpCloseTime);
   const isRsvpClosed = Boolean(rsvpCloseDate && rsvpCloseDate < now);
   const activityType = (activity?.type ?? "SCHEDULED").toUpperCase();
