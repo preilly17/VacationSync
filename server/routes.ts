@@ -2173,6 +2173,96 @@ export function setupRoutes(app: Express) {
           return "";
         })();
 
+        const normalizeTimeValue = (value: unknown): string => {
+          if (typeof value !== "string") {
+            return "";
+          }
+          const trimmed = value.trim();
+          if (trimmed.length === 0) {
+            return "";
+          }
+          const match = /^([0-9]{1,2}):([0-9]{2})/.exec(trimmed);
+          if (!match) {
+            return "";
+          }
+          const hours = Number.parseInt(match[1], 10);
+          const minutes = Number.parseInt(match[2], 10);
+          if (
+            Number.isNaN(hours) ||
+            Number.isNaN(minutes) ||
+            hours < 0 ||
+            hours > 23 ||
+            minutes < 0 ||
+            minutes > 59
+          ) {
+            return "";
+          }
+          return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+        };
+
+        const parseLegacyDateTime = (value: unknown):
+          | { date: string; time: string; offset: string | null }
+          | null => {
+          if (typeof value !== "string") {
+            return null;
+          }
+          const trimmed = value.trim();
+          if (trimmed.length === 0) {
+            return null;
+          }
+
+          const match =
+            /^([0-9]{4}-[0-9]{2}-[0-9]{2})T([0-9]{2}):([0-9]{2})(?::[0-9]{2}(?:\.[0-9]{1,3})?)?([zZ]|[+-][0-9]{2}:?[0-9]{2})$/.exec(
+              trimmed,
+            );
+          if (match) {
+            let [, datePart, hourPart, minutePart, offsetPart] = match;
+            if (offsetPart?.toUpperCase() === "Z") {
+              offsetPart = "+00:00";
+            } else if (offsetPart && !offsetPart.includes(":")) {
+              offsetPart = `${offsetPart.slice(0, 3)}:${offsetPart.slice(3)}`;
+            }
+            return {
+              date: datePart,
+              time: `${hourPart}:${minutePart}`,
+              offset: offsetPart ?? null,
+            };
+          }
+
+          const parsed = new Date(trimmed);
+          if (Number.isNaN(parsed.getTime())) {
+            return null;
+          }
+          const isoString = parsed.toISOString();
+          return {
+            date: isoString.slice(0, 10),
+            time: isoString.slice(11, 16),
+            offset: "+00:00",
+          };
+        };
+
+        const deriveTimezoneFromOffset = (timezoneValue: unknown, offset: string | null): string => {
+          const existing = typeof timezoneValue === "string" ? timezoneValue.trim() : "";
+          if (existing.length > 0) {
+            return existing;
+          }
+          if (!offset) {
+            return "UTC";
+          }
+          if (offset === "+00:00") {
+            return "UTC";
+          }
+          const normalized = offset.replace(":", "");
+          if (/^[+-][0-9]{4}$/.test(normalized) && normalized.slice(3) === "00") {
+            const hours = Number.parseInt(normalized.slice(1, 3), 10);
+            if (!Number.isNaN(hours)) {
+              const sign = normalized[0] === "+" ? "-" : "+";
+              return `Etc/GMT${sign}${hours}`;
+            }
+          }
+          return offset;
+        };
+
         const rawMode = typeof rawBody.mode === "string" ? rawBody.mode.toLowerCase() : null;
         const requestMode = rawMode === "scheduled" || rawMode === "proposed"
           ? rawMode
@@ -2195,24 +2285,41 @@ export function setupRoutes(app: Express) {
         );
 
         const titleFromBody = typeof rawBody.title === "string" ? rawBody.title : rawBody.name;
-        const dateFromBody =
+        let dateFromBody =
           typeof rawBody.date === "string"
-            ? rawBody.date
+            ? rawBody.date.trim()
             : typeof rawBody.startDate === "string"
-              ? rawBody.startDate
+              ? rawBody.startDate.trim()
               : "";
-        const startTimeFromBody =
-          typeof rawBody.start_time === "string"
-            ? rawBody.start_time
-            : typeof rawBody.startTime === "string"
-              ? rawBody.startTime
-              : "";
-        const timezoneFromBody =
+        let startTimeFromBody = normalizeTimeValue(rawBody.start_time ?? rawBody.startTime);
+        let endTimeFromBody = normalizeTimeValue(rawBody.end_time ?? rawBody.endTime);
+        let timezoneFromBody =
           typeof rawBody.timezone === "string"
-            ? rawBody.timezone
+            ? rawBody.timezone.trim()
             : typeof rawBody.timeZone === "string"
-              ? rawBody.timeZone
+              ? rawBody.timeZone.trim()
               : "";
+
+        const legacyStart = parseLegacyDateTime(rawBody.startTime);
+        if (legacyStart) {
+          if (!dateFromBody) {
+            dateFromBody = legacyStart.date;
+          }
+          if (!startTimeFromBody) {
+            startTimeFromBody = normalizeTimeValue(legacyStart.time) || legacyStart.time;
+          }
+          timezoneFromBody = deriveTimezoneFromOffset(timezoneFromBody, legacyStart.offset);
+        }
+
+        const legacyEnd = parseLegacyDateTime(rawBody.endTime);
+        if (legacyEnd && !endTimeFromBody) {
+          endTimeFromBody = normalizeTimeValue(legacyEnd.time) || legacyEnd.time;
+          timezoneFromBody = deriveTimezoneFromOffset(timezoneFromBody, legacyEnd.offset);
+        }
+
+        if (!timezoneFromBody) {
+          timezoneFromBody = "UTC";
+        }
 
         const createPayload: CreateActivityRequest = {
           mode: requestMode,
@@ -2221,12 +2328,7 @@ export function setupRoutes(app: Express) {
           category: typeof rawBody.category === "string" ? rawBody.category : rawBody.category ?? null,
           date: dateFromBody,
           start_time: startTimeFromBody,
-          end_time:
-            typeof rawBody.end_time === "string"
-              ? rawBody.end_time
-              : typeof rawBody.endTime === "string"
-                ? rawBody.endTime
-                : null,
+          end_time: endTimeFromBody.length > 0 ? endTimeFromBody : null,
           timezone: timezoneFromBody,
           location: typeof rawBody.location === "string" ? rawBody.location : rawBody.location ?? null,
           cost_per_person:
