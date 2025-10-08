@@ -2992,18 +2992,19 @@ export function setupRoutes(app: Express) {
         }
 
         const activities = await storage.getTripActivities(tripId, userId);
+        const proposalActivities = activities.filter(
+          (activity) => activity.type === "PROPOSE",
+        );
         const mineOnly = parseBooleanQueryParam(req.query?.mineOnly);
 
-        if (mineOnly) {
-          const filtered = activities.filter((activity) => {
-            const proposerId = activity.postedBy ?? activity.poster?.id ?? null;
-            return proposerId === userId;
-          });
-          res.json(filtered);
-          return;
-        }
+        const filteredActivities = mineOnly
+          ? proposalActivities.filter((activity) => {
+              const proposerId = activity.postedBy ?? activity.poster?.id ?? null;
+              return proposerId === userId;
+            })
+          : proposalActivities;
 
-        res.json(activities);
+        res.json(filteredActivities);
       } catch (error: unknown) {
         console.error('Error fetching activity proposals:', error);
         res.status(500).json({ message: 'Failed to fetch activity proposals' });
