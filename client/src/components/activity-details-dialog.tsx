@@ -265,8 +265,6 @@ export function ActivityDetailsDialog({
     );
   };
 
-  const endTimeLabel = activity ? formatEndTime(activity.endTime) : null;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
