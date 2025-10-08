@@ -251,7 +251,16 @@ export interface Activity {
   proposalVotes?: ActivityProposalVoteSummary | null;
 }
 
-const activityDateInput = z.union([z.date(), z.string()]);
+const activityDateInput = z.preprocess(
+  (value) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : null;
+    }
+    return value;
+  },
+  z.union([z.date(), z.string()]).nullable(),
+);
 
 const validateActivityInput = (data: Record<string, unknown>, ctx: RefinementCtx) => {
   const type = (data.type as ActivityType | undefined) ?? "SCHEDULED";
@@ -292,8 +301,8 @@ const insertActivityBaseSchema = z.object({
   tripCalendarId: z.number(),
   name: z.string().min(1, "Activity name is required"),
   description: z.string().nullable().optional(),
-  startTime: activityDateInput.nullable().optional(),
-  endTime: activityDateInput.nullable().optional(),
+  startTime: activityDateInput.optional(),
+  endTime: activityDateInput.optional(),
   location: z.string().nullable().optional(),
   cost: nullableNumberInput("Cost must be a number"),
   maxCapacity: z.union([z.number(), z.string()]).nullable().optional(),

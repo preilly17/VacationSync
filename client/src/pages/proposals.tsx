@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
+import { getActivityEndDate, getActivityStartDate } from "@/lib/activityTime";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
 import { filterProposalsByStatus, normalizeProposalStatus } from "./proposalStatusFilters";
 import {
@@ -676,19 +677,25 @@ function ProposalsPage({ tripId, embedded = false }: ProposalsPageProps = {}) {
   };
 
   const getActivityProposalStatus = useCallback((activity: ActivityWithDetails) => {
-    const now = new Date();
-    const startTime = activity.startTime ? new Date(activity.startTime) : null;
-    const endTime = activity.endTime ? new Date(activity.endTime) : null;
+    const now = Date.now();
+    const startTime = getActivityStartDate(activity);
+    const endTime = getActivityEndDate(activity);
 
     if (!startTime) {
       return "proposed";
     }
 
-    if (endTime && endTime < now) {
+    const startTimestamp = startTime.getTime();
+    const endTimestamp = endTime?.getTime();
+
+    if (typeof endTimestamp === "number" && endTimestamp < now) {
       return "completed";
     }
 
-    if (startTime <= now && (!endTime || endTime >= now)) {
+    if (
+      startTimestamp <= now
+      && (typeof endTimestamp !== "number" || endTimestamp >= now)
+    ) {
       return "in-progress";
     }
 

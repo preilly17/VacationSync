@@ -14,6 +14,14 @@ import { format } from "date-fns";
 import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
 import type { User } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import {
+  getActivityEndDate,
+  getActivityStartDate,
+  getActivityTimeOptions,
+  isActivityPast,
+  isProposalActivity,
+  parseActivityDate,
+} from "@/lib/activityTime";
 
 interface ActivityDetailsDialogProps {
   activity: ActivityWithDetails | null;
@@ -61,19 +69,6 @@ const getUserDisplayName = (user: User | undefined): string => {
   return user.email ?? "Trip member";
 };
 
-const formatDateTime = (value: ActivityWithDetails["startTime"]): string => {
-  const date = value instanceof Date ? value : new Date(value);
-  return format(date, "EEEE, MMM d · h:mm a");
-};
-
-const formatEndTime = (value: ActivityWithDetails["endTime"] | null | undefined): string | null => {
-  if (!value) {
-    return null;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return format(date, "h:mm a");
-};
-
 export function ActivityDetailsDialog({
   activity,
   open,
@@ -96,31 +91,23 @@ export function ActivityDetailsDialog({
       && (currentUserId === activity.postedBy || currentUserId === activity.poster.id),
   );
   const now = new Date();
-  const activityType = (activity?.type ?? "SCHEDULED").toUpperCase();
-  const isProposal = activityType === "PROPOSE";
-  const isPastActivity = (() => {
-    if (!activity) {
-      return false;
-    }
-    if (isProposal) {
-      const startValue = activity.startTime;
-      if (!startValue) {
-        return false;
-      }
-      const parsedStart = new Date(startValue);
-      if (Number.isNaN(parsedStart.getTime())) {
-        return false;
-      }
-    }
-    const end = activity.endTime ? new Date(activity.endTime) : null;
-    const start = activity.startTime ? new Date(activity.startTime) : new Date(NaN);
-    const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
-    if (Number.isNaN(comparisonTarget.getTime())) {
-      return false;
-    }
-    return comparisonTarget.getTime() < now.getTime();
-  })();
-  const rsvpCloseDate = activity?.rsvpCloseTime ? new Date(activity.rsvpCloseTime) : null;
+  const isProposal = activity ? isProposalActivity(activity) : false;
+  const startDate = activity ? getActivityStartDate(activity) : null;
+  const endDate = activity ? getActivityEndDate(activity) : null;
+  const timeOptions = activity ? getActivityTimeOptions(activity) : [];
+  const displayDateLabel = startDate
+    ? format(startDate, "EEEE, MMM d · h:mm a")
+    : isProposal && timeOptions.length > 0
+      ? "Waiting on a final time"
+      : "Time to be determined";
+  const additionalTimeLabel = !startDate && timeOptions.length > 0
+    ? timeOptions
+        .map((option) => format(option, "EEE, MMM d · h:mm a"))
+        .join(" • ")
+    : null;
+  const endTimeLabel = endDate ? format(endDate, "h:mm a") : null;
+  const isPastActivity = activity ? isActivityPast(activity, now) : false;
+  const rsvpCloseDate = parseActivityDate(activity?.rsvpCloseTime ?? null);
   const isRsvpClosed = Boolean(
     rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
   );
@@ -316,8 +303,11 @@ export function ActivityDetailsDialog({
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">When</p>
                   <p className="text-sm font-medium text-neutral-900">
-                    {formatDateTime(activity.startTime)}
+                    {displayDateLabel}
                   </p>
+                  {additionalTimeLabel && (
+                    <p className="text-xs text-neutral-500">{additionalTimeLabel}</p>
+                  )}
                   {endTimeLabel && (
                     <p className="text-xs text-neutral-500">Ends at {endTimeLabel}</p>
                   )}

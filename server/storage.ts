@@ -148,6 +148,32 @@ const toStringArray = (value: unknown): string[] => {
   return [];
 };
 
+const normalizeActivityDateInput = (value: unknown): string | null => {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+};
+
+const formatDbActivityDate = (value: unknown): string | null => {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+};
+
 const normalizeUserId = (value: unknown): string | null => {
   if (value === null || value === undefined) {
     return null;
@@ -1234,8 +1260,8 @@ const mapActivity = (row: ActivityRow): Activity => ({
   postedBy: row.posted_by,
   name: row.name,
   description: row.description,
-  startTime: row.start_time,
-  endTime: row.end_time,
+  startTime: formatDbActivityDate(row.start_time),
+  endTime: formatDbActivityDate(row.end_time),
   location: row.location,
   cost: toNumberOrNull(row.cost),
   maxCapacity: row.max_capacity,
@@ -1328,8 +1354,8 @@ const mapActivityProposalWithDetails = (
     postedBy: row.proposed_by,
     name: row.name,
     description: row.description,
-    startTime: row.start_time,
-    endTime: row.end_time,
+    startTime: formatDbActivityDate(row.start_time),
+    endTime: formatDbActivityDate(row.end_time),
     location: row.location,
     cost: toNumberOrNull(row.cost),
     maxCapacity: row.max_capacity,
@@ -3686,15 +3712,12 @@ export class DatabaseStorage implements IStorage {
         ? null
         : parsedMaxCapacity;
 
-    const startTimeValue =
-      activity.startTime instanceof Date
-        ? activity.startTime.toISOString()
-        : activity.startTime;
+    const startTimeValue = normalizeActivityDateInput(activity.startTime);
+    if (!startTimeValue) {
+      throw new Error("Scheduled activities require a start time");
+    }
 
-    const endTimeValue =
-      activity.endTime instanceof Date
-        ? activity.endTime.toISOString()
-        : activity.endTime ?? null;
+    const endTimeValue = normalizeActivityDateInput(activity.endTime);
 
     const { rows } = await query<ActivityRow>(
       `
@@ -3777,15 +3800,9 @@ export class DatabaseStorage implements IStorage {
         ? null
         : parsedMaxCapacity;
 
-    const startTimeValue =
-      activity.startTime instanceof Date
-        ? activity.startTime.toISOString()
-        : activity.startTime ?? null;
+    const startTimeValue = normalizeActivityDateInput(activity.startTime);
 
-    const endTimeValue =
-      activity.endTime instanceof Date
-        ? activity.endTime.toISOString()
-        : activity.endTime ?? null;
+    const endTimeValue = normalizeActivityDateInput(activity.endTime);
 
     const normalizedOptions = Array.isArray(activity.timeOptions)
       ? activity.timeOptions

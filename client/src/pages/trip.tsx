@@ -45,6 +45,13 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import {
+  getActivityComparisonDate,
+  getActivityStartDate,
+  isActivityPast,
+  isProposalActivity,
+  parseActivityDate,
+} from "@/lib/activityTime";
+import {
   TRIP_COVER_GRADIENT,
   buildCoverPhotoSrcSet,
   getCoverPhotoObjectPosition,
@@ -313,10 +320,26 @@ function DayView({
   viewMode = "group",
 }: DayViewProps) {
   const dayActivities = activities
-    .filter((activity) => isSameDay(new Date(activity.startTime), date))
-    .sort(
-      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
+    .filter((activity) => {
+      const start = getActivityStartDate(activity);
+      return start ? isSameDay(start, date) : false;
+    })
+    .sort((a, b) => {
+      const aStart = getActivityStartDate(a);
+      const bStart = getActivityStartDate(b);
+
+      if (!aStart && !bStart) {
+        return 0;
+      }
+      if (!aStart) {
+        return 1;
+      }
+      if (!bStart) {
+        return -1;
+      }
+
+      return aStart.getTime() - bStart.getTime();
+    });
 
   const now = new Date();
   const isPersonalView = viewMode === "personal";
@@ -372,8 +395,7 @@ function DayView({
               ?? null;
             const derivedStatus: ActivityInviteStatus = currentInvite?.status
               ?? (activity.isAccepted ? "accepted" : "pending");
-            const activityType = (activity.type ?? "SCHEDULED").toUpperCase();
-            const isProposal = activityType === "PROPOSE";
+            const isProposal = isProposalActivity(activity);
             const showPersonalProposalChip = Boolean(isPersonalView && isCreator && isProposal);
             const statusLabel = showPersonalProposalChip
               ? "Proposed"
@@ -381,27 +403,8 @@ function DayView({
             const statusBadgeClasses = showPersonalProposalChip
               ? "bg-blue-100 text-blue-800 border-blue-200"
               : inviteStatusBadgeClasses[derivedStatus];
-            const isPastActivity = (() => {
-              if (isProposal) {
-                const startValue = activity.startTime;
-                if (!startValue) {
-                  return false;
-                }
-                const parsedStart = new Date(startValue);
-                if (Number.isNaN(parsedStart.getTime())) {
-                  return false;
-                }
-              }
-              const end = activity.endTime ? new Date(activity.endTime) : null;
-              const start = activity.startTime ? new Date(activity.startTime) : new Date(NaN);
-              const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
-              return Number.isNaN(comparisonTarget.getTime())
-                ? false
-                : comparisonTarget.getTime() < now.getTime();
-            })();
-            const rsvpCloseDate = activity.rsvpCloseTime
-              ? new Date(activity.rsvpCloseTime)
-              : null;
+            const isPastActivity = isActivityPast(activity, now);
+            const rsvpCloseDate = parseActivityDate(activity.rsvpCloseTime ?? null);
             const isRsvpClosed = Boolean(
               rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
             );
@@ -1059,14 +1062,17 @@ export default function Trip() {
   };
 
   const handleViewOnCalendar = (activity: ActivityWithDetails) => {
-    const targetDate = clampDateToTrip(new Date(activity.startTime));
-    if (targetDate) {
-      setActiveTab("calendar");
-      setGroupCalendarView("day");
-      setGroupViewDate(targetDate);
-      setSelectedDate(targetDate);
+    const start = getActivityStartDate(activity);
+    if (!start) {
+      closeSummaryPanel();
+      return;
     }
 
+    const targetDate = clampDateToTrip(start);
+    setActiveTab("calendar");
+    setGroupCalendarView("day");
+    setGroupViewDate(targetDate);
+    setSelectedDate(targetDate);
     closeSummaryPanel();
   };
 
@@ -1212,17 +1218,27 @@ export default function Trip() {
   const sortedMyInvitedActivities = useMemo(() => {
     const now = Date.now();
     return [...filteredMyInvitedActivities].sort((a, b) => {
-      const aTime = new Date(a.startTime).getTime();
-      const bTime = new Date(b.startTime).getTime();
-      const aIsPast = Number.isNaN(aTime) ? 1 : aTime < now ? 1 : 0;
-      const bIsPast = Number.isNaN(bTime) ? 1 : bTime < now ? 1 : 0;
+      const aDate = getActivityComparisonDate(a);
+      const bDate = getActivityComparisonDate(b);
+      const aTime = aDate ? aDate.getTime() : undefined;
+      const bTime = bDate ? bDate.getTime() : undefined;
+      const aIsPast = typeof aTime === "number" && aTime < now ? 1 : 0;
+      const bIsPast = typeof bTime === "number" && bTime < now ? 1 : 0;
 
       if (aIsPast !== bIsPast) {
         return aIsPast - bIsPast;
       }
 
-      if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+      if (typeof aTime !== "number" && typeof bTime !== "number") {
         return 0;
+      }
+
+      if (typeof aTime !== "number") {
+        return 1;
+      }
+
+      if (typeof bTime !== "number") {
+        return -1;
       }
 
       return aTime - bTime;
@@ -1359,11 +1375,18 @@ export default function Trip() {
   const upcomingActivities = useMemo(() => {
     const now = new Date();
     return filteredActivities
-      .map((activity) => ({
-        activity,
-        start: new Date(activity.startTime),
-      }))
-      .filter(({ start }) => !Number.isNaN(start.getTime()) && start.getTime() >= now.getTime())
+      .map((activity) => {
+        const start = getActivityStartDate(activity);
+        if (!start) {
+          return null;
+        }
+
+        return { activity, start };
+      })
+      .filter(
+        (entry): entry is { activity: ActivityWithDetails; start: Date } =>
+          Boolean(entry && entry.start.getTime() >= now.getTime()),
+      )
       .sort((a, b) => a.start.getTime() - b.start.getTime());
   }, [filteredActivities]);
 
@@ -2314,11 +2337,9 @@ export default function Trip() {
                         {sortedMyInvitedActivities.map((activity) => {
                           const invite = activity.invites?.find((entry) => entry.userId === user.id);
                           const status: ActivityInviteStatus = invite?.status ?? "pending";
-                          const start = new Date(activity.startTime);
-                          const dateLabel = Number.isNaN(start.getTime())
-                            ? null
-                            : format(start, "EEEE, MMM d");
-                          const timeLabel = Number.isNaN(start.getTime()) ? null : format(start, "h:mm a");
+                          const start = getActivityStartDate(activity);
+                          const dateLabel = start ? format(start, "EEEE, MMM d") : null;
+                          const timeLabel = start ? format(start, "h:mm a") : null;
                           const locationLabel = activity.location?.trim();
                           const waitlistedCount =
                             activity.waitlistedCount

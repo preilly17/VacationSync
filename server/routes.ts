@@ -1941,7 +1941,13 @@ export function setupRoutes(app: Express) {
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
       if (attendeesToNotify.length > 0) {
-        const eventDate = new Date(activity.startTime ?? new Date());
+        const rawStart = typeof activity.startTime === "string"
+          ? activity.startTime.trim()
+          : activity.startTime;
+        let eventDate = rawStart ? new Date(rawStart) : null;
+        if (!eventDate || Number.isNaN(eventDate.getTime())) {
+          eventDate = new Date();
+        }
         const formattedDate = eventDate.toLocaleString('en-US', {
           month: 'short',
           day: 'numeric',

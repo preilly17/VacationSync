@@ -2,6 +2,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isWithinInterval, isSameMonth } from "date-fns";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { getActivityStartDate, parseActivityDate } from "@/lib/activityTime";
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 type CalendarCssVariables = CSSProperties & Record<string, string | number | undefined>;
@@ -150,15 +151,27 @@ const themeVariableMap: Record<EventThemeKey, CalendarCssVariables> = {
   },
 };
 
-const formatBadgeTime = (dateInput: string | Date) => {
-  const dateValue = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+const formatBadgeTime = (
+  value: ActivityWithDetails["startTime"],
+  fallback = "",
+) => {
+  const dateValue = parseActivityDate(value);
+  if (!dateValue) {
+    return fallback;
+  }
+
   return format(dateValue, "h:mmaaa").toLowerCase().replace("m", "");
 };
 
 const formatActivityAriaLabel = (activity: ActivityWithDetails, day: Date) => {
-  const start = new Date(activity.startTime);
-  const timeLabel = format(start, "h:mm a");
+  const start = getActivityStartDate(activity);
   const dateLabel = format(day, "MMM d");
+
+  if (!start) {
+    return `${activity.name} on ${dateLabel}`;
+  }
+
+  const timeLabel = format(start, "h:mm a");
   return `${activity.name} at ${timeLabel} on ${dateLabel}`;
 };
 
@@ -179,8 +192,19 @@ export function CalendarGrid({
 
   const getActivitiesForDay = (day: Date) => {
     return activities
-      .filter(activity => isSameDay(new Date(activity.startTime), day))
-      .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+      .map((activity) => {
+        const start = getActivityStartDate(activity);
+        if (!start || !isSameDay(start, day)) {
+          return null;
+        }
+
+        return { activity, start };
+      })
+      .filter(
+        (entry): entry is { activity: ActivityWithDetails; start: Date } => Boolean(entry),
+      )
+      .sort((a, b) => a.start.getTime() - b.start.getTime())
+      .map(({ activity }) => activity);
   };
 
   const isTripDay = (day: Date) => {
@@ -583,9 +607,14 @@ function DayActivityList({
           const themeKey = getEventThemeKey(activity.category, isPersonalEvent);
           const style = { ...themeVariableMap[themeKey] } as CalendarCssVariables;
 
-          const metadata: string[] = [
-            format(new Date(activity.startTime), "h:mm a"),
-          ];
+          const startDate = getActivityStartDate(activity);
+          const metadata: string[] = [];
+
+          if (startDate) {
+            metadata.push(format(startDate, "h:mm a"));
+          } else if (isProposal) {
+            metadata.push("Time TBD");
+          }
 
           if (activity.location && activity.location.trim().length > 0) {
             metadata.push(activity.location);
@@ -665,7 +694,7 @@ function DayActivityList({
                         "group-data-[mode=micro]/mode:ml-auto group-data-[mode=micro]/mode:bg-transparent group-data-[mode=micro]/mode:px-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-semibold group-data-[mode=micro]/mode:text-[var(--chip-text)] group-data-[mode=micro]/mode:tracking-[0.18em]",
                       )}
                     >
-                      {formatBadgeTime(activity.startTime)}
+                      {formatBadgeTime(activity.startTime, isProposal ? "TBD" : "")}
                     </span>
                     <span className="pointer-events-none absolute inset-0 rounded-xl border border-transparent transition-all duration-200 group-hover/chip:border-[var(--chip-border)]/50" aria-hidden />
                   </button>
@@ -673,7 +702,9 @@ function DayActivityList({
                 <TooltipContent className="max-w-xs rounded-xl border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] px-3 py-2 text-xs text-[color:var(--calendar-ink)] shadow-lg" side="top" align="start">
                   <div className="font-semibold text-[color:var(--calendar-ink)]">{activity.name}</div>
                   <div className="mt-1 text-[11px] text-[color:var(--calendar-muted)]">
-                    {format(new Date(activity.startTime), "EEEE • MMM d • h:mm a")}
+                    {startDate
+                      ? format(startDate, "EEEE • MMM d • h:mm a")
+                      : "Time to be determined"}
                   </div>
                 </TooltipContent>
               </Tooltip>

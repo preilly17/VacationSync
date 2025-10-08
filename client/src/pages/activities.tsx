@@ -35,6 +35,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
+import { parseActivityDate } from "@/lib/activityTime";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
 
@@ -783,60 +784,60 @@ export default function Activities() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 lg:gap-6">
-            {groupActivities.map((activity) => (
-              <Card
-                key={activity.id}
-                className="overflow-hidden border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow h-full flex flex-col"
-              >
-                <CardHeader className="pb-3">
-                  <div className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <CardTitle className="text-base lg:text-lg leading-tight">
-                          {activity.name}
-                        </CardTitle>
-                        <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
-                          <Users className="w-3 h-3 mr-1" />
-                          Group
+            {groupActivities.map((activity) => {
+              const startDate = parseActivityDate(activity.startTime ?? null);
+
+              return (
+                <Card
+                  key={activity.id}
+                  className="overflow-hidden border-blue-200 bg-blue-50/40 hover:shadow-md transition-shadow h-full flex flex-col"
+                >
+                  <CardHeader className="pb-3">
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <CardTitle className="text-base lg:text-lg leading-tight">
+                            {activity.name}
+                          </CardTitle>
+                          <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs">
+                            <Users className="w-3 h-3 mr-1" />
+                            Group
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-sm text-neutral-600">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center">
+                            <CalendarGlyph className="w-4 h-4 mr-1" />
+                            <span>{startDate ? startDate.toLocaleDateString() : "Date TBA"}</span>
+                          </div>
+                          {activity.location && (
+                            <div className="flex items-center">
+                              <MapPin className="w-4 h-4 mr-1" />
+                              <span className="truncate">{activity.location}</span>
+                            </div>
+                          )}
+                        </div>
+                        <Badge variant="secondary" className="capitalize text-xs">
+                          {activity.category}
                         </Badge>
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between text-sm text-neutral-600">
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center">
-                          <CalendarGlyph className="w-4 h-4 mr-1" />
-                          <span>
-                            {activity.startTime
-                              ? new Date(activity.startTime).toLocaleDateString()
-                              : "Date TBA"}
-                          </span>
-                        </div>
-                        {activity.location && (
-                          <div className="flex items-center">
-                            <MapPin className="w-4 h-4 mr-1" />
-                            <span className="truncate">{activity.location}</span>
-                          </div>
-                        )}
-                      </div>
-                      <Badge variant="secondary" className="capitalize text-xs">
-                        {activity.category}
-                      </Badge>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="flex flex-col flex-1 pt-2">
-                  <p className="text-neutral-600 text-sm line-clamp-4 leading-relaxed">
-                    {activity.description || "Group activity"}
-                  </p>
-                  <div className="mt-4 pt-3 border-t border-neutral-200 text-xs text-neutral-500">
-                    <p>
-                      Proposed by {activity.poster.firstName || activity.poster.email || "Group member"}
+                  </CardHeader>
+                  <CardContent className="flex flex-col flex-1 pt-2">
+                    <p className="text-neutral-600 text-sm line-clamp-4 leading-relaxed">
+                      {activity.description || "Group activity"}
                     </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    <div className="mt-4 pt-3 border-t border-neutral-200 text-xs text-neutral-500">
+                      <p>
+                        Proposed by {activity.poster.firstName || activity.poster.email || "Group member"}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
