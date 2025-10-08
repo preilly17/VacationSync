@@ -196,6 +196,20 @@ type DayDetailsState = {
   viewMode: "group" | "personal";
 };
 
+const parseActivityDate = (value?: string | null): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+};
+
 // MOBILE-ONLY bottom navigation config
 const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
   { key: "calendar", label: "Group", icon: Calendar },
@@ -313,10 +327,18 @@ function DayView({
   viewMode = "group",
 }: DayViewProps) {
   const dayActivities = activities
-    .filter((activity) => isSameDay(new Date(activity.startTime), date))
-    .sort(
-      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-    );
+    .map((activity) => ({
+      activity,
+      start: parseActivityDate(activity.startTime),
+    }))
+    .filter(({ start }) => Boolean(start && isSameDay(start, date)))
+    .sort((a, b) => {
+      const aTime = a.start?.getTime() ?? Number.POSITIVE_INFINITY;
+      const bTime = b.start?.getTime() ?? Number.POSITIVE_INFINITY;
+
+      return aTime - bTime;
+    })
+    .map(({ activity }) => activity);
 
   const now = new Date();
   const isPersonalView = viewMode === "personal";
@@ -381,34 +403,19 @@ function DayView({
             const statusBadgeClasses = showPersonalProposalChip
               ? "bg-blue-100 text-blue-800 border-blue-200"
               : inviteStatusBadgeClasses[derivedStatus];
-            const isPastActivity = (() => {
-              const end = activity.endTime ? new Date(activity.endTime) : null;
-              const start = activity.startTime ? new Date(activity.startTime) : null;
+              const isPastActivity = (() => {
+                const end = parseActivityDate(activity.endTime);
+                const start = parseActivityDate(activity.startTime);
+                const comparisonTarget = end ?? start;
 
-              const comparisonTarget = (() => {
-                if (end && !Number.isNaN(end.getTime())) {
-                  return end;
+                if (!comparisonTarget) {
+                  return false;
                 }
 
-                if (start && !Number.isNaN(start.getTime())) {
-                  return start;
-                }
-
-                return null;
+                return comparisonTarget.getTime() < now.getTime();
               })();
-
-              if (!comparisonTarget) {
-                return false;
-              }
-
-              return comparisonTarget.getTime() < now.getTime();
-            })();
-            const rsvpCloseDate = activity.rsvpCloseTime
-              ? new Date(activity.rsvpCloseTime)
-              : null;
-            const isRsvpClosed = Boolean(
-              rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
-            );
+              const rsvpCloseDate = parseActivityDate(activity.rsvpCloseTime);
+              const isRsvpClosed = Boolean(rsvpCloseDate && rsvpCloseDate < now);
             const capacityFull = Boolean(
               !isProposal && activity.maxCapacity != null
                 && activity.acceptedCount >= activity.maxCapacity,
@@ -1063,7 +1070,8 @@ export default function Trip() {
   };
 
   const handleViewOnCalendar = (activity: ActivityWithDetails) => {
-    const targetDate = clampDateToTrip(new Date(activity.startTime));
+    const start = parseActivityDate(activity.startTime);
+    const targetDate = start ? clampDateToTrip(start) : null;
     if (targetDate) {
       setActiveTab("calendar");
       setGroupCalendarView("day");
@@ -1216,20 +1224,23 @@ export default function Trip() {
   const sortedMyInvitedActivities = useMemo(() => {
     const now = Date.now();
     return [...filteredMyInvitedActivities].sort((a, b) => {
-      const aTime = new Date(a.startTime).getTime();
-      const bTime = new Date(b.startTime).getTime();
-      const aIsPast = Number.isNaN(aTime) ? 1 : aTime < now ? 1 : 0;
-      const bIsPast = Number.isNaN(bTime) ? 1 : bTime < now ? 1 : 0;
+      const aTime = parseActivityDate(a.startTime)?.getTime() ?? null;
+      const bTime = parseActivityDate(b.startTime)?.getTime() ?? null;
+      const aIsPast = aTime == null ? 0 : aTime < now ? 1 : 0;
+      const bIsPast = bTime == null ? 0 : bTime < now ? 1 : 0;
 
       if (aIsPast !== bIsPast) {
         return aIsPast - bIsPast;
       }
 
-      if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+      const normalizedATime = aTime ?? Number.POSITIVE_INFINITY;
+      const normalizedBTime = bTime ?? Number.POSITIVE_INFINITY;
+
+      if (normalizedATime === normalizedBTime) {
         return 0;
       }
 
-      return aTime - bTime;
+      return normalizedATime - normalizedBTime;
     });
   }, [filteredMyInvitedActivities]);
   const currentGroupDay = groupViewDate ?? tripStartDate ?? null;
@@ -1365,10 +1376,10 @@ export default function Trip() {
     return filteredActivities
       .map((activity) => ({
         activity,
-        start: new Date(activity.startTime),
+        start: parseActivityDate(activity.startTime),
       }))
-      .filter(({ start }) => !Number.isNaN(start.getTime()) && start.getTime() >= now.getTime())
-      .sort((a, b) => a.start.getTime() - b.start.getTime());
+      .filter(({ start }) => Boolean(start && start.getTime() >= now.getTime()))
+      .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0));
   }, [filteredActivities]);
 
   const nextActivityEntry = upcomingActivities[0];
@@ -2318,11 +2329,9 @@ export default function Trip() {
                         {sortedMyInvitedActivities.map((activity) => {
                           const invite = activity.invites?.find((entry) => entry.userId === user.id);
                           const status: ActivityInviteStatus = invite?.status ?? "pending";
-                          const start = new Date(activity.startTime);
-                          const dateLabel = Number.isNaN(start.getTime())
-                            ? null
-                            : format(start, "EEEE, MMM d");
-                          const timeLabel = Number.isNaN(start.getTime()) ? null : format(start, "h:mm a");
+                          const start = parseActivityDate(activity.startTime);
+                          const dateLabel = start ? format(start, "EEEE, MMM d") : null;
+                          const timeLabel = start ? format(start, "h:mm a") : null;
                           const locationLabel = activity.location?.trim();
                           const waitlistedCount =
                             activity.waitlistedCount

@@ -38,6 +38,22 @@ const statusBadgeClasses: Record<ActivityInviteStatus, string> = {
   waitlisted: "bg-blue-100 text-blue-800 border-blue-200",
 };
 
+const parseActivityDate = (
+  value: ActivityWithDetails["startTime"] | ActivityWithDetails["endTime"] | Date | null | undefined,
+): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+};
+
 const getUserDisplayName = (user: User | undefined): string => {
   if (!user) {
     return "Trip member";
@@ -62,16 +78,13 @@ const getUserDisplayName = (user: User | undefined): string => {
 };
 
 const formatDateTime = (value: ActivityWithDetails["startTime"]): string => {
-  const date = value instanceof Date ? value : new Date(value);
-  return format(date, "EEEE, MMM d · h:mm a");
+  const date = parseActivityDate(value);
+  return date ? format(date, "EEEE, MMM d · h:mm a") : "Time to be determined";
 };
 
 const formatEndTime = (value: ActivityWithDetails["endTime"] | null | undefined): string | null => {
-  if (!value) {
-    return null;
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  return format(date, "h:mm a");
+  const date = parseActivityDate(value);
+  return date ? format(date, "h:mm a") : null;
 };
 
 export function ActivityDetailsDialog({
@@ -100,20 +113,11 @@ export function ActivityDetailsDialog({
     if (!activity) {
       return false;
     }
-    const end = activity.endTime ? new Date(activity.endTime) : null;
-    const start = activity.startTime ? new Date(activity.startTime) : null;
 
-    const comparisonTarget = (() => {
-      if (end && !Number.isNaN(end.getTime())) {
-        return end;
-      }
+    const end = parseActivityDate(activity.endTime);
+    const start = parseActivityDate(activity.startTime);
 
-      if (start && !Number.isNaN(start.getTime())) {
-        return start;
-      }
-
-      return null;
-    })();
+    const comparisonTarget = end ?? start;
 
     if (!comparisonTarget) {
       return false;
@@ -121,10 +125,8 @@ export function ActivityDetailsDialog({
 
     return comparisonTarget.getTime() < now.getTime();
   })();
-  const rsvpCloseDate = activity?.rsvpCloseTime ? new Date(activity.rsvpCloseTime) : null;
-  const isRsvpClosed = Boolean(
-    rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
-  );
+  const rsvpCloseDate = parseActivityDate(activity?.rsvpCloseTime);
+  const isRsvpClosed = Boolean(rsvpCloseDate && rsvpCloseDate < now);
   const activityType = (activity?.type ?? "SCHEDULED").toUpperCase();
   const isProposal = activityType === "PROPOSE";
   const capacityFull = Boolean(
