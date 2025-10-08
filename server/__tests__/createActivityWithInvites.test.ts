@@ -9,18 +9,32 @@ const queryMock = jest.fn();
 
 let storage: typeof import("../storage")["storage"];
 let dbQuerySpy: jest.SpiedFunction<typeof import("../db")["query"]>;
+let connectSpy: jest.SpiedFunction<typeof import("../db")["pool"]["connect"]>;
+let releaseMock: jest.Mock;
 
 beforeAll(async () => {
   jest.resetModules();
   const dbModule: any = await import("../db");
+  releaseMock = jest.fn();
   dbQuerySpy = jest.spyOn(dbModule, "query").mockImplementation(queryMock as any);
+  connectSpy = jest
+    .spyOn(dbModule.pool, "connect")
+    .mockImplementation(async () => ({
+      query: queryMock,
+      release: releaseMock,
+    }));
   const storageModule: any = await import("../storage");
   storage = storageModule.storage;
 });
 
 beforeEach(() => {
   queryMock.mockReset();
+  releaseMock = jest.fn();
   dbQuerySpy.mockImplementation(queryMock as any);
+  connectSpy.mockImplementation(async () => ({
+    query: queryMock,
+    release: releaseMock,
+  }));
   (storage as any).activityTypeColumnInitialized = true;
   (storage as any).activityInvitesInitialized = true;
 });
@@ -78,5 +92,6 @@ describe("createActivityWithInvites", () => {
     expect(
       queryMock.mock.calls.map(([sql]) => sql),
     ).not.toContain("COMMIT");
+    expect(releaseMock).toHaveBeenCalledTimes(1);
   });
 });
