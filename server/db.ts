@@ -7,6 +7,7 @@ type QueryFunction = <T>(text: string, params?: unknown[]) => Promise<{ rows: T[
 const globalAny = globalThis as { __TEST_DB_QUERY__?: QueryFunction };
 
 let queryImpl: QueryFunction;
+let pool: Pool | undefined;
 
 if (typeof globalAny.__TEST_DB_QUERY__ === "function") {
   queryImpl = globalAny.__TEST_DB_QUERY__;
@@ -19,12 +20,13 @@ if (typeof globalAny.__TEST_DB_QUERY__ === "function") {
     );
   }
 
-  const pool = new Pool({
+  pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
   });
 
-  queryImpl = (text, params = []) => pool.query(text, params);
+  queryImpl = (text, params = []) => pool!.query(text, params);
 }
 
 export const query: QueryFunction = (text, params = []) => queryImpl(text, params);
+export { pool };

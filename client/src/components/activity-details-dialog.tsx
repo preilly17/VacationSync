@@ -96,12 +96,24 @@ export function ActivityDetailsDialog({
       && (currentUserId === activity.postedBy || currentUserId === activity.poster.id),
   );
   const now = new Date();
+  const activityType = (activity?.type ?? "SCHEDULED").toUpperCase();
+  const isProposal = activityType === "PROPOSE";
   const isPastActivity = (() => {
     if (!activity) {
       return false;
     }
+    if (isProposal) {
+      const startValue = activity.startTime;
+      if (!startValue) {
+        return false;
+      }
+      const parsedStart = new Date(startValue);
+      if (Number.isNaN(parsedStart.getTime())) {
+        return false;
+      }
+    }
     const end = activity.endTime ? new Date(activity.endTime) : null;
-    const start = new Date(activity.startTime);
+    const start = activity.startTime ? new Date(activity.startTime) : new Date(NaN);
     const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
     if (Number.isNaN(comparisonTarget.getTime())) {
       return false;
@@ -112,8 +124,6 @@ export function ActivityDetailsDialog({
   const isRsvpClosed = Boolean(
     rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
   );
-  const activityType = (activity?.type ?? "SCHEDULED").toUpperCase();
-  const isProposal = activityType === "PROPOSE";
   const capacityFull = Boolean(
     !isProposal && activity?.maxCapacity != null
       && activity.acceptedCount >= activity.maxCapacity,

@@ -382,8 +382,18 @@ function DayView({
               ? "bg-blue-100 text-blue-800 border-blue-200"
               : inviteStatusBadgeClasses[derivedStatus];
             const isPastActivity = (() => {
+              if (isProposal) {
+                const startValue = activity.startTime;
+                if (!startValue) {
+                  return false;
+                }
+                const parsedStart = new Date(startValue);
+                if (Number.isNaN(parsedStart.getTime())) {
+                  return false;
+                }
+              }
               const end = activity.endTime ? new Date(activity.endTime) : null;
-              const start = new Date(activity.startTime);
+              const start = activity.startTime ? new Date(activity.startTime) : new Date(NaN);
               const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
               return Number.isNaN(comparisonTarget.getTime())
                 ? false
