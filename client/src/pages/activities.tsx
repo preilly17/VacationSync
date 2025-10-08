@@ -294,6 +294,8 @@ export default function Activities() {
           ? [user.id]
           : [];
 
+      const maxCapacity = Math.max(attendeeIds.length, 1);
+
       const response = await apiFetch(`/api/trips/${tripId}/activities`, {
         method: 'POST',
         headers: {
@@ -308,7 +310,7 @@ export default function Activities() {
           endTime: null,
           category: activity.category,
           cost: activity.price ? parseFloat(activity.price) : null,
-          maxCapacity: 10,
+          maxCapacity,
           tripCalendarId: parseInt(tripId!),
           attendeeIds,
         }),
