@@ -29,6 +29,7 @@ import {
   MAX_ACTIVITY_LOCATION_LENGTH,
   MAX_ACTIVITY_NAME_LENGTH,
   START_TIME_REQUIRED_FOR_END_MESSAGE,
+  normalizeAttendeeIds,
   normalizeCostInput,
   normalizeMaxCapacityInput,
 } from "@shared/activityValidation";
@@ -388,13 +389,7 @@ export function AddActivityModal({
 
   const computeDefaults = useCallback(() => {
     const attendeePrefill = Array.isArray(prefill?.attendeeIds)
-      ? Array.from(
-          new Set(
-            prefill.attendeeIds
-              .map((id) => (id === null || id === undefined ? "" : String(id)))
-              .filter((id) => id.length > 0),
-          ),
-        )
+      ? normalizeAttendeeIds(prefill?.attendeeIds).value
       : undefined;
 
     const dateSource = prefill?.startDate ?? selectedDate ?? null;
@@ -435,6 +430,10 @@ export function AddActivityModal({
 
   const [mode, setMode] = useState<ActivityType>(initialMode);
 
+  useEffect(() => {
+    form.register("attendeeIds");
+  }, [form]);
+
   const activitiesVersion: "legacy" = "legacy";
 
   useEffect(() => {
@@ -465,9 +464,18 @@ export function AddActivityModal({
     }
   }, [open, selectedDate, prefill?.startDate, form, startDateMax, startDateMin]);
 
+  const watchedAttendeeIds = form.watch("attendeeIds");
+  const selectedAttendeeIds = useMemo(() => {
+    const value = Array.isArray(watchedAttendeeIds) ? watchedAttendeeIds : [];
+    return normalizeAttendeeIds(value).value;
+  }, [watchedAttendeeIds]);
+
   useEffect(() => {
     if (mode === "SCHEDULED" && creatorMemberId) {
-      const attendees = new Set(form.getValues("attendeeIds") ?? []);
+      const currentValue = form.getValues("attendeeIds");
+      const attendees = new Set(
+        normalizeAttendeeIds(Array.isArray(currentValue) ? currentValue : []).value,
+      );
       if (!attendees.has(creatorMemberId)) {
         attendees.add(creatorMemberId);
         form.setValue("attendeeIds", Array.from(attendees), {
@@ -553,8 +561,6 @@ export function AddActivityModal({
     activitiesVersion,
   });
 
-  const selectedAttendeeIds = form.watch("attendeeIds") ?? [];
-
   const handleToggleAttendee = useCallback(
     (userId: string, checked: boolean | "indeterminate") => {
       const normalized = String(userId);
@@ -562,7 +568,10 @@ export function AddActivityModal({
         return;
       }
 
-      const current = new Set(form.getValues("attendeeIds") ?? []);
+      const currentValue = form.getValues("attendeeIds");
+      const current = new Set(
+        normalizeAttendeeIds(Array.isArray(currentValue) ? currentValue : []).value,
+      );
       if (checked === true) {
         current.add(normalized);
       } else if (checked === false) {
@@ -615,6 +624,16 @@ export function AddActivityModal({
       return;
     }
 
+    const formValue = form.getValues("attendeeIds");
+    const trackedAttendees = normalizeAttendeeIds(Array.isArray(formValue) ? formValue : []).value;
+    const fallbackAttendees = normalizeAttendeeIds(values.attendeeIds).value;
+    const attendeeBase = trackedAttendees.length > 0 ? trackedAttendees : fallbackAttendees;
+    const attendeeSelectionSet = new Set(attendeeBase);
+    if (mode === "SCHEDULED" && creatorMemberId) {
+      attendeeSelectionSet.add(creatorMemberId);
+    }
+    const attendeeSelection = Array.from(attendeeSelectionSet);
+
     const sanitized: ActivityCreateFormValues = {
       name: values.name,
       description: values.description,
@@ -624,7 +643,7 @@ export function AddActivityModal({
       location: values.location,
       cost: values.cost?.trim() ? values.cost : undefined,
       maxCapacity: values.maxCapacity?.trim() ? values.maxCapacity : undefined,
-      attendeeIds: values.attendeeIds,
+      attendeeIds: attendeeSelection,
       category: values.category,
       type: mode,
     };
