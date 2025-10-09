@@ -62,7 +62,15 @@ const getUserDisplayName = (user: User | undefined): string => {
 };
 
 const formatDateTime = (value: ActivityWithDetails["startTime"]): string => {
+  if (!value) {
+    return "Time TBD";
+  }
+
   const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Time TBD";
+  }
+
   return format(date, "EEEE, MMM d · h:mm a");
 };
 
@@ -101,9 +109,14 @@ export function ActivityDetailsDialog({
       return false;
     }
     const end = activity.endTime ? new Date(activity.endTime) : null;
-    const start = new Date(activity.startTime);
-    const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
-    if (Number.isNaN(comparisonTarget.getTime())) {
+    const start = activity.startTime ? new Date(activity.startTime) : null;
+    const comparisonTarget =
+      end && !Number.isNaN(end.getTime())
+        ? end
+        : start && !Number.isNaN(start.getTime())
+          ? start
+          : null;
+    if (!comparisonTarget) {
       return false;
     }
     return comparisonTarget.getTime() < now.getTime();
