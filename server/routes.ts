@@ -2242,6 +2242,22 @@ export function setupRoutes(app: Express) {
               ? rawBody.timeZone
               : "";
 
+        const trimmedStartTime = startTimeFromBody?.trim?.() ?? "";
+        const trimmedTimezone = timezoneFromBody?.trim?.() ?? "";
+        const isProposedRequest = requestMode === "proposed";
+        const resolvedTimezone = (() => {
+          if (trimmedTimezone.length > 0) {
+            return trimmedTimezone;
+          }
+
+          const tripTimezone = typeof trip.timezone === "string" ? trip.timezone.trim() : "";
+          if (tripTimezone.length > 0) {
+            return tripTimezone;
+          }
+
+          return "UTC";
+        })();
+
         const idempotencyFromBody = (() => {
           if (typeof rawBody.idempotency_key === "string") {
             return rawBody.idempotency_key.trim();
@@ -2265,14 +2281,14 @@ export function setupRoutes(app: Express) {
           description: typeof rawBody.description === "string" ? rawBody.description : rawBody.description ?? null,
           category: typeof rawBody.category === "string" ? rawBody.category : rawBody.category ?? null,
           date: dateFromBody,
-          start_time: startTimeFromBody,
+          start_time: trimmedStartTime,
           end_time:
             typeof rawBody.end_time === "string"
               ? rawBody.end_time
               : typeof rawBody.endTime === "string"
                 ? rawBody.endTime
                 : null,
-          timezone: timezoneFromBody,
+          timezone: resolvedTimezone,
           location: typeof rawBody.location === "string" ? rawBody.location : rawBody.location ?? null,
           cost_per_person:
             rawBody.cost_per_person ?? rawBody.costPerPerson ?? rawBody.cost ?? null,
@@ -2285,7 +2301,7 @@ export function setupRoutes(app: Express) {
         attemptedInviteeIds = normalizedInvitees;
         payloadSummary = {
           name: createPayload.title,
-          startTime: createPayload.start_time,
+          startTime: trimmedStartTime.length > 0 ? trimmedStartTime : null,
           type: requestMode,
           attendeeCount: createPayload.invitee_ids.length,
         };
@@ -2293,8 +2309,8 @@ export function setupRoutes(app: Express) {
         const missingFields: string[] = [];
         if (createPayload.title.trim().length === 0) missingFields.push("title");
         if (createPayload.date.trim().length === 0) missingFields.push("date");
-        if (createPayload.start_time.trim().length === 0) missingFields.push("start_time");
-        if (createPayload.timezone.trim().length === 0) missingFields.push("timezone");
+        if (!isProposedRequest && trimmedStartTime.length === 0) missingFields.push("start_time");
+        if (!isProposedRequest && resolvedTimezone.trim().length === 0) missingFields.push("timezone");
         const missingRequired = missingFields.length > 0;
 
         const metricMode = requestMode === "proposed" ? "PROPOSE" : "SCHEDULED";
@@ -2359,12 +2375,12 @@ export function setupRoutes(app: Express) {
                   day: "numeric",
                   hour: "numeric",
                   minute: "2-digit",
-                  timeZone: createPayload.timezone,
+                  timeZone: resolvedTimezone,
                 });
               } catch (error) {
                 console.warn("Invalid timezone provided for activity notification", {
                   correlationId,
-                  timezone: createPayload.timezone,
+                  timezone: resolvedTimezone,
                   error,
                 });
                 return new Intl.DateTimeFormat("en-US", {
@@ -2376,8 +2392,31 @@ export function setupRoutes(app: Express) {
               }
             })();
 
-            const eventDate = new Date(`${createPayload.date}T${createPayload.start_time}`);
-            const formattedDate = formatter.format(eventDate);
+            const hasStartTime = trimmedStartTime.length > 0;
+            const hasDate = createPayload.date.trim().length > 0;
+            const formattedDate = (() => {
+              if (hasDate && hasStartTime) {
+                const eventDate = new Date(`${createPayload.date}T${trimmedStartTime}`);
+                return Number.isNaN(eventDate.getTime()) ? null : formatter.format(eventDate);
+              }
+
+              if (hasDate) {
+                try {
+                  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(
+                    new Date(`${createPayload.date}T00:00:00Z`),
+                  );
+                } catch (error) {
+                  console.warn("Failed to format proposal date", {
+                    correlationId,
+                    date: createPayload.date,
+                    error,
+                  });
+                  return null;
+                }
+              }
+
+              return null;
+            })();
 
             const proposerMember = trip.members.find((member) => member.userId === userId);
             const proposerName = getTripMemberDisplayName(proposerMember);
@@ -2386,10 +2425,17 @@ export function setupRoutes(app: Express) {
               requestMode === "proposed"
                 ? `${proposerName} proposed ${creationResult.title}`
                 : `You've been invited to ${creationResult.title}`;
-            const notificationMessage =
-              requestMode === "proposed"
-                ? `${proposerName} suggested ${creationResult.title} on ${formattedDate}. Vote when you're ready.`
-                : `You've been invited to ${creationResult.title} on ${formattedDate}.`;
+            const notificationMessage = (() => {
+              if (requestMode === "proposed") {
+                return formattedDate
+                  ? `${proposerName} suggested ${creationResult.title} on ${formattedDate}. Vote when you're ready.`
+                  : `${proposerName} suggested ${creationResult.title}. Vote when you're ready.`;
+              }
+
+              return formattedDate
+                ? `You've been invited to ${creationResult.title} on ${formattedDate}.`
+                : `You've been invited to ${creationResult.title}.`;
+            })();
 
             const notificationResults = await Promise.allSettled(
               attendeesToNotify.map((attendeeId) =>
