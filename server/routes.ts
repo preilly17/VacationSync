@@ -3811,20 +3811,21 @@ export function setupRoutes(app: Express) {
           return res.status(401).json({ message: "User ID not found" });
         }
 
-        const parsedHotel = insertHotelSchema.safeParse({ ...req.body, tripId });
-        if (!parsedHotel.success) {
+        const proposeHotelRequestSchema = z
+          .object({
+            id: z.union([z.string(), z.number()]).optional(),
+            hotelId: z.union([z.string(), z.number()]).optional(),
+          })
+          .passthrough();
+
+        const parsedRequest = proposeHotelRequestSchema.safeParse(req.body ?? {});
+        if (!parsedRequest.success) {
           return res
             .status(400)
-            .json({ message: "Invalid hotel data", errors: parsedHotel.error.issues });
+            .json({ message: "Invalid hotel proposal request", errors: parsedRequest.error.issues });
         }
 
-        if (parsedHotel.data.tripId !== tripId) {
-          return res
-            .status(400)
-            .json({ message: "Trip ID mismatch between path and payload" });
-        }
-
-        const rawHotelId = req.body?.id ?? req.body?.hotelId;
+        const rawHotelId = parsedRequest.data.hotelId ?? parsedRequest.data.id;
         const hotelId =
           typeof rawHotelId === 'number'
             ? rawHotelId
@@ -3848,7 +3849,9 @@ export function setupRoutes(app: Express) {
       } catch (error: unknown) {
         console.error("Error proposing hotel to group:", error);
         if (error instanceof z.ZodError) {
-          return res.status(400).json({ message: "Invalid hotel data", errors: error.issues });
+          return res
+            .status(400)
+            .json({ message: "Invalid hotel proposal request", errors: error.issues });
         }
         if (error instanceof Error) {
           if (error.message.includes('Hotel not found')) {
