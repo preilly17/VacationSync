@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,89 @@ interface EditTripModalProps {
   trip: TripWithDetails;
 }
 
+const formatTripDate = (value: Date | string | number) =>
+  format(new Date(value), "yyyy-MM-dd");
+
+const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
+const normalisedApiBaseUrl = rawApiBaseUrl.replace(/\/+$/, "");
+const parsedApiBaseUrl = (() => {
+  if (!normalisedApiBaseUrl) {
+    return null;
+  }
+  try {
+    return new URL(normalisedApiBaseUrl);
+  } catch (error) {
+    console.warn("Invalid VITE_API_URL provided", error);
+    return null;
+  }
+})();
+const apiBaseOrigin = parsedApiBaseUrl?.origin ?? null;
+const apiBasePath = parsedApiBaseUrl
+  ? parsedApiBaseUrl.pathname.replace(/\/+$/, "") || "/"
+  : null;
+const apiBasePathLower = apiBasePath?.toLowerCase() ?? null;
+const apiBasePathLowerWithSlash =
+  apiBasePathLower && apiBasePathLower !== "/"
+    ? `${apiBasePathLower.replace(/\/+$/, "")}/`
+    : null;
+const apiBaseWithSlash = normalisedApiBaseUrl
+  ? `${normalisedApiBaseUrl}/`
+  : null;
+const ABSOLUTE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
+const stripApiBaseUrl = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (!ABSOLUTE_URL_PATTERN.test(value)) {
+    return value;
+  }
+
+  if (!normalisedApiBaseUrl) {
+    return value;
+  }
+
+  if (value === normalisedApiBaseUrl) {
+    return "/";
+  }
+
+  if (apiBaseWithSlash && value.startsWith(apiBaseWithSlash)) {
+    const trimmed = value.slice(normalisedApiBaseUrl.length);
+    return trimmed === "" ? "/" : trimmed;
+  }
+
+  if (apiBaseOrigin) {
+    try {
+      const parsedValue = new URL(value, parsedApiBaseUrl ?? undefined);
+
+      if (parsedValue.origin === apiBaseOrigin && apiBasePath) {
+        let relativePath = parsedValue.pathname;
+
+        if (apiBasePath !== "/" && apiBasePathLower && apiBasePathLowerWithSlash) {
+          const relativePathLower = relativePath.toLowerCase();
+
+          if (relativePathLower === apiBasePathLower) {
+            relativePath = "/";
+          } else if (relativePathLower.startsWith(apiBasePathLowerWithSlash)) {
+            const trimmedPath = relativePath.slice(apiBasePath.length);
+            relativePath = trimmedPath.startsWith("/")
+              ? trimmedPath
+              : `/${trimmedPath}`;
+          }
+        }
+
+        const suffix = `${relativePath}${parsedValue.search}${parsedValue.hash}`;
+        return suffix === "" ? "/" : suffix;
+      }
+    } catch (error) {
+      console.warn("Failed to normalise cover photo URL", error, value);
+    }
+  }
+
+  return value;
+};
+
 const formSchema = insertTripCalendarSchema.extend({
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
@@ -40,6 +123,60 @@ const formSchema = insertTripCalendarSchema.extend({
 
 type FormData = z.infer<typeof formSchema>;
 
+const buildCoverPhotoDefaults = (
+  trip: TripWithDetails,
+): Pick<
+  FormData,
+  | "coverImageUrl"
+  | "coverPhotoUrl"
+  | "coverPhotoCardUrl"
+  | "coverPhotoThumbUrl"
+  | "coverPhotoAlt"
+  | "coverPhotoAttribution"
+  | "coverPhotoStorageKey"
+  | "coverPhotoOriginalUrl"
+  | "coverPhotoFocalX"
+  | "coverPhotoFocalY"
+  | "coverPhotoUploadSize"
+  | "coverPhotoUploadType"
+> => ({
+  coverImageUrl:
+    trip.coverImageUrl ??
+    trip.coverPhotoUrl ??
+    trip.coverPhotoOriginalUrl ??
+    null,
+  coverPhotoUrl: trip.coverPhotoUrl ?? null,
+  coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+  coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+  coverPhotoAlt: trip.coverPhotoAlt ?? null,
+  coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
+  coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
+  coverPhotoOriginalUrl:
+    trip.coverPhotoOriginalUrl ??
+    trip.coverImageUrl ??
+    trip.coverPhotoUrl ??
+    null,
+  coverPhotoFocalX:
+    typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
+  coverPhotoFocalY:
+    typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
+  coverPhotoUploadSize: null,
+  coverPhotoUploadType: null,
+});
+
+const buildFormDefaults = (trip: TripWithDetails): FormData => ({
+  name: trip.name,
+  destination: trip.destination,
+  startDate: formatTripDate(trip.startDate),
+  endDate: formatTripDate(trip.endDate),
+  ...buildCoverPhotoDefaults(trip),
+});
+
+const buildDefaultDestination = (trip: TripWithDetails) => ({
+  name: trip.destination,
+  displayName: trip.destination,
+});
+
 export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -50,77 +187,21 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
   >(null);
   const [saveState, setSaveState] = useState<"idle" | "uploading" | "saving">("idle");
 
-  const toAbsolute = (value: string | null | undefined) =>
-    ensureAbsoluteApiUrl(value) ?? null;
+  const defaultValues = useMemo(() => buildFormDefaults(trip), [trip]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: trip.name,
-      destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: toAbsolute(
-        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      ),
-      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
-      coverPhotoAlt: trip.coverPhotoAlt ?? null,
-      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
-      coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-      coverPhotoOriginalUrl: toAbsolute(
-        trip.coverPhotoOriginalUrl ??
-          trip.coverImageUrl ??
-          trip.coverPhotoUrl ??
-          null,
-      ),
-      coverPhotoFocalX:
-        typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
-      coverPhotoFocalY:
-        typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
-      coverPhotoUploadSize: null,
-      coverPhotoUploadType: null,
-    },
+    defaultValues,
   });
 
   // Reset form when trip changes or modal opens
   useEffect(() => {
     if (open && trip) {
-      form.reset({
-        name: trip.name,
-        destination: trip.destination,
-        startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-        endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-        coverImageUrl: toAbsolute(
-          trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-        ),
-        coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-        coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-        coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
-        coverPhotoAlt: trip.coverPhotoAlt ?? null,
-        coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
-        coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-        coverPhotoOriginalUrl: toAbsolute(
-          trip.coverPhotoOriginalUrl ??
-            trip.coverImageUrl ??
-            trip.coverPhotoUrl ??
-            null,
-        ),
-        coverPhotoFocalX:
-          typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
-        coverPhotoFocalY:
-          typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
-        coverPhotoUploadSize: null,
-        coverPhotoUploadType: null,
-      });
+      form.reset(buildFormDefaults(trip));
       // Set destination for SmartLocationSearch
-      setSelectedDestination({
-        name: trip.destination,
-        displayName: trip.destination
-      });
+      setSelectedDestination(buildDefaultDestination(trip));
     }
-  }, [open, trip, form]);
+  }, [form, open, trip]);
 
   useEffect(() => {
     if (!open) {
@@ -352,6 +433,17 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         submitData.coverPhotoUploadType = uploadResult.mimeType;
       }
 
+      const sanitizeUrl = (value: string | null | undefined) =>
+        stripApiBaseUrl(value);
+
+      submitData.coverImageUrl = sanitizeUrl(submitData.coverImageUrl);
+      submitData.coverPhotoUrl = sanitizeUrl(submitData.coverPhotoUrl);
+      submitData.coverPhotoCardUrl = sanitizeUrl(submitData.coverPhotoCardUrl);
+      submitData.coverPhotoThumbUrl = sanitizeUrl(submitData.coverPhotoThumbUrl);
+      submitData.coverPhotoOriginalUrl = sanitizeUrl(
+        submitData.coverPhotoOriginalUrl,
+      );
+
       await updateTripMutation.mutateAsync(submitData);
     } catch (error) {
       if (uploadResult) {
@@ -452,25 +544,9 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
 
   const handleCancel = () => {
     // Reset form to original values
-    form.reset({
-      name: trip.name,
-      destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: toAbsolute(
-        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      ),
-      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
-      coverPhotoAlt: trip.coverPhotoAlt ?? null,
-      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
-    });
+    form.reset(buildFormDefaults(trip));
     // Reset selected destination to original
-    setSelectedDestination({
-      name: trip.destination,
-      displayName: trip.destination
-    });
+    setSelectedDestination(buildDefaultDestination(trip));
     setPendingCoverPhotoFile(null);
     setPendingCoverPhotoMeta(null);
     setSaveState("idle");
