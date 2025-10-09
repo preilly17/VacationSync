@@ -4,6 +4,30 @@ const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, "");
 
 const ABSOLUTE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 
+const parsedApiBaseUrl = (() => {
+  if (!API_BASE_URL) {
+    return null;
+  }
+
+  try {
+    return new URL(API_BASE_URL);
+  } catch (error) {
+    console.warn("Invalid VITE_API_URL provided", error);
+    return null;
+  }
+})();
+
+const apiBaseOrigin = parsedApiBaseUrl?.origin ?? null;
+const apiBasePath = parsedApiBaseUrl
+  ? parsedApiBaseUrl.pathname.replace(/\/+$/, "") || "/"
+  : null;
+const apiBasePathLower = apiBasePath?.toLowerCase() ?? null;
+const apiBasePathLowerWithSlash =
+  apiBasePathLower && apiBasePathLower !== "/"
+    ? `${apiBasePathLower.replace(/\/+$/, "")}/`
+    : null;
+const apiBaseWithSlash = API_BASE_URL ? `${API_BASE_URL}/` : null;
+
 export function buildApiUrl(path: string) {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -28,6 +52,59 @@ export function ensureAbsoluteApiUrl(path: string | null | undefined) {
 
   return buildApiUrl(path);
 }
+
+export const stripApiBaseUrl = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (!ABSOLUTE_URL_PATTERN.test(value)) {
+    return value;
+  }
+
+  if (!API_BASE_URL) {
+    return value;
+  }
+
+  if (value === API_BASE_URL) {
+    return "/";
+  }
+
+  if (apiBaseWithSlash && value.startsWith(apiBaseWithSlash)) {
+    const trimmed = value.slice(API_BASE_URL.length);
+    return trimmed === "" ? "/" : trimmed;
+  }
+
+  if (parsedApiBaseUrl && apiBaseOrigin && apiBasePath) {
+    try {
+      const parsedValue = new URL(value, parsedApiBaseUrl);
+
+      if (parsedValue.origin === apiBaseOrigin) {
+        let relativePath = parsedValue.pathname;
+
+        if (apiBasePath !== "/" && apiBasePathLower && apiBasePathLowerWithSlash) {
+          const relativePathLower = relativePath.toLowerCase();
+
+          if (relativePathLower === apiBasePathLower) {
+            relativePath = "/";
+          } else if (relativePathLower.startsWith(apiBasePathLowerWithSlash)) {
+            const trimmedPath = relativePath.slice(apiBasePath.length);
+            relativePath = trimmedPath.startsWith("/")
+              ? trimmedPath
+              : `/${trimmedPath}`;
+          }
+        }
+
+        const suffix = `${relativePath}${parsedValue.search}${parsedValue.hash}`;
+        return suffix === "" ? "/" : suffix;
+      }
+    } catch (error) {
+      console.warn("Failed to normalise API-relative URL", error, value);
+    }
+  }
+
+  return value;
+};
 
 export function apiFetch(path: string, init?: RequestInit) {
   return fetch(buildApiUrl(path), init);
