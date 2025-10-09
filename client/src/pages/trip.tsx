@@ -5272,11 +5272,7 @@ function HotelBooking({
   const searchPanelRef = useRef<HotelSearchPanelRef>(null);
   const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
-  const manualHotels = useMemo(
-    () =>
-      hotels.filter((hotel) => !hotel.bookingSource || hotel.bookingSource.toLowerCase() === "manual"),
-    [hotels],
-  );
+  const manualHotels = useMemo(() => hotels, [hotels]);
   const [proposingHotelId, setProposingHotelId] = useState<number | null>(null);
   const proposeHotelMutation = useMutation({
     mutationFn: async (hotel: HotelWithDetails) => {
