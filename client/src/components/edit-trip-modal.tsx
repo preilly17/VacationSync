@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertTripCalendarSchema } from "@shared/schema";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
-import { buildApiUrl } from "@/lib/api";
+import { buildApiUrl, ensureAbsoluteApiUrl } from "@/lib/api";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
@@ -50,6 +50,9 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
   >(null);
   const [saveState, setSaveState] = useState<"idle" | "uploading" | "saving">("idle");
 
+  const toAbsolute = (value: string | null | undefined) =>
+    ensureAbsoluteApiUrl(value) ?? null;
+
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -57,15 +60,21 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      coverPhotoUrl: trip.coverPhotoUrl ?? null,
-      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
-      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+      coverImageUrl: toAbsolute(
+        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      ),
+      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
+      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
+      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
       coverPhotoAlt: trip.coverPhotoAlt ?? null,
       coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
       coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-      coverPhotoOriginalUrl:
-        trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoOriginalUrl: toAbsolute(
+        trip.coverPhotoOriginalUrl ??
+          trip.coverImageUrl ??
+          trip.coverPhotoUrl ??
+          null,
+      ),
       coverPhotoFocalX:
         typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
       coverPhotoFocalY:
@@ -83,15 +92,21 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         destination: trip.destination,
         startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
         endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-        coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-        coverPhotoUrl: trip.coverPhotoUrl ?? null,
-        coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
-        coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+        coverImageUrl: toAbsolute(
+          trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+        ),
+        coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
+        coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
+        coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
         coverPhotoAlt: trip.coverPhotoAlt ?? null,
         coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
         coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-        coverPhotoOriginalUrl:
-          trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+        coverPhotoOriginalUrl: toAbsolute(
+          trip.coverPhotoOriginalUrl ??
+            trip.coverImageUrl ??
+            trip.coverPhotoUrl ??
+            null,
+        ),
         coverPhotoFocalX:
           typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
         coverPhotoFocalY:
@@ -223,9 +238,10 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
 
       try {
         const payload = JSON.parse(text);
+        const publicUrl = ensureAbsoluteApiUrl(payload.publicUrl) ?? payload.publicUrl;
         return {
           storageKey: payload.storageKey,
-          publicUrl: payload.publicUrl,
+          publicUrl,
           size: payload.size,
           mimeType: payload.mimeType,
         };
@@ -441,10 +457,12 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      coverPhotoUrl: trip.coverPhotoUrl ?? null,
-      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
-      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+      coverImageUrl: toAbsolute(
+        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      ),
+      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
+      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
+      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
       coverPhotoAlt: trip.coverPhotoAlt ?? null,
       coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
     });

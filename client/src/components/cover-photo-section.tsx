@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { ensureAbsoluteApiUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -187,11 +188,16 @@ export function CoverPhotoSection({
     };
   }, []);
 
-  const displayedImage =
-    preview?.previewUrl ??
-    value.coverPhotoUrl ??
-    value.coverPhotoOriginalUrl ??
-    null;
+  const displayedImage = useMemo(() => {
+    if (preview?.previewUrl) {
+      return preview.previewUrl;
+    }
+    return (
+      ensureAbsoluteApiUrl(
+        value.coverPhotoUrl ?? value.coverPhotoOriginalUrl ?? null,
+      ) ?? null
+    );
+  }, [preview, value.coverPhotoOriginalUrl, value.coverPhotoUrl]);
 
   const updateValue = useCallback(
     (patch: Partial<CoverPhotoValue>) => {

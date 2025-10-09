@@ -50,6 +50,7 @@ import {
   TRIP_COVER_GRADIENT,
   buildCoverPhotoSrcSet,
   getCoverPhotoObjectPosition,
+  pickCoverPhotoSource,
   useCoverPhotoImage,
 } from "@/lib/tripCover";
 import { CalendarGrid } from "@/components/calendar-grid";
@@ -1609,8 +1610,11 @@ export default function Trip() {
     ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
     : null;
   const isTripCreator = trip ? user?.id === trip.createdBy : false;
-  const heroCoverPhoto =
-    trip?.coverPhotoUrl ?? trip?.coverPhotoOriginalUrl ?? trip?.coverImageUrl ?? null;
+  const heroCoverPhoto = pickCoverPhotoSource(
+    trip?.coverPhotoUrl,
+    trip?.coverPhotoOriginalUrl,
+    trip?.coverImageUrl,
+  );
   const heroImageSrcSet = trip
     ? buildCoverPhotoSrcSet({
         full: trip.coverPhotoUrl ?? trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? null,
