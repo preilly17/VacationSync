@@ -24,6 +24,21 @@ interface EditTripModalProps {
 
 const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
 const normalisedApiBaseUrl = rawApiBaseUrl.replace(/\/+$/, "");
+const parsedApiBaseUrl = (() => {
+  if (!normalisedApiBaseUrl) {
+    return null;
+  }
+  try {
+    return new URL(normalisedApiBaseUrl);
+  } catch (error) {
+    console.warn("Invalid VITE_API_URL provided", error);
+    return null;
+  }
+})();
+const apiBaseOrigin = parsedApiBaseUrl?.origin ?? null;
+const apiBasePath = parsedApiBaseUrl
+  ? parsedApiBaseUrl.pathname.replace(/\/+$/, "") || "/"
+  : null;
 const apiBaseWithSlash = normalisedApiBaseUrl
   ? `${normalisedApiBaseUrl}/`
   : null;
@@ -49,6 +64,27 @@ const stripApiBaseUrl = (value: string | null | undefined): string | null => {
   if (apiBaseWithSlash && value.startsWith(apiBaseWithSlash)) {
     const trimmed = value.slice(normalisedApiBaseUrl.length);
     return trimmed === "" ? "/" : trimmed;
+  }
+
+  if (apiBaseOrigin) {
+    try {
+      const parsedValue = new URL(value, parsedApiBaseUrl ?? undefined);
+
+      if (parsedValue.origin === apiBaseOrigin && apiBasePath) {
+        let relativePath = parsedValue.pathname;
+        if (
+          apiBasePath !== "/" &&
+          relativePath.toLowerCase().startsWith(apiBasePath.toLowerCase())
+        ) {
+          relativePath = relativePath.slice(apiBasePath.length) || "/";
+        }
+
+        const suffix = `${relativePath}${parsedValue.search}${parsedValue.hash}`;
+        return suffix === "" ? "/" : suffix;
+      }
+    } catch (error) {
+      console.warn("Failed to normalise cover photo URL", error, value);
+    }
   }
 
   return value;
