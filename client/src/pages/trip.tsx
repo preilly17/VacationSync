@@ -115,6 +115,7 @@ import {
   isAfter,
   formatDistanceToNow,
   differenceInCalendarDays,
+  roundToNearestMinutes,
 } from "date-fns";
 import { Form } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
@@ -274,6 +275,95 @@ const parseTripDateToLocal = (value?: string | Date | null): Date | null => {
 
   const fallback = value instanceof Date ? value : new Date(value);
   return Number.isNaN(fallback.getTime()) ? null : fallback;
+};
+
+const sanitizeTimezone = (value?: string | null) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+};
+
+const resolveActivityTimezone = (
+  trip: TripWithDetails | null | undefined,
+  user: User | null | undefined,
+): string => {
+  const tripWithTimezone = trip as (TripWithDetails & { timezone?: string | null }) | null | undefined;
+  const tripTimezone = sanitizeTimezone(tripWithTimezone?.timezone ?? null);
+  if (tripTimezone) {
+    return tripTimezone;
+  }
+
+  const userTimezone = sanitizeTimezone(user?.timezone ?? null);
+  if (userTimezone) {
+    return userTimezone;
+  }
+
+  try {
+    const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const normalized = sanitizeTimezone(resolved ?? null);
+    if (normalized) {
+      return normalized;
+    }
+  } catch (error) {
+    // Ignore resolution errors and fall back to UTC.
+  }
+
+  return "UTC";
+};
+
+const formatDateInTimezone = (date: Date, timeZone: string): string => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+
+    const year = parts.find(part => part.type === "year")?.value ?? "";
+    const month = parts.find(part => part.type === "month")?.value ?? "";
+    const day = parts.find(part => part.type === "day")?.value ?? "";
+
+    if (year && month && day) {
+      return `${year}-${month}-${day}`;
+    }
+  } catch (error) {
+    // Ignore formatting errors and fall back below.
+  }
+
+  return format(date, "yyyy-MM-dd");
+};
+
+const formatTimeInTimezone = (date: Date, timeZone: string): string => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(date);
+
+    const hour = parts.find(part => part.type === "hour")?.value ?? "00";
+    const minute = parts.find(part => part.type === "minute")?.value ?? "00";
+
+    if (hour && minute) {
+      return `${hour}:${minute}`;
+    }
+  } catch (error) {
+    // Ignore formatting errors and fall back below.
+  }
+
+  return format(date, "HH:mm");
+};
+
+const hasTimeComponent = (date: Date) => {
+  return (
+    date.getHours() !== 0
+    || date.getMinutes() !== 0
+    || date.getSeconds() !== 0
+    || date.getMilliseconds() !== 0
+  );
 };
 
 type ActivityWithSchedulingDetails = Omit<ActivityWithDetails, "startTime" | "endTime"> & {
@@ -1371,6 +1461,11 @@ export default function Trip() {
     return null;
   }, [tripEndDate, tripStartDate]);
 
+  const activityTimezone = useMemo(
+    () => resolveActivityTimezone(trip ?? null, user ?? null),
+    [trip, user],
+  );
+
   const clampDateToTrip = (date: Date) => {
     if (!tripStartDate && !tripEndDate) {
       return startOfDay(date);
@@ -1566,22 +1661,62 @@ export default function Trip() {
   };
 
   const openAddActivityModal = (
-    options: { date?: Date | null; mode?: ActivityType; allowModeToggle?: boolean } = {},
+    options: {
+      date?: Date | null;
+      startTime?: Date | null;
+      mode?: ActivityType;
+      allowModeToggle?: boolean;
+    } = {},
   ) => {
-    const { date, mode = "SCHEDULED", allowModeToggle = true } = options;
+    const { date, startTime: explicitStartTime, mode = "SCHEDULED", allowModeToggle = true } = options;
 
-    const baseDate = date ?? selectedDate ?? tripStartDate;
-    const targetDate = baseDate ? clampDateToTrip(baseDate) : null;
+    let prefillDateSource: Date | null = null;
+    let prefillTimeSource: Date | null = null;
 
-    if (targetDate) {
-      const formattedTargetDate = format(targetDate, "yyyy-MM-dd");
+    if (explicitStartTime) {
+      prefillDateSource = explicitStartTime;
+      prefillTimeSource = explicitStartTime;
+    } else if (date) {
+      prefillDateSource = date;
+      if (hasTimeComponent(date)) {
+        prefillTimeSource = date;
+      }
+    } else if (selectedDate) {
+      prefillDateSource = selectedDate;
+    } else if (tripStartDate) {
+      prefillDateSource = tripStartDate;
+    }
 
-      setSelectedDate(targetDate);
-      setGroupViewDate(targetDate);
-      setScheduleViewDate(targetDate);
-      setAddActivityPrefill({ startDate: formattedTargetDate });
+    if (prefillTimeSource) {
+      const rounded = roundToNearestMinutes(prefillTimeSource, { nearestTo: 15 });
+      prefillDateSource = rounded;
+      prefillTimeSource = rounded;
+    } else if (prefillDateSource) {
+      prefillDateSource = startOfDay(prefillDateSource);
+    }
+
+    const highlightCandidate = prefillDateSource ?? date ?? selectedDate ?? tripStartDate ?? null;
+    const highlightDate = highlightCandidate ? clampDateToTrip(highlightCandidate) : null;
+
+    if (prefillDateSource) {
+      const formattedStartDate = formatDateInTimezone(prefillDateSource, activityTimezone);
+      const formattedStartTime = prefillTimeSource
+        ? formatTimeInTimezone(prefillTimeSource, activityTimezone)
+        : undefined;
+
+      setAddActivityPrefill(
+        formattedStartTime
+          ? { startDate: formattedStartDate, startTime: formattedStartTime }
+          : { startDate: formattedStartDate },
+      );
     } else {
       setAddActivityPrefill(null);
+    }
+
+    if (highlightDate) {
+      setSelectedDate(highlightDate);
+      setGroupViewDate(highlightDate);
+      setScheduleViewDate(highlightDate);
     }
 
     setAddActivityMode(mode);
@@ -2210,7 +2345,7 @@ export default function Trip() {
                               trip={trip}
                               selectedDate={selectedDate}
                               onDayClick={(date) => {
-                                openAddActivityModal({ date: clampDateToTrip(date) });
+                                openAddActivityModal({ date });
                               }}
                               onActivityClick={handleActivityClick}
                               onDayOverflowClick={handleGroupDayOverflow}
@@ -2344,7 +2479,7 @@ export default function Trip() {
                             highlightPersonalProposals
                             onDayClick={(date) => {
                               openAddActivityModal({
-                                date: clampDateToTrip(date),
+                                date,
                                 mode: "SCHEDULED",
                                 allowModeToggle: false,
                               });

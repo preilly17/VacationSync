@@ -106,23 +106,6 @@ const buildDateRangeHint = (min?: string | null, max?: string | null) => {
   return null;
 };
 
-const clampDateToRange = (value: string, min?: string | null, max?: string | null) => {
-  if (!value) {
-    return value;
-  }
-
-  let normalized = value;
-  if (min && normalized < min) {
-    normalized = min;
-  }
-
-  if (max && normalized > max) {
-    normalized = max;
-  }
-
-  return normalized;
-};
-
 const formFieldsSchema = z.object({
   name: z
     .string()
@@ -179,9 +162,6 @@ interface FormSchemaOptions {
 
 const createFormSchema = (options: FormSchemaOptions = {}) => {
   const { startDateMin, startDateMax } = options;
-  const hasDateBounds = Boolean(startDateMin) || Boolean(startDateMax);
-  const dateRangeMessage = hasDateBounds ? buildDateRangeMessage(startDateMin, startDateMax) : null;
-
   return formFieldsSchema.superRefine((data, ctx) => {
     if (data.cost) {
       const { error } = normalizeCostInput(data.cost);
@@ -232,23 +212,13 @@ const createFormSchema = (options: FormSchemaOptions = {}) => {
       }
     }
 
-    if (hasDateBounds) {
-      const trimmedDate = typeof data.startDate === "string" ? data.startDate.trim() : data.startDate;
-      if (trimmedDate && dateInputPattern.test(trimmedDate)) {
-        if (startDateMin && trimmedDate < startDateMin) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["startDate"],
-            message: dateRangeMessage ?? buildDateRangeMessage(startDateMin, startDateMax),
-          });
-        } else if (startDateMax && trimmedDate > startDateMax) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ["startDate"],
-            message: dateRangeMessage ?? buildDateRangeMessage(startDateMin, startDateMax),
-          });
-        }
-      }
+    const trimmedDate = typeof data.startDate === "string" ? data.startDate.trim() : data.startDate;
+    if (!dateInputPattern.test(trimmedDate ?? "")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startDate"],
+        message: "Provide a valid date.",
+      });
     }
   });
 };
@@ -392,18 +362,16 @@ export function AddActivityModal({
       return "";
     }
 
-    const formatted = formatDateValue(prefill.startDate);
-    return clampDateToRange(formatted, startDateMin, startDateMax);
-  }, [prefill?.startDate, startDateMin, startDateMax]);
+    return formatDateValue(prefill.startDate);
+  }, [prefill?.startDate]);
 
   const selectedDateValue = useMemo(() => {
     if (!selectedDate) {
       return "";
     }
 
-    const formatted = formatDateValue(selectedDate);
-    return clampDateToRange(formatted, startDateMin, startDateMax);
-  }, [selectedDate, startDateMin, startDateMax]);
+    return formatDateValue(selectedDate);
+  }, [selectedDate]);
 
   const computeDefaults = useCallback(() => {
     const attendeePrefill = Array.isArray(prefill?.attendeeIds)
@@ -482,13 +450,18 @@ export function AddActivityModal({
       return;
     }
 
+    const fieldState = form.getFieldState("startDate");
+    if (fieldState.isDirty) {
+      return;
+    }
+
     const currentValue = (form.getValues("startDate") ?? "").trim();
     if (currentValue === candidate) {
       return;
     }
 
     form.setValue("startDate", candidate, {
-      shouldDirty: true,
+      shouldDirty: false,
       shouldValidate: true,
     });
   }, [open, prefillStartDateValue, selectedDateValue, form]);
@@ -517,11 +490,29 @@ export function AddActivityModal({
 
   const formErrors = form.formState.errors;
   const requireStartTime = mode === "SCHEDULED";
+  const watchedStartDate = form.watch("startDate") ?? "";
   const watchedStartTime = form.watch("startTime") ?? "";
   const normalizedWatchedStartTime =
     typeof watchedStartTime === "string" ? watchedStartTime.trim() : "";
   const isStartTimeMissing = requireStartTime && normalizedWatchedStartTime.length === 0;
   const hasFormErrors = Object.keys(formErrors).length > 0;
+  const isStartDateOutsideTrip = useMemo(() => {
+    const candidate = typeof watchedStartDate === "string" ? watchedStartDate.trim() : "";
+
+    if (!candidate || !dateInputPattern.test(candidate)) {
+      return false;
+    }
+
+    if (startDateMin && candidate < startDateMin) {
+      return true;
+    }
+
+    if (startDateMax && candidate > startDateMax) {
+      return true;
+    }
+
+    return false;
+  }, [watchedStartDate, startDateMin, startDateMax]);
 
   const handleValidationError = useCallback(
     (error: ActivityValidationError) => {
@@ -767,12 +758,13 @@ export function AddActivityModal({
               <Input
                 id="startDate"
                 type="date"
-                min={startDateMin || undefined}
-                max={startDateMax || undefined}
                 {...form.register("startDate")}
               />
               {dateRangeHint && (
                 <p className="mt-1 text-xs text-neutral-500">{dateRangeHint}</p>
+              )}
+              {isStartDateOutsideTrip && !formErrors.startDate && (
+                <p className="mt-1 text-xs text-amber-600">This date is outside the trip dates.</p>
               )}
               {formErrors.startDate && (
                 <p className="mt-1 text-sm text-red-600">{formErrors.startDate.message}</p>
