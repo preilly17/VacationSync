@@ -1,23 +1,23 @@
 export type StatusFilter = "all" | "active" | "canceled";
 
+const CANCELED_STATUSES = new Set(["canceled", "cancelled", "void", "voided", "archived"]);
+
 export const normalizeProposalStatus = (status?: string | null): string =>
   (status ?? "active").toLowerCase();
+
+export const isCanceledStatus = (status?: string | null): boolean =>
+  CANCELED_STATUSES.has(normalizeProposalStatus(status));
+
+export const filterActiveProposals = <T extends { status?: string | null }>(items: T[]): T[] =>
+  items.filter((item) => !isCanceledStatus(item.status));
 
 export const filterProposalsByStatus = <T extends { status?: string | null }>(
   items: T[],
   statusFilter: StatusFilter,
 ): T[] => {
-  if (statusFilter === "all") {
-    return items;
+  if (statusFilter === "canceled") {
+    return items.filter((item) => isCanceledStatus(item.status));
   }
 
-  return items.filter((item) => {
-    const normalizedStatus = normalizeProposalStatus(item.status);
-
-    if (statusFilter === "canceled") {
-      return normalizedStatus === "canceled" || normalizedStatus === "cancelled";
-    }
-
-    return normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
-  });
+  return filterActiveProposals(items);
 };
