@@ -2253,7 +2253,7 @@ export default function FlightsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flights"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
       setEditingFlight(null);
       toast({
         title: "Success",
@@ -2276,7 +2276,7 @@ export default function FlightsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flights"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
       toast({
         title: "Success",
         description: "Flight deleted successfully!",
