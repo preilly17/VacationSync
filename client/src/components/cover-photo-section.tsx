@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { resolveCoverPhotoUrl } from "@/lib/tripCover";
 import { Loader2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
@@ -189,9 +190,9 @@ export function CoverPhotoSection({
 
   const displayedImage =
     preview?.previewUrl ??
-    value.coverPhotoUrl ??
-    value.coverPhotoOriginalUrl ??
-    null;
+    resolveCoverPhotoUrl(
+      value.coverPhotoUrl ?? value.coverPhotoOriginalUrl ?? null,
+    );
 
   const updateValue = useCallback(
     (patch: Partial<CoverPhotoValue>) => {

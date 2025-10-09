@@ -65,6 +65,7 @@ import {
   buildCoverPhotoAltText,
   buildCoverPhotoSrcSet,
   getCoverPhotoObjectPosition,
+  resolveCoverPhotoUrl,
   useCoverPhotoImage,
 } from "@/lib/tripCover";
 
@@ -868,11 +869,12 @@ export default function Home() {
       )}`
     : null;
 
-  const heroCoverPhoto =
+  const heroCoverPhoto = resolveCoverPhotoUrl(
     primaryTrip?.coverPhotoUrl ??
-    primaryTrip?.coverPhotoOriginalUrl ??
-    primaryTrip?.coverImageUrl ??
-    null;
+      primaryTrip?.coverPhotoOriginalUrl ??
+      primaryTrip?.coverImageUrl ??
+      null,
+  );
   const heroImageSrcSet = primaryTrip
     ? buildCoverPhotoSrcSet({
         full:
@@ -1816,12 +1818,13 @@ type TripCardProps = {
 };
 
 function TripCard({ trip }: TripCardProps) {
-  const cardImageSrc =
+  const cardImageSrc = resolveCoverPhotoUrl(
     trip.coverPhotoCardUrl ??
-    trip.coverPhotoOriginalUrl ??
-    trip.coverImageUrl ??
-    trip.coverPhotoUrl ??
-    null;
+      trip.coverPhotoOriginalUrl ??
+      trip.coverImageUrl ??
+      trip.coverPhotoUrl ??
+      null,
+  );
   const cardImageSrcSet = buildCoverPhotoSrcSet({
     full:
       trip.coverPhotoUrl ??
