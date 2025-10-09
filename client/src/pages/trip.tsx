@@ -1574,10 +1574,12 @@ export default function Trip() {
     const targetDate = baseDate ? clampDateToTrip(baseDate) : null;
 
     if (targetDate) {
+      const formattedTargetDate = format(targetDate, "yyyy-MM-dd");
+
       setSelectedDate(targetDate);
       setGroupViewDate(targetDate);
       setScheduleViewDate(targetDate);
-      setAddActivityPrefill({ startDate: targetDate });
+      setAddActivityPrefill({ startDate: formattedTargetDate });
     } else {
       setAddActivityPrefill(null);
     }
