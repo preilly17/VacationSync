@@ -65,8 +65,10 @@ import {
   buildCoverPhotoAltText,
   buildCoverPhotoSrcSet,
   getCoverPhotoObjectPosition,
+  pickCoverPhotoSource,
   useCoverPhotoImage,
 } from "@/lib/tripCover";
+import { ensureAbsoluteApiUrl } from "@/lib/api";
 
 import CurrencyConverterTool from "@/components/dashboard/currency-converter-tool";
 
@@ -630,26 +632,30 @@ export default function Home() {
       travelersCount: trip.memberCount,
       travelers: buildTravelerData(trip.members),
       progressPercent: calculatePlanningProgress(trip),
-      coverImageUrl:
-        trip.coverImageUrl ??
-        trip.coverPhotoUrl ??
-        trip.coverPhotoOriginalUrl ??
-        null,
-      coverPhotoUrl: trip.coverPhotoUrl ?? null,
-      coverPhotoCardUrl:
-        trip.coverPhotoCardUrl ??
-        trip.coverPhotoOriginalUrl ??
-        trip.coverImageUrl ??
-        trip.coverPhotoUrl ??
-        null,
-      coverPhotoThumbUrl:
-        trip.coverPhotoThumbUrl ??
-        trip.coverPhotoCardUrl ??
-        trip.coverPhotoOriginalUrl ??
-        trip.coverImageUrl ??
-        trip.coverPhotoUrl ??
-        null,
-      coverPhotoOriginalUrl: trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverImageUrl: pickCoverPhotoSource(
+        trip.coverImageUrl,
+        trip.coverPhotoUrl,
+        trip.coverPhotoOriginalUrl,
+      ),
+      coverPhotoUrl: ensureAbsoluteApiUrl(trip.coverPhotoUrl) ?? null,
+      coverPhotoCardUrl: pickCoverPhotoSource(
+        trip.coverPhotoCardUrl,
+        trip.coverPhotoOriginalUrl,
+        trip.coverImageUrl,
+        trip.coverPhotoUrl,
+      ),
+      coverPhotoThumbUrl: pickCoverPhotoSource(
+        trip.coverPhotoThumbUrl,
+        trip.coverPhotoCardUrl,
+        trip.coverPhotoOriginalUrl,
+        trip.coverImageUrl,
+        trip.coverPhotoUrl,
+      ),
+      coverPhotoOriginalUrl: pickCoverPhotoSource(
+        trip.coverPhotoOriginalUrl,
+        trip.coverImageUrl,
+        trip.coverPhotoUrl,
+      ),
       coverPhotoFocalX: trip.coverPhotoFocalX ?? null,
       coverPhotoFocalY: trip.coverPhotoFocalY ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? undefined,
@@ -868,11 +874,11 @@ export default function Home() {
       )}`
     : null;
 
-  const heroCoverPhoto =
-    primaryTrip?.coverPhotoUrl ??
-    primaryTrip?.coverPhotoOriginalUrl ??
-    primaryTrip?.coverImageUrl ??
-    null;
+  const heroCoverPhoto = pickCoverPhotoSource(
+    primaryTrip?.coverPhotoUrl,
+    primaryTrip?.coverPhotoOriginalUrl,
+    primaryTrip?.coverImageUrl,
+  );
   const heroImageSrcSet = primaryTrip
     ? buildCoverPhotoSrcSet({
         full:
@@ -1816,12 +1822,12 @@ type TripCardProps = {
 };
 
 function TripCard({ trip }: TripCardProps) {
-  const cardImageSrc =
-    trip.coverPhotoCardUrl ??
-    trip.coverPhotoOriginalUrl ??
-    trip.coverImageUrl ??
-    trip.coverPhotoUrl ??
-    null;
+  const cardImageSrc = pickCoverPhotoSource(
+    trip.coverPhotoCardUrl,
+    trip.coverPhotoOriginalUrl,
+    trip.coverImageUrl,
+    trip.coverPhotoUrl,
+  );
   const cardImageSrcSet = buildCoverPhotoSrcSet({
     full:
       trip.coverPhotoUrl ??

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ensureAbsoluteApiUrl } from "./api";
 
 export const TRIP_COVER_GRADIENT =
   "linear-gradient(135deg, rgba(255, 126, 95, 0.88), rgba(254, 180, 123, 0.85), rgba(101, 78, 163, 0.85))";
@@ -12,19 +13,34 @@ type CoverPhotoSrcSetOptions = {
 export const buildCoverPhotoSrcSet = ({ full, card, thumb }: CoverPhotoSrcSetOptions): string | undefined => {
   const entries: string[] = [];
 
-  if (thumb) {
-    entries.push(`${thumb} 256w`);
+  const thumbUrl = ensureAbsoluteApiUrl(thumb);
+  if (thumbUrl) {
+    entries.push(`${thumbUrl} 256w`);
   }
 
-  if (card) {
-    entries.push(`${card} 800w`);
+  const cardUrl = ensureAbsoluteApiUrl(card);
+  if (cardUrl) {
+    entries.push(`${cardUrl} 800w`);
   }
 
-  if (full) {
-    entries.push(`${full} 1920w`);
+  const fullUrl = ensureAbsoluteApiUrl(full);
+  if (fullUrl) {
+    entries.push(`${fullUrl} 1920w`);
   }
 
   return entries.length > 0 ? entries.join(", ") : undefined;
+};
+
+export const pickCoverPhotoSource = (
+  ...candidates: Array<string | null | undefined>
+): string | null => {
+  for (const candidate of candidates) {
+    const resolved = ensureAbsoluteApiUrl(candidate);
+    if (resolved) {
+      return resolved;
+    }
+  }
+  return null;
 };
 
 type ImageStatus = "idle" | "loaded" | "error";

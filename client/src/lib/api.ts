@@ -2,6 +2,8 @@
 const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
 const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, "");
 
+const ABSOLUTE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
 export function buildApiUrl(path: string) {
   if (/^https?:\/\//i.test(path)) {
     return path;
@@ -13,6 +15,18 @@ export function buildApiUrl(path: string) {
 
   const normalisedPath = path.startsWith("/") ? path.slice(1) : path;
   return `${API_BASE_URL}/${normalisedPath}`;
+}
+
+export function ensureAbsoluteApiUrl(path: string | null | undefined) {
+  if (!path) {
+    return null;
+  }
+
+  if (ABSOLUTE_URL_PATTERN.test(path)) {
+    return path;
+  }
+
+  return buildApiUrl(path);
 }
 
 export function apiFetch(path: string, init?: RequestInit) {
