@@ -590,6 +590,115 @@ describe("POST /api/trips/:id/activities", () => {
     }
   });
 
+  it("sends proposal notifications without formatting errors when the start time is omitted", async () => {
+    const trip = {
+      id: 654,
+      createdBy: "organizer",
+      members: [
+        { userId: "organizer", user: { firstName: "Org", email: "org@example.com" } },
+        { userId: "friend", user: { firstName: "Friend", email: "friend@example.com" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Sunrise Hike",
+      description: "Catch the first light",
+      category: "outdoor",
+      date: "2024-07-04",
+      start_time: "   ",
+      timezone: "America/Los_Angeles",
+      mode: "proposed",
+      attendeeIds: ["friend"],
+      idempotency_key: "proposal-without-start-time",
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      headers: { "x-activities-version": "2" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
+    process.env.FEATURE_ACTIVITIES_V2 = "true";
+
+    try {
+      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+      const createNotificationSpy = jest
+        .spyOn(storage, "createNotification")
+        .mockResolvedValue(undefined as any);
+
+      const now = new Date().toISOString();
+      const v2Response = {
+        id: "activity-v2-proposal",
+        tripId: String(trip.id),
+        creatorId: "organizer",
+        title: requestBody.name,
+        description: requestBody.description,
+        category: requestBody.category,
+        date: requestBody.date,
+        startTime: null,
+        endTime: null,
+        timezone: requestBody.timezone,
+        location: null,
+        costPerPerson: null,
+        maxParticipants: null,
+        status: "proposed",
+        visibility: "trip",
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        invitees: [
+          {
+            activityId: "activity-v2-proposal",
+            userId: "organizer",
+            role: "participant",
+            createdAt: now,
+            updatedAt: now,
+            user: trip.members[0]?.user ?? null,
+          },
+          {
+            activityId: "activity-v2-proposal",
+            userId: "friend",
+            role: "participant",
+            createdAt: now,
+            updatedAt: now,
+            user: trip.members[1]?.user ?? null,
+          },
+        ],
+        votes: [],
+        rsvps: [],
+        creator: trip.members[0]?.user ?? null,
+        initialVoteOrRsvpState: { organizer: "yes", friend: "pending" },
+        wasDeduplicated: false,
+      };
+
+      jest.spyOn(activitiesV2Module, "createActivityV2").mockResolvedValueOnce(v2Response as any);
+
+      await handler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(v2Response);
+
+      expect(createNotificationSpy).toHaveBeenCalledTimes(1);
+      expect(createNotificationSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "friend",
+          message: expect.stringContaining("time TBD"),
+          title: expect.stringContaining(requestBody.name),
+        }),
+      );
+      const notificationMessage = createNotificationSpy.mock.calls[0][0]?.message as string;
+      expect(notificationMessage).toContain("Jul 4");
+      expect(notificationMessage).toContain("time TBD");
+    } finally {
+      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
+    }
+  });
+
   it("ensures the demo user exists before creating an activity in development", async () => {
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "development";

@@ -2378,9 +2378,13 @@ export function setupRoutes(app: Express) {
               }
             })();
 
+            const normalizedDate =
+              typeof createPayload.date === "string" ? createPayload.date.trim() : "";
+            const normalizedStartTime =
+              typeof createPayload.start_time === "string" ? createPayload.start_time.trim() : "";
             const eventDate =
-              hasStartTime && createPayload.start_time
-                ? new Date(`${createPayload.date}T${createPayload.start_time}`)
+              hasStartTime && normalizedStartTime.length > 0
+                ? new Date(`${normalizedDate}T${normalizedStartTime}`)
                 : null;
             const hasValidEventDate =
               eventDate instanceof Date && !Number.isNaN(eventDate.getTime());
@@ -2390,8 +2394,9 @@ export function setupRoutes(app: Express) {
                 return formatter.format(eventDate as Date);
               }
 
-              const fallbackDate = new Date(`${createPayload.date}T00:00:00Z`);
-              if (!Number.isNaN(fallbackDate.getTime())) {
+              const fallbackDate =
+                normalizedDate.length > 0 ? new Date(`${normalizedDate}T00:00:00Z`) : null;
+              if (fallbackDate && !Number.isNaN(fallbackDate.getTime())) {
                 return new Intl.DateTimeFormat("en-US", {
                   month: "short",
                   day: "numeric",
