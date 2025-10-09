@@ -312,6 +312,27 @@ const resolveActivityTimezone = (
   return "UTC";
 };
 
+const formatDateWithLocalParts = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+
+  const paddedMonth = month < 10 ? `0${month}` : String(month);
+  const paddedDay = day < 10 ? `0${day}` : String(day);
+
+  return `${year}-${paddedMonth}-${paddedDay}`;
+};
+
+const formatTimeWithLocalParts = (date: Date): string => {
+  const hours = date.getHours();
+  const minutes = date.getMinutes();
+
+  const paddedHours = hours < 10 ? `0${hours}` : String(hours);
+  const paddedMinutes = minutes < 10 ? `0${minutes}` : String(minutes);
+
+  return `${paddedHours}:${paddedMinutes}`;
+};
+
 const formatDateInTimezone = (date: Date, timeZone: string): string => {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -1699,9 +1720,16 @@ export default function Trip() {
     const highlightDate = highlightCandidate ? clampDateToTrip(highlightCandidate) : null;
 
     if (prefillDateSource) {
-      const formattedStartDate = formatDateInTimezone(prefillDateSource, activityTimezone);
+      const shouldTreatAsDisplayTimezone = !explicitStartTime;
+
+      const formattedStartDate = shouldTreatAsDisplayTimezone
+        ? formatDateWithLocalParts(prefillDateSource)
+        : formatDateInTimezone(prefillDateSource, activityTimezone);
+
       const formattedStartTime = prefillTimeSource
-        ? formatTimeInTimezone(prefillTimeSource, activityTimezone)
+        ? shouldTreatAsDisplayTimezone
+          ? formatTimeWithLocalParts(prefillTimeSource)
+          : formatTimeInTimezone(prefillTimeSource, activityTimezone)
         : undefined;
 
       setAddActivityPrefill(
