@@ -632,25 +632,29 @@ export default function Home() {
       travelers: buildTravelerData(trip.members),
       progressPercent: calculatePlanningProgress(trip),
       coverImageUrl:
-        trip.coverImageUrl ??
         trip.coverPhotoUrl ??
         trip.coverPhotoOriginalUrl ??
+        trip.coverImageUrl ??
         null,
       coverPhotoUrl: trip.coverPhotoUrl ?? null,
       coverPhotoCardUrl:
         trip.coverPhotoCardUrl ??
+        trip.coverPhotoUrl ??
         trip.coverPhotoOriginalUrl ??
         trip.coverImageUrl ??
-        trip.coverPhotoUrl ??
         null,
       coverPhotoThumbUrl:
         trip.coverPhotoThumbUrl ??
         trip.coverPhotoCardUrl ??
+        trip.coverPhotoUrl ??
         trip.coverPhotoOriginalUrl ??
         trip.coverImageUrl ??
-        trip.coverPhotoUrl ??
         null,
-      coverPhotoOriginalUrl: trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+      coverPhotoOriginalUrl:
+        trip.coverPhotoOriginalUrl ??
+        trip.coverPhotoUrl ??
+        trip.coverImageUrl ??
+        null,
       coverPhotoFocalX: trip.coverPhotoFocalX ?? null,
       coverPhotoFocalY: trip.coverPhotoFocalY ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? undefined,
@@ -1821,8 +1825,8 @@ function TripCard({ trip }: TripCardProps) {
   const cardImageSrc = resolveCoverPhotoUrl(
     trip.coverPhotoCardUrl ??
       trip.coverPhotoOriginalUrl ??
-      trip.coverImageUrl ??
       trip.coverPhotoUrl ??
+      trip.coverImageUrl ??
       null,
   );
   const cardImageSrcSet = buildCoverPhotoSrcSet({
@@ -1831,11 +1835,18 @@ function TripCard({ trip }: TripCardProps) {
       trip.coverPhotoOriginalUrl ??
       trip.coverImageUrl ??
       null,
-    card: trip.coverPhotoCardUrl ?? trip.coverPhotoOriginalUrl ?? null,
+    card:
+      trip.coverPhotoCardUrl ??
+      trip.coverPhotoUrl ??
+      trip.coverPhotoOriginalUrl ??
+      trip.coverImageUrl ??
+      null,
     thumb:
       trip.coverPhotoThumbUrl ??
       trip.coverPhotoCardUrl ??
+      trip.coverPhotoUrl ??
       trip.coverPhotoOriginalUrl ??
+      trip.coverImageUrl ??
       null,
   });
   const altText = buildCoverPhotoAltText(trip.name);
@@ -1877,7 +1888,10 @@ function TripCard({ trip }: TripCardProps) {
               style={{ objectPosition }}
             />
           ) : null}
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/60 via-slate-900/10 to-transparent" aria-hidden="true" />
+          <div
+            className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-slate-900/30 to-slate-900/80"
+            aria-hidden="true"
+          />
           <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
             <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
               {formatDateRange(trip.startDate, trip.endDate)}
