@@ -387,14 +387,30 @@ export function AddActivityModal({
     [memberOptions],
   );
 
+  const prefillStartDateValue = useMemo(() => {
+    if (!prefill?.startDate) {
+      return "";
+    }
+
+    const formatted = formatDateValue(prefill.startDate);
+    return clampDateToRange(formatted, startDateMin, startDateMax);
+  }, [prefill?.startDate, startDateMin, startDateMax]);
+
+  const selectedDateValue = useMemo(() => {
+    if (!selectedDate) {
+      return "";
+    }
+
+    const formatted = formatDateValue(selectedDate);
+    return clampDateToRange(formatted, startDateMin, startDateMax);
+  }, [selectedDate, startDateMin, startDateMax]);
+
   const computeDefaults = useCallback(() => {
     const attendeePrefill = Array.isArray(prefill?.attendeeIds)
       ? normalizeAttendeeIds(prefill?.attendeeIds).value
       : undefined;
 
-    const dateSource = prefill?.startDate ?? selectedDate ?? null;
-    const rawStartDate = formatDateValue(dateSource);
-    const normalizedStartDate = clampDateToRange(rawStartDate, startDateMin, startDateMax);
+    const normalizedStartDate = (prefillStartDateValue || selectedDateValue || "").trim();
 
     const values: FormValues = {
       name: prefill?.name ?? "",
@@ -417,7 +433,13 @@ export function AddActivityModal({
     const initialMode = prefill?.type ?? defaultMode;
 
     return { values, mode: initialMode };
-  }, [defaultAttendeeIds, defaultMode, prefill, selectedDate, startDateMax, startDateMin]);
+  }, [
+    defaultAttendeeIds,
+    defaultMode,
+    prefill,
+    prefillStartDateValue,
+    selectedDateValue,
+  ]);
 
   const { values: defaultValues, mode: initialMode } = computeDefaults();
 
@@ -451,18 +473,25 @@ export function AddActivityModal({
   }, [allowModeToggle, defaultMode]);
 
   useEffect(() => {
-    if (open && !prefill?.startDate && selectedDate) {
-      const nextStartDate = clampDateToRange(
-        formatDateValue(selectedDate),
-        startDateMin,
-        startDateMax,
-      );
-      form.setValue("startDate", nextStartDate, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
+    if (!open) {
+      return;
     }
-  }, [open, selectedDate, prefill?.startDate, form, startDateMax, startDateMin]);
+
+    const candidate = (prefillStartDateValue || selectedDateValue || "").trim();
+    if (!candidate) {
+      return;
+    }
+
+    const currentValue = (form.getValues("startDate") ?? "").trim();
+    if (currentValue === candidate) {
+      return;
+    }
+
+    form.setValue("startDate", candidate, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [open, prefillStartDateValue, selectedDateValue, form]);
 
   const watchedAttendeeIds = form.watch("attendeeIds");
   const selectedAttendeeIds = useMemo(() => {
