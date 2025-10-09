@@ -161,7 +161,7 @@ const setupDbMocks = ({ now, creatorUser, friendUser, trip, onInsert }: DbMockOp
             visibility: "trip",
             created_at: now,
             updated_at: now,
-            version: 1,
+            version: Number(insertedValues[14] ?? 1),
             creator_email: creatorUser.email,
             creator_username: creatorUser.username,
             creator_first_name: creatorUser.firstName,
@@ -422,8 +422,9 @@ describe("createActivityV2", () => {
       friendUser,
       trip,
       onInsert: (params) => {
-        expect(params[7]).toBeNull();
+        expect(params[7]).toBe("00:00");
         expect(params[13]).toBe("proposed");
+        expect(params[14]).toBe(2);
       },
     });
 
@@ -439,8 +440,10 @@ describe("createActivityV2", () => {
     const insertCall = clientQueryMock.mock.calls.find(
       ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO activities_v2"),
     );
-    expect(insertCall?.[1]?.[7]).toBeNull();
+    expect(insertCall?.[1]?.[7]).toBe("00:00");
+    expect(insertCall?.[1]?.[14]).toBe(2);
     expect(result.status).toBe("proposed");
+    expect(result.startTime).toBeNull();
     expect(result.initialVoteOrRsvpState[creatorUser.id]).toBeNull();
     expect(result.initialVoteOrRsvpState[friendUser.id]).toBeNull();
   });
@@ -472,7 +475,7 @@ describe("createActivityV2", () => {
       friendUser,
       trip,
       onInsert: (params) => {
-        capturedIdempotency = String(params[14]);
+        capturedIdempotency = String(params[15]);
         expect(capturedIdempotency).toEqual(expect.any(String));
         expect(capturedIdempotency?.trim().length).toBeGreaterThan(0);
       },
@@ -488,7 +491,7 @@ describe("createActivityV2", () => {
 
     expect(connectMock).toHaveBeenCalled();
     const insertCall = clientQueryMock.mock.calls.find(([sql]) => typeof sql === "string" && sql.includes("INSERT INTO activities_v2"));
-    expect(insertCall?.[1]?.[14]).toBe(capturedIdempotency);
+    expect(insertCall?.[1]?.[15]).toBe(capturedIdempotency);
     expect(capturedIdempotency).toBeDefined();
   });
 });
