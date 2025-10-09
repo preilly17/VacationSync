@@ -2378,8 +2378,30 @@ export function setupRoutes(app: Express) {
               }
             })();
 
-            const eventDate = new Date(`${createPayload.date}T${createPayload.start_time}`);
-            const formattedDate = formatter.format(eventDate);
+            const eventDate =
+              hasStartTime && createPayload.start_time
+                ? new Date(`${createPayload.date}T${createPayload.start_time}`)
+                : null;
+            const hasValidEventDate =
+              eventDate instanceof Date && !Number.isNaN(eventDate.getTime());
+
+            const formattedDate = (() => {
+              if (hasValidEventDate) {
+                return formatter.format(eventDate as Date);
+              }
+
+              const fallbackDate = new Date(`${createPayload.date}T00:00:00Z`);
+              if (!Number.isNaN(fallbackDate.getTime())) {
+                return new Intl.DateTimeFormat("en-US", {
+                  month: "short",
+                  day: "numeric",
+                }).format(fallbackDate);
+              }
+
+              return "the selected date";
+            })();
+
+            const timeSuffix = hasValidEventDate ? "" : " (time TBD)";
 
             const proposerMember = trip.members.find((member) => member.userId === userId);
             const proposerName = getTripMemberDisplayName(proposerMember);
@@ -2390,8 +2412,8 @@ export function setupRoutes(app: Express) {
                 : `You've been invited to ${creationResult.title}`;
             const notificationMessage =
               requestMode === "proposed"
-                ? `${proposerName} suggested ${creationResult.title} on ${formattedDate}. Vote when you're ready.`
-                : `You've been invited to ${creationResult.title} on ${formattedDate}.`;
+                ? `${proposerName} suggested ${creationResult.title} on ${formattedDate}${timeSuffix}. Vote when you're ready.`
+                : `You've been invited to ${creationResult.title} on ${formattedDate}${timeSuffix}.`;
 
             const notificationResults = await Promise.allSettled(
               attendeesToNotify.map((attendeeId) =>
