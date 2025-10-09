@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { insertTripCalendarSchema } from "@shared/schema";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
-import { buildApiUrl, ensureAbsoluteApiUrl } from "@/lib/api";
+import { buildApiUrl, ensureAbsoluteApiUrl, stripApiBaseUrl } from "@/lib/api";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
@@ -21,6 +21,9 @@ interface EditTripModalProps {
   onOpenChange: (open: boolean) => void;
   trip: TripWithDetails;
 }
+
+const formatTripDate = (value: Date | string | number) =>
+  format(new Date(value), "yyyy-MM-dd");
 
 const formSchema = insertTripCalendarSchema.extend({
   startDate: z.string().min(1, "Start date is required"),
@@ -40,87 +43,98 @@ const formSchema = insertTripCalendarSchema.extend({
 
 type FormData = z.infer<typeof formSchema>;
 
+const sanitizeCoverPhotoUrl = (value: string | null | undefined) =>
+  stripApiBaseUrl(value ?? null);
+
+const buildCoverPhotoDefaults = (
+  trip: TripWithDetails,
+): Pick<
+  FormData,
+  | "coverImageUrl"
+  | "coverPhotoUrl"
+  | "coverPhotoCardUrl"
+  | "coverPhotoThumbUrl"
+  | "coverPhotoAlt"
+  | "coverPhotoAttribution"
+  | "coverPhotoStorageKey"
+  | "coverPhotoOriginalUrl"
+  | "coverPhotoFocalX"
+  | "coverPhotoFocalY"
+  | "coverPhotoUploadSize"
+  | "coverPhotoUploadType"
+> => ({
+  coverImageUrl: sanitizeCoverPhotoUrl(
+    trip.coverImageUrl ??
+      trip.coverPhotoUrl ??
+      trip.coverPhotoOriginalUrl ??
+      null,
+  ),
+  coverPhotoUrl: sanitizeCoverPhotoUrl(trip.coverPhotoUrl ?? null),
+  coverPhotoCardUrl: sanitizeCoverPhotoUrl(trip.coverPhotoCardUrl ?? null),
+  coverPhotoThumbUrl: sanitizeCoverPhotoUrl(trip.coverPhotoThumbUrl ?? null),
+  coverPhotoAlt: trip.coverPhotoAlt ?? null,
+  coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
+  coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
+  coverPhotoOriginalUrl: sanitizeCoverPhotoUrl(
+    trip.coverPhotoOriginalUrl ??
+      trip.coverImageUrl ??
+      trip.coverPhotoUrl ??
+      null,
+  ),
+  coverPhotoFocalX:
+    typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
+  coverPhotoFocalY:
+    typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
+  coverPhotoUploadSize: null,
+  coverPhotoUploadType: null,
+});
+
+const buildFormDefaults = (trip: TripWithDetails): FormData => ({
+  name: trip.name,
+  destination: trip.destination,
+  startDate: formatTripDate(trip.startDate),
+  endDate: formatTripDate(trip.endDate),
+  ...buildCoverPhotoDefaults(trip),
+});
+
+const buildDefaultDestination = (trip: TripWithDetails) => ({
+  name: trip.destination,
+  displayName: trip.destination,
+});
+
 export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedDestination, setSelectedDestination] = useState<any>(null);
+  const [selectedDestination, setSelectedDestination] = useState<any>(
+    () => buildDefaultDestination(trip),
+  );
   const [pendingCoverPhotoFile, setPendingCoverPhotoFile] = useState<File | null>(null);
   const [pendingCoverPhotoMeta, setPendingCoverPhotoMeta] = useState<
     { size: number; type: string } | null
   >(null);
   const [saveState, setSaveState] = useState<"idle" | "uploading" | "saving">("idle");
 
-  const toAbsolute = (value: string | null | undefined) =>
-    ensureAbsoluteApiUrl(value) ?? null;
+  const defaultValues = useMemo(() => buildFormDefaults(trip), [trip]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues: {
-      name: trip.name,
-      destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: toAbsolute(
-        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      ),
-      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
-      coverPhotoAlt: trip.coverPhotoAlt ?? null,
-      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
-      coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-      coverPhotoOriginalUrl: toAbsolute(
-        trip.coverPhotoOriginalUrl ??
-          trip.coverImageUrl ??
-          trip.coverPhotoUrl ??
-          null,
-      ),
-      coverPhotoFocalX:
-        typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
-      coverPhotoFocalY:
-        typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
-      coverPhotoUploadSize: null,
-      coverPhotoUploadType: null,
-    },
+    defaultValues,
   });
 
   // Reset form when trip changes or modal opens
   useEffect(() => {
     if (open && trip) {
-      form.reset({
-        name: trip.name,
-        destination: trip.destination,
-        startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-        endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-        coverImageUrl: toAbsolute(
-          trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-        ),
-        coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-        coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-        coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
-        coverPhotoAlt: trip.coverPhotoAlt ?? null,
-        coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
-        coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-        coverPhotoOriginalUrl: toAbsolute(
-          trip.coverPhotoOriginalUrl ??
-            trip.coverImageUrl ??
-            trip.coverPhotoUrl ??
-            null,
-        ),
-        coverPhotoFocalX:
-          typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
-        coverPhotoFocalY:
-          typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
-        coverPhotoUploadSize: null,
-        coverPhotoUploadType: null,
-      });
+      form.reset(buildFormDefaults(trip));
       // Set destination for SmartLocationSearch
-      setSelectedDestination({
-        name: trip.destination,
-        displayName: trip.destination
-      });
+      setSelectedDestination(buildDefaultDestination(trip));
     }
-  }, [open, trip, form]);
+  }, [form, open, trip]);
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedDestination(buildDefaultDestination(trip));
+    }
+  }, [open, trip]);
 
   useEffect(() => {
     if (!open) {
@@ -352,6 +366,17 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         submitData.coverPhotoUploadType = uploadResult.mimeType;
       }
 
+      const sanitizeUrl = (value: string | null | undefined) =>
+        stripApiBaseUrl(value);
+
+      submitData.coverImageUrl = sanitizeUrl(submitData.coverImageUrl);
+      submitData.coverPhotoUrl = sanitizeUrl(submitData.coverPhotoUrl);
+      submitData.coverPhotoCardUrl = sanitizeUrl(submitData.coverPhotoCardUrl);
+      submitData.coverPhotoThumbUrl = sanitizeUrl(submitData.coverPhotoThumbUrl);
+      submitData.coverPhotoOriginalUrl = sanitizeUrl(
+        submitData.coverPhotoOriginalUrl,
+      );
+
       await updateTripMutation.mutateAsync(submitData);
     } catch (error) {
       if (uploadResult) {
@@ -452,25 +477,9 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
 
   const handleCancel = () => {
     // Reset form to original values
-    form.reset({
-      name: trip.name,
-      destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: toAbsolute(
-        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      ),
-      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
-      coverPhotoAlt: trip.coverPhotoAlt ?? null,
-      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
-    });
+    form.reset(buildFormDefaults(trip));
     // Reset selected destination to original
-    setSelectedDestination({
-      name: trip.destination,
-      displayName: trip.destination
-    });
+    setSelectedDestination(buildDefaultDestination(trip));
     setPendingCoverPhotoFile(null);
     setPendingCoverPhotoMeta(null);
     setSaveState("idle");
