@@ -2181,7 +2181,7 @@ export function setupRoutes(app: Express) {
           if (trimmed.length === 0) {
             return "";
           }
-          const match = /^([0-9]{1,2}):([0-9]{2})/.exec(trimmed);
+          const match = /^([0-9]{1,2}):([0-9]{2})$/.exec(trimmed);
           if (!match) {
             return "";
           }
