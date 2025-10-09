@@ -22,6 +22,86 @@ interface EditTripModalProps {
   trip: TripWithDetails;
 }
 
+const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
+const normalisedApiBaseUrl = rawApiBaseUrl.replace(/\/+$/, "");
+const parsedApiBaseUrl = (() => {
+  if (!normalisedApiBaseUrl) {
+    return null;
+  }
+  try {
+    return new URL(normalisedApiBaseUrl);
+  } catch (error) {
+    console.warn("Invalid VITE_API_URL provided", error);
+    return null;
+  }
+})();
+const apiBaseOrigin = parsedApiBaseUrl?.origin ?? null;
+const apiBasePath = parsedApiBaseUrl
+  ? parsedApiBaseUrl.pathname.replace(/\/+$/, "") || "/"
+  : null;
+const apiBasePathLower = apiBasePath?.toLowerCase() ?? null;
+const apiBasePathLowerWithSlash =
+  apiBasePathLower && apiBasePathLower !== "/"
+    ? `${apiBasePathLower.replace(/\/+$/, "")}/`
+    : null;
+const apiBaseWithSlash = normalisedApiBaseUrl
+  ? `${normalisedApiBaseUrl}/`
+  : null;
+const ABSOLUTE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
+const stripApiBaseUrl = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (!ABSOLUTE_URL_PATTERN.test(value)) {
+    return value;
+  }
+
+  if (!normalisedApiBaseUrl) {
+    return value;
+  }
+
+  if (value === normalisedApiBaseUrl) {
+    return "/";
+  }
+
+  if (apiBaseWithSlash && value.startsWith(apiBaseWithSlash)) {
+    const trimmed = value.slice(normalisedApiBaseUrl.length);
+    return trimmed === "" ? "/" : trimmed;
+  }
+
+  if (apiBaseOrigin) {
+    try {
+      const parsedValue = new URL(value, parsedApiBaseUrl ?? undefined);
+
+      if (parsedValue.origin === apiBaseOrigin && apiBasePath) {
+        let relativePath = parsedValue.pathname;
+
+        if (apiBasePath !== "/" && apiBasePathLower && apiBasePathLowerWithSlash) {
+          const relativePathLower = relativePath.toLowerCase();
+
+          if (relativePathLower === apiBasePathLower) {
+            relativePath = "/";
+          } else if (relativePathLower.startsWith(apiBasePathLowerWithSlash)) {
+            const trimmedPath = relativePath.slice(apiBasePath.length);
+            relativePath = trimmedPath.startsWith("/")
+              ? trimmedPath
+              : `/${trimmedPath}`;
+          }
+        }
+
+        const suffix = `${relativePath}${parsedValue.search}${parsedValue.hash}`;
+        return suffix === "" ? "/" : suffix;
+      }
+    } catch (error) {
+      console.warn("Failed to normalise cover photo URL", error, value);
+    }
+  }
+
+  return value;
+};
+
 const formSchema = insertTripCalendarSchema.extend({
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
@@ -50,9 +130,6 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
   >(null);
   const [saveState, setSaveState] = useState<"idle" | "uploading" | "saving">("idle");
 
-  const toAbsolute = (value: string | null | undefined) =>
-    ensureAbsoluteApiUrl(value) ?? null;
-
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -60,21 +137,19 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: toAbsolute(
-        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      ),
-      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
+      coverImageUrl:
+        trip.coverImageUrl ?? trip.coverPhotoUrl ?? trip.coverPhotoOriginalUrl ?? null,
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? null,
       coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
       coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-      coverPhotoOriginalUrl: toAbsolute(
+      coverPhotoOriginalUrl:
         trip.coverPhotoOriginalUrl ??
-          trip.coverImageUrl ??
-          trip.coverPhotoUrl ??
-          null,
-      ),
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        null,
       coverPhotoFocalX:
         typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
       coverPhotoFocalY:
@@ -92,21 +167,22 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         destination: trip.destination,
         startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
         endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-        coverImageUrl: toAbsolute(
-          trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-        ),
-        coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-        coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-        coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
+        coverImageUrl:
+          trip.coverImageUrl ??
+          trip.coverPhotoUrl ??
+          trip.coverPhotoOriginalUrl ??
+          null,
+        coverPhotoUrl: trip.coverPhotoUrl ?? null,
+        coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+        coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
         coverPhotoAlt: trip.coverPhotoAlt ?? null,
         coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
         coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
-        coverPhotoOriginalUrl: toAbsolute(
+        coverPhotoOriginalUrl:
           trip.coverPhotoOriginalUrl ??
-            trip.coverImageUrl ??
-            trip.coverPhotoUrl ??
-            null,
-        ),
+          trip.coverImageUrl ??
+          trip.coverPhotoUrl ??
+          null,
         coverPhotoFocalX:
           typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
         coverPhotoFocalY:
@@ -352,6 +428,17 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         submitData.coverPhotoUploadType = uploadResult.mimeType;
       }
 
+      const sanitizeUrl = (value: string | null | undefined) =>
+        stripApiBaseUrl(value);
+
+      submitData.coverImageUrl = sanitizeUrl(submitData.coverImageUrl);
+      submitData.coverPhotoUrl = sanitizeUrl(submitData.coverPhotoUrl);
+      submitData.coverPhotoCardUrl = sanitizeUrl(submitData.coverPhotoCardUrl);
+      submitData.coverPhotoThumbUrl = sanitizeUrl(submitData.coverPhotoThumbUrl);
+      submitData.coverPhotoOriginalUrl = sanitizeUrl(
+        submitData.coverPhotoOriginalUrl,
+      );
+
       await updateTripMutation.mutateAsync(submitData);
     } catch (error) {
       if (uploadResult) {
@@ -457,12 +544,14 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       destination: trip.destination,
       startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
       endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
-      coverImageUrl: toAbsolute(
-        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-      ),
-      coverPhotoUrl: toAbsolute(trip.coverPhotoUrl ?? null),
-      coverPhotoCardUrl: toAbsolute(trip.coverPhotoCardUrl ?? null),
-      coverPhotoThumbUrl: toAbsolute(trip.coverPhotoThumbUrl ?? null),
+      coverImageUrl:
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        trip.coverPhotoOriginalUrl ??
+        null,
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
       coverPhotoAlt: trip.coverPhotoAlt ?? null,
       coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
     });
