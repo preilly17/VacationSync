@@ -114,6 +114,9 @@ const createFileFromUrl = async (
     throw new Error("Failed to fetch remote image");
   }
   const blob = await response.blob();
+  if (blob.size > COVER_PHOTO_MAX_FILE_SIZE_BYTES) {
+    throw new Error("FILE_TOO_LARGE");
+  }
   const mimeType = blob.type || "image/jpeg";
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
     throw new Error("UNSUPPORTED_TYPE");
@@ -149,8 +152,10 @@ export function CoverPhotoSection({
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [isFetchingRemote, setIsFetchingRemote] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const previousPreviewRef = useRef<string | null>(null);
   const fileInputId = useId();
+  const dragActiveRef = useRef(false);
 
   const hasImage = Boolean(preview?.previewUrl || value.coverPhotoUrl);
 
@@ -239,7 +244,7 @@ export function CoverPhotoSection({
 
       if (file.size > COVER_PHOTO_MAX_FILE_SIZE_BYTES) {
         setError(
-          `We couldn’t upload that image. Try JPG/PNG/WebP under ${COVER_PHOTO_MAX_FILE_SIZE_MB}MB.`,
+          `This file is over ${COVER_PHOTO_MAX_FILE_SIZE_MB}MB. Try compressing it or choose a smaller JPG/PNG/WebP.`,
         );
         return;
       }
@@ -247,22 +252,20 @@ export function CoverPhotoSection({
       const objectUrl = URL.createObjectURL(file);
       try {
         const dimensions = await loadImageDimensions(objectUrl);
-        if (dimensions.width < COVER_PHOTO_MIN_WIDTH || dimensions.height < COVER_PHOTO_MIN_HEIGHT) {
-          setError(
-            `This image is too small. Choose one at least ${COVER_PHOTO_MIN_WIDTH}×${COVER_PHOTO_MIN_HEIGHT}.`,
-          );
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-
         const belowRecommendation =
           dimensions.width < COVER_PHOTO_RECOMMENDED_WIDTH ||
           dimensions.height < COVER_PHOTO_RECOMMENDED_HEIGHT;
 
+        const belowMinimum =
+          dimensions.width < COVER_PHOTO_MIN_WIDTH ||
+          dimensions.height < COVER_PHOTO_MIN_HEIGHT;
+
         setWarning(
-          belowRecommendation
-            ? `For best results, use at least ${COVER_PHOTO_RECOMMENDED_WIDTH}×${COVER_PHOTO_RECOMMENDED_HEIGHT}. This one is ${dimensions.width}×${dimensions.height}.`
-            : null,
+          belowMinimum
+            ? `This image is ${dimensions.width}×${dimensions.height}. We'll fit it to the banner, but it may look a bit soft on large screens.`
+            : belowRecommendation
+              ? `Looks good! For extra crispness on very large displays, ${COVER_PHOTO_RECOMMENDED_WIDTH}×${COVER_PHOTO_RECOMMENDED_HEIGHT} or larger is ideal.`
+              : null,
         );
         setError(null);
         setFocusX(50);
@@ -343,10 +346,15 @@ export function CoverPhotoSection({
         const file = await createFileFromUrl(src, label);
         await applyFile(file);
       } catch (remoteError) {
-        if ((remoteError as Error).message === "UNSUPPORTED_TYPE") {
+        const message = (remoteError as Error).message;
+        if (message === "UNSUPPORTED_TYPE") {
           setError("That file type isn’t supported. Use JPG, PNG, or WebP.");
+        } else if (message === "FILE_TOO_LARGE") {
+          setError(
+            `That image is over ${COVER_PHOTO_MAX_FILE_SIZE_MB}MB. Try compressing it or choose a smaller JPG/PNG/WebP.`,
+          );
         } else {
-          setError("Couldn't load this image. Try another link or upload.");
+          setError("We couldn’t fetch that link. Your current photo is unchanged.");
         }
       } finally {
         setIsFetchingRemote(false);
@@ -404,6 +412,62 @@ export function CoverPhotoSection({
     [updateValue],
   );
 
+  const handlePointerUpdate = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      const target = event.currentTarget;
+      const rect = target.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return;
+      }
+      const relativeX = ((event.clientX - rect.left) / rect.width) * 100;
+      const relativeY = ((event.clientY - rect.top) / rect.height) * 100;
+      const clampedX = clamp(relativeX, 0, 100);
+      const clampedY = clamp(relativeY, 0, 100);
+      setFocusX(clampedX);
+      setFocusY(clampedY);
+      updateValue({
+        coverPhotoFocalX: clamp(clampedX / 100, 0, 1),
+        coverPhotoFocalY: clamp(clampedY / 100, 0, 1),
+      });
+    },
+    [updateValue],
+  );
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!hasImage || isBusy || isFetchingRemote) {
+        return;
+      }
+      dragActiveRef.current = true;
+      setIsDragging(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+      handlePointerUpdate(event);
+    },
+    [handlePointerUpdate, hasImage, isBusy, isFetchingRemote],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragActiveRef.current) {
+        return;
+      }
+      handlePointerUpdate(event);
+    },
+    [handlePointerUpdate],
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragActiveRef.current) {
+        return;
+      }
+      dragActiveRef.current = false;
+      setIsDragging(false);
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    },
+    [],
+  );
+
   const handleAltChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       const next = event.target.value;
@@ -449,7 +513,11 @@ export function CoverPhotoSection({
       <div className="space-y-2">
         <Label htmlFor={fileInputId}>Cover photo</Label>
         <p className="text-sm text-slate-500">
-          Upload a JPG, PNG, or WebP under {COVER_PHOTO_MAX_FILE_SIZE_MB}MB.
+          We’ll fit your photo to the banner. Images under {COVER_PHOTO_MIN_WIDTH}×{COVER_PHOTO_MIN_HEIGHT} may
+          look soft on large screens.
+        </p>
+        <p className="text-xs text-slate-500">
+          Upload a JPG, PNG, or WebP up to {COVER_PHOTO_MAX_FILE_SIZE_MB}MB, or paste an image link below.
         </p>
       </div>
 
@@ -464,6 +532,30 @@ export function CoverPhotoSection({
                 style={{ objectPosition }}
                 loading="lazy"
               />
+              <div
+                role="presentation"
+                aria-label="Drag to reposition"
+                className={cn(
+                  "absolute inset-0 cursor-grab focus:outline-none",
+                  isDragging && "cursor-grabbing",
+                )}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+              >
+                <span
+                  className="pointer-events-none absolute h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 bg-white/30 shadow-lg transition"
+                  style={{
+                    left: `${clamp(focusX, 0, 100)}%`,
+                    top: `${clamp(focusY, 0, 100)}%`,
+                    boxShadow: isDragging
+                      ? "0 12px 32px -12px rgba(15, 23, 42, 0.45)"
+                      : "0 8px 20px -12px rgba(15, 23, 42, 0.38)",
+                    borderWidth: isDragging ? 2 : 1,
+                  }}
+                />
+              </div>
               {(isBusy || isFetchingRemote) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/50 text-white">
                   <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
@@ -474,6 +566,7 @@ export function CoverPhotoSection({
               )}
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent p-4">
                 <p className="text-sm font-medium text-white">Trip banner preview</p>
+                <p className="text-xs text-white/80">Drag to reposition the focal point.</p>
               </div>
             </div>
             <div className="grid gap-4 bg-white p-4 sm:grid-cols-2">
@@ -657,7 +750,9 @@ export function CoverPhotoSection({
       {warning ? (
         <p className="text-sm text-amber-600">{warning}</p>
       ) : null}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {error ? (
+        <p className="text-sm text-red-600">{error}</p>
+      ) : null}
     </div>
   );
 }

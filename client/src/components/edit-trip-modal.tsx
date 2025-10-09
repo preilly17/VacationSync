@@ -11,6 +11,7 @@ import { insertTripCalendarSchema } from "@shared/schema";
 import { z } from "zod";
 import { apiRequest } from "@/lib/queryClient";
 import { buildApiUrl } from "@/lib/api";
+import { prepareCoverPhotoForUpload } from "@/lib/coverPhotoProcessing";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
@@ -283,13 +284,48 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       form.getValues("destination") ||
       trip.destination;
 
+    const currentValues = form.getValues();
+    const normalizeFocal = (value: unknown) => {
+      if (typeof value === "number") {
+        return value;
+      }
+      if (typeof value === "string" && value !== "") {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+
+    const focalXValue = normalizeFocal(currentValues.coverPhotoFocalX) ?? 0.5;
+    const focalYValue = normalizeFocal(currentValues.coverPhotoFocalY) ?? 0.5;
+
     let uploadResult: UploadResponse | null = null;
 
     try {
       if (pendingCoverPhotoFile) {
         setSaveState("uploading");
+
+        let preparedFile: File;
         try {
-          uploadResult = await uploadCoverPhoto(pendingCoverPhotoFile);
+          const processed = await prepareCoverPhotoForUpload(pendingCoverPhotoFile, {
+            focalX: focalXValue,
+            focalY: focalYValue,
+          });
+          preparedFile = processed.file;
+        } catch (processingError) {
+          console.warn("Failed to prepare cover photo", processingError);
+          setSaveState("idle");
+          toast({
+            title: "Error",
+            description:
+              "We couldn’t prepare this photo for the banner. Try another image or compress it first.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        try {
+          uploadResult = await uploadCoverPhoto(preparedFile);
         } catch (uploadError) {
           setSaveState("idle");
           const message = extractServerMessage(uploadError);
@@ -303,18 +339,6 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       }
 
       setSaveState("saving");
-
-      const currentValues = form.getValues();
-      const normalizeFocal = (value: unknown) => {
-        if (typeof value === "number") {
-          return value;
-        }
-        if (typeof value === "string" && value !== "") {
-          const parsed = Number(value);
-          return Number.isFinite(parsed) ? parsed : null;
-        }
-        return null;
-      };
 
       const submitData: FormData = {
         ...currentValues,
