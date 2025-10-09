@@ -25,7 +25,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
-import { filterProposalsByStatus, normalizeProposalStatus } from "./proposalStatusFilters";
+import {
+  filterActiveProposals,
+  filterProposalsByStatus,
+  isCanceledStatus,
+  normalizeProposalStatus,
+} from "./proposalStatusFilters";
 import {
   ArrowLeft,
   Hotel,
@@ -1023,7 +1028,7 @@ function ProposalsPage({
       return <Badge className="bg-red-100 text-red-800"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
     }
 
-    if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+    if (isCanceledStatus(status)) {
       return <Badge className="bg-rose-100 text-rose-700"><XCircle className="w-3 h-3 mr-1" />Canceled</Badge>;
     }
 
@@ -1042,8 +1047,8 @@ function ProposalsPage({
     const startTime = proposal.startTime ? new Date(proposal.startTime) : null;
     const endTime = proposal.endTime ? new Date(proposal.endTime) : null;
     const createdAt = proposal.createdAt ? new Date(proposal.createdAt) : null;
-    const normalizedStatus = (proposal.status ?? "scheduled").toLowerCase();
-    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCanceled = isCanceledStatus(proposal.status);
+    const canCancel = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
@@ -1252,8 +1257,8 @@ function ProposalsPage({
   const RestaurantProposalCard = ({ proposal }: { proposal: RestaurantProposalWithDetails }) => {
     const userRanking = getUserRanking(proposal.rankings || [], user?.id || '');
     
-    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
-    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCanceled = isCanceledStatus(proposal.status);
+    const canCancel = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
@@ -1403,8 +1408,8 @@ function ProposalsPage({
     const groupSize = trip?.members?.length || 0;
     const budgetBreakdown = calculateGroupBudget(proposal.price, groupSize);
     
-    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
-    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCanceled = isCanceledStatus(proposal.status);
+    const canCancel = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
@@ -1608,8 +1613,8 @@ function ProposalsPage({
   // Flight proposal card component
   const FlightProposalCard = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
     const userRanking = getUserRanking(proposal.rankings || [], user?.id || "");
-    const normalizedStatus = (proposal.status ?? "active").toLowerCase();
-    const canCancel = isMyProposal(proposal) && normalizedStatus !== "canceled" && normalizedStatus !== "cancelled";
+    const isCanceled = isCanceledStatus(proposal.status);
+    const canCancel = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
@@ -1816,8 +1821,7 @@ function ProposalsPage({
     () =>
       rawActivityProposals.map((activity) => {
         const normalizedStatus = normalizeProposalStatus(activity.status);
-        const isCanceled =
-          normalizedStatus === "canceled" || normalizedStatus === "cancelled";
+        const isCanceled = isCanceledStatus(activity.status);
 
         return {
           ...activity,
@@ -1842,12 +1846,20 @@ function ProposalsPage({
         : hotelProposals.filter((proposal) => !isMyProposal(proposal)),
     [hotelProposals, includeUserProposalsInCategories, isMyProposal],
   );
+  const activeHotelProposalsForCategories = useMemo(
+    () => filterActiveProposals(hotelProposalsForCategories),
+    [hotelProposalsForCategories],
+  );
   const flightProposalsForCategories = useMemo(
     () =>
       includeUserProposalsInCategories
         ? flightProposals
         : flightProposals.filter((proposal) => !isMyProposal(proposal)),
     [flightProposals, includeUserProposalsInCategories, isMyProposal],
+  );
+  const activeFlightProposalsForCategories = useMemo(
+    () => filterActiveProposals(flightProposalsForCategories),
+    [flightProposalsForCategories],
   );
   const activityProposalsForCategories = useMemo(
     () =>
@@ -1856,12 +1868,20 @@ function ProposalsPage({
         : activityProposals.filter((proposal) => !isMyProposal(proposal)),
     [activityProposals, includeUserProposalsInCategories, isMyProposal],
   );
+  const activeActivityProposalsForCategories = useMemo(
+    () => filterActiveProposals(activityProposalsForCategories),
+    [activityProposalsForCategories],
+  );
   const restaurantProposalsForCategories = useMemo(
     () =>
       includeUserProposalsInCategories
         ? restaurantProposals
         : restaurantProposals.filter((proposal) => !isMyProposal(proposal)),
     [restaurantProposals, includeUserProposalsInCategories, isMyProposal],
+  );
+  const activeRestaurantProposalsForCategories = useMemo(
+    () => filterActiveProposals(restaurantProposalsForCategories),
+    [restaurantProposalsForCategories],
   );
 
   const filteredHotelProposals = useMemo(
@@ -1918,6 +1938,23 @@ function ProposalsPage({
     [restaurantProposals, isMyProposal],
   );
 
+  const activeMyHotelProposals = useMemo(
+    () => filterActiveProposals(myHotelProposals),
+    [myHotelProposals],
+  );
+  const activeMyFlightProposals = useMemo(
+    () => filterActiveProposals(myFlightProposals),
+    [myFlightProposals],
+  );
+  const activeMyActivityProposals = useMemo(
+    () => filterActiveProposals(myActivityProposals),
+    [myActivityProposals],
+  );
+  const activeMyRestaurantProposals = useMemo(
+    () => filterActiveProposals(myRestaurantProposals),
+    [myRestaurantProposals],
+  );
+
   const filteredMyHotelProposals = useMemo(
     () => applyStatusFilter(myHotelProposals),
     [applyStatusFilter, myHotelProposals],
@@ -1941,25 +1978,26 @@ function ProposalsPage({
     filteredMyActivityProposals.length +
     filteredMyRestaurantProposals.length;
 
-  const hasAnyMyProposals =
-    myHotelProposals.length +
-    myFlightProposals.length +
-    myActivityProposals.length +
-    myRestaurantProposals.length >
-    0;
+  const totalActiveMyProposals =
+    activeMyHotelProposals.length +
+    activeMyFlightProposals.length +
+    activeMyActivityProposals.length +
+    activeMyRestaurantProposals.length;
 
-  const totalAvailableProposals =
-    hotelProposalsForCategories.length +
-    flightProposalsForCategories.length +
-    activityProposalsForCategories.length +
-    restaurantProposalsForCategories.length;
+  const hasAnyMyProposals = totalActiveMyProposals > 0;
+
+  const totalActiveProposals =
+    activeHotelProposalsForCategories.length +
+    activeFlightProposalsForCategories.length +
+    activeActivityProposalsForCategories.length +
+    activeRestaurantProposalsForCategories.length;
   const hasProposalDataIssues =
     hotelProposalsHasError ||
     flightProposalsHasError ||
     activityProposalsHasError ||
     restaurantProposalsHasError;
 
-  const noProposalsAtAll = !hasProposalDataIssues && totalAvailableProposals === 0;
+  const noProposalsAtAll = !hasProposalDataIssues && totalActiveProposals === 0;
 
   const boundaryWrapperClass = embedded
     ? "py-12 flex items-center justify-center"
@@ -2111,19 +2149,19 @@ function ProposalsPage({
             </TabsTrigger>
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">
               <Hotel className="w-4 h-4" />
-              Hotels {hotelProposalsForCategories.length > 0 && `(${hotelProposalsForCategories.length})`}
+              Hotels {filteredHotelProposals.length > 0 && `(${filteredHotelProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="flights" className="flex items-center gap-2" data-testid="tab-flights">
               <Plane className="w-4 h-4" />
-              Flights {flightProposalsForCategories.length > 0 && `(${flightProposalsForCategories.length})`}
+              Flights {filteredFlightProposals.length > 0 && `(${filteredFlightProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
               <MapPin className="w-4 h-4" />
-              Activities {activityProposalsForCategories.length > 0 && `(${activityProposalsForCategories.length})`}
+              Activities {filteredActivityProposals.length > 0 && `(${filteredActivityProposals.length})`}
             </TabsTrigger>
             <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
               <Utensils className="w-4 h-4" />
-              Restaurants {restaurantProposalsForCategories.length > 0 && `(${restaurantProposalsForCategories.length})`}
+              Restaurants {filteredRestaurantProposals.length > 0 && `(${filteredRestaurantProposals.length})`}
             </TabsTrigger>
           </TabsList>
 
@@ -2216,7 +2254,7 @@ function ProposalsPage({
                   <HotelProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : hotelProposalsForCategories.length > 0 ? (
+            ) : activeHotelProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Hotel" />
             ) : (
               <EmptyState type="Hotel" icon={Hotel} />
@@ -2240,7 +2278,7 @@ function ProposalsPage({
                   <FlightProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : flightProposalsForCategories.length > 0 ? (
+            ) : activeFlightProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Flight" />
             ) : (
               <EmptyState type="Flight" icon={Plane} />
@@ -2264,7 +2302,7 @@ function ProposalsPage({
                   <ActivityProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : activityProposalsForCategories.length > 0 ? (
+            ) : activeActivityProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Activity" />
             ) : (
               <EmptyState type="Activity" icon={MapPin} />
@@ -2288,7 +2326,7 @@ function ProposalsPage({
                   <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : restaurantProposalsForCategories.length > 0 ? (
+            ) : activeRestaurantProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Restaurant" />
             ) : (
               <EmptyState type="Restaurant" icon={Utensils} />
