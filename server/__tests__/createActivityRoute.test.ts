@@ -590,6 +590,132 @@ describe("POST /api/trips/:id/activities", () => {
     }
   });
 
+  it("allows activity proposals without a start time when using the v2 pipeline", async () => {
+    const trip = {
+      id: 321,
+      createdBy: "organizer",
+      timezone: "",
+      members: [
+        { userId: "organizer", user: { firstName: "Org", email: "org@example.com" } },
+        { userId: "friend", user: { firstName: "Friend", email: "friend@example.com" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Sunset Stroll",
+      description: "Relaxed walk along the beach",
+      category: "outdoor",
+      date: "2025-08-15",
+      start_time: null,
+      timezone: "",
+      mode: "proposed",
+      invitee_ids: ["friend"],
+      idempotency_key: "proposal-123",
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      headers: { "x-activities-version": "2" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
+    process.env.FEATURE_ACTIVITIES_V2 = "true";
+
+    try {
+      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+      jest.spyOn(storage, "createActivityWithInvites").mockResolvedValueOnce(null as any);
+
+      const createNotificationSpy = jest
+        .spyOn(storage, "createNotification")
+        .mockResolvedValue(undefined as any);
+
+      const now = new Date().toISOString();
+      const activityId = "proposal-activity";
+      const v2Response = {
+        id: activityId,
+        tripId: String(trip.id),
+        creatorId: "organizer",
+        title: requestBody.name,
+        description: requestBody.description,
+        category: requestBody.category,
+        date: requestBody.date,
+        startTime: null,
+        endTime: null,
+        timezone: "UTC",
+        location: null,
+        costPerPerson: null,
+        maxParticipants: null,
+        status: "proposed",
+        visibility: "trip",
+        createdAt: now,
+        updatedAt: now,
+        version: 1,
+        invitees: [
+          {
+            activityId,
+            userId: "organizer",
+            role: "participant",
+            createdAt: now,
+            updatedAt: now,
+            user: trip.members[0]?.user ?? null,
+          },
+          {
+            activityId,
+            userId: "friend",
+            role: "participant",
+            createdAt: now,
+            updatedAt: now,
+            user: trip.members[1]?.user ?? null,
+          },
+        ],
+        votes: [],
+        rsvps: [],
+        creator: trip.members[0]?.user ?? null,
+        initialVoteOrRsvpState: { organizer: "pending", friend: "pending" },
+        wasDeduplicated: false,
+      };
+
+      const createActivityV2Spy = jest
+        .spyOn(activitiesV2Module, "createActivityV2")
+        .mockResolvedValueOnce(v2Response as any);
+
+      await handler(req, res);
+
+      expect(createActivityV2Spy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trip,
+          creatorId: "organizer",
+          body: expect.objectContaining({
+            mode: "proposed",
+            start_time: "",
+            timezone: "UTC",
+            invitee_ids: ["friend"],
+            idempotency_key: requestBody.idempotency_key,
+          }),
+        }),
+      );
+
+      expect(createNotificationSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "friend",
+          type: "activity_proposal",
+          tripId: trip.id,
+          activityId,
+        }),
+      );
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(v2Response);
+    } finally {
+      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
+    }
+  });
+
   it("ensures the demo user exists before creating an activity in development", async () => {
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "development";
