@@ -365,11 +365,16 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   );
 
   const sortedManualActivities = useMemo(() => {
-    return [...manualActivities].sort((a, b) => {
-      const aTime = new Date(a.startTime as string).getTime();
-      const bTime = new Date(b.startTime as string).getTime();
-      return aTime - bTime;
-    });
+    const toTimestamp = (value: ActivityWithDetails["startTime"]) => {
+      if (!value) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? Number.POSITIVE_INFINITY : date.getTime();
+    };
+
+    return [...manualActivities].sort((a, b) => toTimestamp(a.startTime) - toTimestamp(b.startTime));
   }, [manualActivities]);
 
   const manualActivitiesLoading = tripActivitiesLoading;
@@ -682,7 +687,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                 const metadata = parseManualActivityDescription(activity.description);
                 const startLabel = activity.startTime
                   ? (() => {
-                      const date = new Date(activity.startTime as string);
+                      const date = new Date(activity.startTime);
                       return Number.isNaN(date.getTime())
                         ? "Date TBD"
                         : format(date, "MMM d, yyyy • h:mm a");

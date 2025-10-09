@@ -62,7 +62,15 @@ export function ActivityCard({
   isLoading = false,
 }: ActivityCardProps) {
   const formatDateTime = (dateTime: ActivityWithDetails["startTime"]) => {
+    if (!dateTime) {
+      return "Time TBD";
+    }
+
     const date = dateTime instanceof Date ? dateTime : new Date(dateTime);
+    if (Number.isNaN(date.getTime())) {
+      return "Time TBD";
+    }
+
     return format(date, "MMM d, yyyy 'at' h:mm a");
   };
 
@@ -70,7 +78,11 @@ export function ActivityCard({
     startTime: ActivityWithDetails["startTime"],
     endTime?: ActivityWithDetails["endTime"],
   ) => {
-    const startDate = new Date(startTime);
+    if (!startTime) {
+      return "Time TBD";
+    }
+
+    const startDate = startTime instanceof Date ? startTime : new Date(startTime);
 
     if (Number.isNaN(startDate.getTime())) {
       return "Time TBD";
@@ -82,7 +94,7 @@ export function ActivityCard({
       return startLabel;
     }
 
-    const endDate = new Date(endTime);
+    const endDate = endTime instanceof Date ? endTime : new Date(endTime);
 
     if (Number.isNaN(endDate.getTime())) {
       return startLabel;

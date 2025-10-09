@@ -151,7 +151,7 @@ const setupDbMocks = ({ now, creatorUser, friendUser, trip, onInsert }: DbMockOp
             description: insertedValues[4] ?? null,
             category: insertedValues[5] ?? null,
             date: insertedValues[6] ?? trip.startDate,
-            start_time: insertedValues[7] ?? "00:00",
+            start_time: insertedValues[7] ?? null,
             end_time: insertedValues[8] ?? null,
             timezone: insertedValues[9] ?? "UTC",
             location: insertedValues[10] ?? null,
@@ -395,6 +395,53 @@ describe("createActivityV2", () => {
     expect(insertCall?.[1]?.[8]).toBe("10:45");
     expect(result.startTime).toBe("09:05");
     expect(result.endTime).toBe("10:45");
+  });
+
+  it("returns null start times for proposals without a start_time", async () => {
+    const { now, creatorUser, friendUser, trip } = createTripFixture();
+
+    const activityRequest: CreateActivityRequest = {
+      mode: "proposed",
+      title: "Museum Visit",
+      description: null,
+      category: null,
+      date: "2024-06-15",
+      start_time: null,
+      end_time: null,
+      timezone: "UTC",
+      location: null,
+      cost_per_person: null,
+      max_participants: null,
+      invitee_ids: [friendUser.id],
+      idempotency_key: "proposal-null-start",
+    };
+
+    const { connectMock, clientQueryMock } = setupDbMocks({
+      now,
+      creatorUser,
+      friendUser,
+      trip,
+      onInsert: (params) => {
+        expect(params[7]).toBeNull();
+      },
+    });
+
+    const { createActivityV2 } = await import("../activitiesV2");
+
+    const result = await createActivityV2({
+      trip,
+      creatorId: creatorUser.id,
+      body: activityRequest,
+    });
+
+    expect(connectMock).toHaveBeenCalled();
+    expect(
+      clientQueryMock.mock.calls.some(
+        ([sql]) => typeof sql === "string" && sql.includes("INSERT INTO activities_v2"),
+      ),
+    ).toBe(true);
+    expect(result.startTime).toBeNull();
+    expect(result.status).toBe("proposed");
   });
 
   it("generates an idempotency key when the request omits one", async () => {
