@@ -143,10 +143,21 @@ const imageUrlSchema = z
   .string()
   .trim()
   .max(5000000)
-  .refine(
-    (value) => value.length === 0 || value.startsWith("http") || value.startsWith("data:image"),
-    "Provide a valid image URL",
-  );
+  .refine((value) => {
+    if (value.length === 0) {
+      return true;
+    }
+
+    if (value.startsWith("http") || value.startsWith("data:image")) {
+      return true;
+    }
+
+    if (value.startsWith("/uploads/")) {
+      return true;
+    }
+
+    return false;
+  }, "Provide a valid image URL");
 
 export const insertTripCalendarSchema = z.object({
   name: z.string().min(1, "Trip name is required"),
