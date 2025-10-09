@@ -120,6 +120,9 @@ const toIsoDateTime = (value: unknown): string => {
 };
 
 const normalizeTime = (value: unknown): string => {
+  if (value == null) {
+    throw new Error("Cannot normalize nullish time value");
+  }
   if (value instanceof Date) {
     return value.toISOString().slice(11, 16);
   }
@@ -164,8 +167,8 @@ const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
     description: (row.description as string | null) ?? null,
     category: (row.category as string | null) ?? null,
     date: toIsoDate(row.date),
-    startTime: row.start_time === null ? null : normalizeTime(row.start_time),
-    endTime: row.end_time === null ? null : normalizeTime(row.end_time),
+    startTime: row.start_time == null ? null : normalizeTime(row.start_time),
+    endTime: row.end_time == null ? null : normalizeTime(row.end_time),
     timezone: row.timezone as string,
     location: (row.location as string | null) ?? null,
     costPerPerson: row.cost_per_person === null ? null : Number(row.cost_per_person),
