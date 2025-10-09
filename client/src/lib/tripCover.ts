@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { buildApiUrl } from "@/lib/api";
+
 export const TRIP_COVER_GRADIENT =
   "linear-gradient(135deg, rgba(255, 126, 95, 0.88), rgba(254, 180, 123, 0.85), rgba(101, 78, 163, 0.85))";
 
@@ -9,19 +11,38 @@ type CoverPhotoSrcSetOptions = {
   thumb?: string | null | undefined;
 };
 
+export const resolveCoverPhotoUrl = (value?: string | null): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(value)) {
+    return value;
+  }
+
+  if (value.startsWith("/")) {
+    return buildApiUrl(value);
+  }
+
+  return value;
+};
+
 export const buildCoverPhotoSrcSet = ({ full, card, thumb }: CoverPhotoSrcSetOptions): string | undefined => {
   const entries: string[] = [];
 
-  if (thumb) {
-    entries.push(`${thumb} 256w`);
+  const resolvedThumb = resolveCoverPhotoUrl(thumb);
+  if (resolvedThumb) {
+    entries.push(`${resolvedThumb} 256w`);
   }
 
-  if (card) {
-    entries.push(`${card} 800w`);
+  const resolvedCard = resolveCoverPhotoUrl(card);
+  if (resolvedCard) {
+    entries.push(`${resolvedCard} 800w`);
   }
 
-  if (full) {
-    entries.push(`${full} 1920w`);
+  const resolvedFull = resolveCoverPhotoUrl(full);
+  if (resolvedFull) {
+    entries.push(`${resolvedFull} 1920w`);
   }
 
   return entries.length > 0 ? entries.join(", ") : undefined;
