@@ -486,6 +486,9 @@ export async function createActivityV2({
     throw error;
   }
 
+  // The database column is NOT NULL, so provide a placeholder for proposals without a start time.
+  const startTimeForInsert = startTime ?? "00:00";
+
   if (normalizedEndTime) {
     if (!TIME_PATTERN.test(normalizedEndTime)) {
       const error = new Error("invalid_time");
@@ -606,7 +609,7 @@ export async function createActivityV2({
         data.description ?? null,
         data.category ?? null,
         data.date,
-        startTime,
+        startTimeForInsert,
         normalizedEndTime,
         data.timezone,
         data.location ?? null,
