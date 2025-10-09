@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 const STORAGE_KEY = "feature:new-activity-create";
 
 export function useNewActivityCreate(): boolean {
-  const [enabled, setEnabled] = useState(false);
+  const [enabled, setEnabled] = useState(true);
 
   useEffect(() => {
     if (typeof window === "undefined") {
