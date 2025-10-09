@@ -1,31 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2 } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2, ChevronDown } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import LocationSearch, { type LocationResult } from "@/components/LocationSearch";
 import type {
   FlightWithDetails,
   InsertFlight,
-  FlightProposalWithDetails,
-  InsertFlightRanking,
   TripWithDetails,
   User,
 } from "@shared/schema";
@@ -144,6 +141,144 @@ const extractAirportName = (value?: string | null): string | null => {
   }
 
   return value;
+};
+
+const formatAirportDisplay = (name?: string | null, code?: string | null): string => {
+  const trimmedName = name?.trim();
+  const trimmedCode = code?.trim()?.toUpperCase();
+  if (trimmedName && trimmedCode) {
+    return `${trimmedName} (${trimmedCode})`;
+  }
+  if (trimmedCode) {
+    return trimmedCode;
+  }
+  return trimmedName ?? '';
+};
+
+const parseManualLocationInput = (value: string): { code: string; name: string } | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const extractedCode = extractAirportCode(trimmed);
+  const extractedName = extractAirportName(trimmed) ?? trimmed;
+
+  if (extractedCode && /^[A-Z]{3}$/i.test(extractedCode)) {
+    const code = extractedCode.toUpperCase();
+    return { code, name: extractedName.trim() || code };
+  }
+
+  if (/^[A-Za-z]{3}$/.test(trimmed)) {
+    const code = trimmed.toUpperCase();
+    return { code, name: code };
+  }
+
+  return null;
+};
+
+interface ParsedAirlineFlight {
+  flightNumber: string;
+  airlineCode: string;
+  airlineName: string;
+}
+
+const parseManualAirlineFlight = (value: string): ParsedAirlineFlight | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalized = trimmed.replace(/\s+/g, ' ');
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  const reversedIndex = tokens
+    .slice()
+    .reverse()
+    .findIndex((token) => /\d/.test(token));
+
+  if (reversedIndex === -1) {
+    return null;
+  }
+
+  const flightTokenIndex = tokens.length - 1 - reversedIndex;
+  const flightToken = tokens[flightTokenIndex];
+  const letterPart = flightToken.match(/[A-Za-z]+/g)?.join('') ?? '';
+  const digitPart = flightToken.match(/\d+/g)?.join('') ?? '';
+
+  const airlineCodeCandidate = letterPart.slice(0, 2).toUpperCase();
+  if (!/^[A-Z]{2}$/.test(airlineCodeCandidate) || digitPart.length === 0) {
+    return null;
+  }
+
+  const airlineCode = airlineCodeCandidate;
+  const flightNumber = `${airlineCode}${digitPart}`;
+  const airlineNameTokens = tokens.slice(0, flightTokenIndex);
+  const airlineName = airlineNameTokens.join(' ').trim() || getAirlineName(airlineCode) || airlineCode;
+
+  return {
+    flightNumber: flightNumber.toUpperCase(),
+    airlineCode,
+    airlineName,
+  };
+};
+
+const formatManualAirlineFlightDisplay = (flight: FlightWithDetails): string => {
+  const parts = [flight.airline?.trim(), flight.flightNumber?.trim()].filter(Boolean);
+  return parts.join(' ').trim();
+};
+
+const extractFlightNotes = (flight: FlightWithDetails): string => {
+  const baggage = flight.baggage;
+  if (!baggage) {
+    return '';
+  }
+
+  if (typeof baggage === 'string') {
+    const trimmed = baggage.trim();
+    if (!trimmed) {
+      return '';
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === 'object' && typeof (parsed as Record<string, unknown>).notes === 'string') {
+        return (parsed as Record<string, unknown>).notes as string;
+      }
+    } catch {
+      return trimmed;
+    }
+    return '';
+  }
+
+  if (typeof baggage === 'object' && !Array.isArray(baggage)) {
+    const notesValue = (baggage as Record<string, unknown>).notes;
+    if (typeof notesValue === 'string') {
+      return notesValue;
+    }
+  }
+
+  return '';
+};
+
+const buildBaggageWithNotes = (existing: unknown, notes: string): unknown => {
+  const trimmed = notes.trim();
+  if (!trimmed) {
+    if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+      const copy = { ...(existing as Record<string, unknown>) };
+      delete copy.notes;
+      return Object.keys(copy).length > 0 ? copy : null;
+    }
+    return null;
+  }
+
+  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
+    return { ...(existing as Record<string, unknown>), notes: trimmed };
+  }
+
+  return { notes: trimmed };
 };
 
 const ensureIsoString = (value?: string | Date | null): string => {
@@ -430,16 +565,9 @@ interface FlightSearchPanelProps {
   cachedSearchParams: CachedFlightSearchParams | null;
   onShareFlight: (flight: any) => Promise<void>;
   onQuickAddFlight: (flight: any) => Promise<void>;
-  onOpenManualFlight: () => void;
-  flights: FlightWithDetails[];
-  onEditFlight: (flight: FlightWithDetails) => void;
-  onDeleteFlight: (id: number) => void;
-  flightProposals: FlightProposalWithDetails[];
-  onClose: () => void;
   user?: User | null;
   trip?: TripWithDetails | null;
   autoSearch?: boolean;
-  onSubmitRanking: (proposalId: number, ranking: number) => void;
   isAddingFlight: boolean;
   addingFlightKey: string | null;
 }
@@ -450,6 +578,25 @@ type ManualFlightPayload = InsertFlight & {
   priceCents: number | null;
   direction: 'OUTBOUND' | 'RETURN';
 };
+
+interface ManualFlightFormState {
+  airlineFlight: string;
+  direction: 'OUTBOUND' | 'RETURN';
+  from: string;
+  to: string;
+  departure: string;
+  arrival: string;
+  cabin: CabinClass;
+  notes: string;
+}
+
+interface ManualFlightFormErrors {
+  airlineFlight?: string;
+  from?: string;
+  to?: string;
+  departure?: string;
+  arrival?: string;
+}
 
 function FlightSearchPanel({
   searchFormData,
@@ -465,16 +612,9 @@ function FlightSearchPanel({
   cachedSearchParams,
   onShareFlight,
   onQuickAddFlight,
-  onOpenManualFlight,
-  flights,
-  onEditFlight,
-  onDeleteFlight,
-  flightProposals,
-  onClose,
   user,
   trip,
   autoSearch = false,
-  onSubmitRanking,
   isAddingFlight,
   addingFlightKey,
 }: FlightSearchPanelProps) {
@@ -906,38 +1046,20 @@ function FlightSearchPanel({
   }, [autoSearch, onSearch, searchFormData.arrival, searchFormData.departure, searchFormData.departureDate]);
 
   return (
-    <div className="mb-6 rounded-2xl border bg-background p-4 shadow-sm sm:p-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-2xl border bg-background p-4 shadow-sm sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">Add or propose a flight</h2>
+          <h2 className="text-2xl font-semibold text-foreground">Search flights</h2>
           <p className="text-sm text-muted-foreground">
             {trip?.name
-              ? `Search for flights to share with ${trip.name}.`
-              : "Search flights for your group and add them to the plan."}
+              ? `Find flights for ${trip.name}.`
+              : "Search flights for your upcoming trip."}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onClose} className="self-start">
-          <X className="mr-2 h-4 w-4" />
-          Hide search
-        </Button>
       </div>
 
       <div className="mt-6">
-        <Tabs defaultValue="search" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="search">Search & Propose Flights</TabsTrigger>
-            <TabsTrigger value="voting" className="relative">
-              Group Voting
-              {flightProposals.length > 0 && (
-                <Badge variant="secondary" className="ml-2 text-xs">
-                  {flightProposals.length}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="bookings">My Flight Bookings</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="search" className="mt-6 space-y-6">
+        <div className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1510,339 +1632,9 @@ function FlightSearchPanel({
               </div>
             )}
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Group Flights
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {flights.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <Plane className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-                    <h3 className="mb-2 text-lg font-medium text-gray-900">No flights added yet</h3>
-                    <p className="mb-4 text-gray-500">Start by adding flight information for your group members.</p>
-                    <Button onClick={onOpenManualFlight}>
-                      <Plus className="mr-2 h-4 w-4" />
-                      Add First Flight
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {flights.map((flight) => {
-                      const permissions = getFlightPermissions(flight, trip, currentUserId);
-
-                      return (
-                        <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
-                          <div className="mb-2 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center gap-2">
-                                <Plane className="h-4 w-4 text-blue-600" />
-                                <span className="font-semibold">{flight.airline}</span>
-                                <span className="text-gray-500">{flight.flightNumber}</span>
-                              </div>
-                              <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {permissions.canEdit ? (
-                                <Button variant="ghost" size="sm" onClick={() => onEditFlight(flight)}>
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                              ) : null}
-                              {permissions.canDelete ? (
-                                permissions.isAdminOverride ? (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="sm" onClick={() => onDeleteFlight(flight.id)}>
-                                        <Trash2 className="h-4 w-4" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Admin</TooltipContent>
-                                  </Tooltip>
-                                ) : (
-                                  <Button variant="ghost" size="sm" onClick={() => onDeleteFlight(flight.id)}>
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                )
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
-                            <div className="flex items-center gap-2">
-                              <PlaneTakeoff className="h-4 w-4 text-green-600" />
-                            <div>
-                              <div className="font-medium">{flight.departureAirport}</div>
-                              <div className="text-gray-500">
-                                {flight.departureTime ? format(new Date(flight.departureTime), "MMM d, h:mm a") : "Time TBD"}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-center">
-                            <ArrowRight className="h-4 w-4 text-gray-400" />
-                            <div className="mx-2 text-xs text-gray-500">
-                              {flight.flightDuration ? formatDuration(flight.flightDuration) : "Duration TBD"}
-                            </div>
-                            <ArrowRight className="h-4 w-4 text-gray-400" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <PlaneLanding className="h-4 w-4 text-red-600" />
-                            <div>
-                              <div className="font-medium">{flight.arrivalAirport}</div>
-                              <div className="text-gray-500">
-                                {flight.arrivalTime ? format(new Date(flight.arrivalTime), "MMM d, h:mm a") : "Time TBD"}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                          {flight.price != null && (
-                            <div className="mt-2 text-sm text-gray-600">
-                              Price: {formatPriceDisplay(flight.price, flight.currency)}
-                              {flight.seatClass && ` • ${flight.seatClass}`}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="voting" className="mt-6 space-y-6">
-            {flightProposals.length > 0 ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Group Flight Proposals ({flightProposals.length})
-                  </CardTitle>
-                  <p className="text-sm text-muted-foreground">
-                    Rank these flights from 1 (most preferred) to help your group decide
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4">
-                    {flightProposals.map((proposal) => (
-                      <Card key={proposal.id} className="relative">
-                        <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-                                <PlaneTakeoff className="h-5 w-5 text-blue-600" />
-                                {proposal.airline} {proposal.flightNumber}
-                              </CardTitle>
-                              <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-                                <div className="flex items-center gap-1">
-                                  <MapPin className="h-3 w-3" />
-                                  {proposal.departureAirport} → {proposal.arrivalAirport}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Clock className="h-3 w-3" />
-                                  {proposal.duration}
-                                </div>
-                                {proposal.stops > 0 && (
-                                  <div className="rounded bg-yellow-100 px-2 py-1 text-xs text-yellow-800">
-                                    {proposal.stops} stop{proposal.stops > 1 ? "s" : ""}
-                                  </div>
-                                )}
-                              </div>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                Proposed by {proposal.proposer?.firstName || "Group Member"}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-lg font-bold text-blue-600">${proposal.price}</div>
-                              {proposal.averageRanking != null && (
-                                <div className="text-sm text-muted-foreground">Avg: #{proposal.averageRanking}</div>
-                              )}
-                            </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                          <div className="rounded-lg bg-blue-50 p-3">
-                            <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                                <div className="flex items-center gap-1 text-muted-foreground">
-                                  <PlaneTakeoff className="h-3 w-3" />
-                                  Departure:
-                                </div>
-                                <div className="font-medium">
-                                  {new Date(proposal.departureTime).toLocaleString()}
-                                </div>
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-1 text-muted-foreground">
-                                  <PlaneLanding className="h-3 w-3" />
-                                  Arrival:
-                                </div>
-                                <div className="font-medium">
-                                  {new Date(proposal.arrivalTime).toLocaleString()}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <div className="text-sm font-medium text-muted-foreground">Your Ranking:</div>
-                              <div className="flex gap-1">
-                                {[1, 2, 3, 4, 5].map((rank) => (
-                                  <Button
-                                    key={rank}
-                                    size="sm"
-                                    variant={proposal.currentUserRanking?.ranking === rank ? "default" : "outline"}
-                                    onClick={() => onSubmitRanking(proposal.id, rank)}
-                                    className="px-3 text-xs"
-                                    data-testid={`button-rank-flight-${proposal.id}-${rank}`}
-                                  >
-                                    #{rank}
-                                  </Button>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => window.open(proposal.bookingUrl, "_blank")}
-                              >
-                                <ExternalLink className="mr-1 h-3 w-3" />
-                                View Details
-                              </Button>
-                            </div>
-                          </div>
-
-                          {proposal.rankings && proposal.rankings.length > 0 && (
-                            <div className="space-y-2">
-                              <div className="text-sm font-medium text-muted-foreground">Group Rankings:</div>
-                              <div className="grid gap-2">
-                                {proposal.rankings.map((ranking: any) => (
-                                  <div
-                                    key={ranking.id}
-                                    className="flex items-center justify-between rounded bg-gray-50 p-2 text-sm"
-                                  >
-                                    <span>{ranking.user?.firstName || "Member"}</span>
-                                    <Badge variant="secondary">#{ranking.ranking}</Badge>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Users className="mb-4 h-12 w-12 text-muted-foreground" />
-                  <h3 className="mb-2 text-lg font-semibold">No flight proposals yet</h3>
-                  <p className="mb-4 text-center text-muted-foreground">
-                    Search for flights and propose them to your group to start the voting process.
-                  </p>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          <TabsContent value="bookings" className="mt-6 space-y-6">
-            {flights.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-12">
-                  <Plane className="mb-4 h-12 w-12 text-muted-foreground" />
-                  <h3 className="mb-2 text-lg font-semibold">No flights added yet</h3>
-                  <p className="mb-4 text-center text-muted-foreground">
-                    Add your flight bookings to keep your group informed of travel plans.
-                  </p>
-                  <Button onClick={onOpenManualFlight}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Flight
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid gap-4">
-                {flights.map((flight) => {
-                  const permissions = getFlightPermissions(flight, trip, currentUserId);
-
-                  return (
-                    <Card key={flight.id} className="relative">
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <CardTitle className="text-lg">
-                              {flight.airline} {flight.flightNumber}
-                          </CardTitle>
-                          <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                            <MapPin className="h-3 w-3" />
-                            {flight.departureAirport} → {flight.arrivalAirport}
-                          </p>
-                        </div>
-                        <Badge className={getFlightStatusColor(flight.status || "confirmed")}>
-                          {flight.status || "confirmed"}
-                        </Badge>
-                      </div>
-                    </CardHeader>
-                      <CardContent className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <div className="text-sm text-muted-foreground">Departure</div>
-                            <div className="font-medium">
-                              {format(new Date(flight.departureTime), "MMM d, h:mm a")}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-sm text-muted-foreground">Arrival</div>
-                            <div className="font-medium">
-                              {format(new Date(flight.arrivalTime), "MMM d, h:mm a")}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between pt-2">
-                          <div className="flex items-center gap-2">
-                            {permissions.canEdit ? (
-                              <Button variant="outline" size="sm" onClick={() => onEditFlight(flight)}>
-                                <Edit className="h-3 w-3" />
-                              </Button>
-                            ) : null}
-                            {permissions.canDelete ? (
-                              permissions.isAdminOverride ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button variant="outline" size="sm" onClick={() => onDeleteFlight(flight.id)}>
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Admin</TooltipContent>
-                                </Tooltip>
-                              ) : (
-                                <Button variant="outline" size="sm" onClick={() => onDeleteFlight(flight.id)}>
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
-                              )
-                            ) : null}
-                          </div>
-                          {flight.price != null && (
-                            <div className="text-lg font-semibold text-green-600">
-                              {formatPriceDisplay(flight.price, flight.currency)}
-                            </div>
-                        )}
-                      </div>
-                    </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1907,8 +1699,6 @@ export default function FlightsPage() {
   const [location, setLocation] = useLocation();
   const [isAddFlightOpen, setIsAddFlightOpen] = useState(false);
   const [editingFlight, setEditingFlight] = useState<FlightWithDetails | null>(null);
-  const addFlightButtonRef = useRef<HTMLButtonElement>(null);
-  const [showSearchPanel, setShowSearchPanel] = useState(false);
   const [autoSearchRequested, setAutoSearchRequested] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -1947,31 +1737,18 @@ export default function FlightsPage() {
   });
   
   // Flight form state
-  const [flightFormData, setFlightFormData] = useState({
-    flightNumber: '',
-    airline: '',
-    airlineCode: '',
-    departureAirport: '',
-    departureCode: '',
-    departureTime: '',
-    arrivalAirport: '',
-    arrivalCode: '',
-    arrivalTime: '',
-    price: '',
-    seatClass: 'ECONOMY',
-    flightType: 'OUTBOUND',
-    bookingReference: '',
-    aircraft: '',
-    status: 'confirmed'
-  });
-  const [flightFormErrors, setFlightFormErrors] = useState<{
-    flightNumber?: string;
-    airlineCode?: string;
-    departureCode?: string;
-    arrivalCode?: string;
-    departureTime?: string;
-    arrivalTime?: string;
-  }>({});
+  const defaultManualFlightForm: ManualFlightFormState = {
+    airlineFlight: '',
+    direction: 'OUTBOUND',
+    from: '',
+    to: '',
+    departure: '',
+    arrival: '',
+    cabin: 'ECONOMY',
+    notes: '',
+  };
+  const [manualFlightForm, setManualFlightForm] = useState<ManualFlightFormState>(defaultManualFlightForm);
+  const [manualFlightErrors, setManualFlightErrors] = useState<ManualFlightFormErrors>({});
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -2105,49 +1882,11 @@ export default function FlightsPage() {
     }
   }, [location, searchFormData, setLocation, toast]);
 
-  const handleOpenSearchPanel = useCallback(
-    (shouldAuto = false) => {
-      const [basePath, searchParams] = location.split("?");
-      const params = new URLSearchParams(searchParams ?? "");
-      params.set("panel", "search");
-      if (shouldAuto) {
-        params.set("auto", "1");
-      } else {
-        params.delete("auto");
-      }
-
-      const next = params.toString();
-      setLocation(next ? `${basePath}?${next}` : basePath, { replace: true });
-      setShowSearchPanel(true);
-      setAutoSearchRequested(shouldAuto);
-    },
-    [location, setLocation],
-  );
-
-  const handleCloseSearchPanel = useCallback(() => {
-    const [basePath, searchParams] = location.split("?");
-    const params = new URLSearchParams(searchParams ?? "");
-    params.delete("panel");
-    params.delete("auto");
-
-    const next = params.toString();
-    setLocation(next ? `${basePath}?${next}` : basePath, { replace: true });
-    setShowSearchPanel(false);
-    setAutoSearchRequested(false);
-
-    requestAnimationFrame(() => {
-      addFlightButtonRef.current?.focus();
-    });
-  }, [location, setLocation]);
-
   useEffect(() => {
     const [, searchParams] = location.split("?");
     const params = new URLSearchParams(searchParams ?? "");
-    const panelParam = params.get("panel");
-    const shouldShow = panelParam === "search";
-    const shouldAutoSearch = shouldShow && params.get("auto") === "1";
+    const shouldAutoSearch = params.get("auto") === "1";
 
-    setShowSearchPanel(shouldShow);
     setAutoSearchRequested(shouldAutoSearch);
   }, [location]);
 
@@ -2324,17 +2063,40 @@ export default function FlightsPage() {
   // Ensure flights is always an array
   const flightsArray = Array.isArray(flights) ? flights : [];
 
+  const manualFlights = useMemo(
+    () =>
+      flightsArray.filter((flight: FlightWithDetails) => {
+        const sourceValue = (flight.bookingSource ?? '').toString().toLowerCase();
+        const isManualEntry = !sourceValue || sourceValue === 'manual';
+        if (!isManualEntry) {
+          return false;
+        }
+
+        const creatorId = getFlightCreatorId(flight);
+        return Boolean(currentUserId && creatorId && creatorId === currentUserId);
+      }),
+    [flightsArray, currentUserId],
+  );
+
+  const [manualFlightsOpen, setManualFlightsOpen] = useState(() => manualFlights.length > 0);
+  const previousManualCountRef = useRef(manualFlights.length);
+
+  useEffect(() => {
+    if (manualFlights.length === 0) {
+      setManualFlightsOpen(false);
+    } else if (previousManualCountRef.current === 0 && manualFlights.length > 0) {
+      setManualFlightsOpen(true);
+    }
+
+    previousManualCountRef.current = manualFlights.length;
+  }, [manualFlights.length]);
+
   const { data: trip } = useQuery<TripWithDetails | undefined>({
     queryKey: [`/api/trips/${tripId}`],
     enabled: !!tripId,
   });
 
   // Flight proposals for group voting
-  const { data: flightProposals = [] as FlightProposalWithDetails[], isLoading: proposalsLoading } = useQuery({
-    queryKey: [`/api/trips/${tripId}/flight-proposals`],
-    enabled: !!tripId,
-  });
-
   // State to track if we've already prefilled to avoid overriding user changes
   const [hasPrefilledSearch, setHasPrefilledSearch] = useState(false);
 
@@ -2428,19 +2190,19 @@ export default function FlightsPage() {
       const parsed = parseApiErrorResponse(error);
 
       if (parsed?.status === 400) {
-        const nextErrors: typeof flightFormErrors = {};
+        const nextErrors: ManualFlightFormErrors = {};
         const errorDetails = (parsed.data as any)?.errors;
         if (Array.isArray(errorDetails)) {
           for (const detail of errorDetails) {
             const field = Array.isArray(detail?.path) ? detail.path[0] : undefined;
             if (field === 'airlineCode') {
-              nextErrors.airlineCode = "Use a valid 2-letter airline IATA code (e.g., DL, AA).";
+              nextErrors.airlineFlight = "Use a valid 2-letter airline IATA code (e.g., DL, AA).";
             }
             if (field === 'departureCode') {
-              nextErrors.departureCode = "Use a valid IATA code (e.g., LAX, JFK).";
+              nextErrors.from = "Use a valid IATA code (e.g., LAX, JFK).";
             }
             if (field === 'arrivalCode') {
-              nextErrors.arrivalCode = "Use a valid IATA code (e.g., LAX, JFK).";
+              nextErrors.to = "Use a valid IATA code (e.g., LAX, JFK).";
             }
           }
         }
@@ -2455,18 +2217,18 @@ export default function FlightsPage() {
         if (typeof rawMessage === 'string' && rawMessage) {
           const normalized = rawMessage.toLowerCase();
           if (normalized.includes('airlinecode') || normalized.includes('airline code')) {
-            nextErrors.airlineCode = "Use a valid 2-letter airline IATA code (e.g., DL, AA).";
+            nextErrors.airlineFlight = "Use a valid 2-letter airline code (e.g., DL1234).";
           }
           if (normalized.includes('departurecode') || normalized.includes('departure code')) {
-            nextErrors.departureCode = "Use a valid IATA code (e.g., LAX, JFK).";
+            nextErrors.from = "Use a valid IATA code (e.g., ATL, JFK).";
           }
           if (normalized.includes('arrivalcode') || normalized.includes('arrival code')) {
-            nextErrors.arrivalCode = "Use a valid IATA code (e.g., LAX, JFK).";
+            nextErrors.to = "Use a valid IATA code (e.g., LAX, JFK).";
           }
         }
 
         if (Object.keys(nextErrors).length > 0) {
-          setFlightFormErrors((prev) => ({ ...prev, ...nextErrors }));
+          setManualFlightErrors((prev) => ({ ...prev, ...nextErrors }));
         }
 
         toast({
@@ -2541,42 +2303,17 @@ export default function FlightsPage() {
     },
   });
 
-  // Flight ranking functionality
-  const submitFlightRanking = async (proposalId: number, ranking: number, notes?: string) => {
-    try {
-      await apiRequest(`/api/flight-proposals/${proposalId}/rank`, {
-        method: "POST",
-        body: JSON.stringify({ ranking, notes }),
-      });
-      
-      toast({
-        title: "Ranking Submitted!",
-        description: "Your flight preference has been recorded.",
-      });
-      
-      // Refresh proposals
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flight-proposals"] });
-      
-    } catch (error) {
-      if (error instanceof Error && isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You need to be logged in to rank flights.",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to submit ranking. Please try again.",
-        variant: "destructive",
-      });
-    }
+  const handleToggleFlightStatus = (flight: FlightWithDetails) => {
+    const currentStatus = (flight.status ?? 'proposed').toLowerCase();
+    const nextStatus = currentStatus === 'confirmed' ? 'proposed' : 'confirmed';
+
+    updateFlightMutation.mutate({
+      id: flight.id,
+      updates: { status: nextStatus },
+    });
   };
 
+  // Flight ranking functionality
   // Share flight with group as a proposal
   const shareFlightWithGroup = async (flight: any) => {
     try {
@@ -2637,24 +2374,8 @@ export default function FlightsPage() {
 
   // Form helper functions
   const resetFlightForm = () => {
-    setFlightFormData({
-      flightNumber: '',
-      airline: '',
-      airlineCode: '',
-      departureAirport: '',
-      departureCode: '',
-      departureTime: '',
-      arrivalAirport: '',
-      arrivalCode: '',
-      arrivalTime: '',
-      price: '',
-      seatClass: 'ECONOMY',
-      flightType: 'OUTBOUND',
-      bookingReference: '',
-      aircraft: '',
-      status: 'confirmed'
-    });
-    setFlightFormErrors({});
+    setManualFlightForm(defaultManualFlightForm);
+    setManualFlightErrors({});
   };
 
   const openManualFlightDialog = () => {
@@ -2828,23 +2549,31 @@ export default function FlightsPage() {
     ],
   );
 
-  const populateFlightForm = (flight: any) => {
-    setFlightFormData({
-      flightNumber: flight.flightNumber || '',
-      airline: flight.airline || '',
-      airlineCode: (flight.airlineCode || '').toUpperCase(),
-      departureAirport: flight.departureAirport || '',
-      departureCode: (flight.departureCode || '').toUpperCase(),
-      departureTime: flight.departureTime ? new Date(flight.departureTime).toISOString().slice(0, 16) : '',
-      arrivalAirport: flight.arrivalAirport || '',
-      arrivalCode: (flight.arrivalCode || '').toUpperCase(),
-      arrivalTime: flight.arrivalTime ? new Date(flight.arrivalTime).toISOString().slice(0, 16) : '',
-      price: flight.price?.toString() || '',
-      seatClass: (flight.seatClass || 'ECONOMY').toUpperCase(),
-      flightType: (flight.flightType || 'OUTBOUND').toUpperCase(),
-      bookingReference: flight.bookingReference || '',
-      aircraft: flight.aircraft || '',
-      status: flight.status || 'confirmed'
+  const populateFlightForm = (flight: FlightWithDetails) => {
+    const directionValue: 'OUTBOUND' | 'RETURN' =
+      (flight.flightType || 'OUTBOUND').toUpperCase() === 'RETURN' ? 'RETURN' : 'OUTBOUND';
+    const departureValue = flight.departureTime
+      ? new Date(flight.departureTime).toISOString().slice(0, 16)
+      : '';
+    const arrivalValue = flight.arrivalTime
+      ? new Date(flight.arrivalTime).toISOString().slice(0, 16)
+      : '';
+    const seatClass = (flight.seatClass || 'ECONOMY').toUpperCase();
+    const cabinValue: CabinClass = (['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST'] as CabinClass[]).includes(
+      seatClass as CabinClass,
+    )
+      ? (seatClass as CabinClass)
+      : 'ECONOMY';
+
+    setManualFlightForm({
+      airlineFlight: formatManualAirlineFlightDisplay(flight),
+      direction: directionValue,
+      from: formatAirportDisplay(flight.departureAirport, flight.departureCode),
+      to: formatAirportDisplay(flight.arrivalAirport, flight.arrivalCode),
+      departure: departureValue,
+      arrival: arrivalValue,
+      cabin: cabinValue,
+      notes: extractFlightNotes(flight),
     });
   };
 
@@ -2858,77 +2587,71 @@ export default function FlightsPage() {
       return;
     }
 
-    const errors: typeof flightFormErrors = {};
-    const flightNumber = flightFormData.flightNumber.trim();
-    const airlineCode = flightFormData.airlineCode.trim().toUpperCase();
-    const departureCode = flightFormData.departureCode.trim().toUpperCase();
-    const arrivalCode = flightFormData.arrivalCode.trim().toUpperCase();
-    const departureTimeValue = flightFormData.departureTime;
-    const arrivalTimeValue = flightFormData.arrivalTime;
-
-    if (!flightNumber) {
-      errors.flightNumber = "Flight number is required.";
+    const errors: ManualFlightFormErrors = {};
+    const airlineFlightInput = manualFlightForm.airlineFlight.trim();
+    const parsedAirline = parseManualAirlineFlight(airlineFlightInput);
+    if (!parsedAirline) {
+      errors.airlineFlight = "Enter an airline and flight number (e.g., Delta DL1234).";
     }
 
-    if (!/^[A-Z]{2}$/.test(airlineCode)) {
-      errors.airlineCode = "Use a valid 2-letter airline IATA code (e.g., DL, AA).";
+    const fromLocation = parseManualLocationInput(manualFlightForm.from);
+    if (!fromLocation) {
+      errors.from = "Enter a departure airport code (e.g., ATL or Atlanta (ATL)).";
     }
 
-    if (!/^[A-Z]{3}$/.test(departureCode)) {
-      errors.departureCode = "Use a valid IATA code (e.g., LAX, JFK).";
+    const toLocation = parseManualLocationInput(manualFlightForm.to);
+    if (!toLocation) {
+      errors.to = "Enter an arrival airport code (e.g., LAX or Los Angeles (LAX)).";
     }
 
-    if (!/^[A-Z]{3}$/.test(arrivalCode)) {
-      errors.arrivalCode = "Use a valid IATA code (e.g., LAX, JFK).";
+    if (!manualFlightForm.departure) {
+      errors.departure = "Departure date & time is required.";
     }
 
-    if (!departureTimeValue) {
-      errors.departureTime = "Departure date & time is required.";
-    }
-
-    if (!arrivalTimeValue) {
-      errors.arrivalTime = "Arrival date & time is required.";
+    if (!manualFlightForm.arrival) {
+      errors.arrival = "Arrival date & time is required.";
     }
 
     if (Object.keys(errors).length > 0) {
-      setFlightFormErrors(errors);
+      setManualFlightErrors(errors);
       return;
     }
 
-    setFlightFormErrors({});
+    setManualFlightErrors({});
 
-    const departureTimeIso = new Date(departureTimeValue).toISOString();
-    const arrivalTimeIso = new Date(arrivalTimeValue).toISOString();
-    const seatClassNormalized = flightFormData.seatClass ? flightFormData.seatClass.toUpperCase() : '';
+    const departureTimeIso = new Date(manualFlightForm.departure).toISOString();
+    const arrivalTimeIso = new Date(manualFlightForm.arrival).toISOString();
     const direction: 'OUTBOUND' | 'RETURN' =
-      flightFormData.flightType === 'RETURN' ? 'RETURN' : 'OUTBOUND';
-    const airlineName = flightFormData.airline?.trim() || getAirlineName(airlineCode);
+      manualFlightForm.direction === 'RETURN' ? 'RETURN' : 'OUTBOUND';
+    const seatClassValue = manualFlightForm.cabin.toUpperCase() as CabinClass;
+    const airlineDetails = parsedAirline!;
 
     const insertPayload: InsertFlight = {
-      tripId: parseInt(tripId, 10),
-      flightNumber,
-      airline: airlineName,
-      airlineCode,
-      departureAirport: flightFormData.departureAirport || departureCode,
-      departureCode,
+      tripId: Number.parseInt(tripId, 10),
+      flightNumber: airlineDetails.flightNumber,
+      airline: airlineDetails.airlineName,
+      airlineCode: airlineDetails.airlineCode,
+      departureAirport: fromLocation!.name,
+      departureCode: fromLocation!.code,
       departureTime: departureTimeIso,
-      arrivalAirport: flightFormData.arrivalAirport || arrivalCode,
-      arrivalCode,
+      arrivalAirport: toLocation!.name,
+      arrivalCode: toLocation!.code,
       arrivalTime: arrivalTimeIso,
-      seatClass: seatClassNormalized ? seatClassNormalized : null,
-      price: flightFormData.price ? Number.parseFloat(flightFormData.price) : null,
+      seatClass: seatClassValue,
+      price: null,
       currency: 'USD',
       flightType: direction.toLowerCase(),
-      status: flightFormData.status || 'confirmed',
-      aircraft: flightFormData.aircraft || null,
-      bookingReference: flightFormData.bookingReference || null,
+      status: editingFlight?.status || 'proposed',
+      bookingReference: editingFlight?.bookingReference ?? null,
+      aircraft: editingFlight?.aircraft ?? null,
+      baggage: buildBaggageWithNotes(editingFlight?.baggage ?? null, manualFlightForm.notes),
     };
 
-    const manualPayload = {
+    const manualPayload: ManualFlightPayload = {
       ...insertPayload,
       departureTimeIso,
       arrivalTimeIso,
-      priceCents: insertPayload.price != null ? Math.round(insertPayload.price * 100) : null,
+      priceCents: null,
       direction,
     };
 
@@ -2942,10 +2665,10 @@ export default function FlightsPage() {
     }
   };
 
-  const handleEditFlight = (flight: any) => {
+  const handleEditFlight = (flight: FlightWithDetails) => {
     setEditingFlight(flight);
     populateFlightForm(flight);
-    setFlightFormErrors({});
+    setManualFlightErrors({});
     setIsAddFlightOpen(true);
   };
 
@@ -2984,244 +2707,187 @@ export default function FlightsPage() {
               Manage flights for {(trip as any)?.name || 'your trip'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button ref={addFlightButtonRef} onClick={() => handleOpenSearchPanel()}>
-              <Search className="mr-2 h-4 w-4" />
-              Add Flight
-            </Button>
-            <Dialog
-              open={isAddFlightOpen}
-              onOpenChange={(open) => {
-                setIsAddFlightOpen(open);
-                if (!open) {
-                  setFlightFormErrors({});
-                  setEditingFlight(null);
-                  resetFlightForm();
-                }
-              }}
-            >
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingFlight ? "Edit Flight Information" : "Add Flight Information"}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="flightNumber">Flight Number *</Label>
-                      <Input
-                        id="flightNumber"
-                        placeholder="e.g., DL1234"
-                        value={flightFormData.flightNumber}
-                        aria-invalid={flightFormErrors.flightNumber ? 'true' : 'false'}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setFlightFormData((prev) => ({ ...prev, flightNumber: value }));
-                          setFlightFormErrors((prev) => ({ ...prev, flightNumber: undefined }));
-                        }}
-                      />
-                      {flightFormErrors.flightNumber && (
-                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.flightNumber}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="airlineCode">Airline (IATA code) *</Label>
-                      <Input
-                        id="airlineCode"
-                        placeholder="e.g., DL"
-                        value={flightFormData.airlineCode}
-                        aria-invalid={flightFormErrors.airlineCode ? 'true' : 'false'}
-                        list="manual-flight-airline-codes"
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2);
-                          setFlightFormData((prev) => ({
-                            ...prev,
-                            airlineCode: value,
-                            airline: value ? getAirlineName(value) : '',
-                          }));
-                          setFlightFormErrors((prev) => ({ ...prev, airlineCode: undefined }));
-                        }}
-                      />
-                      <datalist id="manual-flight-airline-codes">
-                        {Object.entries(AIRLINE_IATA_MAP).map(([code, name]) => (
-                          <option key={code} value={code}>
-                            {name}
-                          </option>
-                        ))}
-                      </datalist>
-                      {flightFormData.airline && (
-                        <p className="mt-1 text-xs text-muted-foreground">{flightFormData.airline}</p>
-                      )}
-                      {flightFormErrors.airlineCode && (
-                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.airlineCode}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="departureCode">From (IATA code) *</Label>
-                      <Input
-                        id="departureCode"
-                        placeholder="e.g., ATL"
-                        value={flightFormData.departureCode}
-                        aria-invalid={flightFormErrors.departureCode ? 'true' : 'false'}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 3);
-                          setFlightFormData((prev) => ({
-                            ...prev,
-                            departureCode: value,
-                            departureAirport: value ? value : '',
-                          }));
-                          setFlightFormErrors((prev) => ({ ...prev, departureCode: undefined }));
-                        }}
-                      />
-                      {flightFormErrors.departureCode && (
-                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.departureCode}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="arrivalCode">To (IATA code) *</Label>
-                      <Input
-                        id="arrivalCode"
-                        placeholder="e.g., LAX"
-                        value={flightFormData.arrivalCode}
-                        aria-invalid={flightFormErrors.arrivalCode ? 'true' : 'false'}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 3);
-                          setFlightFormData((prev) => ({
-                            ...prev,
-                            arrivalCode: value,
-                            arrivalAirport: value ? value : '',
-                          }));
-                          setFlightFormErrors((prev) => ({ ...prev, arrivalCode: undefined }));
-                        }}
-                      />
-                      {flightFormErrors.arrivalCode && (
-                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.arrivalCode}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="departureTime">Departure date &amp; time (local) *</Label>
-                      <Input
-                        id="departureTime"
-                        type="datetime-local"
-                        value={flightFormData.departureTime}
-                        aria-invalid={flightFormErrors.departureTime ? 'true' : 'false'}
-                        onChange={(e) => {
-                          setFlightFormData((prev) => ({ ...prev, departureTime: e.target.value }));
-                          setFlightFormErrors((prev) => ({ ...prev, departureTime: undefined }));
-                        }}
-                      />
-                      {flightFormErrors.departureTime && (
-                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.departureTime}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="arrivalTime">Arrival date &amp; time (local) *</Label>
-                      <Input
-                        id="arrivalTime"
-                        type="datetime-local"
-                        value={flightFormData.arrivalTime}
-                        aria-invalid={flightFormErrors.arrivalTime ? 'true' : 'false'}
-                        onChange={(e) => {
-                          setFlightFormData((prev) => ({ ...prev, arrivalTime: e.target.value }));
-                          setFlightFormErrors((prev) => ({ ...prev, arrivalTime: undefined }));
-                        }}
-                      />
-                      {flightFormErrors.arrivalTime && (
-                        <p className="mt-1 text-sm text-destructive">{flightFormErrors.arrivalTime}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="price">Price ($)</Label>
-                      <Input
-                        id="price"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        placeholder="0.00"
-                        value={flightFormData.price}
-                        onChange={(e) => setFlightFormData((prev) => ({ ...prev, price: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="seatClass">Seat class</Label>
-                      <Select
-                        value={flightFormData.seatClass}
-                        onValueChange={(value) => setFlightFormData((prev) => ({ ...prev, seatClass: value }))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select class" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ECONOMY">Economy</SelectItem>
-                          <SelectItem value="PREMIUM_ECONOMY">Premium Economy</SelectItem>
-                          <SelectItem value="BUSINESS">Business</SelectItem>
-                          <SelectItem value="FIRST">First</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <Label htmlFor="flightType">Flight type</Label>
-                      <Select
-                        value={flightFormData.flightType}
-                        onValueChange={(value) =>
-                          setFlightFormData((prev) => ({ ...prev, flightType: value as 'OUTBOUND' | 'RETURN' }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="OUTBOUND">Outbound</SelectItem>
-                          <SelectItem value="RETURN">Return</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="bookingReference">Booking reference</Label>
-                      <Input
-                        id="bookingReference"
-                        placeholder="e.g., ABC123"
-                        value={flightFormData.bookingReference}
-                        onChange={(e) => setFlightFormData((prev) => ({ ...prev, bookingReference: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={handleCancelEdit}>
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleFlightSubmit}
-                      disabled={createFlightMutation.isPending || updateFlightMutation.isPending}
+          <Dialog
+            open={isAddFlightOpen}
+            onOpenChange={(open) => {
+              setIsAddFlightOpen(open);
+              if (!open) {
+                setManualFlightErrors({});
+                setEditingFlight(null);
+                resetFlightForm();
+              }
+            }}
+          >
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingFlight ? "Edit manual flight" : "Add manual flight"}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="manual-airline-flight">Airline + flight number</Label>
+                  <Input
+                    id="manual-airline-flight"
+                    placeholder="e.g., Delta DL1234"
+                    value={manualFlightForm.airlineFlight}
+                    aria-invalid={manualFlightErrors.airlineFlight ? 'true' : 'false'}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setManualFlightForm((prev) => ({ ...prev, airlineFlight: value }));
+                      setManualFlightErrors((prev) => ({ ...prev, airlineFlight: undefined }));
+                    }}
+                  />
+                  {manualFlightErrors.airlineFlight && (
+                    <p className="mt-1 text-sm text-destructive">{manualFlightErrors.airlineFlight}</p>
+                  )}
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="manual-direction">Direction</Label>
+                    <Select
+                      value={manualFlightForm.direction}
+                      onValueChange={(value) =>
+                        setManualFlightForm((prev) => ({ ...prev, direction: value as 'OUTBOUND' | 'RETURN' }))
+                      }
                     >
-                      {createFlightMutation.isPending || updateFlightMutation.isPending ? (
-                        <>
-                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" />
-                          {editingFlight ? "Updating..." : "Adding..."}
-                        </>
-                      ) : (
-                        editingFlight ? "Update Flight" : "Add Flight"
-                      )}
-                    </Button>
+                      <SelectTrigger id="manual-direction">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="OUTBOUND">Outbound</SelectItem>
+                        <SelectItem value="RETURN">Return</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-cabin">Cabin</Label>
+                    <Select
+                      value={manualFlightForm.cabin}
+                      onValueChange={(value) =>
+                        setManualFlightForm((prev) => ({ ...prev, cabin: value as CabinClass }))
+                      }
+                    >
+                      <SelectTrigger id="manual-cabin">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ECONOMY">Economy</SelectItem>
+                        <SelectItem value="PREMIUM_ECONOMY">Premium Economy</SelectItem>
+                        <SelectItem value="BUSINESS">Business</SelectItem>
+                        <SelectItem value="FIRST">First</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
-          </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="manual-from">From</Label>
+                    <Input
+                      id="manual-from"
+                      placeholder="City or airport (e.g., Atlanta (ATL))"
+                      value={manualFlightForm.from}
+                      aria-invalid={manualFlightErrors.from ? 'true' : 'false'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setManualFlightForm((prev) => ({ ...prev, from: value }));
+                        setManualFlightErrors((prev) => ({ ...prev, from: undefined }));
+                      }}
+                    />
+                    {manualFlightErrors.from && (
+                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.from}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-to">To</Label>
+                    <Input
+                      id="manual-to"
+                      placeholder="City or airport (e.g., Los Angeles (LAX))"
+                      value={manualFlightForm.to}
+                      aria-invalid={manualFlightErrors.to ? 'true' : 'false'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setManualFlightForm((prev) => ({ ...prev, to: value }));
+                        setManualFlightErrors((prev) => ({ ...prev, to: undefined }));
+                      }}
+                    />
+                    {manualFlightErrors.to && (
+                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.to}</p>
+                    )}
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="manual-departure">Departure date &amp; time (local)</Label>
+                    <Input
+                      id="manual-departure"
+                      type="datetime-local"
+                      value={manualFlightForm.departure}
+                      aria-invalid={manualFlightErrors.departure ? 'true' : 'false'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setManualFlightForm((prev) => ({ ...prev, departure: value }));
+                        setManualFlightErrors((prev) => ({ ...prev, departure: undefined }));
+                      }}
+                    />
+                    {manualFlightErrors.departure && (
+                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.departure}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-arrival">Arrival date &amp; time (local)</Label>
+                    <Input
+                      id="manual-arrival"
+                      type="datetime-local"
+                      value={manualFlightForm.arrival}
+                      aria-invalid={manualFlightErrors.arrival ? 'true' : 'false'}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setManualFlightForm((prev) => ({ ...prev, arrival: value }));
+                        setManualFlightErrors((prev) => ({ ...prev, arrival: undefined }));
+                      }}
+                    />
+                    {manualFlightErrors.arrival && (
+                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.arrival}</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="manual-notes">Notes</Label>
+                  <Textarea
+                    id="manual-notes"
+                    placeholder="Add any optional notes"
+                    value={manualFlightForm.notes}
+                    onChange={(event) =>
+                      setManualFlightForm((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={handleCancelEdit}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleFlightSubmit}
+                    disabled={createFlightMutation.isPending || updateFlightMutation.isPending}
+                  >
+                    {createFlightMutation.isPending || updateFlightMutation.isPending ? (
+                      <>
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" />
+                        {editingFlight ? "Saving..." : "Adding..."}
+                      </>
+                    ) : (
+                      editingFlight ? "Update Flight" : "Save Flight"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
-      {showSearchPanel && (
-        <FlightSearchPanel
+      <FlightSearchPanel
           searchFormData={searchFormData}
           setSearchFormData={setSearchFormData}
           onSearch={handleFlightSearch}
@@ -3235,147 +2901,99 @@ export default function FlightsPage() {
           cachedSearchParams={cachedSearchParams}
           onShareFlight={shareFlightWithGroup}
           onQuickAddFlight={handleQuickAddFlight}
-          onOpenManualFlight={openManualFlightDialog}
-          flights={flightsArray}
-          onEditFlight={handleEditFlight}
-          onDeleteFlight={(id) => deleteFlightMutation.mutate(id)}
-          flightProposals={flightProposals as FlightProposalWithDetails[]}
-          onClose={handleCloseSearchPanel}
           user={user}
           trip={trip as TripWithDetails | null}
           autoSearch={autoSearchRequested}
-          onSubmitRanking={(proposalId, ranking) => submitFlightRanking(proposalId, ranking)}
           isAddingFlight={addingFlightKey !== null}
           addingFlightKey={addingFlightKey}
         />
-      )}
 
-      <div className="space-y-6">
-        {flightsArray.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                Group Flights
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {flightsArray.map((flight: any) => {
-                  const permissions = getFlightPermissions(flight, trip, currentUserId);
+      <Collapsible open={manualFlightsOpen} onOpenChange={setManualFlightsOpen}>
+        <div className="rounded-lg border bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-2 text-left text-sm font-medium text-neutral-900 focus:outline-none"
+              >
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${manualFlightsOpen ? 'rotate-180' : ''}`}
+                />
+                Manually added flights
+              </button>
+            </CollapsibleTrigger>
+            <Button size="sm" onClick={openManualFlightDialog}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add flight
+            </Button>
+          </div>
+          <CollapsibleContent>
+            {manualFlights.length === 0 ? (
+              <div className="p-4 text-sm text-muted-foreground">
+                No manual flights yet. Use the search above or add one manually.
+              </div>
+            ) : (
+              <div className="divide-y">
+                {manualFlights.map((flight) => {
+                  const directionLabel = flight.flightType === 'return' ? 'Return' : 'Outbound';
+                  const isConfirmed = (flight.status || 'proposed') === 'confirmed';
+                  const notes = extractFlightNotes(flight);
 
                   return (
-                    <div key={flight.id} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
-                      <div className="mb-2 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-2">
-                            <Plane className="h-4 w-4 text-blue-600" />
-                            <span className="font-semibold">{flight.airline}</span>
-                            <span className="text-gray-500">{flight.flightNumber}</span>
-                          </div>
-                          <Badge className={getFlightStatusColor(flight.status)}>{flight.status}</Badge>
+                    <div
+                      key={flight.id}
+                      className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-neutral-900">
+                          <Plane className="h-4 w-4 text-blue-600" />
+                          <span>{formatManualAirlineFlightDisplay(flight)}</span>
+                          <Badge variant="secondary" className="uppercase">{directionLabel}</Badge>
+                          <Badge className={isConfirmed ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
+                            {isConfirmed ? 'Confirmed' : 'Proposed'}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {permissions.canEdit ? (
-                            <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          ) : null}
-                          {permissions.canDelete ? (
-                            permissions.isAdminOverride ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => deleteFlightMutation.mutate(flight.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Admin</TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteFlightMutation.mutate(flight.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )
-                          ) : null}
+                        <div className="text-sm text-muted-foreground">
+                          {formatAirportDisplay(flight.departureAirport, flight.departureCode)} → {formatAirportDisplay(flight.arrivalAirport, flight.arrivalCode)}
                         </div>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
-                        <div className="flex items-center gap-2">
-                          <PlaneTakeoff className="h-4 w-4 text-green-600" />
-                        <div>
-                          <div className="font-medium">{flight.departureAirport}</div>
-                          <div className="text-gray-500">
-                            {flight.departureTime ? format(new Date(flight.departureTime), 'MMM d, h:mm a') : 'Time TBD'}
-                          </div>
+                        <div className="text-xs text-muted-foreground">
+                          {flight.departureTime ? format(new Date(flight.departureTime), 'MMM d, yyyy h:mm a') : 'Departure time TBD'} • {flight.arrivalTime ? format(new Date(flight.arrivalTime), 'MMM d, yyyy h:mm a') : 'Arrival time TBD'}
                         </div>
-                      </div>
-                      <div className="flex items-center justify-center">
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                        <div className="mx-2 text-xs text-gray-500">
-                          {flight.flightDuration ? formatDuration(flight.flightDuration) : 'Duration TBD'}
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-gray-400" />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <PlaneLanding className="h-4 w-4 text-red-600" />
-                        <div>
-                          <div className="font-medium">{flight.arrivalAirport}</div>
-                          <div className="text-gray-500">
-                            {flight.arrivalTime ? format(new Date(flight.arrivalTime), 'MMM d, h:mm a') : 'Time TBD'}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                        {flight.price != null && (
-                          <div className="mt-2 text-sm text-gray-600">
-                            Price: {formatPriceDisplay(flight.price, flight.currency)}
-                            {flight.seatClass && ` • ${flight.seatClass}`}
-                          </div>
+                        {notes && (
+                          <div className="text-xs text-muted-foreground">Notes: {notes}</div>
                         )}
+                      </div>
+                      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Switch
+                            checked={isConfirmed}
+                            onCheckedChange={() => handleToggleFlightStatus(flight)}
+                          />
+                          <span>{isConfirmed ? 'Confirmed' : 'Proposed'}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
+                            <Edit className="h-4 w-4" />
+                            <span className="sr-only">Edit flight</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteFlightMutation.mutate(flight.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Delete flight</span>
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   );
                 })}
               </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <div className="rounded-lg border border-dashed bg-white shadow-sm">
-          <div className="flex flex-col gap-3 border-b border-dashed p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-neutral-900">Manual entry</p>
-              <p className="text-sm text-muted-foreground">
-                Record a flight that isn't imported from the flight search results.
-              </p>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="w-full justify-between sm:w-auto sm:justify-center">
-                  <span>Add a Flight</span>
-                  <span aria-hidden="true" className="ml-2 text-base leading-none">▾</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem
-                  onSelect={() => {
-                    openManualFlightDialog();
-                  }}
-                >
-                  Single flight
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+            )}
+          </CollapsibleContent>
         </div>
-      </div>
+      </Collapsible>
   </div>
 );
 }
