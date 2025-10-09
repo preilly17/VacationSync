@@ -5581,8 +5581,14 @@ function HotelBooking({
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        }),
+      ]);
       toast({
         title: "Hotel added",
         description: "Your hotel booking has been saved to the trip.",
@@ -5616,8 +5622,14 @@ function HotelBooking({
         body: JSON.stringify(data.payload),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        }),
+      ]);
       toast({
         title: "Hotel updated",
         description: "The hotel stay has been updated.",
@@ -5662,7 +5674,13 @@ function HotelBooking({
         },
       );
 
-      await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        }),
+      ]);
       toast({
         title: "Hotel removed",
         description: "The hotel entry has been deleted.",
