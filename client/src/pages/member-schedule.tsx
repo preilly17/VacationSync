@@ -180,7 +180,7 @@ export default function MemberSchedule() {
       }
 
       setActivityPrefill({
-        startDate: date,
+        startDate: format(date, "yyyy-MM-dd"),
         attendeeIds: attendeeIds.size > 0 ? Array.from(attendeeIds) : undefined,
         type: "SCHEDULED",
       });
