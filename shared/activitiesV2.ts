@@ -22,7 +22,7 @@ export interface Activity {
   description: string | null;
   category: string | null;
   date: string; // YYYY-MM-DD
-  startTime: string; // HH:MM
+  startTime: string | null; // HH:MM when present
   endTime: string | null;
   timezone: string;
   location: string | null;
