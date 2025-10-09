@@ -151,6 +151,13 @@ const normalizeUserProvidedTime = (value: string): string => {
 };
 
 const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
+  const version = Number(row.version ?? 1);
+  const normalizedStartTime = normalizeTime(row.start_time);
+  const startTime: ActivityWithDetails["startTime"] =
+    version >= 2 && (row.status as string) === "proposed" && normalizedStartTime === "00:00"
+      ? null
+      : normalizedStartTime;
+
   const base: ActivityWithDetails = {
     id: String(row.id),
     tripId: String(row.trip_id),
@@ -159,7 +166,7 @@ const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
     description: (row.description as string | null) ?? null,
     category: (row.category as string | null) ?? null,
     date: toIsoDate(row.date),
-    startTime: normalizeTime(row.start_time),
+    startTime,
     endTime: row.end_time === null ? null : normalizeTime(row.end_time),
     timezone: row.timezone as string,
     location: (row.location as string | null) ?? null,
@@ -169,7 +176,7 @@ const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
     visibility: (row.visibility as string) === "private" ? "private" : "trip",
     createdAt: toIsoDateTime(row.created_at),
     updatedAt: toIsoDateTime(row.updated_at),
-    version: Number(row.version ?? 1),
+    version,
     invitees: [],
     votes: [],
     rsvps: [],
@@ -487,7 +494,9 @@ export async function createActivityV2({
   }
 
   // The database column is NOT NULL, so provide a placeholder for proposals without a start time.
-  const startTimeForInsert = startTime ?? "00:00";
+  const startTimeWasProvided = startTime !== null;
+  const startTimeForInsert = startTimeWasProvided ? startTime : "00:00";
+  const recordVersion = startTimeWasProvided ? 1 : 2;
 
   if (normalizedEndTime) {
     if (!TIME_PATTERN.test(normalizedEndTime)) {
@@ -594,11 +603,11 @@ export async function createActivityV2({
       `
       INSERT INTO activities_v2 (
         id, trip_id, creator_id, title, description, category, date, start_time, end_time, timezone,
-        location, cost_per_person, max_participants, status, visibility, idempotency_key
+        location, cost_per_person, max_participants, status, visibility, version, idempotency_key
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, 'trip', $15
+        $11, $12, $13, $14, 'trip', $15, $16
       )
     `,
       [
@@ -616,6 +625,7 @@ export async function createActivityV2({
         data.cost_per_person ?? null,
         data.max_participants ?? null,
         status,
+        recordVersion,
         data.idempotency_key,
       ],
     );
