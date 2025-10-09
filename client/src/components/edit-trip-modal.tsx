@@ -22,8 +22,73 @@ interface EditTripModalProps {
   trip: TripWithDetails;
 }
 
-const formatTripDate = (value: Date | string | number) =>
-  format(new Date(value), "yyyy-MM-dd");
+const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
+const normalisedApiBaseUrl = rawApiBaseUrl.replace(/\/+$/, "");
+const parsedApiBaseUrl = (() => {
+  if (!normalisedApiBaseUrl) {
+    return null;
+  }
+  try {
+    return new URL(normalisedApiBaseUrl);
+  } catch (error) {
+    console.warn("Invalid VITE_API_URL provided", error);
+    return null;
+  }
+})();
+const apiBaseOrigin = parsedApiBaseUrl?.origin ?? null;
+const apiBasePath = parsedApiBaseUrl
+  ? parsedApiBaseUrl.pathname.replace(/\/+$/, "") || "/"
+  : null;
+const apiBaseWithSlash = normalisedApiBaseUrl
+  ? `${normalisedApiBaseUrl}/`
+  : null;
+const ABSOLUTE_URL_PATTERN = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
+
+const stripApiBaseUrl = (value: string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  if (!ABSOLUTE_URL_PATTERN.test(value)) {
+    return value;
+  }
+
+  if (!normalisedApiBaseUrl) {
+    return value;
+  }
+
+  if (value === normalisedApiBaseUrl) {
+    return "/";
+  }
+
+  if (apiBaseWithSlash && value.startsWith(apiBaseWithSlash)) {
+    const trimmed = value.slice(normalisedApiBaseUrl.length);
+    return trimmed === "" ? "/" : trimmed;
+  }
+
+  if (apiBaseOrigin) {
+    try {
+      const parsedValue = new URL(value, parsedApiBaseUrl ?? undefined);
+
+      if (parsedValue.origin === apiBaseOrigin && apiBasePath) {
+        let relativePath = parsedValue.pathname;
+        if (
+          apiBasePath !== "/" &&
+          relativePath.toLowerCase().startsWith(apiBasePath.toLowerCase())
+        ) {
+          relativePath = relativePath.slice(apiBasePath.length) || "/";
+        }
+
+        const suffix = `${relativePath}${parsedValue.search}${parsedValue.hash}`;
+        return suffix === "" ? "/" : suffix;
+      }
+    } catch (error) {
+      console.warn("Failed to normalise cover photo URL", error, value);
+    }
+  }
+
+  return value;
+};
 
 const formSchema = insertTripCalendarSchema.extend({
   startDate: z.string().min(1, "Start date is required"),
@@ -114,17 +179,66 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
   >(null);
   const [saveState, setSaveState] = useState<"idle" | "uploading" | "saving">("idle");
 
-  const defaultValues = useMemo(() => buildFormDefaults(trip), [trip]);
-
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
-    defaultValues,
+    defaultValues: {
+      name: trip.name,
+      destination: trip.destination,
+      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
+      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverImageUrl:
+        trip.coverImageUrl ?? trip.coverPhotoUrl ?? trip.coverPhotoOriginalUrl ?? null,
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+      coverPhotoAlt: trip.coverPhotoAlt ?? null,
+      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
+      coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
+      coverPhotoOriginalUrl:
+        trip.coverPhotoOriginalUrl ??
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        null,
+      coverPhotoFocalX:
+        typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
+      coverPhotoFocalY:
+        typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
+      coverPhotoUploadSize: null,
+      coverPhotoUploadType: null,
+    },
   });
 
   // Reset form when trip changes or modal opens
   useEffect(() => {
     if (open && trip) {
-      form.reset(buildFormDefaults(trip));
+      form.reset({
+        name: trip.name,
+        destination: trip.destination,
+        startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
+        endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+        coverImageUrl:
+          trip.coverImageUrl ??
+          trip.coverPhotoUrl ??
+          trip.coverPhotoOriginalUrl ??
+          null,
+        coverPhotoUrl: trip.coverPhotoUrl ?? null,
+        coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+        coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+        coverPhotoAlt: trip.coverPhotoAlt ?? null,
+        coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
+        coverPhotoStorageKey: trip.coverPhotoStorageKey ?? null,
+        coverPhotoOriginalUrl:
+          trip.coverPhotoOriginalUrl ??
+          trip.coverImageUrl ??
+          trip.coverPhotoUrl ??
+          null,
+        coverPhotoFocalX:
+          typeof trip.coverPhotoFocalX === "number" ? trip.coverPhotoFocalX : 0.5,
+        coverPhotoFocalY:
+          typeof trip.coverPhotoFocalY === "number" ? trip.coverPhotoFocalY : 0.5,
+        coverPhotoUploadSize: null,
+        coverPhotoUploadType: null,
+      });
       // Set destination for SmartLocationSearch
       setSelectedDestination(buildDefaultDestination(trip));
     }
@@ -477,7 +591,22 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
 
   const handleCancel = () => {
     // Reset form to original values
-    form.reset(buildFormDefaults(trip));
+    form.reset({
+      name: trip.name,
+      destination: trip.destination,
+      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
+      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      coverImageUrl:
+        trip.coverImageUrl ??
+        trip.coverPhotoUrl ??
+        trip.coverPhotoOriginalUrl ??
+        null,
+      coverPhotoUrl: trip.coverPhotoUrl ?? null,
+      coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
+      coverPhotoThumbUrl: trip.coverPhotoThumbUrl ?? null,
+      coverPhotoAlt: trip.coverPhotoAlt ?? null,
+      coverPhotoAttribution: trip.coverPhotoAttribution ?? null,
+    });
     // Reset selected destination to original
     setSelectedDestination(buildDefaultDestination(trip));
     setPendingCoverPhotoFile(null);
