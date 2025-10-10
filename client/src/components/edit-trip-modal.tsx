@@ -15,6 +15,7 @@ import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
 import { format } from "date-fns";
 import { CoverPhotoSection, type CoverPhotoValue } from "@/components/cover-photo-section";
+import { createCoverPhotoBannerFile } from "@/lib/coverPhotoProcessing";
 
 interface EditTripModalProps {
   open: boolean;
@@ -286,10 +287,48 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     let uploadResult: UploadResponse | null = null;
 
     try {
+      const currentValues = form.getValues();
+      const normalizeFocal = (value: unknown) => {
+        if (typeof value === "number") {
+          return value;
+        }
+        if (typeof value === "string" && value !== "") {
+          const parsed = Number(value);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+        return null;
+      };
+
+      const normalizedFocalX = normalizeFocal(currentValues.coverPhotoFocalX);
+      const normalizedFocalY = normalizeFocal(currentValues.coverPhotoFocalY);
+
       if (pendingCoverPhotoFile) {
         setSaveState("uploading");
+
+        let fileToUpload = pendingCoverPhotoFile;
         try {
-          uploadResult = await uploadCoverPhoto(pendingCoverPhotoFile);
+          fileToUpload = await createCoverPhotoBannerFile(
+            pendingCoverPhotoFile,
+            typeof normalizedFocalX === "number" ? normalizedFocalX : 0.5,
+            typeof normalizedFocalY === "number" ? normalizedFocalY : 0.5,
+          );
+        } catch (processingError) {
+          console.error("Failed to prepare cover photo", processingError);
+          setSaveState("idle");
+          const message =
+            processingError instanceof Error && processingError.message
+              ? processingError.message
+              : "We couldn’t process that image. Try another one.";
+          toast({
+            title: "Error",
+            description: message,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        try {
+          uploadResult = await uploadCoverPhoto(fileToUpload);
         } catch (uploadError) {
           setSaveState("idle");
           const message = extractServerMessage(uploadError);
@@ -304,23 +343,11 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
 
       setSaveState("saving");
 
-      const currentValues = form.getValues();
-      const normalizeFocal = (value: unknown) => {
-        if (typeof value === "number") {
-          return value;
-        }
-        if (typeof value === "string" && value !== "") {
-          const parsed = Number(value);
-          return Number.isFinite(parsed) ? parsed : null;
-        }
-        return null;
-      };
-
       const submitData: FormData = {
         ...currentValues,
         destination: destinationValue,
-        coverPhotoFocalX: normalizeFocal(currentValues.coverPhotoFocalX),
-        coverPhotoFocalY: normalizeFocal(currentValues.coverPhotoFocalY),
+        coverPhotoFocalX: normalizedFocalX,
+        coverPhotoFocalY: normalizedFocalY,
         coverPhotoUploadSize: pendingCoverPhotoMeta?.size ?? null,
         coverPhotoUploadType: pendingCoverPhotoMeta?.type ?? null,
       };

@@ -1,3 +1,4 @@
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   useCallback,
   useEffect,
@@ -149,8 +150,11 @@ export function CoverPhotoSection({
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [isFetchingRemote, setIsFetchingRemote] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const previousPreviewRef = useRef<string | null>(null);
   const fileInputId = useId();
+  const focalOverlayRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingRef = useRef(false);
 
   const hasImage = Boolean(preview?.previewUrl || value.coverPhotoUrl);
 
@@ -239,7 +243,7 @@ export function CoverPhotoSection({
 
       if (file.size > COVER_PHOTO_MAX_FILE_SIZE_BYTES) {
         setError(
-          `We couldn’t upload that image. Try JPG/PNG/WebP under ${COVER_PHOTO_MAX_FILE_SIZE_MB}MB.`,
+          `This file is over ${COVER_PHOTO_MAX_FILE_SIZE_MB}MB. Try compressing it and upload again.`,
         );
         return;
       }
@@ -247,23 +251,24 @@ export function CoverPhotoSection({
       const objectUrl = URL.createObjectURL(file);
       try {
         const dimensions = await loadImageDimensions(objectUrl);
-        if (dimensions.width < COVER_PHOTO_MIN_WIDTH || dimensions.height < COVER_PHOTO_MIN_HEIGHT) {
-          setError(
-            `This image is too small. Choose one at least ${COVER_PHOTO_MIN_WIDTH}×${COVER_PHOTO_MIN_HEIGHT}.`,
-          );
-          URL.revokeObjectURL(objectUrl);
-          return;
-        }
-
+        const belowMinimum =
+          dimensions.width < COVER_PHOTO_MIN_WIDTH ||
+          dimensions.height < COVER_PHOTO_MIN_HEIGHT;
         const belowRecommendation =
           dimensions.width < COVER_PHOTO_RECOMMENDED_WIDTH ||
           dimensions.height < COVER_PHOTO_RECOMMENDED_HEIGHT;
 
-        setWarning(
-          belowRecommendation
-            ? `For best results, use at least ${COVER_PHOTO_RECOMMENDED_WIDTH}×${COVER_PHOTO_RECOMMENDED_HEIGHT}. This one is ${dimensions.width}×${dimensions.height}.`
-            : null,
-        );
+        if (belowMinimum) {
+          setWarning(
+            `We’ll fit your photo to the banner. Images under ${COVER_PHOTO_MIN_WIDTH}×${COVER_PHOTO_MIN_HEIGHT} may look soft on large screens. This one is ${dimensions.width}×${dimensions.height}.`,
+          );
+        } else if (belowRecommendation) {
+          setWarning(
+            `For best results, use at least ${COVER_PHOTO_RECOMMENDED_WIDTH}×${COVER_PHOTO_RECOMMENDED_HEIGHT}. This one is ${dimensions.width}×${dimensions.height}.`,
+          );
+        } else {
+          setWarning(null);
+        }
         setError(null);
         setFocusX(50);
         setFocusY(50);
@@ -381,6 +386,71 @@ export function CoverPhotoSection({
     () => `${clamp(focusX, 0, 100)}% ${clamp(focusY, 0, 100)}%`,
     [focusX, focusY],
   );
+  const focusXPercent = clamp(focusX, 0, 100);
+  const focusYPercent = clamp(focusY, 0, 100);
+
+  const updateFocalFromPointer = useCallback(
+    (event: PointerEvent | ReactPointerEvent<HTMLDivElement>) => {
+      if (!focalOverlayRef.current) {
+        return;
+      }
+      const rect = focalOverlayRef.current.getBoundingClientRect();
+      const nextX = clamp(
+        ((event.clientX - rect.left) / rect.width) * 100,
+        0,
+        100,
+      );
+      const nextY = clamp(
+        ((event.clientY - rect.top) / rect.height) * 100,
+        0,
+        100,
+      );
+      setFocusX(nextX);
+      setFocusY(nextY);
+      updateValue({
+        coverPhotoFocalX: nextX / 100,
+        coverPhotoFocalY: nextY / 100,
+      });
+    },
+    [updateValue],
+  );
+
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (isBusy || isFetchingRemote) {
+        return;
+      }
+      event.preventDefault();
+      isDraggingRef.current = true;
+      setIsDragging(true);
+      (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
+      updateFocalFromPointer(event);
+    },
+    [isBusy, isFetchingRemote, updateFocalFromPointer],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!isDraggingRef.current) {
+        return;
+      }
+      event.preventDefault();
+      updateFocalFromPointer(event);
+    },
+    [updateFocalFromPointer],
+  );
+
+  const endPointerDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerId !== undefined) {
+      try {
+        (event.currentTarget as HTMLDivElement).releasePointerCapture(event.pointerId);
+      } catch {
+        // ignore release errors
+      }
+    }
+    isDraggingRef.current = false;
+    setIsDragging(false);
+  }, []);
 
   const handleFocusXChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -420,6 +490,8 @@ export function CoverPhotoSection({
     setFocusY(50);
     setWarning(null);
     setError(null);
+    setIsDragging(false);
+    isDraggingRef.current = false;
     onPendingFileChange(null, null);
     updateValue({
       coverPhotoUrl: null,
@@ -449,7 +521,10 @@ export function CoverPhotoSection({
       <div className="space-y-2">
         <Label htmlFor={fileInputId}>Cover photo</Label>
         <p className="text-sm text-slate-500">
-          Upload a JPG, PNG, or WebP under {COVER_PHOTO_MAX_FILE_SIZE_MB}MB.
+          We’ll fit your photo to the banner. JPG, PNG, or WebP up to {COVER_PHOTO_MAX_FILE_SIZE_MB}MB.
+        </p>
+        <p className="text-xs text-slate-500">
+          Images under {COVER_PHOTO_MIN_WIDTH}×{COVER_PHOTO_MIN_HEIGHT} may look soft on large screens.
         </p>
       </div>
 
@@ -460,10 +535,33 @@ export function CoverPhotoSection({
               <img
                 src={displayedImage}
                 alt={altText || "Trip cover photo"}
-                className="h-full w-full object-cover"
+                className="h-full w-full select-none object-cover"
                 style={{ objectPosition }}
+                draggable={false}
                 loading="lazy"
               />
+              <div
+                ref={focalOverlayRef}
+                className={cn(
+                  "absolute inset-0 cursor-grab touch-none",
+                  isDragging && "cursor-grabbing",
+                  (isBusy || isFetchingRemote) && "cursor-not-allowed",
+                )}
+                aria-hidden="true"
+                title="Drag to reposition the photo"
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={endPointerDrag}
+                onPointerLeave={endPointerDrag}
+                onPointerCancel={endPointerDrag}
+              >
+                <div
+                  className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-white/70 p-1 shadow-sm"
+                  style={{ left: `${focusXPercent}%`, top: `${focusYPercent}%` }}
+                >
+                  <div className="h-2 w-2 rounded-full bg-slate-900/70" />
+                </div>
+              </div>
               {(isBusy || isFetchingRemote) && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/50 text-white">
                   <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
