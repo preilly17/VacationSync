@@ -5377,6 +5377,25 @@ function getAirlineName(code: string): string {
   return airlineMap[code] ?? code;
 }
 
+const SHARE_BLOCKING_STATUSES = new Set(["active", "booked", "scheduled", "selected"]);
+
+function canShareHotelWithGroup(hotel: HotelWithDetails): boolean {
+  if (!hotel.proposalId) {
+    return true;
+  }
+
+  const normalizedStatus = (hotel.proposalStatus ?? "").toLowerCase();
+  if (!normalizedStatus) {
+    return true;
+  }
+
+  if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+    return true;
+  }
+
+  return !SHARE_BLOCKING_STATUSES.has(normalizedStatus);
+}
+
 // Hotel Booking Component
 function HotelBooking({
   tripId,
@@ -5473,7 +5492,11 @@ function HotelBooking({
 
   const handleProposeHotel = useCallback(
     (hotel: HotelWithDetails) => {
-      if (hotel.proposalId) {
+      if (!canShareHotelWithGroup(hotel)) {
+        toast({
+          title: "Already shared with your group",
+          description: "This stay is already being tracked in the group voting list.",
+        });
         return;
       }
 
@@ -5484,7 +5507,7 @@ function HotelBooking({
         },
       });
     },
-    [proposeHotelMutation],
+    [proposeHotelMutation, toast],
   );
 
   const focusSearchPanel = useCallback(() => {
@@ -5819,6 +5842,10 @@ function HotelBooking({
                 const statusLabel = hotel.status
                   ? hotel.status.charAt(0).toUpperCase() + hotel.status.slice(1)
                   : null;
+                const canShareWithGroup = canShareHotelWithGroup(hotel);
+                const proposalStatusLabel = hotel.proposalStatus
+                  ? hotel.proposalStatus.charAt(0).toUpperCase() + hotel.proposalStatus.slice(1)
+                  : null;
 
                 return (
                   <Card key={hotel.id}>
@@ -5839,6 +5866,14 @@ function HotelBooking({
                               {statusLabel}
                             </Badge>
                           ) : null}
+                          {proposalStatusLabel ? (
+                            <Badge
+                              variant={canShareWithGroup ? "outline" : "secondary"}
+                              className="capitalize"
+                            >
+                              Group: {proposalStatusLabel}
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -5850,7 +5885,7 @@ function HotelBooking({
                           size="sm"
                           onClick={() => handleProposeHotel(hotel)}
                           disabled={
-                            Boolean(hotel.proposalId) ||
+                            !canShareWithGroup ||
                             (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
                           }
                         >
@@ -5859,10 +5894,10 @@ function HotelBooking({
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               Proposing...
                             </>
-                          ) : hotel.proposalId ? (
-                            "Proposed"
+                          ) : canShareWithGroup ? (
+                            hotel.proposalId ? "Send to Group" : "Propose to Group"
                           ) : (
-                            "Propose to Group"
+                            "Shared with Group"
                           )}
                         </Button>
                         <AlertDialog>
