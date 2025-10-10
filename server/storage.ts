@@ -1,4 +1,5 @@
 import { pool, query } from "./db";
+import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoUpload";
 import {
   computeSplits,
   minorUnitsToAmount,
@@ -1059,34 +1060,44 @@ const selectUserColumns = (alias: string, prefix: string) => `
         ${alias}.created_at AS ${prefix}created_at,
         ${alias}.updated_at AS ${prefix}updated_at`;
 
-const mapTrip = (row: TripRow): TripCalendar => ({
-  id: row.id,
-  name: row.name,
-  destination: row.destination,
-  startDate: row.start_date,
-  endDate: row.end_date,
-  shareCode: row.share_code,
-  createdBy: row.created_by,
-  createdAt: row.created_at,
-  geonameId: toNumberOrNull(row.geoname_id),
-  cityName: row.city_name,
-  countryName: row.country_name,
-  latitude: toNumberOrNull(row.latitude),
-  longitude: toNumberOrNull(row.longitude),
-  population: toNumberOrNull(row.population),
-  coverImageUrl: row.cover_photo_url,
-  coverPhotoUrl: row.cover_photo_url,
-  coverPhotoCardUrl: row.cover_photo_card_url,
-  coverPhotoThumbUrl: row.cover_photo_thumb_url,
-  coverPhotoAlt: row.cover_photo_alt,
-  coverPhotoAttribution: row.cover_photo_attribution,
-  coverPhotoStorageKey: row.cover_photo_storage_key,
-  coverPhotoOriginalUrl: row.cover_photo_original_url,
-  coverPhotoFocalX: safeNumberOrNull(row.cover_photo_focal_x),
-  coverPhotoFocalY: safeNumberOrNull(row.cover_photo_focal_y),
-  coverPhotoUploadSize: null,
-  coverPhotoUploadType: null,
-});
+const mapTrip = (row: TripRow): TripCalendar => {
+  const fallbackCoverPhotoUrl =
+    row.cover_photo_url ??
+    buildCoverPhotoPublicUrlFromStorageKey(row.cover_photo_storage_key) ??
+    null;
+
+  const coverPhotoOriginalUrl =
+    row.cover_photo_original_url ?? fallbackCoverPhotoUrl ?? null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    destination: row.destination,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    shareCode: row.share_code,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    geonameId: toNumberOrNull(row.geoname_id),
+    cityName: row.city_name,
+    countryName: row.country_name,
+    latitude: toNumberOrNull(row.latitude),
+    longitude: toNumberOrNull(row.longitude),
+    population: toNumberOrNull(row.population),
+    coverImageUrl: fallbackCoverPhotoUrl,
+    coverPhotoUrl: fallbackCoverPhotoUrl,
+    coverPhotoCardUrl: row.cover_photo_card_url,
+    coverPhotoThumbUrl: row.cover_photo_thumb_url,
+    coverPhotoAlt: row.cover_photo_alt,
+    coverPhotoAttribution: row.cover_photo_attribution,
+    coverPhotoStorageKey: row.cover_photo_storage_key,
+    coverPhotoOriginalUrl,
+    coverPhotoFocalX: safeNumberOrNull(row.cover_photo_focal_x),
+    coverPhotoFocalY: safeNumberOrNull(row.cover_photo_focal_y),
+    coverPhotoUploadSize: null,
+    coverPhotoUploadType: null,
+  };
+};
 
 const mapTripMember = (row: TripMemberRow): TripMember => ({
   id: row.id,

@@ -18,7 +18,7 @@ type RegisterOptions = {
 };
 
 const UPLOAD_ROOT = path.resolve(process.cwd(), "cache", "uploads");
-const COVER_PHOTO_SUBDIRECTORY = "cover-photos";
+export const COVER_PHOTO_SUBDIRECTORY = "cover-photos";
 const COVER_PHOTO_DIRECTORY = path.join(UPLOAD_ROOT, COVER_PHOTO_SUBDIRECTORY);
 const PUBLIC_PREFIX = `/${path.posix.join("uploads", COVER_PHOTO_SUBDIRECTORY)}`;
 
@@ -57,7 +57,7 @@ const toStorageKey = (filename: string) =>
 const toPublicUrl = (filename: string) =>
   `${PUBLIC_PREFIX}/${encodeURIComponent(filename)}`;
 
-const sanitizeStorageKey = (key: string) => {
+export const sanitizeStorageKey = (key: string) => {
   const normalized = key.replace(/\\+/g, "/");
   if (!normalized.startsWith(`${COVER_PHOTO_SUBDIRECTORY}/`)) {
     return null;
@@ -67,6 +67,22 @@ const sanitizeStorageKey = (key: string) => {
     return null;
   }
   return parts.join("/");
+};
+
+export const buildCoverPhotoPublicUrlFromStorageKey = (
+  storageKey: string | null | undefined,
+): string | null => {
+  if (!storageKey) {
+    return null;
+  }
+
+  const sanitized = sanitizeStorageKey(storageKey);
+  if (!sanitized) {
+    return null;
+  }
+
+  const segments = sanitized.split("/").map((segment) => encodeURIComponent(segment));
+  return `/${["uploads", ...segments].join("/")}`;
 };
 
 const coverPhotoRawMiddleware = express.raw({
