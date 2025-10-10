@@ -95,18 +95,21 @@ const buildOutputFileName = (inputName: string, extension: string) => {
   return `${normalized || "cover-photo"}-banner${extension}`;
 };
 
+type CoverPhotoBannerResult = {
+  file: File;
+  normalizedFocalX: number;
+  normalizedFocalY: number;
+};
+
 export const createCoverPhotoBannerFile = async (
   file: File,
   focalX: number,
   focalY: number,
-): Promise<File> => {
+): Promise<CoverPhotoBannerResult> => {
   const image = await loadImageFromFile(file);
-  const cropBox = computeCropBox(
-    image.naturalWidth || image.width,
-    image.naturalHeight || image.height,
-    focalX,
-    focalY,
-  );
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const cropBox = computeCropBox(sourceWidth, sourceHeight, focalX, focalY);
 
   const targetWidth = Math.round(resolveTargetWidth(cropBox.width));
   const targetHeight = Math.max(1, Math.round(targetWidth / BANNER_ASPECT_RATIO));
@@ -144,5 +147,34 @@ export const createCoverPhotoBannerFile = async (
   const extension = blob.type === "image/jpeg" ? ".jpg" : ".webp";
   const outputName = buildOutputFileName(file.name, extension);
 
-  return new File([blob], outputName, { type: blob.type });
+  const safeCropWidth = Math.max(1, cropBox.width);
+  const safeCropHeight = Math.max(1, cropBox.height);
+  const normalizedSourceFocalX = clamp(focalX, 0, 1);
+  const normalizedSourceFocalY = clamp(focalY, 0, 1);
+  const focalPixelX = normalizedSourceFocalX * sourceWidth;
+  const focalPixelY = normalizedSourceFocalY * sourceHeight;
+  const boundedFocalPixelX = clamp(
+    focalPixelX,
+    cropBox.left,
+    cropBox.left + safeCropWidth,
+  );
+  const boundedFocalPixelY = clamp(
+    focalPixelY,
+    cropBox.top,
+    cropBox.top + safeCropHeight,
+  );
+  const normalizedFocalX =
+    safeCropWidth > 0
+      ? (boundedFocalPixelX - cropBox.left) / safeCropWidth
+      : 0.5;
+  const normalizedFocalY =
+    safeCropHeight > 0
+      ? (boundedFocalPixelY - cropBox.top) / safeCropHeight
+      : 0.5;
+
+  return {
+    file: new File([blob], outputName, { type: blob.type }),
+    normalizedFocalX,
+    normalizedFocalY,
+  };
 };
