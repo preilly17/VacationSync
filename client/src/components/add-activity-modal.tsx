@@ -583,6 +583,20 @@ export function AddActivityModal({
     activitiesVersion,
   });
 
+  const updateAttendeeSelection = useCallback(
+    (nextSelection: string[]) => {
+      form.setValue("attendeeIds", nextSelection, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+
+      if (nextSelection.length > 0) {
+        form.clearErrors("attendeeIds");
+      }
+    },
+    [form],
+  );
+
   const handleToggleAttendee = useCallback(
     (userId: string, checked: boolean | "indeterminate") => {
       const normalized = String(userId);
@@ -600,35 +614,23 @@ export function AddActivityModal({
         current.delete(normalized);
       }
 
-      form.setValue("attendeeIds", Array.from(current), {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
+      updateAttendeeSelection(Array.from(current));
     },
-    [creatorMemberId, form, mode],
+    [creatorMemberId, form, mode, updateAttendeeSelection],
   );
 
   const handleSelectAll = useCallback(() => {
-    form.setValue("attendeeIds", defaultAttendeeIds, {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  }, [defaultAttendeeIds, form]);
+    updateAttendeeSelection(defaultAttendeeIds);
+  }, [defaultAttendeeIds, updateAttendeeSelection]);
 
   const handleClearAttendees = useCallback(() => {
     if (mode === "SCHEDULED" && creatorMemberId) {
-      form.setValue("attendeeIds", [creatorMemberId], {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
+      updateAttendeeSelection([creatorMemberId]);
       return;
     }
 
-    form.setValue("attendeeIds", [], {
-      shouldDirty: true,
-      shouldValidate: true,
-    });
-  }, [creatorMemberId, form, mode]);
+    updateAttendeeSelection([]);
+  }, [creatorMemberId, mode, updateAttendeeSelection]);
 
   const submitForm = form.handleSubmit((values) => {
     const normalizedStart =
