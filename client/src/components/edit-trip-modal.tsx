@@ -299,19 +299,22 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
         return null;
       };
 
-      const normalizedFocalX = normalizeFocal(currentValues.coverPhotoFocalX);
-      const normalizedFocalY = normalizeFocal(currentValues.coverPhotoFocalY);
+      let normalizedFocalX = normalizeFocal(currentValues.coverPhotoFocalX);
+      let normalizedFocalY = normalizeFocal(currentValues.coverPhotoFocalY);
 
       if (pendingCoverPhotoFile) {
         setSaveState("uploading");
 
         let fileToUpload = pendingCoverPhotoFile;
         try {
-          fileToUpload = await createCoverPhotoBannerFile(
+          const bannerResult = await createCoverPhotoBannerFile(
             pendingCoverPhotoFile,
             typeof normalizedFocalX === "number" ? normalizedFocalX : 0.5,
             typeof normalizedFocalY === "number" ? normalizedFocalY : 0.5,
           );
+          fileToUpload = bannerResult.file;
+          normalizedFocalX = bannerResult.normalizedFocalX;
+          normalizedFocalY = bannerResult.normalizedFocalY;
         } catch (processingError) {
           console.error("Failed to prepare cover photo", processingError);
           setSaveState("idle");
