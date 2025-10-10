@@ -44,6 +44,11 @@ interface OptimisticContext {
   previousCalendar?: ActivityWithDetails[];
   optimisticId: number;
   submissionType: ActivityType;
+  affected?: {
+    scheduled: boolean;
+    proposals: boolean;
+    calendar: boolean;
+  };
 }
 
 interface MutationResult {
@@ -115,6 +120,11 @@ export function useCreateActivity({
         return {
           optimisticId: variables.__meta.optimisticId,
           submissionType: variables.type,
+          affected: {
+            scheduled: false,
+            proposals: false,
+            calendar: false,
+          },
         } satisfies OptimisticContext;
       }
 
@@ -136,6 +146,10 @@ export function useCreateActivity({
       const previousProposals = queryClient.getQueryData<ActivityWithDetails[]>(proposalActivitiesQueryKey);
       const previousCalendar = queryClient.getQueryData<ActivityWithDetails[]>(calendarActivitiesQueryKey);
 
+      const affectsScheduled = variables.type === "SCHEDULED";
+      const affectsProposals = variables.type === "PROPOSE";
+      const affectsCalendar = affectsScheduled;
+
       const applyUpdate = (queryKey: QueryKey, shouldAdd: boolean) => {
         if (!shouldAdd) return;
         queryClient.setQueryData<ActivityWithDetails[]>(queryKey, (existing = []) => {
@@ -144,9 +158,9 @@ export function useCreateActivity({
         });
       };
 
-      applyUpdate(scheduledActivitiesQueryKey, true);
-      applyUpdate(calendarActivitiesQueryKey, true);
-      applyUpdate(proposalActivitiesQueryKey, variables.type === "PROPOSE");
+      applyUpdate(scheduledActivitiesQueryKey, affectsScheduled);
+      applyUpdate(calendarActivitiesQueryKey, affectsCalendar);
+      applyUpdate(proposalActivitiesQueryKey, affectsProposals);
 
       trackEvent("activity_create_submit", {
         trip_id: tripId,
@@ -159,6 +173,11 @@ export function useCreateActivity({
         previousCalendar,
         optimisticId: variables.__meta.optimisticId,
         submissionType: variables.type,
+        affected: {
+          scheduled: affectsScheduled,
+          proposals: affectsProposals,
+          calendar: affectsCalendar,
+        },
       } satisfies OptimisticContext;
     },
     onSuccess: (result, variables, context) => {
@@ -170,6 +189,10 @@ export function useCreateActivity({
         return;
       }
 
+      const affectsScheduled = context.affected?.scheduled ?? context.submissionType === "SCHEDULED";
+      const affectsProposals = context.affected?.proposals ?? context.submissionType === "PROPOSE";
+      const affectsCalendar = context.affected?.calendar ?? context.submissionType === "SCHEDULED";
+
       const replaceOptimisticActivity = (queryKey: QueryKey, shouldReplace: boolean) => {
         if (!shouldReplace) return;
         queryClient.setQueryData<ActivityWithDetails[]>(queryKey, (existing = []) => {
@@ -178,15 +201,19 @@ export function useCreateActivity({
         });
       };
 
-      replaceOptimisticActivity(scheduledActivitiesQueryKey, true);
-      replaceOptimisticActivity(calendarActivitiesQueryKey, true);
-      replaceOptimisticActivity(proposalActivitiesQueryKey, variables.type === "PROPOSE");
+      replaceOptimisticActivity(scheduledActivitiesQueryKey, affectsScheduled);
+      replaceOptimisticActivity(calendarActivitiesQueryKey, affectsCalendar);
+      replaceOptimisticActivity(proposalActivitiesQueryKey, affectsProposals);
 
-      queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
-      if (variables.type === "PROPOSE") {
+      if (affectsScheduled) {
+        queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
+      }
+      if (affectsProposals) {
         queryClient.invalidateQueries({ queryKey: proposalActivitiesQueryKey });
       }
-      queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
+      if (affectsCalendar) {
+        queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
+      }
 
       trackEvent("activity_create_success", {
         trip_id: tripId,
@@ -209,21 +236,29 @@ export function useCreateActivity({
         return;
       }
 
-      if (context?.previousScheduled) {
+      const affectsScheduled = context?.affected?.scheduled ?? context?.submissionType === "SCHEDULED";
+      const affectsProposals = context?.affected?.proposals ?? context?.submissionType === "PROPOSE";
+      const affectsCalendar = context?.affected?.calendar ?? context?.submissionType === "SCHEDULED";
+
+      if (affectsScheduled && context?.previousScheduled) {
         queryClient.setQueryData(scheduledActivitiesQueryKey, context.previousScheduled);
       }
-      if (context?.previousProposals) {
+      if (affectsProposals && context?.previousProposals) {
         queryClient.setQueryData(proposalActivitiesQueryKey, context.previousProposals);
       }
-      if (context?.previousCalendar) {
+      if (affectsCalendar && context?.previousCalendar) {
         queryClient.setQueryData(calendarActivitiesQueryKey, context.previousCalendar);
       }
 
-      queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
-      if (variables.type === "PROPOSE") {
+      if (affectsScheduled) {
+        queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
+      }
+      if (affectsProposals) {
         queryClient.invalidateQueries({ queryKey: proposalActivitiesQueryKey });
       }
-      queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
+      if (affectsCalendar) {
+        queryClient.invalidateQueries({ queryKey: calendarActivitiesQueryKey });
+      }
 
       trackEvent("activity_create_failure", {
         trip_id: tripId,
