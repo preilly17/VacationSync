@@ -376,6 +376,8 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const hasManualActivities = sortedManualActivities.length > 0;
   const canBuildExternalLink = Boolean((locationSearch.trim() || trip?.destination) && trip?.startDate);
 
+  const tripIdQueryKey = useMemo(() => String(tripId), [tripId]);
+
   const createManualActivityMutation = useMutation({
     mutationFn: async ({
       payload,
@@ -407,6 +409,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
             : "We added your manual activity to the trip.",
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripIdQueryKey, "activities"] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
       closeManualForm();
     },
