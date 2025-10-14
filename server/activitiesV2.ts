@@ -31,7 +31,7 @@ const ensureActivitiesTablePromise = shouldEnsureTables
         description TEXT NULL,
         category TEXT NULL,
         date DATE NOT NULL,
-        start_time TIME NOT NULL,
+        start_time TIME NULL,
         end_time TIME NULL,
         timezone TEXT NOT NULL,
         location TEXT NULL,
@@ -76,6 +76,11 @@ const ensureActivitiesTablePromise = shouldEnsureTables
         responded_at TIMESTAMPTZ NULL,
         PRIMARY KEY (activity_id, user_id)
       )
+    `);
+
+    await query(`
+      ALTER TABLE activities_v2
+      ALTER COLUMN start_time DROP NOT NULL
     `);
   })()
   : Promise.resolve();
