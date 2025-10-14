@@ -21,6 +21,7 @@ import {
   type ActivityValidationError,
 } from "@/lib/activities/createActivity";
 import { type ActivityType, type ActivityWithDetails, type TripMember, type User } from "@shared/schema";
+import { resolveTripTimezone, formatDateInTimezone } from "@/lib/timezone";
 import {
   ACTIVITY_CATEGORY_MESSAGE,
   ACTIVITY_CATEGORY_VALUES,
@@ -214,12 +215,31 @@ const createFormSchema = (options: FormSchemaOptions = {}) => {
     }
 
     const trimmedDate = typeof data.startDate === "string" ? data.startDate.trim() : data.startDate;
-    if (!dateInputPattern.test(trimmedDate ?? "")) {
+    if (!trimmedDate || !dateInputPattern.test(trimmedDate)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["startDate"],
         message: "Provide a valid date.",
       });
+      return;
+    }
+
+    if (startDateMin && trimmedDate < startDateMin) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startDate"],
+        message: buildDateRangeMessage(startDateMin, startDateMax),
+      });
+      return;
+    }
+
+    if (startDateMax && trimmedDate > startDateMax) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startDate"],
+        message: buildDateRangeMessage(startDateMin, startDateMax),
+      });
+      return;
     }
   });
 };
@@ -258,6 +278,7 @@ interface AddActivityModalProps {
   prefill?: ActivityComposerPrefill | null;
   tripStartDate?: string | Date | null;
   tripEndDate?: string | Date | null;
+  tripTimezone?: string | null;
 }
 
 const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: boolean) => {
@@ -272,26 +293,118 @@ const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: bo
   return isCurrentUser ? `${base} (You)` : base;
 };
 
-const formatDateValue = (value: string | Date | null | undefined) => {
-  if (value instanceof Date) {
-    if (!isValid(value)) {
-      return "";
-    }
-    return format(value, "yyyy-MM-dd");
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  return "";
-};
-
 const sanitizeOptional = (value: string | null | undefined) => {
   if (typeof value !== "string") {
     return "";
   }
   return value ?? "";
+};
+
+const toDateOnlyString = (value: string | Date | null | undefined, timeZone: string): string => {
+  if (!value) {
+    return "";
+  }
+
+  if (value instanceof Date) {
+    if (!isValid(value)) {
+      return "";
+    }
+    return formatDateInTimezone(value, timeZone);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    if (dateInputPattern.test(trimmed)) {
+      return trimmed;
+    }
+
+    try {
+      const parsedIso = parseISO(trimmed);
+      if (isValid(parsedIso)) {
+        return formatDateInTimezone(parsedIso, timeZone);
+      }
+    } catch (error) {
+      // Ignore parse errors and try a fallback below.
+    }
+
+    const fallback = new Date(trimmed);
+    if (!Number.isNaN(fallback.getTime())) {
+      return formatDateInTimezone(fallback, timeZone);
+    }
+  }
+
+  return "";
+};
+
+const dateOnlyStringToDate = (value: string): Date | null => {
+  if (!dateInputPattern.test(value)) {
+    return null;
+  }
+
+  const [yearString, monthString, dayString] = value.split("-");
+  const year = Number.parseInt(yearString, 10);
+  const month = Number.parseInt(monthString, 10);
+  const day = Number.parseInt(dayString, 10);
+
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return null;
+  }
+
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
+const clampDateWithinRange = (value: string, min?: string | null, max?: string | null): string => {
+  if (!value) {
+    return value;
+  }
+
+  if (min && value < min) {
+    return min;
+  }
+
+  if (max && value > max) {
+    if (!min) {
+      return max;
+    }
+
+    const candidateDate = dateOnlyStringToDate(value);
+    const minDate = dateOnlyStringToDate(min);
+    const maxDate = dateOnlyStringToDate(max);
+
+    if (candidateDate && minDate && maxDate) {
+      const diffToMin = Math.abs(candidateDate.getTime() - minDate.getTime());
+      const diffToMax = Math.abs(candidateDate.getTime() - maxDate.getTime());
+      return diffToMin <= diffToMax ? min : max;
+    }
+
+    return max;
+  }
+
+  return value;
+};
+
+const isDateWithinRange = (value: string, min?: string | null, max?: string | null): boolean => {
+  if (!value || !dateInputPattern.test(value)) {
+    return false;
+  }
+
+  if (min && value < min) {
+    return false;
+  }
+
+  if (max && value > max) {
+    return false;
+  }
+
+  return true;
+};
+
+const getTodayInTimezone = (timeZone: string): string => {
+  return formatDateInTimezone(new Date(), timeZone);
 };
 
 export function AddActivityModal({
@@ -306,6 +419,7 @@ export function AddActivityModal({
   prefill,
   tripStartDate,
   tripEndDate,
+  tripTimezone,
 }: AddActivityModalProps) {
   const { toast } = useToast();
 
@@ -316,8 +430,18 @@ export function AddActivityModal({
     () => ["/api/trips", tripIdString, "activities"],
     [tripIdString],
   );
-  const startDateMin = useMemo(() => formatDateValue(tripStartDate), [tripStartDate]);
-  const startDateMax = useMemo(() => formatDateValue(tripEndDate), [tripEndDate]);
+  const resolvedTimezone = useMemo(
+    () => resolveTripTimezone({ tripTimezone }),
+    [tripTimezone],
+  );
+  const startDateMin = useMemo(
+    () => toDateOnlyString(tripStartDate, resolvedTimezone),
+    [tripStartDate, resolvedTimezone],
+  );
+  const startDateMax = useMemo(
+    () => toDateOnlyString(tripEndDate, resolvedTimezone),
+    [tripEndDate, resolvedTimezone],
+  );
   const dateRangeHint = useMemo(
     () => buildDateRangeHint(startDateMin, startDateMax),
     [startDateMin, startDateMax],
@@ -358,28 +482,34 @@ export function AddActivityModal({
     [memberOptions],
   );
 
-  const prefillStartDateValue = useMemo(() => {
-    if (!prefill?.startDate) {
-      return "";
+  const determineInitialStartDate = useCallback(() => {
+    const prefillCandidate = toDateOnlyString(prefill?.startDate, resolvedTimezone);
+    const selectedCandidate = toDateOnlyString(selectedDate, resolvedTimezone);
+    const today = getTodayInTimezone(resolvedTimezone);
+
+    let candidate = (prefillCandidate || selectedCandidate || "").trim();
+
+    if (!candidate) {
+      if (isDateWithinRange(today, startDateMin || null, startDateMax || null)) {
+        candidate = today;
+      } else if (startDateMin) {
+        candidate = startDateMin;
+      } else if (startDateMax) {
+        candidate = startDateMax;
+      } else {
+        candidate = today;
+      }
     }
 
-    return formatDateValue(prefill.startDate);
-  }, [prefill?.startDate]);
-
-  const selectedDateValue = useMemo(() => {
-    if (!selectedDate) {
-      return "";
-    }
-
-    return formatDateValue(selectedDate);
-  }, [selectedDate]);
+    return clampDateWithinRange(candidate, startDateMin || null, startDateMax || null);
+  }, [prefill?.startDate, resolvedTimezone, selectedDate, startDateMin, startDateMax]);
 
   const computeDefaults = useCallback(() => {
     const attendeePrefill = Array.isArray(prefill?.attendeeIds)
       ? normalizeAttendeeIds(prefill?.attendeeIds).value
       : undefined;
 
-    const normalizedStartDate = (prefillStartDateValue || selectedDateValue || "").trim();
+    const normalizedStartDate = determineInitialStartDate();
 
     const values: FormValues = {
       name: prefill?.name ?? "",
@@ -405,9 +535,8 @@ export function AddActivityModal({
   }, [
     defaultAttendeeIds,
     defaultMode,
+    determineInitialStartDate,
     prefill,
-    prefillStartDateValue,
-    selectedDateValue,
   ]);
 
   const { values: defaultValues, mode: initialMode } = computeDefaults();
@@ -447,10 +576,8 @@ export function AddActivityModal({
       return;
     }
 
-    const candidate = (prefillStartDateValue || selectedDateValue || "").trim();
-    if (!candidate) {
-      return;
-    }
+    const candidate = determineInitialStartDate();
+    const trimmedCandidate = typeof candidate === "string" ? candidate.trim() : "";
 
     const fieldState = form.getFieldState("startDate");
     if (fieldState.isDirty) {
@@ -458,15 +585,15 @@ export function AddActivityModal({
     }
 
     const currentValue = (form.getValues("startDate") ?? "").trim();
-    if (currentValue === candidate) {
+    if (currentValue === trimmedCandidate) {
       return;
     }
 
-    form.setValue("startDate", candidate, {
+    form.setValue("startDate", trimmedCandidate, {
       shouldDirty: false,
       shouldValidate: true,
     });
-  }, [open, prefillStartDateValue, selectedDateValue, form]);
+  }, [open, determineInitialStartDate, form]);
 
   const watchedAttendeeIds = form.watch("attendeeIds");
   const selectedAttendeeIds = useMemo(() => {
@@ -505,15 +632,7 @@ export function AddActivityModal({
       return false;
     }
 
-    if (startDateMin && candidate < startDateMin) {
-      return true;
-    }
-
-    if (startDateMax && candidate > startDateMax) {
-      return true;
-    }
-
-    return false;
+    return !isDateWithinRange(candidate, startDateMin || null, startDateMax || null);
   }, [watchedStartDate, startDateMin, startDateMax]);
 
   const handleValidationError = useCallback(
@@ -762,6 +881,8 @@ export function AddActivityModal({
               <Input
                 id="startDate"
                 type="date"
+                min={startDateMin || undefined}
+                max={startDateMax || undefined}
                 {...form.register("startDate")}
               />
               {dateRangeHint && (
