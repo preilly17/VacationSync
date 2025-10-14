@@ -121,7 +121,10 @@ const toIsoDateTime = (value: unknown): string => {
   return date.toISOString();
 };
 
-const normalizeTime = (value: unknown): string => {
+const normalizeTime = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
   if (value instanceof Date) {
     return value.toISOString().slice(11, 16);
   }
