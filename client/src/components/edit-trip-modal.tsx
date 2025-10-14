@@ -444,14 +444,29 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     return null;
   };
 
+  const watchedCoverPhotoUrl = form.watch("coverPhotoUrl");
+  const watchedCoverImageUrl = form.watch("coverImageUrl");
+  const watchedCoverPhotoOriginalUrl = form.watch("coverPhotoOriginalUrl");
+
+  const resolvedCoverPhotoUrl =
+    watchedCoverPhotoUrl ??
+    watchedCoverPhotoOriginalUrl ??
+    watchedCoverImageUrl ??
+    null;
+  const resolvedCoverPhotoOriginalUrl =
+    watchedCoverPhotoOriginalUrl ??
+    watchedCoverPhotoUrl ??
+    watchedCoverImageUrl ??
+    null;
+
   const coverPhotoValue: CoverPhotoValue = {
-    coverPhotoUrl: form.watch("coverPhotoUrl") ?? null,
+    coverPhotoUrl: resolvedCoverPhotoUrl,
     coverPhotoCardUrl: form.watch("coverPhotoCardUrl") ?? null,
     coverPhotoThumbUrl: form.watch("coverPhotoThumbUrl") ?? null,
     coverPhotoAlt: form.watch("coverPhotoAlt") ?? null,
     coverPhotoAttribution: form.watch("coverPhotoAttribution") ?? null,
     coverPhotoStorageKey: form.watch("coverPhotoStorageKey") ?? null,
-    coverPhotoOriginalUrl: form.watch("coverPhotoOriginalUrl") ?? null,
+    coverPhotoOriginalUrl: resolvedCoverPhotoOriginalUrl,
     coverPhotoFocalX: toNumericOrNull(form.watch("coverPhotoFocalX")),
     coverPhotoFocalY: toNumericOrNull(form.watch("coverPhotoFocalY")),
   };
