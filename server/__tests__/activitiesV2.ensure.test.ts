@@ -31,6 +31,11 @@ describe("activities v2 setup", () => {
       ),
     ).toBe(true);
     expect(
+      queryMock.mock.calls.some(([sql]) =>
+        typeof sql === "string" && sql.includes("ALTER TABLE activities_v2")
+      ),
+    ).toBe(true);
+    expect(
       queryMock.mock.calls.every(([sql]) => typeof sql !== "string" || !sql.includes("CREATE EXTENSION")),
     ).toBe(true);
   });
