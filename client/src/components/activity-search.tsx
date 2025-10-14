@@ -165,6 +165,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   );
   const defaultMemberIds = useMemo(() => memberOptions.map((member) => member.id), [memberOptions]);
   const [manualAttendeeIds, setManualAttendeeIds] = useState<string[]>(defaultMemberIds);
+  const previousDefaultMemberIdsRef = useRef(defaultMemberIds);
   const [manualMode, setManualMode] = useState<ActivityType>("SCHEDULED");
   const locationInputRef = useRef<HTMLInputElement | null>(null);
   const manualSignalRef = useRef(manualFormOpenSignal ?? 0);
@@ -188,17 +189,25 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   };
 
   useEffect(() => {
+    const previousDefaultMemberIds = previousDefaultMemberIdsRef.current;
+    previousDefaultMemberIdsRef.current = defaultMemberIds;
+
     setManualAttendeeIds((prev) => {
       if (defaultMemberIds.length === 0) {
         return [];
       }
 
-      const valid = prev.filter((id) => defaultMemberIds.includes(id));
-      if (valid.length === prev.length) {
-        return prev;
+      const validSelection = prev.filter((id) => defaultMemberIds.includes(id));
+      if (validSelection.length !== prev.length) {
+        return validSelection.length > 0 ? validSelection : defaultMemberIds;
       }
 
-      return valid;
+      const defaultsBecameAvailable = previousDefaultMemberIds.length === 0 && defaultMemberIds.length > 0;
+      if (defaultsBecameAvailable && prev.length === 0) {
+        return defaultMemberIds;
+      }
+
+      return prev;
     });
   }, [defaultMemberIds]);
 
