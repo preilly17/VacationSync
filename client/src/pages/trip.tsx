@@ -5304,7 +5304,10 @@ function getAirlineName(code: string): string {
   return airlineMap[code] ?? code;
 }
 
-const SHARE_BLOCKING_STATUSES = new Set(["active", "booked", "scheduled", "selected"]);
+// "Active" proposals are still open for voting. Treat them as shareable so
+// manually saved hotels that sync as active proposals can still be resent to
+// the group for voting if needed.
+const SHARE_BLOCKING_STATUSES = new Set(["booked", "scheduled", "selected"]);
 
 function canShareHotelWithGroup(hotel: HotelWithDetails): boolean {
   if (!hotel.proposalId) {
