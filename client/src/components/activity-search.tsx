@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, type FormEvent } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,13 +22,17 @@ import {
   Loader2,
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
-import { apiRequest } from "@/lib/queryClient";
-import { buildActivitySubmission } from "@/lib/activitySubmission";
 import { useToast } from "@/hooks/use-toast";
+import { useNewActivityCreate } from "@/hooks/use-new-activity-create";
+import {
+  useCreateActivity,
+  type ActivityCreateFormValues,
+  type ActivityValidationError,
+} from "@/lib/activities/createActivity";
 import { formatCurrency } from "@/lib/utils";
 import { markExternalRedirect, ACTIVITY_REDIRECT_STORAGE_KEY } from "@/lib/externalRedirects";
 import { format } from "date-fns";
-import type { ActivityWithDetails, ActivityType, TripWithDetails, User } from "@shared/schema";
+import type { ActivityWithDetails, ActivityType, TripMember, TripWithDetails, User } from "@shared/schema";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
 
@@ -60,6 +64,14 @@ const MANUAL_STATUS_LABELS: Record<ManualStatusValue, string> = MANUAL_STATUS_OP
 );
 
 const MANUAL_CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "CAD", "AUD", "JPY"] as const;
+
+type ManualFormErrors = {
+  name?: string;
+  location?: string;
+  dateTime?: string;
+  attendeeIds?: string;
+  cost?: string;
+};
 
 const parseManualActivityDescription = (description?: string | null) => {
   const fallbackStatus: ManualStatusValue = "planned";
@@ -125,7 +137,6 @@ interface ActivitySearchProps {
 }
 
 export default function ActivitySearch({ tripId, trip, user: _user, manualFormOpenSignal }: ActivitySearchProps) {
-  const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -165,6 +176,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   );
   const defaultMemberIds = useMemo(() => memberOptions.map((member) => member.id), [memberOptions]);
   const [manualAttendeeIds, setManualAttendeeIds] = useState<string[]>(defaultMemberIds);
+  const [manualFieldErrors, setManualFieldErrors] = useState<ManualFormErrors>({});
   const previousDefaultMemberIdsRef = useRef(defaultMemberIds);
   const [manualMode, setManualMode] = useState<ActivityType>("SCHEDULED");
   const locationInputRef = useRef<HTMLInputElement | null>(null);
@@ -222,6 +234,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     });
     setManualAttendeeIds(defaultMemberIds);
     setManualMode("SCHEDULED");
+    setManualFieldErrors({});
   }, [defaultMemberIds, trip?.destination, trip?.startDate]);
 
   const openManualForm = useCallback(() => {
@@ -386,53 +399,63 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const canBuildExternalLink = Boolean((locationSearch.trim() || trip?.destination) && trip?.startDate);
 
   const tripIdQueryKey = useMemo(() => String(tripId), [tripId]);
+  const currentUser = _user ?? null;
+  const currentUserId = currentUser?.id ?? undefined;
+  const tripMembers = useMemo(
+    () => (trip?.members ?? []) as (TripMember & { user: User })[],
+    [trip?.members],
+  );
+  const isNewActivityCreationEnabled = useNewActivityCreate();
+  const activitiesVersion: "legacy" | "v2" = isNewActivityCreationEnabled ? "v2" : "legacy";
 
-  const createManualActivityMutation = useMutation({
-    mutationFn: async ({
-      payload,
-      submissionType,
-    }: {
-      payload: ReturnType<typeof buildActivitySubmission>["payload"];
-      submissionType: ActivityType;
-    }) => {
-      const endpoint =
-        submissionType === "PROPOSE"
-          ? `/api/trips/${tripId}/proposals/activities`
-          : `/api/trips/${tripId}/activities`;
+  const handleManualValidationError = useCallback(
+    (error: ActivityValidationError) => {
+      const next: ManualFormErrors = {};
+      for (const fieldError of error.fieldErrors) {
+        if (fieldError.field === "name") {
+          next.name = fieldError.message;
+        } else if (fieldError.field === "location") {
+          next.location = fieldError.message;
+        } else if (fieldError.field === "startDate" || fieldError.field === "startTime") {
+          next.dateTime = fieldError.message;
+        } else if (fieldError.field === "attendeeIds") {
+          next.attendeeIds = fieldError.message;
+        } else if (fieldError.field === "cost") {
+          next.cost = fieldError.message;
+        }
+      }
 
-      const response = await apiRequest(endpoint, {
-        method: "POST",
-        body: payload,
-      });
+      setManualFieldErrors(next);
 
-      return await response.json();
+      const firstMessage = error.formMessage ?? error.fieldErrors[0]?.message;
+      if (firstMessage) {
+        toast({
+          title: "Please review the manual activity fields",
+          description: firstMessage,
+          variant: "destructive",
+        });
+      }
     },
-    onSuccess: (_createdActivity, variables) => {
-      const submissionType = variables?.submissionType ?? "SCHEDULED";
+    [toast],
+  );
 
-      toast({
-        title: submissionType === "PROPOSE" ? "Activity proposed" : "Activity saved",
-        description:
-          submissionType === "PROPOSE"
-            ? "We shared this idea with your group for feedback."
-            : "We added your manual activity to the trip.",
-      });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripIdQueryKey, "activities"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
+  const manualCreateActivity = useCreateActivity({
+    tripId,
+    scheduledActivitiesQueryKey: [`/api/trips/${tripId}/activities`],
+    proposalActivitiesQueryKey: [`/api/trips/${tripId}/proposals/activities`],
+    calendarActivitiesQueryKey: ["/api/trips", tripIdQueryKey, "activities"],
+    members: tripMembers,
+    currentUserId,
+    enabled: tripId > 0 && tripMembers.length > 0,
+    activitiesVersion,
+    onValidationError: handleManualValidationError,
+    onSuccess: () => {
+      setManualFieldErrors({});
       closeManualForm();
-    },
-    onError: (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Please try again.";
-      toast({
-        title: "Unable to save activity",
-        description: message,
-        variant: "destructive",
-      });
     },
   });
 
-  const isSavingManualActivity = createManualActivityMutation.isPending;
+  const isSavingManualActivity = manualCreateActivity.isPending;
 
   const handleManualToggleAttendee = useCallback(
     (memberId: string, checked: boolean | "indeterminate") => {
@@ -446,17 +469,31 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
         }
         return Array.from(next);
       });
+      clearManualFieldError("attendeeIds");
     },
-    [],
+    [clearManualFieldError],
   );
+
+  const clearManualFieldError = useCallback((field: keyof ManualFormErrors) => {
+    setManualFieldErrors((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }, []);
 
   const handleManualSelectAll = useCallback(() => {
     setManualAttendeeIds(defaultMemberIds);
-  }, [defaultMemberIds]);
+    clearManualFieldError("attendeeIds");
+  }, [clearManualFieldError, defaultMemberIds]);
 
   const handleManualClearAttendees = useCallback(() => {
     setManualAttendeeIds([]);
-  }, []);
+    clearManualFieldError("attendeeIds");
+  }, [clearManualFieldError]);
 
   const handleManualFormSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -464,10 +501,29 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     const trimmedName = manualFormData.name.trim();
     const trimmedLocation = manualFormData.location.trim();
 
-    if (!trimmedName || !trimmedLocation || !manualFormData.dateTime) {
+    const nextErrors: ManualFormErrors = {};
+
+    if (!trimmedName) {
+      nextErrors.name = "Add a name so everyone recognizes this activity.";
+    }
+
+    if (!trimmedLocation) {
+      nextErrors.location = "Add where this takes place.";
+    }
+
+    if (!manualFormData.dateTime) {
+      nextErrors.dateTime = "Pick a date and time to schedule this activity.";
+    }
+
+    if (manualAttendeeIds.length === 0) {
+      nextErrors.attendeeIds = "Select at least one attendee.";
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
+      setManualFieldErrors(nextErrors);
       toast({
-        title: "Missing details",
-        description: "Add a name, location, and date/time to save the activity.",
+        title: "Please review the manual activity fields",
+        description: "We need a name, location, date/time, and at least one attendee.",
         variant: "destructive",
       });
       return;
@@ -475,6 +531,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
 
     const parsedDate = new Date(manualFormData.dateTime);
     if (Number.isNaN(parsedDate.getTime())) {
+      setManualFieldErrors((prev) => ({ ...prev, dateTime: "Choose a valid date and time." }));
       toast({
         title: "Invalid date",
         description: "Choose a valid date and time for the activity.",
@@ -483,31 +540,21 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       return;
     }
 
-    try {
-      const { payload } = buildActivitySubmission({
-        tripId,
-        name: trimmedName,
-        description: `Manual entry · Status: ${MANUAL_STATUS_LABELS[manualFormData.status]} · Currency: ${manualFormData.currency}`,
-        date: format(parsedDate, "yyyy-MM-dd"),
-        startTime: format(parsedDate, "HH:mm"),
-        endTime: null,
-        location: trimmedLocation,
-        cost: manualFormData.price,
-        maxCapacity: null,
-        category: MANUAL_ACTIVITY_CATEGORY,
-        attendeeIds: manualAttendeeIds,
-        type: manualMode,
-      });
+    const manualValues: ActivityCreateFormValues = {
+      name: trimmedName,
+      description: `Manual entry · Status: ${MANUAL_STATUS_LABELS[manualFormData.status]} · Currency: ${manualFormData.currency}`,
+      startDate: format(parsedDate, "yyyy-MM-dd"),
+      startTime: format(parsedDate, "HH:mm"),
+      endTime: undefined,
+      location: trimmedLocation,
+      cost: manualFormData.price,
+      maxCapacity: undefined,
+      attendeeIds: manualAttendeeIds,
+      category: MANUAL_ACTIVITY_CATEGORY,
+      type: manualMode,
+    };
 
-      createManualActivityMutation.mutate({ payload, submissionType: manualMode });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Please try again.";
-      toast({
-        title: "Unable to save activity",
-        description: message,
-        variant: "destructive",
-      });
-    }
+    manualCreateActivity.submit(manualValues);
   };
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<Activity[]>({
@@ -862,22 +909,30 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
               <Input
                 id="manual-activity-name"
                 value={manualFormData.name}
-                onChange={(event) =>
-                  setManualFormData((prev) => ({ ...prev, name: event.target.value }))
-                }
+                onChange={(event) => {
+                  setManualFormData((prev) => ({ ...prev, name: event.target.value }));
+                  clearManualFieldError("name");
+                }}
                 placeholder="Morning walking tour"
               />
+              {manualFieldErrors.name && (
+                <p className="text-sm text-red-600">{manualFieldErrors.name}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="manual-activity-location">Location</Label>
               <Input
                 id="manual-activity-location"
                 value={manualFormData.location}
-                onChange={(event) =>
-                  setManualFormData((prev) => ({ ...prev, location: event.target.value }))
-                }
+                onChange={(event) => {
+                  setManualFormData((prev) => ({ ...prev, location: event.target.value }));
+                  clearManualFieldError("location");
+                }}
                 placeholder="Paris, France"
               />
+              {manualFieldErrors.location && (
+                <p className="text-sm text-red-600">{manualFieldErrors.location}</p>
+              )}
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -886,10 +941,14 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                   id="manual-activity-datetime"
                   type="datetime-local"
                   value={manualFormData.dateTime}
-                  onChange={(event) =>
-                    setManualFormData((prev) => ({ ...prev, dateTime: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setManualFormData((prev) => ({ ...prev, dateTime: event.target.value }));
+                    clearManualFieldError("dateTime");
+                  }}
                 />
+                {manualFieldErrors.dateTime && (
+                  <p className="text-sm text-red-600">{manualFieldErrors.dateTime}</p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="manual-activity-price">Price</Label>
@@ -899,11 +958,15 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                   min="0"
                   step="0.01"
                   value={manualFormData.price}
-                  onChange={(event) =>
-                    setManualFormData((prev) => ({ ...prev, price: event.target.value }))
-                  }
+                  onChange={(event) => {
+                    setManualFormData((prev) => ({ ...prev, price: event.target.value }));
+                    clearManualFieldError("cost");
+                  }}
                   placeholder="150"
                 />
+                {manualFieldErrors.cost && (
+                  <p className="text-sm text-red-600">{manualFieldErrors.cost}</p>
+                )}
               </div>
             </div>
             <div className="space-y-3">
@@ -934,32 +997,35 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                   Clear
                 </Button>
               </div>
-              <ScrollArea className="mt-3 max-h-40 rounded-lg border border-neutral-200">
-                <div className="p-3 space-y-2">
-                  {memberOptions.length === 0 ? (
-                    <p className="text-sm text-neutral-500">
-                      Invite friends to your trip to pick attendees.
-                    </p>
-                  ) : (
-                    memberOptions.map((member) => {
-                      const isChecked = manualAttendeeIds.includes(member.id);
-                      return (
-                        <div key={member.id} className="flex items-center space-x-3">
-                          <Checkbox
-                            id={`manual-attendee-${member.id}`}
-                            checked={isChecked}
-                            onCheckedChange={(checked) => handleManualToggleAttendee(member.id, checked)}
-                          />
-                          <Label htmlFor={`manual-attendee-${member.id}`} className="text-sm text-neutral-700">
-                            {member.name}
-                          </Label>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </ScrollArea>
-            </div>
+            <ScrollArea className="mt-3 max-h-40 rounded-lg border border-neutral-200">
+              <div className="p-3 space-y-2">
+                {memberOptions.length === 0 ? (
+                  <p className="text-sm text-neutral-500">
+                    Invite friends to your trip to pick attendees.
+                  </p>
+                ) : (
+                  memberOptions.map((member) => {
+                    const isChecked = manualAttendeeIds.includes(member.id);
+                    return (
+                      <div key={member.id} className="flex items-center space-x-3">
+                        <Checkbox
+                          id={`manual-attendee-${member.id}`}
+                          checked={isChecked}
+                          onCheckedChange={(checked) => handleManualToggleAttendee(member.id, checked)}
+                        />
+                        <Label htmlFor={`manual-attendee-${member.id}`} className="text-sm text-neutral-700">
+                          {member.name}
+                        </Label>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </ScrollArea>
+            {manualFieldErrors.attendeeIds && (
+              <p className="text-sm text-red-600">{manualFieldErrors.attendeeIds}</p>
+            )}
+          </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="manual-activity-currency">Currency</Label>

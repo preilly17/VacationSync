@@ -89,6 +89,132 @@ const requestUsesActivitiesV2 = (req: { headers?: Record<string, unknown> }): bo
   return normalized === "2" || normalized === "v2" || normalized === "true";
 };
 
+const ACTIVITY_LOG_DATE_KEYS = new Set([
+  "startTime",
+  "endTime",
+  "start_time",
+  "end_time",
+  "date",
+  "startDate",
+  "createdAt",
+  "updatedAt",
+  "responded_at",
+]);
+
+const sanitizeActivityLogValue = (value: unknown): unknown => {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeActivityLogValue(entry));
+  }
+
+  if (typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (ACTIVITY_LOG_DATE_KEYS.has(key)) {
+        if (typeof entry === "string" && entry.trim().length > 0) {
+          result[key] = "[redacted-date]";
+        } else {
+          result[key] = entry;
+        }
+        continue;
+      }
+
+      result[key] = sanitizeActivityLogValue(entry);
+    }
+    return result;
+  }
+
+  return value;
+};
+
+const toDateOnlyIsoString = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+    return value.toISOString().slice(0, 10);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return null;
+};
+
+const formatTripDateLabel = (value: string): string => {
+  try {
+    const [yearStr, monthStr, dayStr] = value.split("-");
+    const year = Number.parseInt(yearStr ?? "", 10);
+    const month = Number.parseInt(monthStr ?? "", 10);
+    const day = Number.parseInt(dayStr ?? "", 10);
+
+    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+      return value;
+    }
+
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(date);
+  } catch {
+    return value;
+  }
+};
+
+const buildTripDateRangeMessage = (
+  min: string | null,
+  max: string | null,
+): string => {
+  const minLabel = min ? formatTripDateLabel(min) : null;
+  const maxLabel = max ? formatTripDateLabel(max) : null;
+
+  if (minLabel && maxLabel) {
+    return `Pick a date between ${minLabel} and ${maxLabel}.`;
+  }
+
+  if (minLabel) {
+    return `Pick a date on or after ${minLabel}.`;
+  }
+
+  if (maxLabel) {
+    return `Pick a date on or before ${maxLabel}.`;
+  }
+
+  return "Pick a date within the trip dates.";
+};
+
+const logActivityEvent = (stage: string, details: Record<string, unknown>) => {
+  console.info(`[activity:create] ${stage}`, sanitizeActivityLogValue(details));
+};
+
 const getCorrelationIdFromRequest = (req: { headers?: Record<string, unknown> }): string => {
   const headers = req?.headers ?? {};
 
@@ -2144,9 +2270,22 @@ export function setupRoutes(app: Express) {
     res.setHeader("x-correlation-id", correlationId);
     let payloadSummary: Record<string, unknown> | undefined;
 
+    logActivityEvent("request", {
+      correlationId,
+      mode,
+      tripIdParam: req.params?.[tripIdParam],
+      body: req.body ?? {},
+    });
+
     try {
       tripId = Number.parseInt(req.params[tripIdParam], 10);
       if (Number.isNaN(tripId)) {
+        logActivityEvent("failure", {
+          correlationId,
+          mode,
+          reason: "invalid-trip",
+          tripIdParam: req.params?.[tripIdParam],
+        });
         res.status(400).json({ message: "Invalid trip ID", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "invalid-trip" });
         return;
@@ -2159,6 +2298,12 @@ export function setupRoutes(app: Express) {
       }
 
       if (!userId) {
+        logActivityEvent("failure", {
+          correlationId,
+          mode,
+          tripId,
+          reason: "no-user",
+        });
         res.status(401).json({ message: "User ID not found", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "no-user" });
         return;
@@ -2170,6 +2315,12 @@ export function setupRoutes(app: Express) {
 
       const trip = await storage.getTripById(tripId);
       if (!trip) {
+        logActivityEvent("failure", {
+          correlationId,
+          mode,
+          tripId,
+          reason: "missing-trip",
+        });
         res.status(404).json({ message: "Trip not found", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "missing-trip" });
         return;
@@ -2178,6 +2329,13 @@ export function setupRoutes(app: Express) {
       const isMember = trip.members.some((member) => member.userId === userId);
       const isCreator = trip.createdBy === userId;
       if (!isMember && !isCreator) {
+        logActivityEvent("failure", {
+          correlationId,
+          mode,
+          tripId,
+          reason: "not-member",
+          userId,
+        });
         res.status(403).json({ message: "You are no longer a member of this trip", correlationId });
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "not-member" });
         return;
@@ -2306,14 +2464,22 @@ export function setupRoutes(app: Express) {
           attendeeCount: createPayload.invitee_ids.length,
         };
 
+        const metricMode = requestMode === "proposed" ? "PROPOSE" : "SCHEDULED";
+
+        logActivityEvent("payload-prepared", {
+          correlationId,
+          mode: metricMode,
+          tripId,
+          pipeline: "v2",
+          payload: createPayload,
+        });
+
         const missingFields: string[] = [];
         if (createPayload.title.trim().length === 0) missingFields.push("title");
         if (createPayload.date.trim().length === 0) missingFields.push("date");
         if (!isProposedRequest && trimmedStartTime.length === 0) missingFields.push("start_time");
         if (!isProposedRequest && resolvedTimezone.trim().length === 0) missingFields.push("timezone");
         const missingRequired = missingFields.length > 0;
-
-        const metricMode = requestMode === "proposed" ? "PROPOSE" : "SCHEDULED";
 
         if (missingRequired) {
           logActivityCreationFailure({
@@ -2333,9 +2499,65 @@ export function setupRoutes(app: Express) {
             validationFields: missingFields,
           });
 
+          logActivityEvent("validation-error", {
+            correlationId,
+            mode: metricMode,
+            tripId,
+            pipeline: "v2",
+            reason: "missing-fields",
+            missingFields,
+          });
+
           res.status(400).json({
             message: "Please provide a title, date, start time, and timezone.",
             correlationId,
+          });
+          return;
+        }
+
+        const normalizedTripStart = toDateOnlyIsoString(trip.startDate ?? null);
+        const normalizedTripEnd = toDateOnlyIsoString(trip.endDate ?? null);
+        const normalizedActivityDate = toDateOnlyIsoString(createPayload.date);
+
+        if (
+          normalizedActivityDate
+          && ((normalizedTripStart && normalizedActivityDate < normalizedTripStart)
+            || (normalizedTripEnd && normalizedActivityDate > normalizedTripEnd))
+        ) {
+          const message = buildTripDateRangeMessage(normalizedTripStart, normalizedTripEnd);
+          const validationErrors = [{ field: "date", message }];
+          const validationFields = ["date"];
+
+          logActivityCreationFailure({
+            correlationId,
+            step: "validate",
+            userId,
+            tripId,
+            error: validationErrors,
+            mode: metricMode,
+            validationFields,
+            payloadSummary,
+          });
+          trackActivityCreationMetric({
+            mode: metricMode,
+            outcome: "failure",
+            reason: "validation",
+            validationFields,
+          });
+
+          logActivityEvent("validation-error", {
+            correlationId,
+            mode: metricMode,
+            tripId,
+            pipeline: "v2",
+            reason: "server-validation",
+            errors: validationErrors,
+          });
+
+          res.status(422).json({
+            message,
+            correlationId,
+            errors: validationErrors,
           });
           return;
         }
@@ -2361,6 +2583,14 @@ export function setupRoutes(app: Express) {
             });
             return;
           }
+
+          logActivityEvent("success", {
+            correlationId,
+            mode: metricMode,
+            tripId,
+            pipeline: "v2",
+            activityId: creationResult.id,
+          });
 
           const attendeesToNotify = creationResult.invitees
             .filter((invitee) => invitee.role === "participant")
@@ -2509,16 +2739,38 @@ export function setupRoutes(app: Express) {
           trackActivityCreationMetric({ mode: metricMode, outcome: "failure", reason, validationFields });
 
           if ((error as any)?.code === "VALIDATION") {
+            logActivityEvent("validation-error", {
+              correlationId,
+              mode: metricMode,
+              tripId,
+              pipeline: "v2",
+              reason: "server-validation",
+              errors: Array.isArray(details) ? details : [],
+            });
+
+            const firstMessage = Array.isArray(details) && typeof details[0]?.message === "string"
+              ? details[0].message
+              : "Please review the fields below.";
             res.status(422).json({
-              message: "Please review the fields below.",
+              message: firstMessage,
               correlationId,
               errors: Array.isArray(details) ? details : [],
             });
             return;
           }
 
+          const errorMessage = getErrorMessage(error, "We couldn’t create this activity. Nothing was saved.");
+
+          logActivityEvent("failure", {
+            correlationId,
+            mode: metricMode,
+            tripId,
+            pipeline: "v2",
+            message: errorMessage,
+          });
+
           res.status(500).json({
-            message: "We couldn’t create this activity. Nothing was saved.",
+            message: errorMessage,
             correlationId,
           });
           return;
@@ -2550,6 +2802,14 @@ export function setupRoutes(app: Express) {
         type: mode,
       } as Record<string, unknown>;
 
+      logActivityEvent("payload-prepared", {
+        correlationId,
+        mode,
+        tripId,
+        pipeline: "legacy",
+        payload: rawData,
+      });
+
       payloadSummary = {
         name: typeof rawData.name === "string" ? rawData.name : "",
         startTime: typeof rawData.startTime === "string" ? rawData.startTime : "",
@@ -2561,6 +2821,8 @@ export function setupRoutes(app: Express) {
         tripCalendarId: tripId,
         userId,
         validMemberIds,
+        tripStartDate: trip.startDate ?? null,
+        tripEndDate: trip.endDate ?? null,
       });
 
       if (validationResult.errors || !validationResult.data || !validationResult.attendeeIds) {
@@ -2585,8 +2847,20 @@ export function setupRoutes(app: Express) {
           validationFields,
         });
 
+        logActivityEvent("validation-error", {
+          correlationId,
+          mode,
+          tripId,
+          pipeline: "legacy",
+          reason: "server-validation",
+          errors: validationResult.errors ?? [],
+        });
+
+        const firstErrorMessage = validationResult.errors?.[0]?.message
+          ?? "Activity could not be created due to validation errors.";
+
         res.status(400).json({
-          message: "Activity could not be created due to validation errors.",
+          message: firstErrorMessage,
           correlationId,
           errors: validationResult.errors ?? [],
         });
@@ -2613,6 +2887,14 @@ export function setupRoutes(app: Express) {
         ...payloadSummary,
         activityId: activity.id,
       };
+
+      logActivityEvent("success", {
+        correlationId,
+        mode,
+        tripId,
+        pipeline: "legacy",
+        activityId: activity.id,
+      });
 
       const attendeesToNotify = inviteeIds.filter((attendeeId) => attendeeId !== userId);
 
@@ -2730,6 +3012,15 @@ export function setupRoutes(app: Express) {
 
         trackActivityCreationMetric({ mode, outcome: "failure", reason: "invalid-invite" });
 
+        logActivityEvent("failure", {
+          correlationId,
+          mode,
+          tripId,
+          pipeline: "legacy",
+          reason: "invalid-invitees",
+          invalidInviteeIds,
+        });
+
         res.status(400).json({
           message: error.message,
           correlationId,
@@ -2836,8 +3127,18 @@ export function setupRoutes(app: Express) {
 
       trackActivityCreationMetric({ mode, outcome: "failure", reason: "exception" });
 
+      const errorMessage = getErrorMessage(error, "We couldn’t create this activity. Nothing was saved. Please try again.");
+
+      logActivityEvent("failure", {
+        correlationId,
+        mode,
+        tripId,
+        pipeline: "legacy",
+        message: errorMessage,
+      });
+
       res.status(500).json({
-        message: "We couldn’t create this activity. Nothing was saved. Please try again.",
+        message: errorMessage,
         correlationId,
       });
     }

@@ -56,11 +56,6 @@ interface MutationResult {
 }
 
 const networkErrorMessage = "We couldn’t reach the server. Check your connection and try again.";
-const permissionErrorMessage = "You don’t have permission to perform this action.";
-const serverErrorMessage = "Something went wrong on our side. Please try again.";
-const tripMembershipErrorMessage = "You’re not a member of this trip.";
-const tripMissingErrorMessage = "We couldn’t find this trip. Please refresh or check with the organizer.";
-const duplicateActivityErrorMessage = "This looks like a duplicate activity.";
 
 const createAnalyticsTracker = () => {
   const analyticsWindow = typeof window !== "undefined"
@@ -273,59 +268,33 @@ export function useCreateActivity({
           return;
         }
 
-        if (error.status === 401) {
-          toast({
-            title: "Permission required",
-            description: permissionErrorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
+        const errorData = (error.data ?? null) as Record<string, unknown> | null;
+        const rawMessage =
+          (errorData && typeof errorData.message === "string" && errorData.message.trim().length > 0
+            ? errorData.message.trim()
+            : error.message?.trim()) ?? "";
+        const correlationId =
+          errorData && typeof errorData.correlationId === "string" && errorData.correlationId.trim().length > 0
+            ? errorData.correlationId.trim()
+            : null;
+        const fallback = error.status
+          ? `Request failed with status ${error.status}`
+          : networkErrorMessage;
+        const displayMessage = rawMessage.length > 0 ? rawMessage : fallback;
+        const description = correlationId ? `${displayMessage} (Ref: ${correlationId})` : displayMessage;
 
-        if (error.status === 403) {
-          toast({
-            title: "Access denied",
-            description: tripMembershipErrorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status === 404) {
-          toast({
-            title: "Trip not found",
-            description: tripMissingErrorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status === 409) {
-          toast({
-            title: "Possible duplicate",
-            description: duplicateActivityErrorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (error.status >= 500) {
-          const data = error.data as { correlationId?: string } | undefined;
-          toast({
-            title: "We ran into a problem",
-            description: data?.correlationId
-              ? `${serverErrorMessage} Reference: ${data.correlationId}.`
-              : serverErrorMessage,
-            variant: "destructive",
-          });
-          return;
-        }
+        toast({
+          title: "Activity wasn’t saved",
+          description,
+          variant: "destructive",
+        });
+        return;
       }
 
       const message = error instanceof Error ? error.message : networkErrorMessage;
 
       toast({
-        title: "Request failed",
+        title: "Activity wasn’t saved",
         description: message || networkErrorMessage,
         variant: "destructive",
       });

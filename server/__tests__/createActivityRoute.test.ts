@@ -224,6 +224,46 @@ describe("POST /api/trips/:id/activities", () => {
     consoleErrorSpy.mockRestore();
   });
 
+  it("returns a trip date range message when the legacy payload is outside the window", async () => {
+    const trip = {
+      id: 321,
+      members: [{ userId: "organizer", user: { firstName: "Org" } }],
+      createdBy: "organizer",
+      startDate: "2024-01-01",
+      endDate: "2024-01-10",
+    };
+
+    const requestBody = {
+      name: "Boat tour",
+      startTime: new Date("2024-01-15T15:00:00Z").toISOString(),
+      category: "manual",
+      attendeeIds: ["organizer"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const createSpy = jest.spyOn(storage, "createActivityWithInvites");
+
+    await handler(req, res);
+
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.message).toBe("Pick a date between Jan 1, 2024 and Jan 10, 2024.");
+    expect(payload.errors).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: "startDate" })]),
+    );
+  });
+
   it("returns 400 when invitees are no longer trip members", async () => {
     const trip = {
       id: 789,
@@ -585,6 +625,58 @@ describe("POST /api/trips/:id/activities", () => {
       expect(legacyCreateSpy).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith(v2Response);
+    } finally {
+      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
+    }
+  });
+
+  it("returns a trip date range message when the v2 payload is outside the window", async () => {
+    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
+    process.env.FEATURE_ACTIVITIES_V2 = "true";
+
+    const trip = {
+      id: 555,
+      members: [{ userId: "organizer", user: { firstName: "Org", email: "org@example.com" } }],
+      createdBy: "organizer",
+      startDate: "2024-01-01",
+      endDate: "2024-01-10",
+      timezone: "UTC",
+    };
+
+    const requestBody = {
+      mode: "scheduled",
+      title: "Dinner",
+      date: "2024-01-15",
+      start_time: "18:00",
+      timezone: "UTC",
+      invitee_ids: ["organizer"],
+      idempotency_key: "date-range-test",
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      headers: { "x-activities-version": "2" },
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    try {
+      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
+
+      await handler(req, res);
+
+      expect(createActivityV2Spy).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(422);
+      const payload = res.json.mock.calls[0][0];
+      expect(payload.message).toBe("Pick a date between Jan 1, 2024 and Jan 10, 2024.");
+      expect(payload.errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: "date" })]),
+      );
     } finally {
       process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
     }

@@ -123,7 +123,7 @@ export const prepareActivitySubmission = ({
 };
 
 export const mapApiErrorToValidation = (error: ApiError): ActivityValidationError | null => {
-  if (error.status !== 400) {
+  if (error.status !== 400 && error.status !== 422) {
     return null;
   }
 
@@ -158,6 +158,44 @@ export interface SubmitActivityOptions {
   payload: ReturnType<typeof buildActivitySubmission>["payload"];
 }
 
+const DATE_FIELD_KEYS = new Set([
+  "startTime",
+  "endTime",
+  "start_time",
+  "end_time",
+  "startDate",
+  "date",
+]);
+
+const redactDates = (value: unknown): unknown => {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactDates(entry));
+  }
+
+  if (typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (DATE_FIELD_KEYS.has(key)) {
+        if (typeof entry === "string" && entry.trim().length > 0) {
+          result[key] = "[redacted-date]";
+        } else {
+          result[key] = entry;
+        }
+        continue;
+      }
+
+      result[key] = redactDates(entry);
+    }
+    return result;
+  }
+
+  return value;
+};
+
 export const submitActivityRequest = async <T extends ActivityWithDetails>({
   tripId,
   version = "legacy",
@@ -172,13 +210,77 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
     ? ({ "x-activities-version": "2" } as Record<string, string>)
     : undefined;
 
-  const response = await apiRequest(endpoint, {
-    method: "POST",
-    body: payload,
-    headers,
+  const sanitizedPayload = redactDates(payload);
+  console.info("[activity:create] submitting", {
+    tripId,
+    version,
+    endpoint,
+    payload: sanitizedPayload,
   });
 
-  return (await response.json()) as T;
+  try {
+    const response = await apiRequest(endpoint, {
+      method: "POST",
+      body: payload,
+      headers,
+    });
+
+    const responseClone = response.clone();
+    let preview: unknown = null;
+    try {
+      preview = await responseClone.json();
+    } catch {
+      try {
+        preview = await responseClone.text();
+      } catch {
+        preview = null;
+      }
+    }
+
+    const correlationId =
+      response.headers.get("x-correlation-id")
+      ?? response.headers.get("X-Correlation-ID")
+      ?? null;
+
+    console.info("[activity:create] success", {
+      tripId,
+      version,
+      endpoint,
+      status: response.status,
+      correlationId,
+      response: redactDates(preview),
+    });
+
+    return (await response.json()) as T;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      const correlationId =
+        typeof error.data === "object" && error.data !== null && "correlationId" in (error.data as Record<string, unknown>)
+          ? (error.data as Record<string, unknown>).correlationId
+          : null;
+
+      console.error("[activity:create] failure", {
+        tripId,
+        version,
+        endpoint,
+        status: error.status,
+        message: error.message,
+        correlationId,
+        payload: sanitizedPayload,
+        response: redactDates(error.data),
+      });
+    } else {
+      console.error("[activity:create] failure", {
+        tripId,
+        version,
+        endpoint,
+        payload: sanitizedPayload,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    throw error;
+  }
 };
 
 export const buildOptimisticActivity = (
