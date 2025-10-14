@@ -50,6 +50,10 @@ const formatActivityTimeRange = (
   startTime: ActivityWithDetails["startTime"],
   endTime?: ActivityWithDetails["endTime"],
 ) => {
+  if (!startTime) {
+    return "Time TBD";
+  }
+
   const startDate = new Date(startTime);
 
   if (Number.isNaN(startDate.getTime())) {
