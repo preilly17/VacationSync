@@ -673,9 +673,17 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
                 <Filter className="h-4 w-4 text-primary" />
                 <CardTitle className="text-lg">Search Hotels for this Trip</CardTitle>
               </div>
-              {searchResults.length > 0 && (
-                <div className="text-sm text-muted-foreground">Found {searchResults.length} hotels</div>
-              )}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                {searchResults.length > 0 && (
+                  <div className="text-sm text-muted-foreground">
+                    Found {searchResults.length} hotels
+                  </div>
+                )}
+                <Button type="button" variant="outline" onClick={onLogHotelManually}>
+                  <Building className="h-4 w-4 mr-2" />
+                  Log Hotel Manually
+                </Button>
+              </div>
             </div>
             {trip?.destination && (trip?.startDate || trip?.endDate) && (
               <p className="text-sm text-muted-foreground">
