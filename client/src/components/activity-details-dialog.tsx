@@ -61,16 +61,41 @@ const getUserDisplayName = (user: User | undefined): string => {
   return user.email ?? "Trip member";
 };
 
-const formatDateTime = (value: ActivityWithDetails["startTime"]): string => {
-  const date = value instanceof Date ? value : new Date(value);
-  return format(date, "EEEE, MMM d · h:mm a");
-};
-
-const formatEndTime = (value: ActivityWithDetails["endTime"] | null | undefined): string | null => {
+const parseActivityDate = (
+  value: ActivityWithDetails["startTime"] | ActivityWithDetails["endTime"],
+): Date | null => {
   if (!value) {
     return null;
   }
+
   const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+};
+
+const formatDateTime = (value: ActivityWithDetails["startTime"]): string => {
+  const date = parseActivityDate(value);
+
+  if (!date) {
+    return "Time TBD";
+  }
+
+  return format(date, "EEEE, MMM d · h:mm a");
+};
+
+const formatEndTime = (
+  value: ActivityWithDetails["endTime"] | null | undefined,
+): string | null => {
+  const date = parseActivityDate(value);
+
+  if (!date) {
+    return null;
+  }
+
   return format(date, "h:mm a");
 };
 
@@ -100,12 +125,14 @@ export function ActivityDetailsDialog({
     if (!activity) {
       return false;
     }
-    const end = activity.endTime ? new Date(activity.endTime) : null;
-    const start = new Date(activity.startTime);
-    const comparisonTarget = end && !Number.isNaN(end.getTime()) ? end : start;
-    if (Number.isNaN(comparisonTarget.getTime())) {
+    const end = parseActivityDate(activity.endTime);
+    const start = parseActivityDate(activity.startTime);
+    const comparisonTarget = end ?? start;
+
+    if (!comparisonTarget) {
       return false;
     }
+
     return comparisonTarget.getTime() < now.getTime();
   })();
   const rsvpCloseDate = activity?.rsvpCloseTime ? new Date(activity.rsvpCloseTime) : null;
