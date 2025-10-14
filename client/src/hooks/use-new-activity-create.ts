@@ -1,3 +1,5 @@
+// TODO(activities-unification): Remove this feature flag hook once the legacy activity create flow
+// is deleted and only the unified implementation remains.
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "feature:new-activity-create";

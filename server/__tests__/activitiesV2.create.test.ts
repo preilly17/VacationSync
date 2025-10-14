@@ -1,3 +1,5 @@
+// TODO(activities-unification): Remove this test suite once the dedicated activitiesV2 module is
+// retired in favor of the unified activities implementation.
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 import type { CreateActivityRequest } from "@shared/activitiesV2";

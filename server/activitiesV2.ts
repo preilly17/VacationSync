@@ -1,3 +1,5 @@
+// TODO(activities-unification): Fold this V2 service into the main server routes/storage flow and
+// delete this file after unifying the activity implementation.
 import { randomUUID } from "crypto";
 
 import { pool, query } from "./db";
