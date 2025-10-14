@@ -1,9 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
-import cors, { type CorsOptions } from "cors";
+import cors from "cors";
 import { setupRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { createSessionMiddleware } from "./sessionAuth";
 import { storage } from "./storage";
+import { createCorsOptions } from "./corsConfig";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -107,28 +108,7 @@ const isOriginAllowed = (origin?: string | null): boolean => {
   return false;
 };
 
-const corsOptions: CorsOptions = {
-  origin(origin, callback) {
-    if (isOriginAllowed(origin)) {
-      return callback(null, true);
-    }
-
-    const error = new Error(
-      origin ? `Not allowed by CORS: ${origin}` : "Not allowed by CORS",
-    );
-    return callback(error);
-  },
-  credentials: true,
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Request-ID",
-    "X-Filename",
-    "X-Content-Type",
-  ],
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  optionsSuccessStatus: 204,
-};
+const corsOptions = createCorsOptions(isOriginAllowed);
 
 // ✅ FIXED CORS CONFIG
 app.use(cors(corsOptions));
