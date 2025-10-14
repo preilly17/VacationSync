@@ -1,3 +1,5 @@
+// TODO(activities-unification): Remove this setup test once the activitiesV2 module is folded into
+// the unified activities stack.
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const ORIGINAL_NODE_ENV = process.env.NODE_ENV;

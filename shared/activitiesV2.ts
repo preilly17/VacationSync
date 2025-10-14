@@ -1,3 +1,5 @@
+// TODO(activities-unification): Remove this parallel schema once activity types are consolidated
+// into the canonical shared/schema.ts definitions.
 import { z } from "zod";
 
 import type { User } from "./schema";
