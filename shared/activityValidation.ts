@@ -229,13 +229,102 @@ const ensureEndAfterStart = (
   return null;
 };
 
+const toDateOnlyIsoString = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+    return value.toISOString().slice(0, 10);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return null;
+};
+
+const formatDateLabel = (value: string): string => {
+  try {
+    const [yearStr, monthStr, dayStr] = value.split("-");
+    const year = Number.parseInt(yearStr ?? "", 10);
+    const month = Number.parseInt(monthStr ?? "", 10);
+    const day = Number.parseInt(dayStr ?? "", 10);
+
+    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+      return value;
+    }
+
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(date);
+  } catch {
+    return value;
+  }
+};
+
+const buildTripDateRangeMessage = (
+  min: string | null,
+  max: string | null,
+): string => {
+  const minLabel = min ? formatDateLabel(min) : null;
+  const maxLabel = max ? formatDateLabel(max) : null;
+
+  if (minLabel && maxLabel) {
+    return `Pick a date between ${minLabel} and ${maxLabel}.`;
+  }
+
+  if (minLabel) {
+    return `Pick a date on or after ${minLabel}.`;
+  }
+
+  if (maxLabel) {
+    return `Pick a date on or before ${maxLabel}.`;
+  }
+
+  return "Pick a date within the trip dates.";
+};
+
 export const validateActivityInput = (
   rawData: Record<string, unknown>,
   {
     tripCalendarId,
     userId,
     validMemberIds,
-  }: { tripCalendarId: number; userId: string; validMemberIds: Set<string> },
+    tripStartDate,
+    tripEndDate,
+  }: {
+    tripCalendarId: number;
+    userId: string;
+    validMemberIds: Set<string>;
+    tripStartDate?: string | null;
+    tripEndDate?: string | null;
+  },
 ): ActivityValidationResult => {
   const errors: ValidationIssue[] = [];
 
@@ -310,6 +399,30 @@ export const validateActivityInput = (
     const orderingError = ensureEndAfterStart(startResult.value, endResult.value);
     if (orderingError) {
       errors.push({ field: "endTime", message: orderingError });
+    }
+  }
+
+  const explicitStartDate = typeof rawData.startDate === "string" ? rawData.startDate.trim() : null;
+  const fallbackDate = typeof rawData.date === "string" ? rawData.date.trim() : null;
+  const normalizedStartDate =
+    toDateOnlyIsoString(explicitStartDate)
+    ?? toDateOnlyIsoString(fallbackDate)
+    ?? (startResult.value ? toDateOnlyIsoString(startResult.value) : null);
+
+  const normalizedTripStart = toDateOnlyIsoString(tripStartDate ?? null);
+  const normalizedTripEnd = toDateOnlyIsoString(tripEndDate ?? null);
+
+  if (normalizedStartDate && (normalizedTripStart || normalizedTripEnd)) {
+    if (normalizedTripStart && normalizedStartDate < normalizedTripStart) {
+      errors.push({
+        field: "startDate",
+        message: buildTripDateRangeMessage(normalizedTripStart, normalizedTripEnd),
+      });
+    } else if (normalizedTripEnd && normalizedStartDate > normalizedTripEnd) {
+      errors.push({
+        field: "startDate",
+        message: buildTripDateRangeMessage(normalizedTripStart, normalizedTripEnd),
+      });
     }
   }
 

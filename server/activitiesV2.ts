@@ -157,6 +157,51 @@ const normalizeUserProvidedTime = (value: string): string => {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 };
 
+const formatTripDateLabel = (value: string): string => {
+  try {
+    const [yearStr, monthStr, dayStr] = value.split("-");
+    const year = Number.parseInt(yearStr ?? "", 10);
+    const month = Number.parseInt(monthStr ?? "", 10);
+    const day = Number.parseInt(dayStr ?? "", 10);
+
+    if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+      return value;
+    }
+
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(date);
+  } catch {
+    return value;
+  }
+};
+
+const buildTripDateRangeMessage = (min?: string | null, max?: string | null): string => {
+  const minLabel = min ? formatTripDateLabel(min) : null;
+  const maxLabel = max ? formatTripDateLabel(max) : null;
+
+  if (minLabel && maxLabel) {
+    return `Pick a date between ${minLabel} and ${maxLabel}.`;
+  }
+
+  if (minLabel) {
+    return `Pick a date on or after ${minLabel}.`;
+  }
+
+  if (maxLabel) {
+    return `Pick a date on or before ${maxLabel}.`;
+  }
+
+  return "Pick a date within the trip dates.";
+};
+
 const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
   const base: ActivityWithDetails = {
     id: String(row.id),
@@ -562,6 +607,36 @@ export async function createActivityV2({
         {
           field: "max_participants",
           message: "Max participants cannot be less than the number of invitees.",
+        },
+      ];
+      throw error;
+    }
+  }
+
+  const tripStartDateIso = trip.startDate ? toIsoDate(trip.startDate) : "";
+  const tripEndDateIso = trip.endDate ? toIsoDate(trip.endDate) : "";
+  const activityDateIso = typeof data.date === "string" ? data.date.trim() : "";
+
+  if (activityDateIso && (tripStartDateIso || tripEndDateIso)) {
+    if (tripStartDateIso && activityDateIso < tripStartDateIso) {
+      const error = new Error("date_out_of_range");
+      (error as any).code = "VALIDATION";
+      (error as any).details = [
+        {
+          field: "date",
+          message: buildTripDateRangeMessage(tripStartDateIso, tripEndDateIso || null),
+        },
+      ];
+      throw error;
+    }
+
+    if (tripEndDateIso && activityDateIso > tripEndDateIso) {
+      const error = new Error("date_out_of_range");
+      (error as any).code = "VALIDATION";
+      (error as any).details = [
+        {
+          field: "date",
+          message: buildTripDateRangeMessage(tripStartDateIso || null, tripEndDateIso),
         },
       ];
       throw error;
