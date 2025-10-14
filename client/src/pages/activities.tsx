@@ -38,6 +38,7 @@ import { apiFetch } from "@/lib/api";
 import { ACTIVITY_CATEGORY_VALUES } from "@shared/activityValidation";
 import type { ActivityType, ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
+import { resolveTripTimezone } from "@/lib/timezone";
 
 interface Activity {
   id: string;
@@ -123,6 +124,14 @@ export default function Activities() {
     enabled: !!tripId && isAuthenticated,
     retry: false,
   });
+
+  const activityTimezone = useMemo(() => {
+    const tripWithTimezone = trip as (TripWithDetails & { timezone?: string | null }) | undefined;
+    return resolveTripTimezone({
+      tripTimezone: tripWithTimezone?.timezone ?? null,
+      userTimezone: user?.timezone ?? null,
+    });
+  }, [trip, user?.timezone]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1018,6 +1027,7 @@ export default function Activities() {
         prefill={activityComposerPrefill}
         tripStartDate={trip?.startDate ?? null}
         tripEndDate={trip?.endDate ?? null}
+        tripTimezone={activityTimezone}
       />
 
       {/* Booking Confirmation Modal */}

@@ -25,6 +25,7 @@ import { MobileNav } from "@/components/mobile-nav";
 import type { TripWithDetails, ActivityWithDetails, User as UserType } from "@shared/schema";
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { resolveTripTimezone } from "@/lib/timezone";
 
 const getParticipantDisplayName = (user: UserType) => {
   const first = user.firstName?.trim();
@@ -120,6 +121,14 @@ export default function MemberSchedule() {
     enabled: !!tripId && isAuthenticated,
     retry: false,
   });
+
+  const activityTimezone = useMemo(() => {
+    const tripWithTimezone = trip as (TripWithDetails & { timezone?: string | null }) | undefined;
+    return resolveTripTimezone({
+      tripTimezone: tripWithTimezone?.timezone ?? null,
+      userTimezone: currentUser?.timezone ?? null,
+    });
+  }, [trip, currentUser?.timezone]);
 
   // Handle errors
   useEffect(() => {
@@ -535,6 +544,7 @@ export default function MemberSchedule() {
         prefill={activityPrefill}
         tripStartDate={trip.startDate}
         tripEndDate={trip.endDate}
+        tripTimezone={activityTimezone}
       />
     </>
   );
