@@ -1,27 +1,14 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useId,
-} from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
-import { resolveCoverPhotoUrl } from "@/lib/tripCover";
-import { Loader2 } from "lucide-react";
 import { nanoid } from "nanoid";
 import {
   COVER_PHOTO_MAX_FILE_SIZE_BYTES,
   COVER_PHOTO_MAX_FILE_SIZE_MB,
   COVER_PHOTO_MIN_HEIGHT,
   COVER_PHOTO_MIN_WIDTH,
-  COVER_PHOTO_RECOMMENDED_HEIGHT,
-  COVER_PHOTO_RECOMMENDED_WIDTH,
 } from "@shared/constants";
 
 const ACCEPTED_FILE_TYPES =
@@ -32,9 +19,6 @@ const ALLOWED_MIME_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
 
 const loadImageDimensions = (src: string): Promise<{
   width: number;
@@ -48,28 +32,6 @@ const loadImageDimensions = (src: string): Promise<{
     image.onerror = reject;
     image.src = src;
   });
-
-const UNSPLASH_PRESETS: {
-  url: string;
-  label: string;
-  attribution: string;
-}[] = [
-  {
-    url: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=2400&q=90",
-    label: "Tropical sunrise",
-    attribution: "Photo by Sean O. on Unsplash",
-  },
-  {
-    url: "https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=2400&q=90",
-    label: "Mountain escape",
-    attribution: "Photo by Dominik Schröder on Unsplash",
-  },
-  {
-    url: "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=2400&q=90",
-    label: "City skyline",
-    attribution: "Photo by Denys Nevozhai on Unsplash",
-  },
-];
 
 export type CoverPhotoValue = {
   coverPhotoUrl: string | null;
@@ -91,10 +53,11 @@ interface CoverPhotoSectionProps {
   isBusy?: boolean;
 }
 
-type SelectedImageMeta = {
-  previewUrl: string;
-  width: number;
-  height: number;
+type SelectedFileInfo = {
+  name: string;
+  size: number;
+  width?: number;
+  height?: number;
 };
 
 const buildFileName = (label: string, extension: string) => {
@@ -136,27 +99,21 @@ export function CoverPhotoSection({
   isBusy = false,
 }: CoverPhotoSectionProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [preview, setPreview] = useState<SelectedImageMeta | null>(null);
+  const fileInputId = useId();
   const [altText, setAltText] = useState<string>(
     value.coverPhotoAlt ?? defaultAltText,
-  );
-  const [focusX, setFocusX] = useState<number>(
-    (value.coverPhotoFocalX ?? 0.5) * 100,
-  );
-  const [focusY, setFocusY] = useState<number>(
-    (value.coverPhotoFocalY ?? 0.5) * 100,
   );
   const [urlInput, setUrlInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [isFetchingRemote, setIsFetchingRemote] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-  const previousPreviewRef = useRef<string | null>(null);
-  const fileInputId = useId();
-  const focalOverlayRef = useRef<HTMLDivElement | null>(null);
-  const isDraggingRef = useRef(false);
+  const [selectedFileInfo, setSelectedFileInfo] = useState<SelectedFileInfo | null>(null);
 
-  const hasImage = Boolean(preview?.previewUrl || value.coverPhotoUrl);
+  const hasPersistedImage = Boolean(
+    value.coverPhotoUrl || value.coverPhotoOriginalUrl,
+  );
+  const hasPendingFile = Boolean(selectedFileInfo);
+  const hasImage = hasPendingFile || hasPersistedImage;
 
   useEffect(() => {
     if (value.coverPhotoAlt && value.coverPhotoAlt !== altText) {
@@ -172,31 +129,10 @@ export function CoverPhotoSection({
   }, [value.coverPhotoAlt, hasImage, defaultAltText, onChange, value, altText]);
 
   useEffect(() => {
-    if (preview) {
-      return;
-    }
-    if (typeof value.coverPhotoFocalX === "number") {
-      setFocusX(clamp(value.coverPhotoFocalX * 100, 0, 100));
-    }
-    if (typeof value.coverPhotoFocalY === "number") {
-      setFocusY(clamp(value.coverPhotoFocalY * 100, 0, 100));
-    }
-  }, [value.coverPhotoFocalX, value.coverPhotoFocalY, preview]);
-
-  useEffect(() => {
-    return () => {
-      if (previousPreviewRef.current) {
-        URL.revokeObjectURL(previousPreviewRef.current);
-        previousPreviewRef.current = null;
-      }
-    };
-  }, []);
-
-  const displayedImage =
-    preview?.previewUrl ??
-    resolveCoverPhotoUrl(
-      value.coverPhotoUrl ?? value.coverPhotoOriginalUrl ?? null,
-    );
+    setSelectedFileInfo(null);
+    setWarning(null);
+    setError(null);
+  }, [value.coverPhotoUrl, value.coverPhotoOriginalUrl, value.coverPhotoStorageKey]);
 
   const updateValue = useCallback(
     (patch: Partial<CoverPhotoValue>) => {
@@ -204,8 +140,10 @@ export function CoverPhotoSection({
         patch.coverPhotoAlt !== undefined ? patch.coverPhotoAlt : altText;
       onChange({
         coverPhotoUrl: patch.coverPhotoUrl ?? value.coverPhotoUrl ?? null,
-        coverPhotoCardUrl: patch.coverPhotoCardUrl ?? value.coverPhotoCardUrl ?? null,
-        coverPhotoThumbUrl: patch.coverPhotoThumbUrl ?? value.coverPhotoThumbUrl ?? null,
+        coverPhotoCardUrl:
+          patch.coverPhotoCardUrl ?? value.coverPhotoCardUrl ?? null,
+        coverPhotoThumbUrl:
+          patch.coverPhotoThumbUrl ?? value.coverPhotoThumbUrl ?? null,
         coverPhotoAlt: nextAlt ?? null,
         coverPhotoAttribution:
           patch.coverPhotoAttribution ?? value.coverPhotoAttribution ?? null,
@@ -216,22 +154,28 @@ export function CoverPhotoSection({
         coverPhotoFocalX:
           typeof patch.coverPhotoFocalX === "number"
             ? patch.coverPhotoFocalX
-            : clamp(focusX / 100, 0, 1),
+            : typeof value.coverPhotoFocalX === "number"
+              ? value.coverPhotoFocalX
+              : 0.5,
         coverPhotoFocalY:
           typeof patch.coverPhotoFocalY === "number"
             ? patch.coverPhotoFocalY
-            : clamp(focusY / 100, 0, 1),
+            : typeof value.coverPhotoFocalY === "number"
+              ? value.coverPhotoFocalY
+              : 0.5,
       });
     },
-    [altText, focusX, focusY, onChange, value],
+    [altText, onChange, value],
   );
 
-  const resetPreview = useCallback(() => {
-    if (previousPreviewRef.current) {
-      URL.revokeObjectURL(previousPreviewRef.current);
-      previousPreviewRef.current = null;
+  const formatFileSize = useCallback((size: number) => {
+    if (size >= 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
     }
-    setPreview(null);
+    if (size >= 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    return `${size} B`;
   }, []);
 
   const applyFile = useCallback(
@@ -254,30 +198,24 @@ export function CoverPhotoSection({
         const belowMinimum =
           dimensions.width < COVER_PHOTO_MIN_WIDTH ||
           dimensions.height < COVER_PHOTO_MIN_HEIGHT;
-        const belowRecommendation =
-          dimensions.width < COVER_PHOTO_RECOMMENDED_WIDTH ||
-          dimensions.height < COVER_PHOTO_RECOMMENDED_HEIGHT;
 
         if (belowMinimum) {
           setWarning(
-            `We’ll fit your photo to the banner. Images under ${COVER_PHOTO_MIN_WIDTH}×${COVER_PHOTO_MIN_HEIGHT} may look soft on large screens. This one is ${dimensions.width}×${dimensions.height}.`,
-          );
-        } else if (belowRecommendation) {
-          setWarning(
-            `For best results, use at least ${COVER_PHOTO_RECOMMENDED_WIDTH}×${COVER_PHOTO_RECOMMENDED_HEIGHT}. This one is ${dimensions.width}×${dimensions.height}.`,
+            `Images under ${COVER_PHOTO_MIN_WIDTH}×${COVER_PHOTO_MIN_HEIGHT} may look soft on large screens. This one is ${dimensions.width}×${dimensions.height}.`,
           );
         } else {
           setWarning(null);
         }
         setError(null);
-        setFocusX(50);
-        setFocusY(50);
         const nextAlt = altText?.trim() ? altText : defaultAltText;
         setAltText(nextAlt);
-        previousPreviewRef.current && URL.revokeObjectURL(previousPreviewRef.current);
-        previousPreviewRef.current = objectUrl;
-        setPreview({ previewUrl: objectUrl, width: dimensions.width, height: dimensions.height });
-        onPendingFileChange(file, objectUrl);
+        setSelectedFileInfo({
+          name: file.name,
+          size: file.size,
+          width: dimensions.width,
+          height: dimensions.height,
+        });
+        onPendingFileChange(file, null);
         updateValue({
           coverPhotoAlt: nextAlt,
           coverPhotoStorageKey: null,
@@ -286,8 +224,9 @@ export function CoverPhotoSection({
           coverPhotoFocalY: 0.5,
         });
       } catch (applyError) {
-        URL.revokeObjectURL(objectUrl);
         setError("We couldn’t read that image. Try another one.");
+      } finally {
+        URL.revokeObjectURL(objectUrl);
       }
     },
     [altText, defaultAltText, onPendingFileChange, updateValue, value.coverPhotoOriginalUrl],
@@ -305,27 +244,11 @@ export function CoverPhotoSection({
     [applyFile],
   );
 
-  const handleDrop = useCallback(
-    async (event: React.DragEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      if (isBusy || isFetchingRemote) {
-        return;
-      }
-      const file = event.dataTransfer.files?.[0];
-      if (file) {
-        await applyFile(file);
-      }
-    },
-    [applyFile, isBusy, isFetchingRemote],
-  );
-
   const openFilePicker = useCallback(() => {
     if (isBusy || isFetchingRemote) {
       return;
     }
-    const input = fileInputRef.current as (HTMLInputElement & {
-      showPicker?: () => void;
-    }) | null;
+    const input = fileInputRef.current;
     if (!input) {
       return;
     }
@@ -335,8 +258,8 @@ export function CoverPhotoSection({
       } else {
         input.click();
       }
-    } catch (error) {
-      console.warn("File picker showPicker failed, falling back to click.", error);
+    } catch (pickerError) {
+      console.warn("File picker showPicker failed, falling back to click.", pickerError);
       input.click();
     }
   }, [isBusy, isFetchingRemote]);
@@ -344,135 +267,43 @@ export function CoverPhotoSection({
   const applyRemoteImage = useCallback(
     async (src: string, label: string) => {
       try {
-        setIsFetchingRemote(true);
         const file = await createFileFromUrl(src, label);
         await applyFile(file);
+        return true;
       } catch (remoteError) {
         if ((remoteError as Error).message === "UNSUPPORTED_TYPE") {
           setError("That file type isn’t supported. Use JPG, PNG, or WebP.");
         } else {
           setError("Couldn't load this image. Try another link or upload.");
         }
-      } finally {
-        setIsFetchingRemote(false);
+        return false;
       }
     },
     [applyFile],
   );
 
   const handleUrlSubmit = useCallback(async () => {
-    if (!urlInput.trim()) {
-      setError("Enter an image URL to preview it.");
+    const trimmed = urlInput.trim();
+    if (!trimmed) {
       return;
     }
-    await applyRemoteImage(urlInput.trim(), "cover-photo");
-    setUrlInput("");
-  }, [applyRemoteImage, urlInput]);
 
-  const handleUnsplashSelect = useCallback(
-    async (preset: (typeof UNSPLASH_PRESETS)[number]) => {
-      await applyRemoteImage(preset.url, preset.label);
-      setAltText(`${preset.label} – ${defaultAltText}`);
-      updateValue({
-        coverPhotoAlt: `${preset.label} – ${defaultAltText}`,
-        coverPhotoAttribution: preset.attribution,
-        coverPhotoStorageKey: null,
-      });
-    },
-    [applyRemoteImage, defaultAltText, updateValue],
-  );
-
-  const objectPosition = useMemo(
-    () => `${clamp(focusX, 0, 100)}% ${clamp(focusY, 0, 100)}%`,
-    [focusX, focusY],
-  );
-  const focusXPercent = clamp(focusX, 0, 100);
-  const focusYPercent = clamp(focusY, 0, 100);
-
-  const updateFocalFromPointer = useCallback(
-    (event: PointerEvent | ReactPointerEvent<HTMLDivElement>) => {
-      if (!focalOverlayRef.current) {
-        return;
-      }
-      const rect = focalOverlayRef.current.getBoundingClientRect();
-      const nextX = clamp(
-        ((event.clientX - rect.left) / rect.width) * 100,
-        0,
-        100,
-      );
-      const nextY = clamp(
-        ((event.clientY - rect.top) / rect.height) * 100,
-        0,
-        100,
-      );
-      setFocusX(nextX);
-      setFocusY(nextY);
-      updateValue({
-        coverPhotoFocalX: nextX / 100,
-        coverPhotoFocalY: nextY / 100,
-      });
-    },
-    [updateValue],
-  );
-
-  const handlePointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (isBusy || isFetchingRemote) {
-        return;
-      }
-      event.preventDefault();
-      isDraggingRef.current = true;
-      setIsDragging(true);
-      (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
-      updateFocalFromPointer(event);
-    },
-    [isBusy, isFetchingRemote, updateFocalFromPointer],
-  );
-
-  const handlePointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (!isDraggingRef.current) {
-        return;
-      }
-      event.preventDefault();
-      updateFocalFromPointer(event);
-    },
-    [updateFocalFromPointer],
-  );
-
-  const endPointerDrag = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.pointerId !== undefined) {
-      try {
-        (event.currentTarget as HTMLDivElement).releasePointerCapture(event.pointerId);
-      } catch {
-        // ignore release errors
-      }
+    let candidate: URL;
+    try {
+      candidate = new URL(trimmed);
+    } catch {
+      setError("Enter a valid image URL.");
+      return;
     }
-    isDraggingRef.current = false;
-    setIsDragging(false);
-  }, []);
 
-  const handleFocusXChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const next = Number(event.target.value);
-      setFocusX(next);
-      updateValue({
-        coverPhotoFocalX: clamp(next / 100, 0, 1),
-      });
-    },
-    [updateValue],
-  );
-
-  const handleFocusYChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const next = Number(event.target.value);
-      setFocusY(next);
-      updateValue({
-        coverPhotoFocalY: clamp(next / 100, 0, 1),
-      });
-    },
-    [updateValue],
-  );
+    setIsFetchingRemote(true);
+    setError(null);
+    const success = await applyRemoteImage(candidate.toString(), candidate.toString());
+    if (success) {
+      setUrlInput("");
+    }
+    setIsFetchingRemote(false);
+  }, [urlInput, applyRemoteImage]);
 
   const handleAltChange = useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -484,14 +315,10 @@ export function CoverPhotoSection({
   );
 
   const handleRemove = useCallback(() => {
-    resetPreview();
     setAltText(defaultAltText);
-    setFocusX(50);
-    setFocusY(50);
     setWarning(null);
     setError(null);
-    setIsDragging(false);
-    isDraggingRef.current = false;
+    setSelectedFileInfo(null);
     onPendingFileChange(null, null);
     updateValue({
       coverPhotoUrl: null,
@@ -504,7 +331,7 @@ export function CoverPhotoSection({
       coverPhotoFocalX: 0.5,
       coverPhotoFocalY: 0.5,
     });
-  }, [defaultAltText, onPendingFileChange, resetPreview, updateValue]);
+  }, [defaultAltText, onPendingFileChange, updateValue]);
 
   return (
     <div className="space-y-6">
@@ -521,235 +348,93 @@ export function CoverPhotoSection({
       <div className="space-y-2">
         <Label htmlFor={fileInputId}>Cover photo</Label>
         <p className="text-sm text-slate-500">
-          We’ll fit your photo to the banner. JPG, PNG, or WebP up to {COVER_PHOTO_MAX_FILE_SIZE_MB}MB.
-        </p>
-        <p className="text-xs text-slate-500">
-          Images under {COVER_PHOTO_MIN_WIDTH}×{COVER_PHOTO_MIN_HEIGHT} may look soft on large screens.
+          We’ll fit your photo automatically. Images under {COVER_PHOTO_MIN_WIDTH}×{COVER_PHOTO_MIN_HEIGHT} may look soft on large screens.
         </p>
       </div>
 
-      {displayedImage ? (
-        <div className="space-y-4">
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-            <div className="relative aspect-video">
-              <img
-                src={displayedImage}
-                alt={altText || "Trip cover photo"}
-                className="h-full w-full select-none object-cover"
-                style={{ objectPosition }}
-                draggable={false}
-                loading="lazy"
-              />
-              <div
-                ref={focalOverlayRef}
-                className={cn(
-                  "absolute inset-0 cursor-grab touch-none",
-                  isDragging && "cursor-grabbing",
-                  (isBusy || isFetchingRemote) && "cursor-not-allowed",
-                )}
-                aria-hidden="true"
-                title="Drag to reposition the photo"
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={endPointerDrag}
-                onPointerLeave={endPointerDrag}
-                onPointerCancel={endPointerDrag}
-              >
-                <div
-                  className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/70 bg-white/70 p-1 shadow-sm"
-                  style={{ left: `${focusXPercent}%`, top: `${focusYPercent}%` }}
-                >
-                  <div className="h-2 w-2 rounded-full bg-slate-900/70" />
-                </div>
-              </div>
-              {(isBusy || isFetchingRemote) && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/50 text-white">
-                  <Loader2 className="h-6 w-6 animate-spin" aria-hidden="true" />
-                  <span className="text-xs font-medium">
-                    {isBusy ? "Uploading…" : "Loading photo…"}
-                  </span>
-                </div>
-              )}
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent p-4">
-                <p className="text-sm font-medium text-white">Trip banner preview</p>
-              </div>
-            </div>
-            <div className="grid gap-4 bg-white p-4 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Upcoming trip card
-                </p>
-                <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
-                  <div className="aspect-[4/3]">
-                    <img
-                      src={displayedImage}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      style={{ objectPosition }}
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                  Trip chip
-                </p>
-                <div className="mt-2 flex items-center gap-3">
-                  <div className="h-12 w-12 overflow-hidden rounded-full border border-slate-200">
-                    <img
-                      src={displayedImage}
-                      alt=""
-                      className="h-full w-full object-cover"
-                      style={{ objectPosition }}
-                      loading="lazy"
-                    />
-                  </div>
-                  <span className="rounded-full bg-slate-900/10 px-3 py-1 text-xs font-medium text-slate-700">
-                    Preview
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="font-medium text-slate-700">Horizontal focus</span>
-                <Input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={focusX}
-                  onChange={handleFocusXChange}
-                  aria-label="Adjust horizontal focus"
-                  disabled={isBusy || isFetchingRemote}
-                />
-              </label>
-              <label className="flex flex-col gap-2 text-sm">
-                <span className="font-medium text-slate-700">Vertical focus</span>
-                <Input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={focusY}
-                  onChange={handleFocusYChange}
-                  aria-label="Adjust vertical focus"
-                  disabled={isBusy || isFetchingRemote}
-                />
-              </label>
-            </div>
-            <p className="text-xs text-slate-500">
-              Fine-tune the focal point. We’ll regenerate crops for the banner, card, and chip automatically when the new photo saves.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={openFilePicker}
+            disabled={isBusy || isFetchingRemote}
+          >
+            Upload photo (JPG/PNG/WebP, ≤{COVER_PHOTO_MAX_FILE_SIZE_MB}MB)
+          </Button>
+          {hasImage ? (
             <Button
               type="button"
-              size="sm"
-              onClick={openFilePicker}
-              disabled={isBusy || isFetchingRemote}
-            >
-              Replace photo
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
+              variant="ghost"
+              className="text-slate-600 hover:text-slate-900"
               onClick={handleRemove}
               disabled={isBusy || isFetchingRemote}
             >
-              Remove
+              Remove photo
             </Button>
-          </div>
+          ) : null}
         </div>
-      ) : (
-        <div
-          className={cn(
-            "flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-slate-400",
-            (isBusy || isFetchingRemote) && "opacity-70",
-          )}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={handleDrop}
-        >
-          <p className="text-sm font-semibold text-slate-700">Add a cover photo</p>
-          <p className="text-xs text-slate-500">
-            Drag &amp; drop or choose a JPG, PNG, or WebP (max {COVER_PHOTO_MAX_FILE_SIZE_MB}MB).
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
+
+        <div className="space-y-2">
+          <Label htmlFor="cover-photo-url">Image URL (optional)</Label>
+          <div className="flex gap-2">
+            <Input
+              id="cover-photo-url"
+              type="url"
+              placeholder="https://example.com/photo.jpg"
+              value={urlInput}
+              onChange={(event) => setUrlInput(event.target.value)}
+              disabled={isBusy || isFetchingRemote}
+            />
             <Button
               type="button"
-              size="sm"
-              onClick={openFilePicker}
-              disabled={isBusy || isFetchingRemote}
+              variant="outline"
+              onClick={handleUrlSubmit}
+              disabled={
+                isBusy || isFetchingRemote || !urlInput.trim()
+              }
             >
-              Upload photo
+              Preview
             </Button>
           </div>
-        </div>
-      )}
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="cover-photo-alt">Alt text (optional)</Label>
-          <Textarea
-            id="cover-photo-alt"
-            value={altText}
-            onChange={handleAltChange}
-            placeholder="Describe the image for screen readers"
-            disabled={isBusy || isFetchingRemote || !hasImage}
-            rows={3}
-          />
           <p className="text-xs text-slate-500">
-            Helpful for travelers using screen readers. If left blank, we’ll reuse the trip name.
+            We’ll validate the link and use the image if it’s accessible. If the link is private or blocked, uploading is more reliable.
           </p>
         </div>
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="cover-photo-url">Use an image URL</Label>
-            <div className="flex gap-2">
-              <Input
-                id="cover-photo-url"
-                type="url"
-                placeholder="https://example.com/photo.jpg"
-                value={urlInput}
-                onChange={(event) => setUrlInput(event.target.value)}
-                disabled={isBusy || isFetchingRemote}
-              />
-              <Button
-                type="button"
-                onClick={handleUrlSubmit}
-                disabled={isBusy || isFetchingRemote || !urlInput.trim()}
-              >
-                Preview
-              </Button>
-            </div>
+
+        {selectedFileInfo ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            <p className="font-medium text-slate-700">{selectedFileInfo.name}</p>
             <p className="text-xs text-slate-500">
-              We’ll fetch the image and show a preview. If the link is private or blocked, uploading is more reliable.
+              {[
+                selectedFileInfo.width && selectedFileInfo.height
+                  ? `${selectedFileInfo.width}×${selectedFileInfo.height}`
+                  : null,
+                formatFileSize(selectedFileInfo.size),
+              ]
+                .filter(Boolean)
+                .join(" • ")}
             </p>
           </div>
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Or start from Unsplash
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {UNSPLASH_PRESETS.map((preset) => (
-                <Button
-                  key={preset.url}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleUnsplashSelect(preset)}
-                  disabled={isBusy || isFetchingRemote}
-                >
-                  {preset.label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
+        ) : hasPersistedImage ? (
+          <p className="text-xs text-slate-500">
+            A cover photo is already set. Upload a new one to replace it or remove it to use the gradient.
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="cover-photo-alt">Alt text (optional)</Label>
+        <Textarea
+          id="cover-photo-alt"
+          value={altText}
+          onChange={handleAltChange}
+          placeholder="Describe the image for screen readers"
+          disabled={isBusy || isFetchingRemote || !hasImage}
+          rows={3}
+        />
+        <p className="text-xs text-slate-500">
+          Helpful for travelers using screen readers. If left blank, we’ll reuse the trip name.
+        </p>
       </div>
 
       {warning ? (
