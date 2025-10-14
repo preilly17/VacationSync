@@ -447,6 +447,51 @@ describe("createActivityV2", () => {
     expect(result.initialVoteOrRsvpState[friendUser.id]).toBeNull();
   });
 
+  it("allows the creator to submit even if they are not listed as a trip member", async () => {
+    const { now, creatorUser, friendUser, trip } = createTripFixture();
+    const tripWithoutCreator: TripWithDetails = {
+      ...trip,
+      members: trip.members.filter((member) => member.userId !== creatorUser.id),
+    };
+
+    const activityRequest: CreateActivityRequest = {
+      mode: "scheduled",
+      title: "Boat Tour",
+      description: "Scenic views",
+      category: "sightseeing",
+      date: "2024-06-01",
+      start_time: "14:00",
+      end_time: "16:00",
+      timezone: "UTC",
+      location: "Harbor",
+      cost_per_person: null,
+      max_participants: null,
+      invitee_ids: [friendUser.id],
+      idempotency_key: "creator-not-member",
+    };
+
+    const { connectMock, clientQueryMock } = setupDbMocks({
+      now,
+      creatorUser,
+      friendUser,
+      trip: tripWithoutCreator,
+    });
+
+    const { createActivityV2 } = await import("../activitiesV2");
+
+    const result = await createActivityV2({
+      trip: tripWithoutCreator,
+      creatorId: creatorUser.id,
+      body: activityRequest,
+    });
+
+    expect(connectMock).toHaveBeenCalled();
+    expect(
+      clientQueryMock.mock.calls.some(([sql]) => typeof sql === "string" && sql.includes("INSERT INTO activities_v2")),
+    ).toBe(true);
+    expect(result.invitees.some((invitee) => invitee.userId === creatorUser.id)).toBe(true);
+  });
+
   it("generates an idempotency key when the request omits one", async () => {
     const { now, creatorUser, friendUser, trip } = createTripFixture();
 
