@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -17,7 +18,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { MapPin, Users, Star, Edit, Trash2, ExternalLink, Bed, Search, ArrowLeft, Calculator, ArrowUpDown } from "lucide-react";
+import {
+  MapPin,
+  Users,
+  Star,
+  Edit,
+  Trash2,
+  ExternalLink,
+  Bed,
+  Search,
+  ArrowLeft,
+  Calculator,
+  ArrowUpDown,
+  AlertCircle,
+} from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,7 +52,10 @@ import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/
 
 export default function HotelsPage() {
   const params = useParams();
-  const tripId = parseInt(params.tripId as string);
+  const tripIdParam = (params.tripId ?? (params as { id?: string }).id) ?? "";
+  const parsedTripId = tripIdParam ? Number.parseInt(tripIdParam, 10) : Number.NaN;
+  const hasValidTripId = Number.isFinite(parsedTripId) && parsedTripId > 0;
+  const tripId = hasValidTripId ? parsedTripId : 0;
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -59,18 +76,18 @@ export default function HotelsPage() {
 
   const { data: trip } = useQuery<TripWithDates>({
     queryKey: [`/api/trips/${tripId}`],
-    enabled: !!tripId,
+    enabled: hasValidTripId,
   });
 
   const { data: hotels = [], isLoading } = useQuery<HotelWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotels`],
-    enabled: !!tripId,
+    enabled: hasValidTripId,
   });
 
   // Hotel proposals for group voting
   const { data: hotelProposals = [], isLoading: proposalsLoading } = useQuery<HotelProposalWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotel-proposals`],
-    enabled: !!tripId,
+    enabled: hasValidTripId,
   });
 
   const focusSearchPanel = useCallback(() => {
@@ -150,6 +167,14 @@ export default function HotelsPage() {
 
   // Share hotel with group as a proposal
   const shareHotelWithGroup = async (hotel: HotelSearchResult) => {
+    if (!hasValidTripId) {
+      toast({
+        title: "Trip required",
+        description: "Select a trip before sharing hotel proposals.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
       await apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
         method: "POST",
@@ -249,10 +274,18 @@ export default function HotelsPage() {
   }, [form, formDefaults]);
 
   const openCreateDialog = useCallback(() => {
+    if (!hasValidTripId) {
+      toast({
+        title: "Choose a trip to save hotels",
+        description: "Open a specific trip to add manual hotel bookings.",
+        variant: "destructive",
+      });
+      return;
+    }
     setEditingHotel(null);
     form.reset(formDefaults());
     setIsDialogOpen(true);
-  }, [form, formDefaults]);
+  }, [form, formDefaults, hasValidTripId, toast]);
 
   useEffect(() => {
     if (!isDialogOpen && !editingHotel) {
@@ -420,6 +453,14 @@ export default function HotelsPage() {
   };
 
   const onSubmit = (values: HotelFormValues) => {
+    if (!hasValidTripId) {
+      toast({
+        title: "Trip required",
+        description: "Select a trip before saving hotel details.",
+        variant: "destructive",
+      });
+      return;
+    }
     const payload = transformHotelFormValues(values);
     if (editingHotel) {
       updateHotelMutation.mutate(payload);
@@ -446,6 +487,29 @@ export default function HotelsPage() {
     const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
     return `${format(checkInDate, "MMM d")} - ${format(checkOutDate, "MMM d")} (${nights} nights)`;
   };
+
+  if (!hasValidTripId) {
+    return (
+      <div className="mx-auto flex max-w-3xl flex-col gap-6 py-10">
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Select a trip to manage hotels</AlertTitle>
+          <AlertDescription>
+            Manual hotel saves need to be associated with a trip. Open a trip from your dashboard and revisit the Hotels tab to
+            add bookings.
+          </AlertDescription>
+        </Alert>
+        <div className="flex flex-wrap gap-3">
+          <Link href="/">
+            <Button variant="outline">View all trips</Button>
+          </Link>
+          <Link href="/trips/new">
+            <Button>Add a new trip</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
