@@ -457,6 +457,17 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
 
   const isSavingManualActivity = manualCreateActivity.isPending;
 
+  const clearManualFieldError = useCallback((field: keyof ManualFormErrors) => {
+    setManualFieldErrors((prev) => {
+      if (!prev[field]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
   const handleManualToggleAttendee = useCallback(
     (memberId: string, checked: boolean | "indeterminate") => {
       const normalizedId = String(memberId);
@@ -473,17 +484,6 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     },
     [clearManualFieldError],
   );
-
-  const clearManualFieldError = useCallback((field: keyof ManualFormErrors) => {
-    setManualFieldErrors((prev) => {
-      if (!prev[field]) {
-        return prev;
-      }
-      const next = { ...prev };
-      delete next[field];
-      return next;
-    });
-  }, []);
 
   const handleManualSelectAll = useCallback(() => {
     setManualAttendeeIds(defaultMemberIds);
