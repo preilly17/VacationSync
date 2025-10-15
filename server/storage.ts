@@ -2007,6 +2007,10 @@ export class DatabaseStorage implements IStorage {
 
   private proposalLinksInitialized = false;
 
+  private activityStatusInitPromise: Promise<void> | null = null;
+
+  private activityStatusColumnInitialized = false;
+
   private activityTypeInitPromise: Promise<void> | null = null;
 
   private activityTypeColumnInitialized = false;
@@ -2175,7 +2179,42 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  private async ensureActivityStatusColumn(): Promise<void> {
+    if (this.activityStatusColumnInitialized) {
+      return;
+    }
+
+    if (this.activityStatusInitPromise) {
+      await this.activityStatusInitPromise;
+      return;
+    }
+
+    this.activityStatusInitPromise = (async () => {
+      await query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS status TEXT`);
+
+      await query(
+        `ALTER TABLE activities ALTER COLUMN status SET DEFAULT 'active'`,
+      );
+
+      await query(
+        `UPDATE activities SET status = 'active' WHERE status IS NULL OR status = ''`,
+      );
+
+      await query(`ALTER TABLE activities ALTER COLUMN status SET NOT NULL`);
+
+      this.activityStatusColumnInitialized = true;
+    })();
+
+    try {
+      await this.activityStatusInitPromise;
+    } finally {
+      this.activityStatusInitPromise = null;
+    }
+  }
+
   private async ensureActivityTypeColumn(): Promise<void> {
+    await this.ensureActivityStatusColumn();
+
     if (this.activityTypeColumnInitialized) {
       return;
     }
