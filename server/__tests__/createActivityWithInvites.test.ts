@@ -31,6 +31,7 @@ beforeEach(() => {
   } as any;
   poolConnectSpy.mockResolvedValue(mockClient as any);
   (storage as any).activityTypeColumnInitialized = true;
+  (storage as any).activityStatusColumnInitialized = true;
   (storage as any).activityInvitesInitialized = true;
 });
 
