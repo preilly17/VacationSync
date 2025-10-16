@@ -1060,14 +1060,28 @@ const selectUserColumns = (alias: string, prefix: string) => `
         ${alias}.created_at AS ${prefix}created_at,
         ${alias}.updated_at AS ${prefix}updated_at`;
 
+const sanitizeNullableString = (
+  value: string | null | undefined,
+): string | null => {
+  if (typeof value !== "string") {
+    return value ?? null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 const mapTrip = (row: TripRow): TripCalendar => {
+  const normalizedCoverUrl = sanitizeNullableString(row.cover_photo_url);
   const fallbackCoverPhotoUrl =
-    row.cover_photo_url ??
+    normalizedCoverUrl ??
     buildCoverPhotoPublicUrlFromStorageKey(row.cover_photo_storage_key) ??
     null;
 
   const coverPhotoOriginalUrl =
-    row.cover_photo_original_url ?? fallbackCoverPhotoUrl ?? null;
+    sanitizeNullableString(row.cover_photo_original_url) ??
+    fallbackCoverPhotoUrl ??
+    null;
 
   return {
     id: row.id,
@@ -1086,11 +1100,11 @@ const mapTrip = (row: TripRow): TripCalendar => {
     population: toNumberOrNull(row.population),
     coverImageUrl: fallbackCoverPhotoUrl,
     coverPhotoUrl: fallbackCoverPhotoUrl,
-    coverPhotoCardUrl: row.cover_photo_card_url,
-    coverPhotoThumbUrl: row.cover_photo_thumb_url,
-    coverPhotoAlt: row.cover_photo_alt,
-    coverPhotoAttribution: row.cover_photo_attribution,
-    coverPhotoStorageKey: row.cover_photo_storage_key,
+    coverPhotoCardUrl: sanitizeNullableString(row.cover_photo_card_url),
+    coverPhotoThumbUrl: sanitizeNullableString(row.cover_photo_thumb_url),
+    coverPhotoAlt: sanitizeNullableString(row.cover_photo_alt),
+    coverPhotoAttribution: sanitizeNullableString(row.cover_photo_attribution),
+    coverPhotoStorageKey: sanitizeNullableString(row.cover_photo_storage_key),
     coverPhotoOriginalUrl,
     coverPhotoFocalX: safeNumberOrNull(row.cover_photo_focal_x),
     coverPhotoFocalY: safeNumberOrNull(row.cover_photo_focal_y),
@@ -2830,13 +2844,15 @@ export class DatabaseStorage implements IStorage {
         latitudeValue,
         longitudeValue,
         populationValue,
-        trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
-        trip.coverPhotoCardUrl ?? null,
-        trip.coverPhotoThumbUrl ?? null,
-        trip.coverPhotoAlt ?? null,
-        trip.coverPhotoAttribution ?? null,
-        trip.coverPhotoStorageKey ?? null,
-        trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+        sanitizeNullableString(trip.coverImageUrl ?? trip.coverPhotoUrl ?? null),
+        sanitizeNullableString(trip.coverPhotoCardUrl),
+        sanitizeNullableString(trip.coverPhotoThumbUrl),
+        sanitizeNullableString(trip.coverPhotoAlt),
+        sanitizeNullableString(trip.coverPhotoAttribution),
+        sanitizeNullableString(trip.coverPhotoStorageKey),
+        sanitizeNullableString(
+          trip.coverPhotoOriginalUrl ?? trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
+        ),
         typeof trip.coverPhotoFocalX === "number" && Number.isFinite(trip.coverPhotoFocalX)
           ? trip.coverPhotoFocalX
           : null,
@@ -3293,47 +3309,51 @@ export class DatabaseStorage implements IStorage {
 
     if (data.coverImageUrl !== undefined) {
       setClauses.push(`cover_photo_url = $${index}`);
-      values.push(data.coverImageUrl ?? null);
+      values.push(sanitizeNullableString(data.coverImageUrl));
       index += 1;
     } else if (data.coverPhotoUrl !== undefined) {
       setClauses.push(`cover_photo_url = $${index}`);
-      values.push(data.coverPhotoUrl ?? null);
+      values.push(sanitizeNullableString(data.coverPhotoUrl));
       index += 1;
     }
 
     if (data.coverPhotoCardUrl !== undefined) {
       setClauses.push(`cover_photo_card_url = $${index}`);
-      values.push(data.coverPhotoCardUrl ?? null);
+      values.push(sanitizeNullableString(data.coverPhotoCardUrl));
       index += 1;
     }
 
     if (data.coverPhotoThumbUrl !== undefined) {
       setClauses.push(`cover_photo_thumb_url = $${index}`);
-      values.push(data.coverPhotoThumbUrl ?? null);
+      values.push(sanitizeNullableString(data.coverPhotoThumbUrl));
       index += 1;
     }
 
     if (data.coverPhotoAlt !== undefined) {
       setClauses.push(`cover_photo_alt = $${index}`);
-      values.push(data.coverPhotoAlt ?? null);
+      values.push(sanitizeNullableString(data.coverPhotoAlt));
       index += 1;
     }
 
     if (data.coverPhotoAttribution !== undefined) {
       setClauses.push(`cover_photo_attribution = $${index}`);
-      values.push(data.coverPhotoAttribution ?? null);
+      values.push(sanitizeNullableString(data.coverPhotoAttribution));
       index += 1;
     }
 
     if (data.coverPhotoStorageKey !== undefined) {
       setClauses.push(`cover_photo_storage_key = $${index}`);
-      values.push(data.coverPhotoStorageKey ?? null);
+      values.push(sanitizeNullableString(data.coverPhotoStorageKey));
       index += 1;
     }
 
     if (data.coverPhotoOriginalUrl !== undefined) {
       setClauses.push(`cover_photo_original_url = $${index}`);
-      values.push(data.coverPhotoOriginalUrl ?? null);
+      values.push(
+        sanitizeNullableString(
+          data.coverPhotoOriginalUrl ?? data.coverImageUrl ?? data.coverPhotoUrl ?? null,
+        ),
+      );
       index += 1;
     }
 
