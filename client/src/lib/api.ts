@@ -1,6 +1,38 @@
 // client/src/lib/api.ts
 const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
-const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, "");
+
+const API_BASE_URL = (() => {
+  const sanitized = rawApiBaseUrl.replace(/\/+$/, "");
+
+  if (typeof window === "undefined" || sanitized.length === 0) {
+    return sanitized;
+  }
+
+  try {
+    const url = new URL(sanitized);
+    const currentHostname = window.location.hostname;
+
+    if (!currentHostname) {
+      return sanitized;
+    }
+
+    const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
+    const isLoopback = (host: string) => LOOPBACK_HOSTNAMES.has(host);
+
+    if (
+      isLoopback(url.hostname) &&
+      isLoopback(currentHostname) &&
+      url.hostname !== currentHostname
+    ) {
+      url.hostname = currentHostname;
+      return url.toString().replace(/\/+$/, "");
+    }
+  } catch {
+    // ignore invalid URL values – treat them as relative paths
+  }
+
+  return sanitized;
+})();
 
 export function buildApiUrl(path: string) {
   if (/^https?:\/\//i.test(path)) {
