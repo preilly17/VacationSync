@@ -119,10 +119,10 @@ export default function Login() {
                       <div className="relative">
                         <User className="absolute left-4 top-3.5 h-4 w-4 text-slate-400" />
                         <Input
-                          type="email"
+                          type="text"
                           inputMode="email"
                           autoCapitalize="none"
-                          autoComplete="email"
+                          autoComplete="username"
                           autoCorrect="off"
                           spellCheck={false}
                           placeholder="john@example.com or johndoe"
