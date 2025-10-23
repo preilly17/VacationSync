@@ -25,12 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
-import {
-  filterActiveProposals,
-  filterProposalsByStatus,
-  isCanceledStatus,
-  normalizeProposalStatus,
-} from "./proposalStatusFilters";
+import { filterActiveProposals, isCanceledStatus, normalizeProposalStatus } from "./proposalStatusFilters";
 import {
   ArrowLeft,
   Hotel,
@@ -197,10 +192,9 @@ function ProposalsPage({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "canceled">("all");
-  const [responseFilter, setResponseFilter] = useState<
-    "needs-response" | "all" | "accepted" | "declined"
-  >("needs-response");
+  const [responseFilter, setResponseFilter] = useState<"needs-response" | "accepted">(
+    "needs-response",
+  );
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -820,19 +814,9 @@ function ProposalsPage({
     [user],
   );
 
-  const applyStatusFilter = useCallback(
-    <T extends BaseProposal>(items: T[]): T[] =>
-      filterProposalsByStatus(items, statusFilter),
-    [statusFilter],
-  );
-
   const applyActivityResponseFilter = useCallback(
     (items: NormalizedActivityProposal[]): NormalizedActivityProposal[] => {
-      if (responseFilter === "all") {
-        return applyStatusFilter(items);
-      }
-
-      return applyStatusFilter(items).filter((proposal) => {
+      return filterActiveProposals(items).filter((proposal) => {
         if (user?.id) {
           const proposerId = proposal.proposedBy ?? proposal.proposer?.id ?? null;
           if (proposerId === user.id) {
@@ -851,14 +835,10 @@ function ProposalsPage({
           return responseStatus === "accepted";
         }
 
-        if (responseFilter === "declined") {
-          return responseStatus === "declined";
-        }
-
-        return true;
+        return false;
       });
     },
-    [applyStatusFilter, responseFilter, user?.id],
+    [responseFilter, user?.id],
   );
 
   const getUserRanking = (
@@ -1892,20 +1872,20 @@ function ProposalsPage({
   );
 
   const filteredHotelProposals = useMemo(
-    () => applyStatusFilter(hotelProposalsForCategories),
-    [applyStatusFilter, hotelProposalsForCategories],
+    () => filterActiveProposals(hotelProposalsForCategories),
+    [hotelProposalsForCategories],
   );
   const filteredFlightProposals = useMemo(
-    () => applyStatusFilter(flightProposalsForCategories),
-    [applyStatusFilter, flightProposalsForCategories],
+    () => filterActiveProposals(flightProposalsForCategories),
+    [flightProposalsForCategories],
   );
   const filteredActivityProposals = useMemo(
     () => applyActivityResponseFilter(activityProposalsForCategories),
     [applyActivityResponseFilter, activityProposalsForCategories],
   );
   const filteredRestaurantProposals = useMemo(
-    () => applyStatusFilter(restaurantProposalsForCategories),
-    [applyStatusFilter, restaurantProposalsForCategories],
+    () => filterActiveProposals(restaurantProposalsForCategories),
+    [restaurantProposalsForCategories],
   );
 
   const myHotelProposals = useMemo(() => {
@@ -1963,20 +1943,20 @@ function ProposalsPage({
   );
 
   const filteredMyHotelProposals = useMemo(
-    () => applyStatusFilter(myHotelProposals),
-    [applyStatusFilter, myHotelProposals],
+    () => filterActiveProposals(myHotelProposals),
+    [myHotelProposals],
   );
   const filteredMyFlightProposals = useMemo(
-    () => applyStatusFilter(myFlightProposals),
-    [applyStatusFilter, myFlightProposals],
+    () => filterActiveProposals(myFlightProposals),
+    [myFlightProposals],
   );
   const filteredMyActivityProposals = useMemo(
     () => applyActivityResponseFilter(myActivityProposals),
     [applyActivityResponseFilter, myActivityProposals],
   );
   const filteredMyRestaurantProposals = useMemo(
-    () => applyStatusFilter(myRestaurantProposals),
-    [applyStatusFilter, myRestaurantProposals],
+    () => filterActiveProposals(myRestaurantProposals),
+    [myRestaurantProposals],
   );
 
   const totalMyProposals =
@@ -2093,50 +2073,26 @@ function ProposalsPage({
         </p>
       </div>
 
-      <div
-        className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end"
-        data-testid="proposals-filters"
-      >
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end sm:gap-6">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-neutral-600">Status</span>
-            <Select value={statusFilter} onValueChange={(value: "all" | "active" | "canceled") => setStatusFilter(value)}>
-              <SelectTrigger className="w-[170px]" data-testid="filter-proposals-status">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="canceled">Canceled</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex flex-col gap-2" data-testid="filter-proposals-response">
-            <span className="text-sm font-medium text-neutral-600">Show</span>
-            <ToggleGroup
-              type="single"
-              value={responseFilter}
-              onValueChange={(value) => {
-                if (value) {
-                  setResponseFilter(value as typeof responseFilter);
-                }
-              }}
-              className="justify-start sm:justify-center"
-            >
-              <ToggleGroupItem value="needs-response" className="px-3 py-1 text-sm">
-                Needs response
-              </ToggleGroupItem>
-              <ToggleGroupItem value="accepted" className="px-3 py-1 text-sm">
-                Accepted
-              </ToggleGroupItem>
-              <ToggleGroupItem value="declined" className="px-3 py-1 text-sm">
-                Declined
-              </ToggleGroupItem>
-              <ToggleGroupItem value="all" className="px-3 py-1 text-sm">
-                All
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
+      <div className="flex md:justify-end" data-testid="proposals-filters">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3" data-testid="filter-proposals-response">
+          <span className="text-sm font-medium text-neutral-600">Show</span>
+          <ToggleGroup
+            type="single"
+            value={responseFilter}
+            onValueChange={(value) => {
+              if (value) {
+                setResponseFilter(value as typeof responseFilter);
+              }
+            }}
+            className="justify-start sm:justify-center"
+          >
+            <ToggleGroupItem value="needs-response" className="px-3 py-1 text-sm">
+              Needs response
+            </ToggleGroupItem>
+            <ToggleGroupItem value="accepted" className="px-3 py-1 text-sm">
+              Accepted
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       </div>
 
