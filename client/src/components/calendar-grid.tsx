@@ -736,17 +736,19 @@ function DayActivityList({
                     )}
                     aria-label={formatActivityAriaLabel(activity, day)}
                   >
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)] group-data-[mode=compact]/mode:h-2 group-data-[mode=compact]/mode:w-2 group-data-[mode=micro]/mode:h-2 group-data-[mode=micro]/mode:w-2" />
-                      <span className="shrink-0 text-sm group-data-[mode=compact]/mode:text-xs group-data-[mode=micro]/mode:text-xs">
+                    <span className="flex items-start gap-1.5 pt-0.5">
+                      <span className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--chip-dot)] shadow-[0_0_0_3px_rgba(255,255,255,0.6)] dark:shadow-[0_0_0_3px_rgba(2,6,23,0.6)] group-data-[mode=compact]/mode:mt-0 group-data-[mode=compact]/mode:h-2 group-data-[mode=compact]/mode:w-2 group-data-[mode=micro]/mode:mt-0 group-data-[mode=micro]/mode:h-2 group-data-[mode=micro]/mode:w-2" />
+                      <span className="shrink-0 text-sm leading-none group-data-[mode=compact]/mode:text-xs group-data-[mode=micro]/mode:text-xs">
                         {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}
                       </span>
                     </span>
-                    <div className="min-w-0 flex-1 group-data-[mode=micro]/mode:hidden">
-                      <div className="flex items-center gap-1 text-[13px] font-semibold leading-[1.15] text-[var(--chip-text)] group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:leading-[1.2]">
-                        <span className="truncate">{activity.name}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1 text-[13px] font-semibold leading-[1.25] text-[var(--chip-text)] group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:leading-[1.25] group-data-[mode=micro]/mode:hidden">
+                        <span className="min-w-0 flex-1 whitespace-normal break-words text-left">
+                          {activity.name}
+                        </span>
                         {isPersonalEvent && (
-                          <span className="ml-1 flex items-center gap-1 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1] group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden">
+                          <span className="shrink-0 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1] group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden">
                             <span className="h-1.5 w-1.5 rounded-full bg-[var(--chip-dot)]" />
                             Me
                           </span>
@@ -765,9 +767,11 @@ function DayActivityList({
                           </span>
                         )}
                       </div>
-                      <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.05] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden">
-                        <span className="truncate">{metadata.join(" • ")}</span>
-                      </div>
+                      {metadata.length > 0 && (
+                        <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.25] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden group-data-[mode=micro]/mode:hidden">
+                          <span className="whitespace-normal break-words text-left">{metadata.join(" • ")}</span>
+                        </div>
+                      )}
                     </div>
                     <span
                       className={cn(
