@@ -185,7 +185,7 @@ const actionToStatusMap: Record<ActivityRsvpAction, ActivityInviteStatus | null>
 function ProposalsPage({
   tripId,
   embedded = false,
-  includeUserProposalsInCategories = true,
+  includeUserProposalsInCategories = false,
   formatFlightDateTime,
 }: ProposalsPageProps = {}) {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();

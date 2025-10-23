@@ -2445,7 +2445,6 @@ export default function Trip() {
                     <Proposals
                       tripId={trip.id}
                       embedded
-                      includeUserProposalsInCategories
                       formatFlightDateTime={formatFlightProposalDateTime}
                     />
                   </div>
