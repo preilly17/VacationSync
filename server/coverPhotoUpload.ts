@@ -1,5 +1,6 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import path from "path";
+import { promises as fs } from "fs";
 import { nanoid } from "nanoid";
 import {
   COVER_PHOTO_MAX_FILE_SIZE_BYTES,
@@ -34,6 +35,23 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+
+const LEGACY_UPLOADS_DIRECTORY = path.resolve(process.cwd(), "cache", "uploads");
+
+const inferMimeTypeFromFilename = (filename: string) => {
+  const extension = path.extname(filename).toLowerCase();
+  switch (extension) {
+    case ".png":
+      return "image/png";
+    case ".webp":
+      return "image/webp";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    default:
+      return "application/octet-stream";
+  }
+};
 
 const resolveFilename = (originalName: string, mimeType: string) => {
   const originalExt = path.extname(originalName).toLowerCase();
@@ -96,13 +114,11 @@ export const registerCoverPhotoUploadRoutes = (
 
     try {
       const upload = await getCoverPhotoUpload(sanitized);
-      if (!upload) {
-        return res.status(404).end();
+      if (upload) {
+        res.setHeader("Content-Type", upload.mimeType);
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return res.send(upload.data);
       }
-
-      res.setHeader("Content-Type", upload.mimeType);
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-      return res.send(upload.data);
     } catch (error) {
       logCoverPhotoFailure({
         step: "download",
@@ -115,6 +131,34 @@ export const registerCoverPhotoUploadRoutes = (
       });
       return res.status(500).json({ message: "Failed to load cover photo" });
     }
+
+    try {
+      const legacyPath = path.join(
+        LEGACY_UPLOADS_DIRECTORY,
+        ...sanitized.split("/"),
+      );
+      const fileBuffer = await fs.readFile(legacyPath);
+      const mimeType = inferMimeTypeFromFilename(filename);
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      return res.send(fileBuffer);
+    } catch (fsError) {
+      const errorWithCode = fsError as NodeJS.ErrnoException;
+      if (errorWithCode?.code && errorWithCode.code !== "ENOENT") {
+        logCoverPhotoFailure({
+          step: "download",
+          userId: null,
+          tripId: null,
+          fileSize: null,
+          fileType: inferMimeTypeFromFilename(filename),
+          storageKey: sanitized,
+          error: fsError,
+        });
+        return res.status(500).json({ message: "Failed to load cover photo" });
+      }
+    }
+
+    return res.status(404).end();
   });
 
   app.post(
