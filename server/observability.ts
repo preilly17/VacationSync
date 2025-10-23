@@ -53,9 +53,13 @@ export const trackActivityCreationMetric = ({
   log(`📈 metrics.${key}=${activityCreationCounters[key]}${reasonSegment}${fieldSegment}`, "activity");
 };
 
-type CounterName = "upload_failed" | "save_failed" | "processing_timeout";
+type CounterName =
+  | "upload_failed"
+  | "save_failed"
+  | "processing_timeout"
+  | "download_failed";
 
-type FailureStep = "validate" | "upload" | "save" | "process";
+type FailureStep = "validate" | "upload" | "save" | "process" | "download";
 
 type FailureContext = {
   step: FailureStep;
@@ -71,6 +75,7 @@ const counters: Record<CounterName, number> = {
   upload_failed: 0,
   save_failed: 0,
   processing_timeout: 0,
+  download_failed: 0,
 };
 
 const stepToCounter: Record<FailureStep, CounterName> = {
@@ -78,6 +83,7 @@ const stepToCounter: Record<FailureStep, CounterName> = {
   upload: "upload_failed",
   save: "save_failed",
   process: "processing_timeout",
+  download: "download_failed",
 };
 
 export const incrementCounter = (name: CounterName) => {

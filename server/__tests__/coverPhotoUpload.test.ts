@@ -1,4 +1,4 @@
-import { buildCoverPhotoPublicUrlFromStorageKey } from "../coverPhotoUpload";
+import { buildCoverPhotoPublicUrlFromStorageKey } from "../coverPhotoShared";
 
 describe("buildCoverPhotoPublicUrlFromStorageKey", () => {
   it("returns a public URL for a valid storage key", () => {
