@@ -68,6 +68,7 @@ import {
   resolveCoverPhotoUrl,
   useCoverPhotoImage,
 } from "@/lib/tripCover";
+import { parseTripDateToLocal } from "@/lib/date";
 
 import CurrencyConverterTool from "@/components/dashboard/currency-converter-tool";
 
@@ -114,35 +115,53 @@ function toDateString(value: TripWithDetails["startDate"]): string {
 }
 
 function formatDateRange(startDate: string, endDate: string): string {
-  const start = parseISO(startDate);
-  const end = parseISO(endDate);
+  const start = parseTripDateToLocal(startDate);
+  const end = parseTripDateToLocal(endDate);
 
-  const sameYear = start.getFullYear() === end.getFullYear();
-  const sameMonth = sameYear && start.getMonth() === end.getMonth();
-
-  const startFormatter = new Intl.DateTimeFormat(undefined, {
+  const singleDateFormatter = new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
+    year: "numeric",
   });
 
-  const endFormatter = new Intl.DateTimeFormat(undefined, {
-    month: sameMonth ? undefined : "short",
-    day: "numeric",
-    year: sameYear ? undefined : "numeric",
-  });
+  if (start && end) {
+    const sameYear = start.getFullYear() === end.getFullYear();
+    const sameMonth = sameYear && start.getMonth() === end.getMonth();
 
-  const yearFormatter = new Intl.DateTimeFormat(undefined, { year: "numeric" });
+    const startFormatter = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+    });
 
-  const startPart = startFormatter.format(start);
-  const endPart = endFormatter.format(end);
+    const endFormatter = new Intl.DateTimeFormat(undefined, {
+      month: sameMonth ? undefined : "short",
+      day: "numeric",
+      year: sameYear ? undefined : "numeric",
+    });
 
-  if (sameYear) {
-    return `${startPart}–${endPart}, ${yearFormatter.format(start)}`;
+    const yearFormatter = new Intl.DateTimeFormat(undefined, { year: "numeric" });
+
+    const startPart = startFormatter.format(start);
+    const endPart = endFormatter.format(end);
+
+    if (sameYear) {
+      return `${startPart}–${endPart}, ${yearFormatter.format(start)}`;
+    }
+
+    const startYear = yearFormatter.format(start);
+    const endYear = yearFormatter.format(end);
+    return `${startPart}, ${startYear} – ${endPart}${endPart.includes(endYear) ? "" : `, ${endYear}`}`;
   }
 
-  const startYear = yearFormatter.format(start);
-  const endYear = yearFormatter.format(end);
-  return `${startPart}, ${startYear} – ${endPart}${endPart.includes(endYear) ? "" : `, ${endYear}`}`;
+  if (start) {
+    return singleDateFormatter.format(start);
+  }
+
+  if (end) {
+    return singleDateFormatter.format(end);
+  }
+
+  return "Dates TBD";
 }
 
 function getCountdownLabel(startDate: string, endDate: string): string {

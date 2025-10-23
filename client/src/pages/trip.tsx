@@ -119,6 +119,7 @@ import {
 } from "date-fns";
 import { Form } from "@/components/ui/form";
 import { resolveTripTimezone, formatDateInTimezone, formatTimeInTimezone } from "@/lib/timezone";
+import { parseTripDateToLocal } from "@/lib/date";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
@@ -250,33 +251,6 @@ const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
   { key: "restaurants", label: "Dining", icon: Utensils },
   { key: "groceries", label: "Groceries", icon: ShoppingCart },
 ];
-
-const parseTripDateToLocal = (value?: string | Date | null): Date | null => {
-  if (!value) {
-    return null;
-  }
-
-  const dateString = value instanceof Date ? value.toISOString() : value;
-
-  const [datePart] = dateString.split("T");
-
-  if (datePart) {
-    const parts = datePart.split("-");
-    if (parts.length === 3) {
-      const [yearString, monthString, dayString] = parts;
-      const year = Number.parseInt(yearString, 10);
-      const month = Number.parseInt(monthString, 10);
-      const day = Number.parseInt(dayString, 10);
-
-      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-        return new Date(year, month - 1, day);
-      }
-    }
-  }
-
-  const fallback = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
-};
 
 const hasTimeComponent = (date: Date) => {
   return (
