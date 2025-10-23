@@ -833,6 +833,13 @@ function ProposalsPage({
       }
 
       return applyStatusFilter(items).filter((proposal) => {
+        if (user?.id) {
+          const proposerId = proposal.proposedBy ?? proposal.proposer?.id ?? null;
+          if (proposerId === user.id) {
+            return true;
+          }
+        }
+
         const responseStatus: ActivityInviteStatus = proposal.currentUserInvite?.status
           ?? (proposal.isAccepted ? "accepted" : "pending");
 
@@ -851,7 +858,7 @@ function ProposalsPage({
         return true;
       });
     },
-    [applyStatusFilter, responseFilter],
+    [applyStatusFilter, responseFilter, user?.id],
   );
 
   const getUserRanking = (
