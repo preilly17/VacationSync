@@ -1,6 +1,6 @@
-import { filterActiveProposals, filterProposalsByStatus } from "../proposalStatusFilters";
+import { filterActiveProposals } from "../proposalStatusFilters";
 
-describe("filterProposalsByStatus", () => {
+describe("filterActiveProposals", () => {
   const proposals = [
     { id: 1, status: "canceled" },
     { id: 2, status: "void" },
@@ -8,27 +8,19 @@ describe("filterProposalsByStatus", () => {
     { id: 4, status: "scheduled" },
   ];
 
-  it("includes canceled proposals when the canceled filter is active", () => {
-    const result = filterProposalsByStatus(proposals, "canceled");
-
-    expect(result.map((proposal) => proposal.id)).toEqual([1, 2]);
-  });
-
-  it("excludes canceled proposals from the active filter results", () => {
-    const result = filterProposalsByStatus(proposals, "active");
-
-    expect(result.map((proposal) => proposal.id)).toEqual([3, 4]);
-  });
-
-  it("treats the all filter as active proposals", () => {
-    const result = filterProposalsByStatus(proposals, "all");
-
-    expect(result.map((proposal) => proposal.id)).toEqual([3, 4]);
-  });
-
-  it("returns only active proposals when filtering for active proposals directly", () => {
+  it("returns only active proposals", () => {
     const result = filterActiveProposals(proposals);
 
     expect(result.map((proposal) => proposal.id)).toEqual([3, 4]);
+  });
+
+  it("treats unknown statuses as active", () => {
+    const result = filterActiveProposals([
+      ...proposals,
+      { id: 5, status: "in_review" },
+      { id: 6, status: null },
+    ]);
+
+    expect(result.map((proposal) => proposal.id)).toEqual([3, 4, 5, 6]);
   });
 });
