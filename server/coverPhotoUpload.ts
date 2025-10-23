@@ -1,7 +1,5 @@
 import express, { type Express, type NextFunction, type Request, type Response } from "express";
 import path from "path";
-import fs from "fs";
-import fsPromises from "fs/promises";
 import { nanoid } from "nanoid";
 import {
   COVER_PHOTO_MAX_FILE_SIZE_BYTES,
@@ -9,6 +7,18 @@ import {
 } from "@shared/constants";
 import { log } from "./vite";
 import { logCoverPhotoFailure } from "./observability";
+import {
+  buildCoverPhotoPublicUrlFromFilename,
+  COVER_PHOTO_PUBLIC_PREFIX,
+  COVER_PHOTO_SUBDIRECTORY,
+  sanitizeStorageKey,
+  toCoverPhotoStorageKey,
+} from "./coverPhotoShared";
+import {
+  deleteCoverPhotoUpload,
+  getCoverPhotoUpload,
+  saveCoverPhotoUpload,
+} from "./coverPhotoStorage";
 
 type GetUserId = (req: Request) => string | undefined;
 
@@ -17,11 +27,6 @@ type RegisterOptions = {
   getUserId: GetUserId;
 };
 
-const UPLOAD_ROOT = path.resolve(process.cwd(), "cache", "uploads");
-export const COVER_PHOTO_SUBDIRECTORY = "cover-photos";
-const COVER_PHOTO_DIRECTORY = path.join(UPLOAD_ROOT, COVER_PHOTO_SUBDIRECTORY);
-const PUBLIC_PREFIX = `/${path.posix.join("uploads", COVER_PHOTO_SUBDIRECTORY)}`;
-
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -29,12 +34,6 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
-
-const ensureDirectory = (directory: string) => {
-  if (!fs.existsSync(directory)) {
-    fs.mkdirSync(directory, { recursive: true });
-  }
-};
 
 const resolveFilename = (originalName: string, mimeType: string) => {
   const originalExt = path.extname(originalName).toLowerCase();
@@ -49,40 +48,6 @@ const resolveFilename = (originalName: string, mimeType: string) => {
         ? ".webp"
         : ".jpg";
   return `${Date.now()}-${nanoid(8)}${fallbackExt}`;
-};
-
-const toStorageKey = (filename: string) =>
-  path.posix.join(COVER_PHOTO_SUBDIRECTORY, filename);
-
-const toPublicUrl = (filename: string) =>
-  `${PUBLIC_PREFIX}/${encodeURIComponent(filename)}`;
-
-export const sanitizeStorageKey = (key: string) => {
-  const normalized = key.replace(/\\+/g, "/");
-  if (!normalized.startsWith(`${COVER_PHOTO_SUBDIRECTORY}/`)) {
-    return null;
-  }
-  const parts = normalized.split("/");
-  if (parts.some((segment) => segment === ".." || segment === "")) {
-    return null;
-  }
-  return parts.join("/");
-};
-
-export const buildCoverPhotoPublicUrlFromStorageKey = (
-  storageKey: string | null | undefined,
-): string | null => {
-  if (!storageKey) {
-    return null;
-  }
-
-  const sanitized = sanitizeStorageKey(storageKey);
-  if (!sanitized) {
-    return null;
-  }
-
-  const segments = sanitized.split("/").map((segment) => encodeURIComponent(segment));
-  return `/${["uploads", ...segments].join("/")}`;
 };
 
 const coverPhotoRawMiddleware = express.raw({
@@ -117,8 +82,40 @@ export const registerCoverPhotoUploadRoutes = (
   app: Express,
   { isAuthenticated, getUserId }: RegisterOptions,
 ) => {
-  ensureDirectory(COVER_PHOTO_DIRECTORY);
-  app.use("/uploads", express.static(UPLOAD_ROOT));
+  app.get(`${COVER_PHOTO_PUBLIC_PREFIX}/:filename`, async (req, res) => {
+    const filename = req.params.filename;
+    if (!filename) {
+      return res.status(404).end();
+    }
+
+    const potentialKey = `${COVER_PHOTO_SUBDIRECTORY}/${filename}`;
+    const sanitized = sanitizeStorageKey(potentialKey);
+    if (!sanitized) {
+      return res.status(404).end();
+    }
+
+    try {
+      const upload = await getCoverPhotoUpload(sanitized);
+      if (!upload) {
+        return res.status(404).end();
+      }
+
+      res.setHeader("Content-Type", upload.mimeType);
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      return res.send(upload.data);
+    } catch (error) {
+      logCoverPhotoFailure({
+        step: "download",
+        userId: null,
+        tripId: null,
+        fileSize: null,
+        fileType: null,
+        storageKey: sanitized,
+        error,
+      });
+      return res.status(500).json({ message: "Failed to load cover photo" });
+    }
+  });
 
   app.post(
     "/api/uploads/cover-photo",
@@ -175,10 +172,14 @@ export const registerCoverPhotoUploadRoutes = (
       }
 
       const filename = resolveFilename(metadata.originalName, metadata.mimeType);
-      const destination = path.join(COVER_PHOTO_DIRECTORY, filename);
+      const storageKey = toCoverPhotoStorageKey(filename);
 
       try {
-        await fsPromises.writeFile(destination, buffer);
+        await saveCoverPhotoUpload({
+          storageKey,
+          mimeType: metadata.mimeType,
+          data: buffer,
+        });
       } catch (error) {
         logCoverPhotoFailure({
           step: "upload",
@@ -186,7 +187,7 @@ export const registerCoverPhotoUploadRoutes = (
           tripId: null,
           fileSize: buffer.length,
           fileType: metadata.mimeType,
-          storageKey: null,
+          storageKey,
           error,
         });
         return res.status(500).json({
@@ -195,8 +196,7 @@ export const registerCoverPhotoUploadRoutes = (
         });
       }
 
-      const storageKey = toStorageKey(filename);
-      const publicUrl = toPublicUrl(filename);
+      const publicUrl = buildCoverPhotoPublicUrlFromFilename(filename);
       log(
         `cover-photo upload success :: user=${userId ?? "unknown"} key=${storageKey} size=${buffer.length} type=${metadata.mimeType}`,
         "cover-photo",
@@ -270,19 +270,10 @@ export const registerCoverPhotoUploadRoutes = (
         return res.status(400).json({ message: "Invalid storage key" });
       }
 
-      const absolutePath = path.resolve(UPLOAD_ROOT, sanitized);
-      if (!absolutePath.startsWith(UPLOAD_ROOT)) {
-        return res.status(400).json({ message: "Invalid storage key" });
-      }
-
       try {
-        await fsPromises.unlink(absolutePath);
+        await deleteCoverPhotoUpload(sanitized);
         res.status(204).end();
       } catch (error: any) {
-        if (error?.code === "ENOENT") {
-          return res.status(204).end();
-        }
-
         logCoverPhotoFailure({
           step: "upload",
           userId,

@@ -1,5 +1,5 @@
 import { pool, query } from "./db";
-import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoUpload";
+import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoShared";
 import {
   computeSplits,
   minorUnitsToAmount,
