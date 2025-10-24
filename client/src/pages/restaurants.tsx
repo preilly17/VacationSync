@@ -311,7 +311,7 @@ export default function RestaurantsPage() {
                         OpenTable
                       </Button>
                     )}
-                    
+
                     {restaurant.website && (
                       <Button
                         variant="outline"
@@ -329,6 +329,19 @@ export default function RestaurantsPage() {
                       </Button>
                     )}
                   </div>
+
+                  {tripId && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full mt-2"
+                      onClick={() => handleProposeToGroup(restaurant)}
+                      data-testid={`button-propose-saved-restaurant-${restaurant.id}`}
+                    >
+                      <Users className="h-4 w-4 mr-2" />
+                      Propose to Group
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ))}
