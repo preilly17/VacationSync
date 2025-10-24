@@ -54,8 +54,6 @@ import type {
 } from "@shared/schema";
 import {
   Check,
-  ChevronDown,
-  ChevronUp,
   Edit2,
   MessageCircle,
   Plus,
@@ -258,7 +256,6 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
   const [addMode, setAddMode] = useState<"item" | "meal">("item");
   const [editingItem, setEditingItem] = useState<GroceryItemRecord | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [showPurchased, setShowPurchased] = useState(false);
   const [isClearingPurchased, setIsClearingPurchased] = useState(false);
   const { toast } = useToast();
 
@@ -482,8 +479,19 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
     );
   }, [searchTerm, groceryItems]);
 
-  const activeItems = filteredItems.filter((item) => !item.purchased);
-  const purchasedItems = filteredItems.filter((item) => item.purchased);
+  const purchasedItems = useMemo(
+    () => filteredItems.filter((item) => item.purchased),
+    [filteredItems],
+  );
+  const sortedItems = useMemo(() => {
+    return [...filteredItems].sort((itemA, itemB) => {
+      if (itemA.purchased === itemB.purchased) {
+        return 0;
+      }
+
+      return itemA.purchased ? 1 : -1;
+    });
+  }, [filteredItems]);
 
   const sortedMeals = useMemo(() => {
     return [...meals].sort(
@@ -879,44 +887,28 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
                     Try again
                   </Button>
                 </div>
-              ) : activeItems.length === 0 && purchasedItems.length === 0 ? (
+              ) : filteredItems.length === 0 ? (
                 <div className="rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
                   Nothing needed yet. Add an item or propose a group meal.
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {activeItems.map((item) => renderItemRow(item))}
-                </div>
-              )}
-
-              {purchasedItems.length > 0 && (
-                <div className="mt-3 overflow-hidden rounded-xl border border-border/60 bg-muted/40">
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-muted/60"
-                    onClick={() => setShowPurchased((previous) => !previous)}
-                  >
-                    <span>
-                      Purchased <span className="text-muted-foreground">({purchasedItems.length})</span>
-                    </span>
-                    {showPurchased ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                  {showPurchased && (
-                    <div className="space-y-3 border-t border-border/50 bg-background/40 px-4 py-3">
-                      {purchasedItems.map((item) => renderItemRow(item))}
+                <>
+                  <div className="space-y-3">
+                    {sortedItems.map((item) => renderItemRow(item))}
+                  </div>
+                  {purchasedItems.length > 0 && (
+                    <div className="flex justify-end pt-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearPurchased}
+                        disabled={isClearingPurchased}
+                      >
+                        {isClearingPurchased ? "Clearing…" : "Clear purchased"}
+                      </Button>
                     </div>
                   )}
-                  <div className="border-t border-border/50 bg-muted/50 px-4 py-2 text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleClearPurchased}
-                      disabled={isClearingPurchased}
-                    >
-                      {isClearingPurchased ? "Clearing…" : "Clear all"}
-                    </Button>
-                  </div>
-                </div>
+                </>
               )}
             </div>
           </section>
