@@ -43,6 +43,14 @@ import { BookingConfirmationModal } from "@/components/booking-confirmation-moda
 import { RestaurantProposalModal } from "@/components/restaurant-proposal-modal";
 import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
 
+const optionalUrlField = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z
+    .string()
+    .url({ message: "Invalid url" })
+    .optional(),
+);
+
 const restaurantFormSchema = z.object({
   name: z.string().min(1, "Restaurant name is required"),
   cuisine: z.string().min(1, "Cuisine type is required"),
@@ -54,8 +62,8 @@ const restaurantFormSchema = z.object({
   reservationTime: z.string().min(1, "Reservation time is required"),
   partySize: z.number().min(1, "Party size must be at least 1"),
   specialRequests: z.string().optional(),
-  website: z.string().url().optional(),
-  openTableUrl: z.string().url().optional(),
+  website: optionalUrlField,
+  openTableUrl: optionalUrlField,
 });
 
 type RestaurantFormData = z.infer<typeof restaurantFormSchema>;
