@@ -399,6 +399,192 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
     }
   };
 
+  const ideaMatchesFilters = (
+    idea: WishListIdeaWithDetails,
+    filters?: WishListQueryFilters,
+  ): boolean => {
+    if (!filters) {
+      return true;
+    }
+
+    if (filters.tag) {
+      const normalizedTag = filters.tag.toLowerCase();
+      const hasTag = (idea.tags ?? []).some(
+        (tag) => tag && tag.toLowerCase() === normalizedTag,
+      );
+      if (!hasTag) {
+        return false;
+      }
+    }
+
+    if (filters.submittedBy && idea.creator.id !== filters.submittedBy) {
+      return false;
+    }
+
+    if (filters.search) {
+      const search = filters.search.toLowerCase();
+      const haystacks = [
+        idea.title,
+        idea.notes ?? "",
+        idea.url ?? "",
+        ...(idea.tags ?? []),
+      ];
+
+      const matchesSearch = haystacks.some((value) =>
+        value?.toLowerCase().includes(search),
+      );
+
+      if (!matchesSearch) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const getCreatedAtValue = (value: string | Date | null | undefined) => {
+    if (!value) {
+      return null;
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    const timestamp = date.getTime();
+    return Number.isNaN(timestamp) ? null : timestamp;
+  };
+
+  const sortIdeasWithNewEntry = (
+    ideas: WishListIdeaWithDetails[],
+    idea: WishListIdeaWithDetails,
+    sort: "newest" | "oldest" | "most_saved",
+  ): WishListIdeaWithDetails[] => {
+    const newIdeas = [...ideas, idea];
+
+    const compareNewest = (
+      a: WishListIdeaWithDetails,
+      b: WishListIdeaWithDetails,
+    ) => {
+      const aTime = getCreatedAtValue(a.createdAt);
+      const bTime = getCreatedAtValue(b.createdAt);
+
+      if (aTime !== null && bTime !== null && aTime !== bTime) {
+        return bTime - aTime;
+      }
+
+      if (aTime === null && bTime !== null) {
+        return 1;
+      }
+
+      if (aTime !== null && bTime === null) {
+        return -1;
+      }
+
+      return b.id - a.id;
+    };
+
+    const compareOldest = (
+      a: WishListIdeaWithDetails,
+      b: WishListIdeaWithDetails,
+    ) => {
+      const aTime = getCreatedAtValue(a.createdAt);
+      const bTime = getCreatedAtValue(b.createdAt);
+
+      if (aTime !== null && bTime !== null && aTime !== bTime) {
+        return aTime - bTime;
+      }
+
+      if (aTime === null && bTime !== null) {
+        return 1;
+      }
+
+      if (aTime !== null && bTime === null) {
+        return -1;
+      }
+
+      return a.id - b.id;
+    };
+
+    const compareMostSaved = (
+      a: WishListIdeaWithDetails,
+      b: WishListIdeaWithDetails,
+    ) => {
+      if (a.saveCount !== b.saveCount) {
+        return b.saveCount - a.saveCount;
+      }
+
+      return compareNewest(a, b);
+    };
+
+    if (sort === "oldest") {
+      return newIdeas.sort(compareOldest);
+    }
+
+    if (sort === "most_saved") {
+      return newIdeas.sort(compareMostSaved);
+    }
+
+    return newIdeas.sort(compareNewest);
+  };
+
+  const addIdeaToCache = (idea: WishListIdeaWithDetails) => {
+    const queries = queryClient.getQueriesData<WishListIdeasResponse>({
+      queryKey: ["wish-list", tripId],
+    });
+
+    for (const [key, cached] of queries) {
+      if (!cached) {
+        continue;
+      }
+
+      const [, keyTripId, keyFilters] = key as [
+        string,
+        number,
+        WishListQueryFilters | undefined,
+      ];
+
+      if (keyTripId !== tripId) {
+        continue;
+      }
+
+      if (!ideaMatchesFilters(idea, keyFilters)) {
+        continue;
+      }
+
+      if (cached.ideas.some((existing) => existing.id === idea.id)) {
+        continue;
+      }
+
+      const sort = keyFilters?.sort ?? cached.meta.sort ?? "newest";
+      const updatedIdeas = sortIdeasWithNewEntry(cached.ideas, idea, sort);
+
+      const updatedTags = new Set(cached.meta.availableTags);
+      for (const tag of idea.tags ?? []) {
+        if (tag) {
+          updatedTags.add(tag);
+        }
+      }
+
+      let updatedSubmitters = cached.meta.submitters;
+      if (!updatedSubmitters.some((submitter) => submitter.id === idea.creator.id)) {
+        updatedSubmitters = [
+          ...updatedSubmitters,
+          { id: idea.creator.id, name: getUserDisplayName(idea.creator) },
+        ].sort((a, b) => a.name.localeCompare(b.name));
+      }
+
+      queryClient.setQueryData(key, {
+        ...cached,
+        ideas: updatedIdeas,
+        meta: {
+          ...cached.meta,
+          availableTags: Array.from(updatedTags).sort((a, b) =>
+            a.localeCompare(b),
+          ),
+          submitters: updatedSubmitters,
+        },
+      });
+    }
+  };
+
   const removeIdeaFromCache = (ideaId: number) => {
     const queries = queryClient.getQueriesData<WishListIdeasResponse>({
       queryKey: ["wish-list", tripId],
@@ -583,7 +769,10 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
       });
       return (await res.json()) as { idea: WishListIdeaWithDetails };
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (data.idea) {
+        addIdeaToCache(data.idea);
+      }
       toast({
         title: "Idea added",
         description: "Your inspiration was added to the wish list.",
