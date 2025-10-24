@@ -3277,6 +3277,111 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.post('/api/activities/:activityId/convert', isAuthenticated, async (req: any, res) => {
+    try {
+      const activityId = Number.parseInt(req.params.activityId, 10);
+      if (Number.isNaN(activityId)) {
+        return res.status(400).json({ message: 'Invalid activity ID' });
+      }
+
+      let userId = getRequestUserId(req);
+      if (process.env.NODE_ENV === 'development' && !req.isAuthenticated?.()) {
+        userId = 'demo-user';
+      }
+
+      if (!userId) {
+        return res.status(401).json({ message: 'User ID not found' });
+      }
+
+      const updatedActivity = await storage.convertActivityProposalToScheduled(activityId, userId);
+
+      const trip = await storage.getTripById(updatedActivity.tripCalendarId);
+      const proposerMember = trip?.members.find((member) => member.userId === userId);
+      const proposerName = getTripMemberDisplayName(proposerMember);
+
+      const eventDate = updatedActivity.startTime ? new Date(updatedActivity.startTime) : null;
+      const formattedDate = eventDate && !Number.isNaN(eventDate.getTime())
+        ? eventDate.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+          })
+        : null;
+
+      const notificationTitle = `${proposerName} scheduled ${updatedActivity.name}`;
+      const notificationMessage = formattedDate
+        ? `${proposerName} booked ${updatedActivity.name} for ${formattedDate}. RSVP when you can.`
+        : `${proposerName} booked ${updatedActivity.name}. RSVP when you can.`;
+
+      const inviteeIds = Array.from(
+        new Set(
+          (updatedActivity.invites ?? [])
+            .map((invite) => invite.userId)
+            .filter((inviteId): inviteId is string => Boolean(inviteId && inviteId !== userId)),
+        ),
+      );
+
+      if (inviteeIds.length > 0) {
+        const notificationResults = await Promise.allSettled(
+          inviteeIds.map((inviteeId) =>
+            storage.createNotification({
+              userId: inviteeId,
+              type: 'activity_invite',
+              title: notificationTitle,
+              message: notificationMessage,
+              tripId: updatedActivity.tripCalendarId,
+              activityId: updatedActivity.id,
+            }),
+          ),
+        );
+
+        const failedNotification = notificationResults.find(
+          (result): result is PromiseRejectedResult => result.status === 'rejected',
+        );
+
+        if (failedNotification) {
+          console.warn('Activity conversion notification dispatch failed', {
+            tripId: updatedActivity.tripCalendarId,
+            activityId: updatedActivity.id,
+            userId,
+            failedCount: notificationResults.filter((result) => result.status === 'rejected').length,
+            error: failedNotification.reason,
+          });
+        }
+      }
+
+      broadcastToTrip(updatedActivity.tripCalendarId, {
+        type: 'activity_converted',
+        activityId: updatedActivity.id,
+      });
+
+      res.json(updatedActivity);
+    } catch (error: unknown) {
+      console.error('Error converting activity proposal:', error);
+      if (error instanceof Error) {
+        if (error.message === 'Activity not found' || error.message === 'Trip not found') {
+          return res.status(404).json({ message: error.message });
+        }
+        if (
+          error.message.includes('convert activities you created') ||
+          error.message.includes('no longer a member')
+        ) {
+          return res.status(403).json({ message: error.message });
+        }
+        if (
+          error.message.includes('already scheduled') ||
+          error.message.includes('Add a start time') ||
+          error.message.includes('canceled')
+        ) {
+          return res.status(400).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: 'Failed to convert activity proposal' });
+    }
+  });
+
   // WebSocket setup
   const httpServer = createServer(app);
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
