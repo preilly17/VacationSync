@@ -122,7 +122,7 @@ const normalizeName = (value: string) => value.trim().toLowerCase();
 
 const INGREDIENT_DELIMITER_REGEX = /[\r\n,;]+/;
 const BULLET_PREFIX_REGEX = /^[\s]*[-–—*•·\u2022]\s*/;
-const NUMBERED_PREFIX_REGEX = /^[\s]*\d+[.)]\s*/;
+const NUMBERED_PREFIX_REGEX = /^[\s]*\d+[.)]\s+/;
 
 const sanitizeIngredientValue = (value: string): string => {
   let result = value.trim();
