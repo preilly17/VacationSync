@@ -1175,15 +1175,23 @@ const mapHotelProposalWithDetails = (
   row: HotelProposalWithProposerRow,
   rankings: (HotelRanking & { user: User })[],
   currentUserId?: string,
-): HotelProposalWithDetails => ({
-  ...mapHotelProposal(row),
-  proposer: mapUserFromPrefix(row, "proposer_"),
-  rankings,
-  currentUserRanking:
-    currentUserId != null
-      ? rankings.find((ranking) => ranking.userId === currentUserId)
-      : undefined,
-});
+): HotelProposalWithDetails => {
+  const proposerId = normalizeUserId(row.proposed_by);
+  const viewerId = normalizeUserId(currentUserId);
+
+  return {
+    ...mapHotelProposal(row),
+    proposer: mapUserFromPrefix(row, "proposer_"),
+    rankings,
+    currentUserRanking:
+      currentUserId != null
+        ? rankings.find((ranking) => ranking.userId === currentUserId)
+        : undefined,
+    permissions: {
+      canCancel: Boolean(proposerId && viewerId && proposerId === viewerId),
+    },
+  };
+};
 
 const mapFlightProposal = (row: FlightProposalRow): FlightProposal => ({
   id: row.id,
@@ -1226,15 +1234,23 @@ const mapFlightProposalWithDetails = (
   row: FlightProposalWithProposerRow,
   rankings: (FlightRanking & { user: User })[],
   currentUserId?: string,
-): FlightProposalWithDetails => ({
-  ...mapFlightProposal(row),
-  proposer: mapUserFromPrefix(row, "proposer_"),
-  rankings,
-  currentUserRanking:
-    currentUserId != null
-      ? rankings.find((ranking) => ranking.userId === currentUserId)
-      : undefined,
-});
+): FlightProposalWithDetails => {
+  const proposerId = normalizeUserId(row.proposed_by);
+  const viewerId = normalizeUserId(currentUserId);
+
+  return {
+    ...mapFlightProposal(row),
+    proposer: mapUserFromPrefix(row, "proposer_"),
+    rankings,
+    currentUserRanking:
+      currentUserId != null
+        ? rankings.find((ranking) => ranking.userId === currentUserId)
+        : undefined,
+    permissions: {
+      canCancel: Boolean(proposerId && viewerId && proposerId === viewerId),
+    },
+  };
+};
 
 const mapRestaurantProposal = (
   row: RestaurantProposalRow,
@@ -1279,15 +1295,23 @@ const mapRestaurantProposalWithDetails = (
   row: RestaurantProposalWithProposerRow,
   rankings: (RestaurantRanking & { user: User })[],
   currentUserId?: string,
-): RestaurantProposalWithDetails => ({
-  ...mapRestaurantProposal(row),
-  proposer: mapUserFromPrefix(row, "proposer_"),
-  rankings,
-  currentUserRanking:
-    currentUserId != null
-      ? rankings.find((ranking) => ranking.userId === currentUserId)
-      : undefined,
-});
+): RestaurantProposalWithDetails => {
+  const proposerId = normalizeUserId(row.proposed_by);
+  const viewerId = normalizeUserId(currentUserId);
+
+  return {
+    ...mapRestaurantProposal(row),
+    proposer: mapUserFromPrefix(row, "proposer_"),
+    rankings,
+    currentUserRanking:
+      currentUserId != null
+        ? rankings.find((ranking) => ranking.userId === currentUserId)
+        : undefined,
+    permissions: {
+      canCancel: Boolean(proposerId && viewerId && proposerId === viewerId),
+    },
+  };
+};
 
 const mapActivity = (row: ActivityRow): Activity => ({
   id: row.id,
@@ -1326,21 +1350,31 @@ const mapActivityWithDetails = (
     currentUserInvite?: ActivityInvite & { user: User };
     isAccepted?: boolean;
     hasResponded?: boolean;
+    currentUserId?: string;
   },
-): ActivityWithDetails => ({
-  ...mapActivity(row),
-  poster: row.poster,
-  invites: row.invites,
-  acceptances: row.acceptances,
-  comments: row.comments,
-  acceptedCount: row.acceptances.length,
-  pendingCount: row.invites.filter((invite) => invite.status === "pending").length,
-  declinedCount: row.invites.filter((invite) => invite.status === "declined").length,
-  waitlistedCount: row.invites.filter((invite) => invite.status === "waitlisted").length,
-  currentUserInvite: row.currentUserInvite,
-  isAccepted: row.isAccepted,
-  hasResponded: row.hasResponded,
-});
+): ActivityWithDetails => {
+  const activity = mapActivity(row);
+  const proposerId = normalizeUserId(activity.postedBy);
+  const viewerId = normalizeUserId(row.currentUserId);
+
+  return {
+    ...activity,
+    poster: row.poster,
+    invites: row.invites,
+    acceptances: row.acceptances,
+    comments: row.comments,
+    acceptedCount: row.acceptances.length,
+    pendingCount: row.invites.filter((invite) => invite.status === "pending").length,
+    declinedCount: row.invites.filter((invite) => invite.status === "declined").length,
+    waitlistedCount: row.invites.filter((invite) => invite.status === "waitlisted").length,
+    currentUserInvite: row.currentUserInvite,
+    isAccepted: row.isAccepted,
+    hasResponded: row.hasResponded,
+    permissions: {
+      canCancel: Boolean(proposerId && viewerId && proposerId === viewerId),
+    },
+  };
+};
 
 const mapComment = (row: any): ActivityComment => ({
   id: row.id,
@@ -4156,6 +4190,7 @@ export class DatabaseStorage implements IStorage {
         currentUserInvite,
         isAccepted,
         hasResponded,
+        currentUserId: userId,
       });
     });
   }
