@@ -19,6 +19,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
+import type { TripWithDetails } from "@shared/schema";
 
 const optionalUrlField = z.preprocess(
   (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
@@ -79,6 +80,72 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const cachedTrip = useMemo<TripWithDetails | undefined>(() => {
+    if (!normalizedTripId) {
+      return undefined;
+    }
+
+    const candidateKeys: Array<readonly unknown[]> = [
+      [`/api/trips/${normalizedTripId}`],
+      [`/api/trips/${String(normalizedTripId)}`],
+      ["/api/trips", normalizedTripId],
+      ["/api/trips", String(normalizedTripId)],
+    ];
+
+    for (const key of candidateKeys) {
+      const data = queryClient.getQueryData<TripWithDetails>(key as any);
+      if (data) {
+        return data;
+      }
+    }
+
+    return undefined;
+  }, [normalizedTripId, queryClient]);
+
+  const getCityAndCountry = (address: string) => {
+    const parts = address
+      .split(",")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+
+    let city: string | null = null;
+    let country: string | null = null;
+
+    if (parts.length >= 2) {
+      country = parts[parts.length - 1] || null;
+      city = parts[parts.length - 2] || null;
+    } else if (parts.length === 1) {
+      city = parts[0] || null;
+    }
+
+    if (!city) {
+      city = cachedTrip?.cityName || null;
+    }
+
+    if (!country) {
+      country =
+        cachedTrip?.countryName ||
+        (() => {
+          const destination = cachedTrip?.destination ?? "";
+          const destinationParts = destination
+            .split(",")
+            .map((part) => part.trim())
+            .filter((part) => part.length > 0);
+
+          if (destinationParts.length === 0) {
+            return null;
+          }
+
+          return destinationParts[destinationParts.length - 1] || null;
+        })();
+    }
+
+    return {
+      city: city ?? "Unknown City",
+      country: country ?? "Unknown Country",
+    };
+  };
+
   const form = useForm<RestaurantFormData>({
     resolver: zodResolver(restaurantFormSchema),
     defaultValues: defaultFormValues,
@@ -95,9 +162,36 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
       if (!normalizedTripId) {
         throw new Error("No trip context available");
       }
+      const { city, country } = getCityAndCountry(data.address);
+      const reservationDate = format(data.reservationDate, "yyyy-MM-dd");
+
+      const payload = {
+        tripId: Number(normalizedTripId),
+        name: data.name,
+        address: data.address,
+        city,
+        country,
+        reservationDate,
+        reservationTime: data.reservationTime,
+        partySize: data.partySize,
+        cuisineType: data.cuisine || null,
+        zipCode: null,
+        latitude: null,
+        longitude: null,
+        phoneNumber: data.phone?.trim() ? data.phone.trim() : null,
+        website: data.website ?? null,
+        openTableUrl: data.openTableUrl ?? null,
+        priceRange: data.priceRange,
+        rating: data.rating,
+        confirmationNumber: null,
+        reservationStatus: "planned",
+        specialRequests: data.specialRequests?.trim() ? data.specialRequests.trim() : null,
+        notes: null,
+      };
+
       return apiRequest(`/api/trips/${normalizedTripId}/restaurants`, {
         method: "POST",
-        body: data,
+        body: payload,
       });
     },
     onSuccess: () => {
