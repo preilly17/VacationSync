@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useReducer, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,8 +42,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
+import { isUnauthorizedError } from "@/lib/authUtils";
+import { apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
-import type { TripMember, User } from "@shared/schema";
+import type {
+  GroceryItemParticipant,
+  GroceryItemWithDetails,
+  GroceryNotes,
+  TripMember,
+  User,
+} from "@shared/schema";
 import {
   Check,
   ChevronDown,
@@ -58,13 +67,14 @@ import {
 type TripMemberWithUser = TripMember & { user: User };
 
 type GroceryItemRecord = {
-  id: string;
+  id: number;
   name: string;
   note?: string;
   purchased: boolean;
-  createdAt: string;
+  createdAt: string | Date | null;
   addedByUserId?: string;
-  claimedByUserId?: string;
+  addedByUser?: User;
+  participants: (GroceryItemParticipant & { user: User })[];
 };
 
 type MealCommentRecord = {
@@ -86,22 +96,11 @@ type GroupMealRecord = {
   comments: MealCommentRecord[];
 };
 
-type GroceryState = {
-  items: GroceryItemRecord[];
-  meals: GroupMealRecord[];
-};
-
-type GroceryAction =
-  | { type: "ADD_ITEM"; payload: GroceryItemRecord }
-  | { type: "UPDATE_ITEM"; payload: { id: string; updates: Partial<GroceryItemRecord> } }
-  | { type: "DELETE_ITEM"; payload: { id: string } }
-  | { type: "TOGGLE_PURCHASED"; payload: { id: string; purchased: boolean } }
-  | { type: "CLEAR_PURCHASED" }
+type MealAction =
   | { type: "ADD_MEAL"; payload: GroupMealRecord }
   | { type: "SET_MEAL_STATUS"; payload: { id: string; status: GroupMealRecord["status"] } }
   | { type: "TOGGLE_MEAL_UPVOTE"; payload: { id: string; userId?: string } }
-  | { type: "ADD_MEAL_COMMENT"; payload: { id: string; comment: MealCommentRecord } }
-  | { type: "MERGE_INGREDIENTS"; payload: { items: GroceryItemRecord[] } };
+  | { type: "ADD_MEAL_COMMENT"; payload: { id: string; comment: MealCommentRecord } };
 
 interface GroceryListProps {
   tripId: number;
@@ -109,12 +108,7 @@ interface GroceryListProps {
   members?: TripMemberWithUser[];
 }
 
-const STORAGE_KEY = "vacationsync:grocery-simple";
-
-const defaultState: GroceryState = {
-  items: [],
-  meals: [],
-};
+const defaultMeals: GroupMealRecord[] = [];
 
 const generateId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -126,76 +120,54 @@ const generateId = () => {
 
 const normalizeName = (value: string) => value.trim().toLowerCase();
 
-const getInitialState = (): GroceryState => {
-  if (typeof window === "undefined") {
-    return defaultState;
+const extractNoteText = (notes: GroceryNotes | null | undefined): string | undefined => {
+  if (!notes) {
+    return undefined;
   }
 
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return defaultState;
-    }
-
-    const parsed = JSON.parse(raw) as GroceryState;
-    if (!parsed || typeof parsed !== "object") {
-      return defaultState;
-    }
-
-    return {
-      items: Array.isArray(parsed.items) ? parsed.items : [],
-      meals: Array.isArray(parsed.meals) ? parsed.meals : [],
-    } satisfies GroceryState;
-  } catch (error) {
-    console.error("Failed to load grocery list state", error);
-    return defaultState;
+  if (typeof notes === "string") {
+    return notes.trim() || undefined;
   }
+
+  if (typeof notes === "object" && "text" in notes && typeof notes.text === "string") {
+    return notes.text.trim() || undefined;
+  }
+
+  return undefined;
 };
 
-const reducer = (state: GroceryState, action: GroceryAction): GroceryState => {
+const mapGroceryItemToRecord = (item: GroceryItemWithDetails): GroceryItemRecord => {
+  const baseAddedBy = (item as unknown as { addedBy?: unknown }).addedBy;
+  let addedByUser: User | undefined;
+  let addedByUserId: string | undefined;
+
+  if (baseAddedBy && typeof baseAddedBy === "object") {
+    addedByUser = baseAddedBy as User;
+    addedByUserId = addedByUser.id;
+  } else if (typeof baseAddedBy === "string") {
+    addedByUserId = baseAddedBy;
+  }
+
+  return {
+    id: item.id,
+    name: item.item,
+    note: extractNoteText(item.notes),
+    purchased: item.isPurchased,
+    createdAt: item.createdAt ?? null,
+    addedByUserId,
+    addedByUser,
+    participants: item.participants,
+  } satisfies GroceryItemRecord;
+};
+
+const reducer = (state: GroupMealRecord[], action: MealAction): GroupMealRecord[] => {
   switch (action.type) {
-    case "ADD_ITEM": {
-      return { ...state, items: [...state.items, action.payload] };
-    }
-    case "UPDATE_ITEM": {
-      const { id, updates } = action.payload;
-      return {
-        ...state,
-        items: state.items.map((item) => (item.id === id ? { ...item, ...updates } : item)),
-      };
-    }
-    case "DELETE_ITEM": {
-      return {
-        ...state,
-        items: state.items.filter((item) => item.id !== action.payload.id),
-      };
-    }
-    case "TOGGLE_PURCHASED": {
-      const { id, purchased } = action.payload;
-      return {
-        ...state,
-        items: state.items.map((item) =>
-          item.id === id
-            ? {
-                ...item,
-                purchased,
-              }
-            : item,
-        ),
-      };
-    }
-    case "CLEAR_PURCHASED": {
-      return { ...state, items: state.items.filter((item) => !item.purchased) };
-    }
     case "ADD_MEAL": {
-      return { ...state, meals: [...state.meals, action.payload] };
+      return [...state, action.payload];
     }
     case "SET_MEAL_STATUS": {
       const { id, status } = action.payload;
-      return {
-        ...state,
-        meals: state.meals.map((meal) => (meal.id === id ? { ...meal, status } : meal)),
-      };
+      return state.map((meal) => (meal.id === id ? { ...meal, status } : meal));
     }
     case "TOGGLE_MEAL_UPVOTE": {
       const { id, userId } = action.payload;
@@ -203,34 +175,25 @@ const reducer = (state: GroceryState, action: GroceryAction): GroceryState => {
         return state;
       }
 
-      return {
-        ...state,
-        meals: state.meals.map((meal) => {
-          if (meal.id !== id) {
-            return meal;
-          }
+      return state.map((meal) => {
+        if (meal.id !== id) {
+          return meal;
+        }
 
-          const hasUpvoted = meal.upvotes.includes(userId);
-          return {
-            ...meal,
-            upvotes: hasUpvoted
-              ? meal.upvotes.filter((entry) => entry !== userId)
-              : [...meal.upvotes, userId],
-          };
-        }),
-      };
+        const hasUpvoted = meal.upvotes.includes(userId);
+        return {
+          ...meal,
+          upvotes: hasUpvoted
+            ? meal.upvotes.filter((entry) => entry !== userId)
+            : [...meal.upvotes, userId],
+        };
+      });
     }
     case "ADD_MEAL_COMMENT": {
       const { id, comment } = action.payload;
-      return {
-        ...state,
-        meals: state.meals.map((meal) =>
-          meal.id === id ? { ...meal, comments: [...meal.comments, comment] } : meal,
-        ),
-      };
-    }
-    case "MERGE_INGREDIENTS": {
-      return { ...state, items: [...state.items, ...action.payload.items] };
+      return state.map((meal) =>
+        meal.id === id ? { ...meal, comments: [...meal.comments, comment] } : meal,
+      );
     }
     default:
       return state;
@@ -260,23 +223,201 @@ const getUserDisplayName = (user?: User | null) => {
   return user.email || "Trip member";
 };
 
-export function GroceryList({ user, members = [] }: GroceryListProps) {
-  const [state, dispatch] = useReducer(reducer, undefined, getInitialState);
+export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
+  const [meals, dispatch] = useReducer(reducer, defaultMeals);
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [addMode, setAddMode] = useState<"item" | "meal">("item");
   const [editingItem, setEditingItem] = useState<GroceryItemRecord | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [showPurchased, setShowPurchased] = useState(false);
+  const [isClearingPurchased, setIsClearingPurchased] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
+  const groceryQueryKey = [`/api/trips/${tripId}/groceries`] as const;
+
+  const {
+    data: groceryItemsData = [],
+    isLoading: isLoadingGroceries,
+    isError: isGroceriesError,
+    error: groceriesError,
+  } = useQuery<GroceryItemWithDetails[]>({
+    queryKey: groceryQueryKey,
+  });
+
+  const groceryItems = useMemo(
+    () => groceryItemsData.map((item) => mapGroceryItemToRecord(item)),
+    [groceryItemsData],
+  );
+
+  const handleUnauthorized = () => {
+    toast({
+      title: "Unauthorized",
+      description: "You are logged out. Logging in again...",
+      variant: "destructive",
+    });
+    setTimeout(() => {
+      window.location.href = "/login";
+    }, 500);
+  };
+
+  const handleMutationError = (error: unknown, fallbackMessage: string) => {
+    if (isUnauthorizedError(error as Error)) {
+      handleUnauthorized();
       return;
     }
 
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    toast({
+      title: "Something went wrong",
+      description: fallbackMessage,
+      variant: "destructive",
+    });
+  };
+
+  const invalidateGroceries = () => {
+    void queryClient.invalidateQueries({ queryKey: groceryQueryKey });
+  };
+
+  useEffect(() => {
+    if (isGroceriesError && isUnauthorizedError(groceriesError as Error)) {
+      handleUnauthorized();
+    }
+  }, [isGroceriesError, groceriesError]);
+
+  type CreateItemInput = {
+    name: string;
+    note?: string;
+    claimItem: boolean;
+    showSuccessToast?: boolean;
+  };
+
+  const createItemMutation = useMutation({
+    mutationFn: async ({ name, note, claimItem }: CreateItemInput) => {
+      const trimmedName = name.trim();
+      const trimmedNote = note?.trim();
+
+      const response = await apiRequest(`/api/trips/${tripId}/groceries`, {
+        method: "POST",
+        body: {
+          item: trimmedName,
+          category: "general",
+          notes: trimmedNote && trimmedNote.length > 0 ? trimmedNote : null,
+        },
+      });
+
+      const created = (await response.json()) as { id?: number };
+
+      if (claimItem && created?.id) {
+        await apiRequest(`/api/groceries/${created.id}/participate`, {
+          method: "POST",
+        });
+      }
+
+      return created;
+    },
+    onSuccess: (_data, variables) => {
+      invalidateGroceries();
+      if (variables?.showSuccessToast !== false) {
+        toast({
+          title: "Item added!",
+          description: "The grocery item has been added to the list.",
+        });
+      }
+      if (isAddDialogOpen) {
+        setIsAddDialogOpen(false);
+        setAddMode("item");
+      }
+    },
+    onError: (error) => {
+      handleMutationError(error, "Failed to add grocery item. Please try again.");
+    },
+  });
+
+  const updateItemMutation = useMutation({
+    mutationFn: async ({
+      itemId,
+      name,
+      note,
+    }: {
+      itemId: number;
+      name?: string;
+      note?: string | null;
+    }) => {
+      const payload: Record<string, unknown> = {};
+
+      if (name !== undefined) {
+        payload.item = name.trim();
+      }
+
+      if (note !== undefined) {
+        const trimmed = note?.trim();
+        payload.notes = trimmed && trimmed.length > 0 ? trimmed : null;
+      }
+
+      if (Object.keys(payload).length === 0) {
+        return;
+      }
+
+      await apiRequest(`/api/groceries/${itemId}`, {
+        method: "PATCH",
+        body: payload,
+      });
+    },
+    onSuccess: () => {
+      invalidateGroceries();
+    },
+    onError: (error) => {
+      handleMutationError(error, "Failed to update grocery item. Please try again.");
+    },
+  });
+
+  const togglePurchasedMutation = useMutation({
+    mutationFn: async ({ itemId, purchased }: { itemId: number; purchased: boolean }) => {
+      await apiRequest(`/api/groceries/${itemId}/purchase`, {
+        method: "PATCH",
+        body: { isPurchased: purchased },
+      });
+    },
+    onSuccess: () => {
+      invalidateGroceries();
+    },
+    onError: (error) => {
+      handleMutationError(error, "Failed to update item status. Please try again.");
+    },
+  });
+
+  const deleteItemMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      await apiRequest(`/api/groceries/${itemId}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      invalidateGroceries();
+      toast({
+        title: "Item removed",
+        description: "The grocery item has been deleted.",
+      });
+    },
+    onError: (error) => {
+      handleMutationError(error, "Failed to delete grocery item. Please try again.");
+    },
+  });
+
+  const toggleParticipationMutation = useMutation({
+    mutationFn: async (itemId: number) => {
+      await apiRequest(`/api/groceries/${itemId}/participate`, {
+        method: "POST",
+      });
+    },
+    onSuccess: () => {
+      invalidateGroceries();
+    },
+    onError: (error) => {
+      handleMutationError(error, "Failed to update participation. Please try again.");
+    },
+  });
 
   const memberLookup = useMemo(() => {
     const map = new Map<string, User>();
@@ -303,78 +444,123 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
 
   const filteredItems = useMemo(() => {
     if (!searchTerm.trim()) {
-      return state.items;
+      return groceryItems;
     }
 
     const query = searchTerm.trim().toLowerCase();
-    return state.items.filter((item) =>
+    return groceryItems.filter((item) =>
       [item.name, item.note]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query)),
     );
-  }, [searchTerm, state.items]);
+  }, [searchTerm, groceryItems]);
 
   const activeItems = filteredItems.filter((item) => !item.purchased);
   const purchasedItems = filteredItems.filter((item) => item.purchased);
 
   const sortedMeals = useMemo(() => {
-    return [...state.meals].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  }, [state.meals]);
+    return [...meals].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+  }, [meals]);
 
   const activeMeals = sortedMeals.filter((meal) => meal.status !== "declined");
   const declinedMeals = sortedMeals.filter((meal) => meal.status === "declined");
 
   const existingItemNames = useMemo(() => {
     const set = new Set<string>();
-    for (const item of state.items) {
+    for (const item of groceryItems) {
       set.add(normalizeName(item.name));
     }
     return set;
-  }, [state.items]);
+  }, [groceryItems]);
 
   const handleAddItem = (data: { name: string; note?: string; claimItem: boolean }) => {
-    const newItem: GroceryItemRecord = {
-      id: generateId(),
-      name: data.name.trim(),
-      note: data.note?.trim() || undefined,
-      purchased: false,
-      createdAt: new Date().toISOString(),
-      addedByUserId: user?.id,
-      claimedByUserId: data.claimItem && user ? user.id : undefined,
-    };
+    if (!data.name.trim()) {
+      return;
+    }
 
-    dispatch({ type: "ADD_ITEM", payload: newItem });
-    setIsAddDialogOpen(false);
+    createItemMutation.mutate({ ...data, showSuccessToast: true });
   };
 
-  const handleUpdateItem = (id: string, data: { name: string; note?: string; claimItem: boolean }) => {
-    dispatch({
-      type: "UPDATE_ITEM",
-      payload: {
-        id,
-        updates: {
-          name: data.name.trim(),
-          note: data.note?.trim() || undefined,
-          claimedByUserId: data.claimItem && user ? user.id : undefined,
-        },
-      },
-    });
+  const handleUpdateItem = async (
+    item: GroceryItemRecord,
+    data: { name: string; note?: string; claimItem: boolean },
+  ) => {
+    const trimmedName = data.name.trim();
+    const trimmedNote = data.note?.trim();
+    const nameChanged = trimmedName !== item.name;
+    const previousNote = item.note ?? "";
+    const nextNote = trimmedNote ?? "";
+    const noteChanged = previousNote !== nextNote;
+    const shouldClaim = Boolean(data.claimItem);
+    const currentUserId = user?.id;
+    const isCurrentlyClaimedByUser = currentUserId
+      ? item.participants.some((participant) => participant.userId === currentUserId)
+      : false;
 
-    setIsEditDialogOpen(false);
-    setEditingItem(null);
+    try {
+      if (nameChanged || noteChanged) {
+        await updateItemMutation.mutateAsync({
+          itemId: item.id,
+          name: nameChanged ? trimmedName : undefined,
+          note: noteChanged ? trimmedNote ?? null : undefined,
+        });
+      }
+
+      if (currentUserId && shouldClaim !== isCurrentlyClaimedByUser) {
+        await toggleParticipationMutation.mutateAsync(item.id);
+      }
+
+      if (nameChanged || noteChanged || (currentUserId && shouldClaim !== isCurrentlyClaimedByUser)) {
+        toast({
+          title: "Item updated",
+          description: "The grocery item was updated successfully.",
+        });
+      }
+
+      setIsEditDialogOpen(false);
+      setEditingItem(null);
+    } catch {
+      // Errors are handled by the individual mutations.
+    }
   };
 
-  const handleDeleteItem = (id: string) => {
-    dispatch({ type: "DELETE_ITEM", payload: { id } });
+  const handleDeleteItem = (id: number) => {
+    deleteItemMutation.mutate(id);
   };
 
   const handleTogglePurchased = (item: GroceryItemRecord, purchased: boolean) => {
-    dispatch({ type: "TOGGLE_PURCHASED", payload: { id: item.id, purchased } });
+    togglePurchasedMutation.mutate({ itemId: item.id, purchased });
   };
 
-  const handleClearPurchased = () => {
-    dispatch({ type: "CLEAR_PURCHASED" });
-    toast({ title: "Purchased items cleared" });
+  const handleClearPurchased = async () => {
+    const purchasedItemsToClear = groceryItems.filter((item) => item.purchased);
+    if (purchasedItemsToClear.length === 0) {
+      toast({
+        title: "No purchased items",
+        description: "There are no purchased items to clear.",
+      });
+      return;
+    }
+
+    setIsClearingPurchased(true);
+    try {
+      await Promise.all(
+        purchasedItemsToClear.map((item) =>
+          apiRequest(`/api/groceries/${item.id}`, {
+            method: "DELETE",
+          }),
+        ),
+      );
+
+      invalidateGroceries();
+      toast({ title: "Purchased items cleared" });
+    } catch (error) {
+      handleMutationError(error, "Failed to clear purchased items. Please try again.");
+    } finally {
+      setIsClearingPurchased(false);
+    }
   };
 
   const handleAddMeal = (data: { name: string; ingredients: string[] }) => {
@@ -414,8 +600,8 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
     dispatch({ type: "ADD_MEAL_COMMENT", payload: { id: mealId, comment } });
   };
 
-  const handleMergeIngredients = (meal: GroupMealRecord) => {
-    const additions: GroceryItemRecord[] = [];
+  const handleMergeIngredients = async (meal: GroupMealRecord) => {
+    const additions: string[] = [];
     const seen = new Set(existingItemNames);
 
     for (const ingredient of meal.ingredients) {
@@ -425,18 +611,27 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
       }
 
       seen.add(normalized);
-      additions.push({
-        id: generateId(),
-        name: ingredient,
-        purchased: false,
-        createdAt: new Date().toISOString(),
-        addedByUserId: meal.createdByUserId,
-      });
+      additions.push(ingredient);
     }
 
     if (additions.length > 0) {
-      dispatch({ type: "MERGE_INGREDIENTS", payload: { items: additions } });
-      toast({ title: "Ingredients added to Items", description: `${additions.length} new item${additions.length === 1 ? "" : "s"} added.` });
+      try {
+        for (const ingredient of additions) {
+          await createItemMutation.mutateAsync({
+            name: ingredient,
+            note: undefined,
+            claimItem: false,
+            showSuccessToast: false,
+          });
+        }
+
+        toast({
+          title: "Ingredients added to Items",
+          description: `${additions.length} new item${additions.length === 1 ? "" : "s"} added.`,
+        });
+      } catch (error) {
+        handleMutationError(error, "Failed to add ingredients to the list. Please try again.");
+      }
     } else {
       toast({
         title: "All ingredients already on the list",
@@ -446,12 +641,53 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
   };
 
   const renderItemRow = (item: GroceryItemRecord) => {
-    const addedByName = item.addedByUserId
-      ? getUserDisplayName(memberLookup.get(item.addedByUserId) ?? (user?.id === item.addedByUserId ? user ?? null : null))
-      : undefined;
+    const addedByName = (() => {
+      if (item.addedByUser) {
+        return getUserDisplayName(item.addedByUser);
+      }
 
-    const claimedByName = item.claimedByUserId
-      ? getUserDisplayName(memberLookup.get(item.claimedByUserId) ?? (user?.id === item.claimedByUserId ? user ?? null : null))
+      if (item.addedByUserId) {
+        const fallbackUser =
+          memberLookup.get(item.addedByUserId) ??
+          (user?.id === item.addedByUserId ? user ?? null : null);
+        return getUserDisplayName(fallbackUser ?? null);
+      }
+
+      return undefined;
+    })();
+
+    const participantNames = item.participants.map((participant) => {
+      const participantUser =
+        participant.user ??
+        memberLookup.get(participant.userId) ??
+        (user?.id === participant.userId ? user ?? null : null);
+
+      return getUserDisplayName(participantUser ?? null);
+    });
+
+    const currentUserIsParticipant = user
+      ? item.participants.some((participant) => participant.userId === user.id)
+      : false;
+
+    const otherParticipantNames = user
+      ? item.participants
+          .filter((participant) => participant.userId !== user.id)
+          .map((participant) => {
+            const participantUser =
+              participant.user ??
+              memberLookup.get(participant.userId) ??
+              (user?.id === participant.userId ? user ?? null : null);
+
+            return getUserDisplayName(participantUser ?? null);
+          })
+      : participantNames;
+
+    const participantLabel = participantNames.length > 0
+      ? currentUserIsParticipant
+        ? otherParticipantNames.length > 0
+          ? `You're buying this with ${otherParticipantNames.join(", ")}`
+          : "You're buying this"
+        : `${participantNames.join(", ")} ${participantNames.length === 1 ? "will buy this" : "will buy these"}`
       : undefined;
 
     return (
@@ -497,12 +733,12 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
                 Added by {addedByName}
               </Badge>
             )}
-            {claimedByName && (
+            {participantLabel && (
               <Badge
                 variant="outline"
                 className="border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-700 shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/25 dark:text-emerald-100"
               >
-                {claimedByName === currentUserName ? "You're buying this" : `${claimedByName} will buy this`}
+                {participantLabel}
               </Badge>
             )}
           </div>
@@ -590,7 +826,22 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
                 />
               </div>
 
-              {activeItems.length === 0 && purchasedItems.length === 0 ? (
+              {isLoadingGroceries ? (
+                <div className="rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
+                  Loading groceries…
+                </div>
+              ) : isGroceriesError ? (
+                <div className="space-y-3 rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
+                  <p>We couldn't load the grocery list.</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => invalidateGroceries()}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : activeItems.length === 0 && purchasedItems.length === 0 ? (
                 <div className="rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
                   Nothing needed yet. Add an item or propose a group meal.
                 </div>
@@ -618,8 +869,13 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
                     </div>
                   )}
                   <div className="border-t border-border/50 bg-muted/50 px-4 py-2 text-right">
-                    <Button variant="ghost" size="sm" onClick={handleClearPurchased}>
-                      Clear all
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearPurchased}
+                      disabled={isClearingPurchased}
+                    >
+                      {isClearingPurchased ? "Clearing…" : "Clear all"}
                     </Button>
                   </div>
                 </div>
@@ -722,7 +978,8 @@ export function GroceryList({ user, members = [] }: GroceryListProps) {
             item={editingItem}
             open={isEditDialogOpen}
             onOpenChange={setIsEditDialogOpen}
-            onSubmit={(values) => editingItem && handleUpdateItem(editingItem.id, values)}
+            currentUserId={user?.id}
+            onSubmit={(values) => editingItem && handleUpdateItem(editingItem, values)}
           />
         </div>
       </div>
@@ -890,9 +1147,10 @@ interface EditItemDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: { name: string; note?: string; claimItem: boolean }) => void;
+  currentUserId?: string;
 }
 
-const EditItemDialog = ({ item, open, onOpenChange, onSubmit }: EditItemDialogProps) => {
+const EditItemDialog = ({ item, open, onOpenChange, onSubmit, currentUserId }: EditItemDialogProps) => {
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [claimItem, setClaimItem] = useState(false);
@@ -901,9 +1159,20 @@ const EditItemDialog = ({ item, open, onOpenChange, onSubmit }: EditItemDialogPr
     if (item && open) {
       setName(item.name);
       setNote(item.note ?? "");
-      setClaimItem(Boolean(item.claimedByUserId));
+      if (currentUserId) {
+        const isClaimedByCurrentUser = item.participants.some(
+          (participant) => participant.userId === currentUserId,
+        );
+        setClaimItem(isClaimedByCurrentUser);
+      } else {
+        setClaimItem(false);
+      }
+    } else if (!open) {
+      setName("");
+      setNote("");
+      setClaimItem(false);
     }
-  }, [item, open]);
+  }, [item, open, currentUserId]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -915,7 +1184,7 @@ const EditItemDialog = ({ item, open, onOpenChange, onSubmit }: EditItemDialogPr
       return;
     }
 
-    onSubmit({ name, note, claimItem });
+    onSubmit({ name: name.trim(), note: note.trim(), claimItem });
   };
 
   return (

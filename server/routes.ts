@@ -7,7 +7,7 @@ import { ActivityInviteMembershipError, ActivityDuplicateError, storage } from "
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
-import { insertTripCalendarSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityType, type ActivityWithDetails } from "@shared/schema";
+import { insertTripCalendarSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityType, type ActivityWithDetails } from "@shared/schema";
 import { createActivityV2 } from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
 import { validateActivityInput } from "@shared/activityValidation";
@@ -3891,6 +3891,34 @@ export function setupRoutes(app: Express) {
         res.status(400).json({ message: "Invalid grocery item data", errors: (error as any).errors });
       } else {
         res.status(500).json({ message: "Failed to add grocery item" });
+      }
+    }
+  });
+
+  app.patch('/api/groceries/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const itemId = parseInt(req.params.id, 10);
+      if (Number.isNaN(itemId)) {
+        return res.status(400).json({ message: "Invalid grocery item ID" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const updates = updateGroceryItemSchema.parse(req.body ?? {});
+      await storage.updateGroceryItem(itemId, updates);
+      const groceryItem = await storage.getGroceryItemWithDetails(itemId);
+      res.json(groceryItem);
+    } catch (error: unknown) {
+      console.error("Error updating grocery item:", error);
+      if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
+        res.status(400).json({ message: "Invalid grocery item data", errors: (error as any).errors });
+      } else if (error instanceof Error && error.message === "Grocery item not found") {
+        res.status(404).json({ message: "Grocery item not found" });
+      } else {
+        res.status(500).json({ message: "Failed to update grocery item" });
       }
     }
   });

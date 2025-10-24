@@ -518,6 +518,19 @@ export const insertGroceryItemSchema = z.object({
 
 export type InsertGroceryItem = z.infer<typeof insertGroceryItemSchema>;
 
+export const updateGroceryItemSchema = z.object({
+  item: z.string().min(1, "Item is required").optional(),
+  category: z.string().min(1, "Category is required").optional(),
+  quantity: z.string().nullable().optional(),
+  estimatedCost: nullableNumberInput("Estimated cost must be a number").optional(),
+  notes: groceryNotesSchema.nullable().optional(),
+  isPurchased: z.boolean().optional(),
+  actualCost: nullableNumberInput("Actual cost must be a number").optional(),
+  receiptLineItem: z.string().nullable().optional(),
+});
+
+export type UpdateGroceryItem = z.infer<typeof updateGroceryItemSchema>;
+
 export interface GroceryItemParticipant {
   id: number;
   groceryItemId: number;
