@@ -120,6 +120,33 @@ const generateId = () => {
 
 const normalizeName = (value: string) => value.trim().toLowerCase();
 
+const INGREDIENT_DELIMITER_REGEX = /[\r\n,;]+/;
+const BULLET_PREFIX_REGEX = /^[\s]*[-–—*•·\u2022]\s*/;
+const NUMBERED_PREFIX_REGEX = /^[\s]*\d+[.)]\s*/;
+
+const sanitizeIngredientValue = (value: string): string => {
+  let result = value.trim();
+  if (!result) {
+    return "";
+  }
+
+  result = result.replace(BULLET_PREFIX_REGEX, "").trim();
+  result = result.replace(NUMBERED_PREFIX_REGEX, "").trim();
+
+  return result;
+};
+
+const normalizeMealIngredients = (values: string[]): string[] => {
+  return values
+    .flatMap((value) =>
+      value
+        .split(INGREDIENT_DELIMITER_REGEX)
+        .map((part) => sanitizeIngredientValue(part))
+        .filter(Boolean),
+    )
+    .filter(Boolean);
+};
+
 const extractNoteText = (notes: GroceryNotes | null | undefined): string | undefined => {
   if (!notes) {
     return undefined;
@@ -564,10 +591,15 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
   };
 
   const handleAddMeal = (data: { name: string; ingredients: string[] }) => {
+    const normalizedIngredients = normalizeMealIngredients(data.ingredients);
+    if (normalizedIngredients.length === 0) {
+      return;
+    }
+
     const meal: GroupMealRecord = {
       id: generateId(),
       name: data.name.trim(),
-      ingredients: data.ingredients.map((ingredient) => ingredient.trim()).filter(Boolean),
+      ingredients: normalizedIngredients,
       status: "proposed",
       upvotes: [],
       createdAt: new Date().toISOString(),
@@ -582,9 +614,10 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
 
   const handleMergeIngredients = async (meal: GroupMealRecord) => {
     const additions: string[] = [];
+    const mealIngredients = normalizeMealIngredients(meal.ingredients);
     const seen = new Set(existingItemNames);
 
-    for (const ingredient of meal.ingredients) {
+    for (const ingredient of mealIngredients) {
       const normalized = normalizeName(ingredient);
       if (!normalized || seen.has(normalized)) {
         continue;
@@ -1040,10 +1073,10 @@ const AddItemDialog = ({
         return;
       }
 
-      const ingredients = ingredientsText
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter(Boolean);
+      const ingredients = normalizeMealIngredients([ingredientsText]);
+      if (ingredients.length === 0) {
+        return;
+      }
 
       onAddMeal({ name: mealName, ingredients });
     }
@@ -1269,7 +1302,12 @@ const GroupMealCard = ({
 
   const hasUpvoted = currentUserId ? meal.upvotes.includes(currentUserId) : false;
   const upvoteNames = meal.upvotes.map((userId) => getUserName(userId));
-  const allIngredientsAdded = meal.ingredients.every((ingredient) =>
+  const normalizedIngredients = useMemo(
+    () => normalizeMealIngredients(meal.ingredients),
+    [meal.ingredients],
+  );
+
+  const allIngredientsAdded = normalizedIngredients.every((ingredient) =>
     existingItemNames.has(normalizeName(ingredient)),
   );
 
@@ -1303,12 +1341,12 @@ const GroupMealCard = ({
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            {meal.ingredients.map((ingredient) => {
+            {normalizedIngredients.map((ingredient, index) => {
               const normalized = normalizeName(ingredient);
               const alreadyAdded = existingItemNames.has(normalized);
               return (
                 <Badge
-                  key={ingredient}
+                  key={`${ingredient}-${index}`}
                   variant="outline"
                   className={cn(
                     "flex items-center gap-1",
