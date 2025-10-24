@@ -4214,6 +4214,61 @@ export class DatabaseStorage implements IStorage {
     return updatedActivity ?? { ...activity, status: "canceled" };
   }
 
+  async convertActivityProposalToScheduled(
+    activityId: number,
+    currentUserId: string,
+  ): Promise<ActivityWithDetails> {
+    await this.ensureActivityTypeColumn();
+
+    const activity = await this.getActivityById(activityId);
+    if (!activity) {
+      throw new Error("Activity not found");
+    }
+
+    const proposerId = normalizeUserId(activity.postedBy);
+    const requesterId = normalizeUserId(currentUserId);
+
+    if (!proposerId || !requesterId || proposerId !== requesterId) {
+      throw new Error("You can only convert activities you created");
+    }
+
+    const normalizedStatus = (activity.status ?? "").toLowerCase();
+    if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+      throw new Error("This activity has been canceled");
+    }
+
+    if (toActivityType(activity.type) !== "PROPOSE") {
+      throw new Error("Activity is already scheduled");
+    }
+
+    if (!activity.startTime) {
+      throw new Error("Add a start time before scheduling this activity");
+    }
+
+    const trip = await this.getTripById(activity.tripCalendarId);
+    if (!trip) {
+      throw new Error("Trip not found");
+    }
+
+    const isMember = trip.members.some((member) => member.userId === currentUserId);
+    if (!isMember) {
+      throw new Error("You are no longer a member of this trip");
+    }
+
+    await query(
+      `UPDATE activities SET type = 'SCHEDULED', updated_at = NOW() WHERE id = $1`,
+      [activityId],
+    );
+
+    const activities = await this.getTripActivities(activity.tripCalendarId, currentUserId);
+    const updatedActivity = activities.find((item) => item.id === activityId);
+    if (!updatedActivity) {
+      throw new Error("Failed to load updated activity");
+    }
+
+    return updatedActivity;
+  }
+
   async acceptActivity(activityId: number, userId: string): Promise<void> {
     await this.setActivityInviteStatus(activityId, userId, "accepted");
   }

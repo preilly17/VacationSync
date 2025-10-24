@@ -25,7 +25,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
-import { filterActiveProposals, isCanceledStatus, normalizeProposalStatus } from "./proposalStatusFilters";
+import { filterActiveProposals, isCanceledStatus } from "./proposalStatusFilters";
 import {
   ArrowLeft,
   Hotel,
@@ -535,6 +535,57 @@ function ProposalsPage({
     },
   });
 
+  const convertActivityProposalMutation = useMutation<
+    ActivityWithDetails,
+    unknown,
+    { activityId: number }
+  >({
+    mutationFn: async ({ activityId }) => {
+      const res = await apiRequest(`/api/activities/${activityId}/convert`, { method: "POST" });
+      return (await res.json()) as ActivityWithDetails;
+    },
+    onSuccess: (activity) => {
+      if (!tripId) {
+        return;
+      }
+
+      queryClient.setQueryData<ActivityWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/proposals/activities`],
+        (previous) => previous?.filter((proposal) => proposal.id !== activity.id),
+      );
+
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
+
+      const startTime = activity.startTime ? new Date(activity.startTime) : null;
+      const hasValidStart = !!(startTime && !Number.isNaN(startTime.getTime()));
+      const description =
+        hasValidStart && startTime
+          ? `We added this plan for ${format(startTime, "EEE, MMM d 'at' h:mm a")}. Everyone has been notified.`
+          : "We added this plan to the calendar and notified the group.";
+
+      toast({
+        title: "Activity scheduled!",
+        description,
+      });
+    },
+    onError: (error) => {
+      const parsedError = parseApiError(error);
+
+      if (parsedError.status === 401 || isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      toast({
+        title: "Unable to schedule activity",
+        description: parsedError.message || "We couldn't schedule this activity. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const respondToInviteMutation = useMutation({
     mutationFn: async ({
       activityId,
@@ -1036,6 +1087,11 @@ function ProposalsPage({
     const createdAt = proposal.createdAt ? new Date(proposal.createdAt) : null;
     const isCanceled = isCanceledStatus(proposal.status);
     const canCancel = isMyProposal(proposal) && !isCanceled;
+    const canConvert = isMyProposal(proposal) && !isCanceled && proposal.type === "PROPOSE";
+    const hasStartTime = Boolean(proposal.startTime);
+    const isConverting =
+      convertActivityProposalMutation.isPending
+      && convertActivityProposalMutation.variables?.activityId === proposal.id;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
@@ -1130,6 +1186,24 @@ function ProposalsPage({
             </div>
             <div className="flex flex-col items-end gap-2">
               {getStatusBadge(proposal.status || "scheduled")}
+              {canConvert ? (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={() => convertActivityProposalMutation.mutate({ activityId: proposal.id })}
+                    disabled={!hasStartTime || isConverting}
+                    title={!hasStartTime ? "Add a date and time before scheduling this activity." : undefined}
+                    data-testid={`button-convert-activity-proposal-${proposal.id}`}
+                  >
+                    {isConverting ? "Scheduling..." : "Book now"}
+                  </Button>
+                  {!hasStartTime ? (
+                    <span className="text-xs text-neutral-500 text-right max-w-[12rem]">
+                      Add a date &amp; time to enable scheduling.
+                    </span>
+                  ) : null}
+                </>
+              ) : null}
               {canCancel ? (
                 <CancelProposalButton
                   type="activity"
@@ -1806,23 +1880,24 @@ function ProposalsPage({
 
   const activityProposals = useMemo<NormalizedActivityProposal[]>(
     () =>
-      rawActivityProposals.map((activity) => {
-        const normalizedStatus = normalizeProposalStatus(activity.status);
-        const isCanceled = isCanceledStatus(activity.status);
+      rawActivityProposals
+        .filter((activity) => activity.type === "PROPOSE")
+        .map((activity) => {
+          const isCanceled = isCanceledStatus(activity.status);
 
-        return {
-          ...activity,
-          tripId: activity.tripCalendarId,
-          proposedBy: activity.postedBy,
-          proposer: activity.poster,
-          status: isCanceled
-            ? activity.status ?? "canceled"
-            : getActivityProposalStatus(activity),
-          activityName: activity.name,
-          rankings: [],
-          averageRanking: null,
-        };
-      }),
+          return {
+            ...activity,
+            tripId: activity.tripCalendarId,
+            proposedBy: activity.postedBy,
+            proposer: activity.poster,
+            status: isCanceled
+              ? activity.status ?? "canceled"
+              : getActivityProposalStatus(activity),
+            activityName: activity.name,
+            rankings: [],
+            averageRanking: null,
+          };
+        }),
     [getActivityProposalStatus, rawActivityProposals],
   );
 
