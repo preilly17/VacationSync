@@ -913,6 +913,7 @@ export default function Trip() {
   const [groupViewDate, setGroupViewDate] = useState<Date | null>(null);
   const [scheduleViewDate, setScheduleViewDate] = useState<Date | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
+  const cancelingActivityNameRef = useRef<string | null>(null);
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [summaryPanel, setSummaryPanel] = useState<SummaryPanel | null>(null);
   const [shouldShowFlightReturnPrompt, setShouldShowFlightReturnPrompt] = useState(false);
@@ -1247,6 +1248,75 @@ export default function Trip() {
       submitRsvpAction(selectedActivity.id, action);
     },
     [selectedActivity, submitRsvpAction],
+  );
+
+  const cancelActivityMutation = useMutation({
+    mutationFn: async (activityId: number) => {
+      return apiRequest(`/api/activities/${activityId}/cancel`, {
+        method: "POST",
+      });
+    },
+    onSuccess: async (_response, activityId) => {
+      const canceledActivityName = cancelingActivityNameRef.current;
+
+      if (id) {
+        queryClient.setQueryData<ActivityWithDetails[] | undefined>(
+          [`/api/trips/${id}/activities`],
+          (existing) => {
+            if (!Array.isArray(existing)) {
+              return existing;
+            }
+
+            return existing.filter((activity) => activity.id !== activityId);
+          },
+        );
+
+        await queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/activities`] });
+      }
+
+      toast({
+        title: "Activity canceled",
+        description:
+          canceledActivityName
+            ? `We removed "${canceledActivityName}" from everyone's calendar.`
+            : "We removed this activity from everyone's calendar.",
+      });
+
+      cancelingActivityNameRef.current = null;
+      setIsActivityDialogOpen(false);
+      setSelectedActivityId(null);
+    },
+    onError: (error: unknown) => {
+      cancelingActivityNameRef.current = null;
+
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (error instanceof ApiError) {
+        toast({
+          title: "Unable to cancel activity",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Unable to cancel activity",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCancelActivity = useCallback(
+    (activity: ActivityWithDetails) => {
+      cancelingActivityNameRef.current = activity.name ?? null;
+      cancelActivityMutation.mutate(activity.id);
+    },
+    [cancelActivityMutation],
   );
 
   const openSummaryPanel = (panel: SummaryPanel) => {
@@ -3101,6 +3171,8 @@ export default function Trip() {
           onRespond={handleRespond}
           isResponding={respondToInviteMutation.isPending}
           currentUserId={user?.id ?? undefined}
+          onCancel={handleCancelActivity}
+          isCanceling={cancelActivityMutation.isPending}
         />
       </div>
 

@@ -9,6 +9,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Calendar, MapPin, DollarSign, Users, ChevronDown, ThumbsDown, ThumbsUp } from "lucide-react";
 import { format } from "date-fns";
 import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
@@ -22,6 +33,8 @@ interface ActivityDetailsDialogProps {
   onRespond: (status: ActivityInviteStatus) => void;
   isResponding?: boolean;
   currentUserId?: string;
+  onCancel?: (activity: ActivityWithDetails) => void;
+  isCanceling?: boolean;
 }
 
 const statusLabelMap: Record<ActivityInviteStatus, string> = {
@@ -81,6 +94,8 @@ export function ActivityDetailsDialog({
   onRespond,
   isResponding = false,
   currentUserId,
+  onCancel,
+  isCanceling = false,
 }: ActivityDetailsDialogProps) {
   const invites = activity?.invites ?? [];
   const currentInvite = invites.find((invite) => invite.userId === currentUserId);
@@ -118,7 +133,6 @@ export function ActivityDetailsDialog({
     !isProposal && activity?.maxCapacity != null
       && activity.acceptedCount >= activity.maxCapacity,
   );
-
   const handleRespond = (status: ActivityInviteStatus) => {
     if (!activity || derivedStatus === status) {
       return;
@@ -131,7 +145,62 @@ export function ActivityDetailsDialog({
     : null;
 
   const renderActionButtons = () => {
-    if (!activity || isCreator || !currentInvite) {
+    if (!activity) {
+      return null;
+    }
+
+    if (isCreator) {
+      if (activity.status === "canceled") {
+        return (
+          <Badge
+            variant="secondary"
+            className="border border-red-200 bg-red-100 text-red-700"
+          >
+            Canceled
+          </Badge>
+        );
+      }
+
+      if (!onCancel) {
+        return null;
+      }
+
+      return (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={isCanceling}
+            >
+              Cancel activity
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancel this activity?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the activity from everyone&rsquo;s calendar. You can&rsquo;t undo this action.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isCanceling}>Keep activity</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 text-white hover:bg-red-600/90 focus:ring-red-600"
+                disabled={isCanceling}
+                onClick={() => {
+                  onCancel(activity);
+                }}
+              >
+                {isCanceling ? "Canceling..." : "Yes, cancel it"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      );
+    }
+
+    if (!currentInvite) {
       return null;
     }
 
