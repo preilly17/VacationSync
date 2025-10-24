@@ -165,8 +165,11 @@ function formatDateRange(startDate: string, endDate: string): string {
 }
 
 function getCountdownLabel(startDate: string, endDate: string): string {
-  const start = startOfDay(parseISO(startDate));
-  const end = startOfDay(parseISO(endDate));
+  const parsedStart = parseTripDateToLocal(startDate) ?? parseISO(startDate);
+  const parsedEnd = parseTripDateToLocal(endDate) ?? parseISO(endDate);
+
+  const start = startOfDay(parsedStart);
+  const end = startOfDay(parsedEnd);
   const today = startOfDay(new Date());
 
   if (start.getTime() === today.getTime()) {
