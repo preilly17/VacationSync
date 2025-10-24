@@ -580,26 +580,6 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
     setAddMode("item");
   };
 
-  const handleToggleMealUpvote = (mealId: string) => {
-    dispatch({ type: "TOGGLE_MEAL_UPVOTE", payload: { id: mealId, userId: user?.id } });
-  };
-
-  const handleSetMealStatus = (mealId: string, status: GroupMealRecord["status"]) => {
-    dispatch({ type: "SET_MEAL_STATUS", payload: { id: mealId, status } });
-  };
-
-  const handleAddMealComment = (mealId: string, body: string) => {
-    const comment: MealCommentRecord = {
-      id: generateId(),
-      body,
-      authorUserId: user?.id,
-      authorName: currentUserName,
-      createdAt: new Date().toISOString(),
-    };
-
-    dispatch({ type: "ADD_MEAL_COMMENT", payload: { id: mealId, comment } });
-  };
-
   const handleMergeIngredients = async (meal: GroupMealRecord) => {
     const additions: string[] = [];
     const seen = new Set(existingItemNames);
@@ -638,6 +618,31 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
         description: "Nothing new to add.",
       });
     }
+  };
+
+  const handleToggleMealUpvote = (mealId: string) => {
+    dispatch({ type: "TOGGLE_MEAL_UPVOTE", payload: { id: mealId, userId: user?.id } });
+  };
+
+  const handleSetMealStatus = (mealId: string, status: GroupMealRecord["status"]) => {
+    const meal = meals.find((entry) => entry.id === mealId);
+    dispatch({ type: "SET_MEAL_STATUS", payload: { id: mealId, status } });
+
+    if (status === "accepted" && meal && meal.status !== "accepted") {
+      void handleMergeIngredients(meal);
+    }
+  };
+
+  const handleAddMealComment = (mealId: string, body: string) => {
+    const comment: MealCommentRecord = {
+      id: generateId(),
+      body,
+      authorUserId: user?.id,
+      authorName: currentUserName,
+      createdAt: new Date().toISOString(),
+    };
+
+    dispatch({ type: "ADD_MEAL_COMMENT", payload: { id: mealId, comment } });
   };
 
   const renderItemRow = (item: GroceryItemRecord) => {
