@@ -4022,6 +4022,7 @@ export class DatabaseStorage implements IStorage {
       FROM activities a
       JOIN users u ON u.id = a.posted_by
       WHERE a.trip_calendar_id = $1
+        AND a.status <> 'canceled'
       ORDER BY a.start_time ASC, a.id ASC
       `,
       [tripId],

@@ -14,9 +14,11 @@ process.env.DATABASE_URL =
   process.env.DATABASE_URL ?? "postgres://user:pass@localhost:5432/test";
 
 const queryMock = jest.fn();
+const poolConnectMock = jest.fn();
 
 let mapActivityWithDetails: (typeof import("../storage"))
   ["__testables"]["mapActivityWithDetails"];
+let storageInstance: (typeof import("../storage"))["storage"];
 
 beforeAll(async () => {
   jest.resetModules();
@@ -26,9 +28,16 @@ beforeAll(async () => {
   );
   await jest.unstable_mockModule(dbModuleSpecifier, () => ({
     query: queryMock,
+    pool: { connect: poolConnectMock },
   }));
   const storageModule: any = await import("../storage");
   mapActivityWithDetails = storageModule.__testables.mapActivityWithDetails;
+  storageInstance = storageModule.storage;
+});
+
+beforeEach(() => {
+  queryMock.mockReset();
+  poolConnectMock.mockReset();
 });
 
 describe("mapActivityWithDetails", () => {
@@ -99,5 +108,30 @@ describe("mapActivityWithDetails", () => {
       comments: [],
       acceptedCount: 0,
     });
+  });
+});
+
+describe("getTripActivities", () => {
+  it("filters out canceled activities from calendar queries", async () => {
+    const executedSql: string[] = [];
+
+    queryMock.mockImplementation(async (sql: string) => {
+      executedSql.push(sql);
+
+      if (sql.includes("SELECT data_type, udt_name")) {
+        return { rows: [{ data_type: "text", udt_name: null }] };
+      }
+
+      return { rows: [] };
+    });
+
+    await storageInstance.getTripActivities(123, "user-123");
+
+    const activitiesQuery = executedSql.find((statement) =>
+      statement.includes("FROM activities a"),
+    );
+
+    expect(activitiesQuery).toBeDefined();
+    expect(activitiesQuery).toContain("a.status <> 'canceled'");
   });
 });
