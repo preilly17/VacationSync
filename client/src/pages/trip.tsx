@@ -63,6 +63,7 @@ import { PackingList } from "@/components/packing-list";
 import { ExpenseTracker } from "@/components/expense-tracker";
 import { GroceryList } from "@/components/grocery-list";
 import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
+import { RestaurantManualDialog } from "@/components/restaurant-manual-dialog";
 import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/hotel-search-panel";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 
@@ -5960,7 +5961,7 @@ function RestaurantBooking({
     queryKey: ["/api/trips", tripId, "restaurants"],
     enabled: !!tripId,
   });
-  const [, setLocation] = useLocation();
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
 
   const handleBookingLinkClick = useCallback(
@@ -6003,7 +6004,7 @@ function RestaurantBooking({
         trip={trip}
         user={user ?? undefined}
         onBookingLinkClick={handleBookingLinkClick}
-        onLogRestaurantManually={() => setLocation(`/trip/${tripId}/restaurants?manual=1`)}
+        onLogRestaurantManually={() => setManualDialogOpen(true)}
       />
 
       {hasRestaurants && (
@@ -6061,6 +6062,12 @@ function RestaurantBooking({
           </CardContent>
         </Card>
       )}
+
+      <RestaurantManualDialog
+        tripId={tripId}
+        open={manualDialogOpen}
+        onOpenChange={setManualDialogOpen}
+      />
     </div>
   );
 }
