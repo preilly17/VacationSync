@@ -1,22 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, Link } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { format } from "date-fns";
 import {
   CalendarIcon,
@@ -33,40 +22,13 @@ import {
   NotebookPen,
   ChefHat,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { apiRequest } from "@/lib/queryClient";
-import { isUnauthorizedError } from "@/lib/authUtils";
 import type { TripWithDetails, RestaurantWithDetails } from "@shared/schema";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { useBookingConfirmation } from "@/hooks/useBookingConfirmation";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 import { RestaurantProposalModal } from "@/components/restaurant-proposal-modal";
 import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
-
-const optionalUrlField = z.preprocess(
-  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
-  z
-    .string()
-    .url({ message: "Invalid url" })
-    .optional(),
-);
-
-const restaurantFormSchema = z.object({
-  name: z.string().min(1, "Restaurant name is required"),
-  cuisine: z.string().min(1, "Cuisine type is required"),
-  address: z.string().min(1, "Address is required"),
-  phone: z.string().optional(),
-  priceRange: z.string().min(1, "Price range is required"),
-  rating: z.number().min(1).max(5),
-  reservationDate: z.date(),
-  reservationTime: z.string().min(1, "Reservation time is required"),
-  partySize: z.number().min(1, "Party size must be at least 1"),
-  specialRequests: z.string().optional(),
-  website: optionalUrlField,
-  openTableUrl: optionalUrlField,
-});
-
-type RestaurantFormData = z.infer<typeof restaurantFormSchema>;
+import { RestaurantManualDialog } from "@/components/restaurant-manual-dialog";
 
 export default function RestaurantsPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -99,65 +61,6 @@ export default function RestaurantsPage() {
   const { data: tripRestaurants = [], isLoading: restaurantsLoading } = useQuery<RestaurantWithDetails[]>({
     queryKey: ["/api/trips", tripId, "restaurants"],
     enabled: !!tripId,
-  });
-
-  // Restaurant form
-  const form = useForm<RestaurantFormData>({
-    resolver: zodResolver(restaurantFormSchema),
-    defaultValues: {
-      name: "",
-      cuisine: "",
-      address: "",
-      phone: "",
-      priceRange: "$$",
-      rating: 4.5,
-      reservationDate: new Date(),
-      reservationTime: "7:00 PM",
-      partySize: 2,
-      specialRequests: "",
-      website: "",
-      openTableUrl: "",
-    },
-  });
-
-  // Create restaurant mutation (only if tripId exists)
-  const createRestaurantMutation = useMutation({
-    mutationFn: (data: RestaurantFormData) => {
-      if (!tripId) {
-        throw new Error("No trip context available");
-      }
-      return apiRequest(`/api/trips/${tripId}/restaurants`, {
-        method: "POST",
-        body: data,
-      });
-    },
-    onSuccess: () => {
-      toast({
-        title: "Restaurant Added",
-        description: "Restaurant reservation has been added to your trip.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurants"] });
-      setShowBooking(false);
-      form.reset();
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to add restaurant. Please try again.",
-        variant: "destructive",
-      });
-    },
   });
 
   const focusSearchSection = useCallback(() => {
@@ -220,14 +123,6 @@ export default function RestaurantsPage() {
   const handleProposeToGroup = (restaurant: any) => {
     setRestaurantToPropose(restaurant);
     setShowProposalModal(true);
-  };
-
-  // Remove duplicate creation path - the BookingConfirmationModal handles creation directly
-  // This prevents double-adds that could occur when both paths are used
-  
-  // Handle form submission
-  const onSubmit = (data: RestaurantFormData) => {
-    createRestaurantMutation.mutate(data);
   };
 
   // Handle unauthorized access
@@ -442,271 +337,11 @@ export default function RestaurantsPage() {
       </div>
 
       {/* Booking Dialog */}
-      <Dialog open={showBooking} onOpenChange={setShowBooking}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Add Restaurant Reservation</DialogTitle>
-          </DialogHeader>
-          
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Restaurant Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter restaurant name" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="cuisine"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Cuisine Type</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select cuisine" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="american">American</SelectItem>
-                          <SelectItem value="italian">Italian</SelectItem>
-                          <SelectItem value="french">French</SelectItem>
-                          <SelectItem value="japanese">Japanese</SelectItem>
-                          <SelectItem value="chinese">Chinese</SelectItem>
-                          <SelectItem value="mexican">Mexican</SelectItem>
-                          <SelectItem value="indian">Indian</SelectItem>
-                          <SelectItem value="thai">Thai</SelectItem>
-                          <SelectItem value="spanish">Spanish</SelectItem>
-                          <SelectItem value="steakhouse">Steakhouse</SelectItem>
-                          <SelectItem value="seafood">Seafood</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <FormField
-                control={form.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Address</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Enter restaurant address" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Enter phone number" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="priceRange"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Price Range</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select price range" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="$">$ - Budget</SelectItem>
-                          <SelectItem value="$$">$$ - Moderate</SelectItem>
-                          <SelectItem value="$$$">$$$ - Expensive</SelectItem>
-                          <SelectItem value="$$$$">$$$$ - Very Expensive</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="reservationDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Reservation Date</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) => date < new Date()}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="reservationTime"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Time</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select time" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="5:00 PM">5:00 PM</SelectItem>
-                          <SelectItem value="5:30 PM">5:30 PM</SelectItem>
-                          <SelectItem value="6:00 PM">6:00 PM</SelectItem>
-                          <SelectItem value="6:30 PM">6:30 PM</SelectItem>
-                          <SelectItem value="7:00 PM">7:00 PM</SelectItem>
-                          <SelectItem value="7:30 PM">7:30 PM</SelectItem>
-                          <SelectItem value="8:00 PM">8:00 PM</SelectItem>
-                          <SelectItem value="8:30 PM">8:30 PM</SelectItem>
-                          <SelectItem value="9:00 PM">9:00 PM</SelectItem>
-                          <SelectItem value="9:30 PM">9:30 PM</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="partySize"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Party Size</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="1"
-                          max="20"
-                          placeholder="Number of people"
-                          {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <FormField
-                control={form.control}
-                name="specialRequests"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Special Requests (Optional)</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Any dietary restrictions, seating preferences, or special occasions..."
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="website"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Website (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="https://restaurant-website.com" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                <FormField
-                  control={form.control}
-                  name="openTableUrl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>OpenTable URL (Optional)</FormLabel>
-                      <FormControl>
-                        <Input placeholder="https://opentable.com/..." {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-              
-              <div className="flex justify-end gap-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowBooking(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createRestaurantMutation.isPending}>
-                  {createRestaurantMutation.isPending ? "Adding..." : "Add Restaurant"}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
+      <RestaurantManualDialog
+        tripId={tripId}
+        open={showBooking}
+        onOpenChange={setShowBooking}
+      />
 
       {/* Booking Confirmation Modal */}
       <BookingConfirmationModal
