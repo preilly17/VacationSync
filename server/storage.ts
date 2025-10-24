@@ -2075,6 +2075,36 @@ export class DatabaseStorage implements IStorage {
       `);
 
       await query(
+        `ALTER TABLE trip_wish_list_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT`,
+      );
+      await query(
+        `ALTER TABLE trip_wish_list_items ADD COLUMN IF NOT EXISTS image_url TEXT`,
+      );
+      await query(
+        `ALTER TABLE trip_wish_list_items ADD COLUMN IF NOT EXISTS metadata JSONB`,
+      );
+      await query(
+        `ALTER TABLE trip_wish_list_items ADD COLUMN IF NOT EXISTS promoted_draft_id INTEGER`,
+      );
+
+      await query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.table_constraints
+            WHERE table_schema = 'public'
+              AND table_name = 'trip_wish_list_items'
+              AND constraint_name = 'trip_wish_list_items_promoted_draft_id_key'
+          ) THEN
+            ALTER TABLE trip_wish_list_items
+            ADD CONSTRAINT trip_wish_list_items_promoted_draft_id_key UNIQUE (promoted_draft_id);
+          END IF;
+        END
+        $$;
+      `);
+
+      await query(
         `CREATE INDEX IF NOT EXISTS idx_trip_wish_list_items_trip ON trip_wish_list_items(trip_id)`,
       );
       await query(
