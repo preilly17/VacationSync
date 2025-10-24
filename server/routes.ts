@@ -7,7 +7,29 @@ import { ActivityInviteMembershipError, ActivityDuplicateError, storage } from "
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
-import { insertTripCalendarSchema, insertActivityCommentSchema, insertPackingItemSchema, insertGroceryItemSchema, updateGroceryItemSchema, insertGroceryReceiptSchema, insertFlightSchema, insertHotelSchema, insertHotelProposalSchema, insertHotelRankingSchema, insertFlightProposalSchema, insertFlightRankingSchema, insertRestaurantProposalSchema, insertRestaurantRankingSchema, insertWishListIdeaSchema, insertWishListCommentSchema, activityInviteStatusSchema, type ActivityInviteStatus, type ActivityType, type ActivityWithDetails } from "@shared/schema";
+import {
+  insertTripCalendarSchema,
+  insertActivityCommentSchema,
+  insertPackingItemSchema,
+  insertGroceryItemSchema,
+  updateGroceryItemSchema,
+  insertGroceryReceiptSchema,
+  insertFlightSchema,
+  insertHotelSchema,
+  insertHotelProposalSchema,
+  insertHotelRankingSchema,
+  insertFlightProposalSchema,
+  insertFlightRankingSchema,
+  insertRestaurantProposalSchema,
+  insertRestaurantRankingSchema,
+  insertRestaurantSchema,
+  insertWishListIdeaSchema,
+  insertWishListCommentSchema,
+  activityInviteStatusSchema,
+  type ActivityInviteStatus,
+  type ActivityType,
+  type ActivityWithDetails,
+} from "@shared/schema";
 import { createActivityV2 } from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
 import { validateActivityInput } from "@shared/activityValidation";
@@ -3451,7 +3473,7 @@ export function setupRoutes(app: Express) {
   app.get("/api/restaurants/search", async (req: any, res) => {
     try {
       const { location, cuisine, priceRange, limit = 20, radius = 5000 } = req.query;
-      
+
       if (!location) {
         return res.status(400).json({ message: "Location parameter is required" });
       }
@@ -3483,6 +3505,103 @@ export function setupRoutes(app: Express) {
         message: "Failed to search restaurants",
         error: getErrorMessage(error)
       });
+    }
+  });
+
+  app.get('/api/trips/:id/restaurants', async (req: any, res) => {
+    try {
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      let userId = getRequestUserId(req);
+      if (process.env.NODE_ENV === 'development' && typeof req.isAuthenticated === 'function' && !req.isAuthenticated()) {
+        userId = 'demo-user';
+      }
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const trip = await storage.getTripById(tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const isMember =
+        trip.createdBy === userId || trip.members.some((member) => member.userId === userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "You are no longer a member of this trip" });
+      }
+
+      const restaurants = await storage.getTripRestaurants(tripId);
+      res.json(restaurants);
+    } catch (error: unknown) {
+      console.error("Error fetching restaurants:", error);
+      res.status(500).json({ message: "Failed to fetch restaurants" });
+    }
+  });
+
+  app.post('/api/trips/:id/restaurants', isAuthenticated, async (req: any, res) => {
+    try {
+      const tripId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const trip = await storage.getTripById(tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const isMember =
+        trip.createdBy === userId || trip.members.some((member) => member.userId === userId);
+      if (!isMember) {
+        return res.status(403).json({ message: "You are no longer a member of this trip" });
+      }
+
+      const rawBody = req.body ?? {};
+      const validatedData = insertRestaurantSchema.parse({
+        ...rawBody,
+        reservationDate: rawBody.reservationDate ?? rawBody.reservation_date,
+        reservationTime: rawBody.reservationTime ?? rawBody.reservation_time,
+        partySize: rawBody.partySize ?? rawBody.party_size,
+        tripId,
+      });
+
+      const reservationDateIso = toDateOnlyIsoString(validatedData.reservationDate);
+      if (!reservationDateIso) {
+        return res.status(400).json({ message: "Invalid reservation date" });
+      }
+
+      const restaurant = await storage.createRestaurant(
+        {
+          ...validatedData,
+          reservationDate: reservationDateIso,
+        },
+        userId,
+      );
+
+      res.status(201).json(restaurant);
+    } catch (error: unknown) {
+      console.error("Error adding restaurant:", error);
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ message: "Invalid restaurant data", errors: error.errors });
+        return;
+      }
+
+      if (isPostgresConstraintViolation(error)) {
+        res.status(400).json({ message: getErrorMessage(error) });
+        return;
+      }
+
+      res.status(500).json({ message: "Failed to add restaurant" });
     }
   });
 
