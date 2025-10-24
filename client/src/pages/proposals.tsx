@@ -56,6 +56,7 @@ import type {
   RestaurantProposalWithDetails,
   TripWithDetails,
   ActivityInviteStatus,
+  ProposalPermissions,
 } from "@shared/schema";
 
 type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
@@ -733,6 +734,7 @@ function ProposalsPage({
     status?: string | null;
     proposedBy?: string | null;
     proposer?: { id?: string | null } | null;
+    permissions?: ProposalPermissions | null;
   };
 
   type NormalizedActivityProposal = ActivityWithDetails & {
@@ -767,12 +769,26 @@ function ProposalsPage({
 
   const isMyProposal = useCallback(
     (proposal: BaseProposal): boolean => {
-      if (!user?.id) {
+      if (proposal.permissions?.canCancel) {
+        return true;
+      }
+
+      const viewerId = user?.id?.trim();
+      if (!viewerId) {
         return false;
       }
 
-      const proposerId = proposal.proposedBy ?? proposal.proposer?.id ?? null;
-      return proposerId === user.id;
+      const proposedById =
+        typeof proposal.proposedBy === "string" && proposal.proposedBy.trim().length > 0
+          ? proposal.proposedBy.trim()
+          : undefined;
+      const proposerFallbackId =
+        typeof proposal.proposer?.id === "string" && proposal.proposer.id.trim().length > 0
+          ? proposal.proposer.id.trim()
+          : undefined;
+
+      const proposerId = proposedById ?? proposerFallbackId ?? null;
+      return proposerId === viewerId;
     },
     [user?.id],
   );
@@ -1896,9 +1912,12 @@ function ProposalsPage({
             activityName: activity.name,
             rankings: [],
             averageRanking: null,
+            permissions: {
+              canCancel: Boolean(user?.id && activity.postedBy === user.id),
+            },
           };
         }),
-    [getActivityProposalStatus, rawActivityProposals],
+    [getActivityProposalStatus, rawActivityProposals, user?.id],
   );
 
   const hotelProposalsForCategories = useMemo(

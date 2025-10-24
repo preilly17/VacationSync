@@ -96,6 +96,7 @@ describe("mapActivityWithDetails", () => {
       invites,
       acceptances,
       comments,
+      currentUserId: "organizer",
     });
 
     expect(mapped.type).toBe<ActivityWithDetails["type"]>("PROPOSE");
@@ -107,6 +108,7 @@ describe("mapActivityWithDetails", () => {
       acceptances: [],
       comments: [],
       acceptedCount: 0,
+      permissions: { canCancel: true },
     });
   });
 });

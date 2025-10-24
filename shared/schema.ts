@@ -804,10 +804,15 @@ export const insertHotelRankingSchema = z.object({
 
 export type InsertHotelRanking = z.infer<typeof insertHotelRankingSchema>;
 
+export type ProposalPermissions = {
+  canCancel: boolean;
+};
+
 export interface HotelProposalWithDetails extends HotelProposal {
   proposer: User;
   rankings: (HotelRanking & { user: User })[];
   currentUserRanking?: HotelRanking;
+  permissions?: ProposalPermissions;
 }
 
 export interface FlightProposal {
@@ -880,6 +885,7 @@ export type FlightProposalWithDetails = FlightProposal & {
   proposer: User;
   rankings: (FlightRanking & { user: User })[];
   currentUserRanking?: FlightRanking;
+  permissions?: ProposalPermissions;
 };
 
 export interface ActivityProposal {
@@ -1028,6 +1034,7 @@ export type RestaurantProposalWithDetails = RestaurantProposal & {
   proposer: User;
   rankings: (RestaurantRanking & { user: User })[];
   currentUserRanking?: RestaurantRanking;
+  permissions?: ProposalPermissions;
 };
 
 export type ActivityWithDetails = Activity & {
@@ -1043,6 +1050,7 @@ export type ActivityWithDetails = Activity & {
   currentUserInvite?: ActivityInvite & { user: User };
   isAccepted?: boolean;
   hasResponded?: boolean;
+  permissions?: ProposalPermissions;
 };
 
 export type TripWithDetails = TripCalendar & {
