@@ -88,7 +88,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
             <Plane className="w-4 h-4 mr-3" />
             Flights
           </button>
-          {/* 6. Hotels */}
+          {/* 6. Accommodations */}
           <button
             onClick={() => onTabChange("hotels")}
             className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-lg ${
@@ -98,7 +98,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
             }`}
           >
             <Hotel className="w-4 h-4 mr-3" />
-            Hotels
+            Accommodations
           </button>
           {/* 7. Discover Activities */}
           <button
