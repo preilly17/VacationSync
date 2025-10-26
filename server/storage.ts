@@ -9438,7 +9438,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           AND hp.trip_id = $2
           AND hr.ranking = $3
           AND hr.proposal_id <> $4
-        FOR UPDATE
+        FOR UPDATE OF hr
         `,
         [userId, tripId, ranking.ranking, ranking.proposalId],
       );
@@ -9998,7 +9998,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           AND fp.trip_id = $2
           AND fr.ranking = $3
           AND fr.proposal_id <> $4
-        FOR UPDATE
+        FOR UPDATE OF fr
         `,
         [userId, proposalRow.trip_id, ranking.ranking, ranking.proposalId],
       );
@@ -11247,7 +11247,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           AND rp.trip_id = $2
           AND rr.ranking = $3
           AND rr.proposal_id <> $4
-        FOR UPDATE
+        FOR UPDATE OF rr
         `,
         [userId, proposalRow.trip_id, ranking.ranking, ranking.proposalId],
       );
