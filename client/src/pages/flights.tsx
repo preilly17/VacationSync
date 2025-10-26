@@ -637,7 +637,6 @@ function FlightSearchPanel({
   const [isLoadingArrivalAirports, setIsLoadingArrivalAirports] = useState(false);
   const [selectedDepartureAirport, setSelectedDepartureAirport] = useState(searchFormData.departure);
   const [selectedArrivalAirport, setSelectedArrivalAirport] = useState(searchFormData.arrival);
-  const [expandedResultKey, setExpandedResultKey] = useState<string | null>(null);
   const currentUserId = user?.id ?? null;
 
   const createLocationFromForm = (direction: 'departure' | 'arrival'): LocationResult | null => {
@@ -1474,19 +1473,15 @@ function FlightSearchPanel({
                       );
                     })()}
 
-                    <Accordion
-                      type="single"
-                      collapsible
-                      value={expandedResultKey ?? undefined}
-                      onValueChange={(value) => setExpandedResultKey(value || null)}
-                      className="space-y-3"
-                    >
+                    {/* Flight search results list */}
+                    <div className="space-y-3">
                       {(filterResults[activeFilter].length > 0 ? filterResults[activeFilter] : searchResults).map(
                         (flight: any, index: number) => {
                           const normalizedPriceSource = flight.price ?? flight.totalPrice;
                           const priceLabel = formatPriceDisplay(normalizedPriceSource, flight.currency);
                           const hasNumericPrice = parseNumericAmount(normalizedPriceSource) !== null;
                           const flightKey = getSearchFlightKey(flight) || `flight-${index}`;
+                          const airlineName = getFlightAirlineName(flight);
                           const departureCode =
                             flight.departure?.iataCode ||
                             flight.departureCode ||
@@ -1554,145 +1549,146 @@ function FlightSearchPanel({
                           const isCurrentFlightAdding = isAddingFlight && addingFlightKey === flightKey;
 
                           return (
-                            <AccordionItem
+                            <div
                               key={flightKey}
-                              value={flightKey}
-                              className="overflow-hidden rounded-lg border bg-card"
+                              className="overflow-hidden rounded-lg border bg-card px-4 py-4 text-left shadow-sm"
                             >
-                              <AccordionTrigger className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left hover:bg-muted/50 [&[data-state=open]]:rounded-t-lg">
-                                <div className="flex flex-col gap-2 text-left">
-                                  <div className="flex flex-wrap items-center gap-2">
+                              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="flex flex-col gap-1 text-left">
+                                  <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
                                     <Plane className="h-4 w-4 text-blue-600" />
-                                    <span className="font-semibold">{getFlightAirlineName(flight)}</span>
+                                    <span className="text-base font-semibold">
+                                      {airlineName}
+                                    </span>
                                     <span className="text-sm text-muted-foreground">
                                       {flight.flightNumber || `Flight ${index + 1}`}
                                     </span>
-                                    <Badge className="bg-green-100 text-green-800">Available</Badge>
+                                    {flight.provider && <Badge variant="outline">{flight.provider}</Badge>}
                                   </div>
                                   <div className="text-sm text-muted-foreground">
                                     {summaryDepartureCode} → {summaryArrivalCode}
                                   </div>
                                   <div className="text-xs text-muted-foreground">
-                                    {durationLabel}
-                                    {stopsLabel ? ` • ${stopsLabel}` : ""}
+                                    {departureTimeLabel} → {arrivalTimeLabel}
                                   </div>
                                 </div>
                                 <div className="text-right">
                                   <div className="text-xl font-semibold text-green-600">{priceLabel}</div>
                                   {hasNumericPrice && <div className="text-xs text-muted-foreground">per person</div>}
                                 </div>
-                              </AccordionTrigger>
-                              <AccordionContent className="px-4 pb-4">
-                                <div className="grid gap-4 text-sm md:grid-cols-3">
-                                  <div className="flex items-start gap-3">
-                                    <PlaneTakeoff className="mt-1 h-4 w-4 text-green-600" />
-                                    <div>
-                                      <div className="font-medium">{departureLabel}</div>
-                                      <div className="text-xs text-muted-foreground">{departureTimeLabel}</div>
-                                    </div>
-                                  </div>
-                                  <div className="flex flex-col items-center justify-center gap-1 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
-                                    <Clock className="h-4 w-4" />
-                                    <span>{durationLabel}</span>
-                                    {stopsLabel && <span>{stopsLabel}</span>}
-                                  </div>
-                                  <div className="flex items-start gap-3">
-                                    <PlaneLanding className="mt-1 h-4 w-4 text-red-600" />
-                                    <div>
-                                      <div className="font-medium">{arrivalLabel}</div>
-                                      <div className="text-xs text-muted-foreground">{arrivalTimeLabel}</div>
-                                    </div>
+                              </div>
+
+                              <div className="mt-4 grid gap-4 text-sm md:grid-cols-3">
+                                <div className="flex items-start gap-3">
+                                  <PlaneTakeoff className="mt-1 h-4 w-4 text-green-600" />
+                                  <div>
+                                    <div className="font-medium">{departureLabel}</div>
+                                    <div className="text-xs text-muted-foreground">{departureTimeLabel}</div>
                                   </div>
                                 </div>
-                                <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                                <div className="flex flex-col items-center justify-center gap-1 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                                  <Clock className="h-4 w-4" />
+                                  <span>{durationLabel}</span>
                                   {stopsLabel && <span>{stopsLabel}</span>}
-                                  {flight.class && <span className="capitalize">{flight.class}</span>}
-                                  {aircraftLabel && <span>Aircraft: {aircraftLabel}</span>}
                                 </div>
-                                <div className="mt-4 flex flex-wrap gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="default"
-                                    className="bg-blue-600 text-white hover:bg-blue-700"
-                                    asChild
-                                    data-testid={`button-book-kayak-${index}`}
-                                  >
-                                    <a
-                                      href={`https://www.kayak.com/flights/${cachedSearchParams?.originCode || "ATL"}-${
-                                        cachedSearchParams?.destinationCode || "MIA"
-                                      }/${searchFormData.departureDate}${
-                                        searchFormData.tripType === "roundtrip" && searchFormData.returnDate
-                                          ? `/${searchFormData.returnDate}`
-                                          : ""
-                                      }?sort=bestflight_a&cabin=${kayakCabinMap[searchFormData.cabinClass]}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      <ExternalLink className="mr-1 h-3 w-3" />
-                                      Book on Kayak
-                                    </a>
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    asChild
-                                    data-testid={`button-book-expedia-${index}`}
-                                  >
-                                    <a
-                                      href={`https://www.expedia.com/Flights-Search?trip=${
-                                        searchFormData.tripType === "roundtrip" ? "roundtrip" : "oneway"
-                                      }&leg1=from:${cachedSearchParams?.originCode || "ATL"},to:${
-                                        cachedSearchParams?.destinationCode || "MIA"
-                                      },departure:${searchFormData.departureDate}TANYT${
-                                        searchFormData.tripType === "roundtrip" && searchFormData.returnDate
-                                          ? `&leg2=from:${cachedSearchParams?.destinationCode || "MIA"},to:${
-                                              cachedSearchParams?.originCode || "ATL"
-                                            },departure:${searchFormData.returnDate}TANYT`
-                                          : ""
-                                      }&cabinclass=${expediaCabinMap[searchFormData.cabinClass]}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                    >
-                                      Book on Expedia
-                                    </a>
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => onShareFlight(flight)}
-                                    data-testid={`button-propose-flight-${index}`}
-                                  >
-                                    <Users className="mr-2 h-4 w-4" />
-                                    Propose to Group
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      void onQuickAddFlight(flight);
-                                    }}
-                                    data-testid={`button-add-to-trip-${index}`}
-                                    disabled={isAddingFlight}
-                                  >
-                                    {isCurrentFlightAdding ? (
-                                      <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Adding...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Plus className="mr-2 h-4 w-4" />
-                                        Add to Trip
-                                      </>
-                                    )}
-                                  </Button>
+                                <div className="flex items-start gap-3">
+                                  <PlaneLanding className="mt-1 h-4 w-4 text-red-600" />
+                                  <div>
+                                    <div className="font-medium">{arrivalLabel}</div>
+                                    <div className="text-xs text-muted-foreground">{arrivalTimeLabel}</div>
+                                  </div>
                                 </div>
-                              </AccordionContent>
-                            </AccordionItem>
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                                {stopsLabel && <span>{stopsLabel}</span>}
+                                {flight.class && <span className="capitalize">{flight.class}</span>}
+                                {aircraftLabel && <span>Aircraft: {aircraftLabel}</span>}
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  className="bg-blue-600 text-white hover:bg-blue-700"
+                                  asChild
+                                  data-testid={`button-book-kayak-${index}`}
+                                >
+                                  <a
+                                    href={`https://www.kayak.com/flights/${cachedSearchParams?.originCode || "ATL"}-${
+                                      cachedSearchParams?.destinationCode || "MIA"
+                                    }/${searchFormData.departureDate}${
+                                      searchFormData.tripType === "roundtrip" && searchFormData.returnDate
+                                        ? `/${searchFormData.returnDate}`
+                                        : ""
+                                    }?sort=bestflight_a&cabin=${kayakCabinMap[searchFormData.cabinClass]}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    <ExternalLink className="mr-1 h-3 w-3" />
+                                    Book on Kayak
+                                  </a>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  asChild
+                                  data-testid={`button-book-expedia-${index}`}
+                                >
+                                  <a
+                                    href={`https://www.expedia.com/Flights-Search?trip=${
+                                      searchFormData.tripType === "roundtrip" ? "roundtrip" : "oneway"
+                                    }&leg1=from:${cachedSearchParams?.originCode || "ATL"},to:${
+                                      cachedSearchParams?.destinationCode || "MIA"
+                                    },departure:${searchFormData.departureDate}TANYT${
+                                      searchFormData.tripType === "roundtrip" && searchFormData.returnDate
+                                        ? `&leg2=from:${cachedSearchParams?.destinationCode || "MIA"},to:${
+                                            cachedSearchParams?.originCode || "ATL"
+                                          },departure:${searchFormData.returnDate}TANYT`
+                                        : ""
+                                    }&cabinclass=${expediaCabinMap[searchFormData.cabinClass]}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    Book on Expedia
+                                  </a>
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => onShareFlight(flight)}
+                                  data-testid={`button-propose-flight-${index}`}
+                                >
+                                  <Users className="mr-2 h-4 w-4" />
+                                  Propose to Group
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    void onQuickAddFlight(flight);
+                                  }}
+                                  data-testid={`button-add-to-trip-${index}`}
+                                  disabled={isAddingFlight}
+                                >
+                                  {isCurrentFlightAdding ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Adding...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Plus className="mr-2 h-4 w-4" />
+                                      Add to Trip
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
                           );
                         },
                       )}
-                    </Accordion>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
