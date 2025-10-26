@@ -9424,6 +9424,11 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
       tripId = proposalRow.trip_id;
 
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, $2))`,
+        [`hotel:${tripId}:${userId}:${ranking.ranking}`, 0],
+      );
+
       const { rows: conflictingRows } = await client.query<{ proposal_id: number }>(
         `
         SELECT hr.proposal_id
@@ -9433,6 +9438,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           AND hp.trip_id = $2
           AND hr.ranking = $3
           AND hr.proposal_id <> $4
+        FOR UPDATE
         `,
         [userId, tripId, ranking.ranking, ranking.proposalId],
       );
@@ -9978,6 +9984,11 @@ ${selectUserColumns("participant_user", "participant_user_")}
         throw new Error("Flight proposal not found");
       }
 
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, $2))`,
+        [`flight:${proposalRow.trip_id}:${userId}:${ranking.ranking}`, 0],
+      );
+
       const { rows: conflictingRows } = await client.query<{ proposal_id: number }>(
         `
         SELECT fr.proposal_id
@@ -9987,6 +9998,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           AND fp.trip_id = $2
           AND fr.ranking = $3
           AND fr.proposal_id <> $4
+        FOR UPDATE
         `,
         [userId, proposalRow.trip_id, ranking.ranking, ranking.proposalId],
       );
@@ -11221,6 +11233,11 @@ ${selectUserColumns("participant_user", "participant_user_")}
         throw new Error("Restaurant proposal not found");
       }
 
+      await client.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, $2))`,
+        [`restaurant:${proposalRow.trip_id}:${userId}:${ranking.ranking}`, 0],
+      );
+
       const { rows: conflictingRows } = await client.query<{ proposal_id: number }>(
         `
         SELECT rr.proposal_id
@@ -11230,6 +11247,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           AND rp.trip_id = $2
           AND rr.ranking = $3
           AND rr.proposal_id <> $4
+        FOR UPDATE
         `,
         [userId, proposalRow.trip_id, ranking.ranking, ranking.proposalId],
       );
