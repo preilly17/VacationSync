@@ -14,7 +14,7 @@ interface MobileNavProps {
 export function MobileNav({ trip, user }: MobileNavProps) {
   // MOBILE-ONLY top navigation shell
   return (
-    <nav className="md:hidden bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-50">
+    <nav className="md:hidden trip-themed-nav border-b px-4 py-3 sticky top-0 z-50">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <Sheet>
