@@ -300,7 +300,7 @@ export function PackingList({ tripId }: PackingListProps) {
 
   if (isLoading) {
     return (
-      <Card className="p-6">
+      <Card className="relative overflow-hidden trip-themed-card p-6">
         <div className="flex items-center space-x-2 mb-4">
           <Package className="w-5 h-5" />
           <h2 className="text-lg font-semibold">Packing Essentials</h2>
@@ -315,7 +315,7 @@ export function PackingList({ tripId }: PackingListProps) {
   }
 
   return (
-    <Card className="p-6">
+    <Card className="relative overflow-hidden trip-themed-card p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-2">
           <Package className="w-5 h-5" />

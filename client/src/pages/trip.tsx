@@ -2486,15 +2486,19 @@ export default function Trip() {
                 )}
 
                 {activeTab === "packing" && (
-                  <PackingList tripId={numericTripId} />
+                  <div className="trip-themed-section p-6">
+                    <PackingList tripId={numericTripId} />
+                  </div>
                 )}
 
                 {activeTab === "expenses" && (
-                  <ExpenseTracker tripId={numericTripId} user={user ?? undefined} />
+                  <div className="trip-themed-section p-6">
+                    <ExpenseTracker tripId={numericTripId} user={user ?? undefined} />
+                  </div>
                 )}
 
                 {activeTab === "activities" && (
-                  <div className="p-6">
+                  <div className="trip-themed-section p-6">
                     <ActivitySearch
                       tripId={numericTripId}
                       trip={trip}
@@ -2505,15 +2509,17 @@ export default function Trip() {
                 )}
 
                 {activeTab === "groceries" && (
-                  <GroceryList
-                    tripId={numericTripId}
-                    user={user ?? undefined}
-                    members={trip?.members ?? []}
-                  />
+                  <div className="trip-themed-section p-6">
+                    <GroceryList
+                      tripId={numericTripId}
+                      user={user ?? undefined}
+                      members={trip?.members ?? []}
+                    />
+                  </div>
                 )}
 
                 {activeTab === "proposals" && trip && (
-                  <div className="space-y-6" data-testid="proposals-section">
+                  <div className="trip-themed-section p-6" data-testid="proposals-section">
                     <Proposals
                       tripId={trip.id}
                       embedded
@@ -2523,31 +2529,37 @@ export default function Trip() {
                 )}
 
                 {activeTab === "wish-list" && (
-                  <div className="space-y-6" data-testid="wish-list-section">
+                  <div className="trip-themed-section p-6" data-testid="wish-list-section">
                     <WishListBoard tripId={numericTripId} />
                   </div>
                 )}
 
                 {activeTab === "flights" && (
-                  <FlightCoordination
-                    tripId={numericTripId}
-                    user={user ?? undefined}
-                    trip={trip}
-                    manualFormOpenSignal={flightManualOpenSignal}
-                  />
+                  <div className="trip-themed-section p-6">
+                    <FlightCoordination
+                      tripId={numericTripId}
+                      user={user ?? undefined}
+                      trip={trip}
+                      manualFormOpenSignal={flightManualOpenSignal}
+                    />
+                  </div>
                 )}
 
                 {activeTab === "hotels" && (
-                  <HotelBooking
-                    tripId={numericTripId}
-                    user={user ?? undefined}
-                    trip={trip}
-                    manualFormOpenSignal={hotelManualOpenSignal}
-                  />
+                  <div className="trip-themed-section p-6">
+                    <HotelBooking
+                      tripId={numericTripId}
+                      user={user ?? undefined}
+                      trip={trip}
+                      manualFormOpenSignal={hotelManualOpenSignal}
+                    />
+                  </div>
                 )}
-                
+
                 {activeTab === "restaurants" && (
-                  <RestaurantBooking tripId={numericTripId} user={user ?? undefined} trip={trip as TripWithDetails | undefined} />
+                  <div className="trip-themed-section p-6">
+                    <RestaurantBooking tripId={numericTripId} user={user ?? undefined} trip={trip as TripWithDetails | undefined} />
+                  </div>
                 )}
 
 

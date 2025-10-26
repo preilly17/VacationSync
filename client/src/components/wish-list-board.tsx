@@ -918,7 +918,7 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="border border-neutral-200 bg-white p-6 shadow-sm">
+      <Card className="relative overflow-hidden trip-themed-card border border-transparent p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-neutral-900">
@@ -1341,7 +1341,7 @@ function WishListIdeaCard({
   };
 
   return (
-    <Card className="overflow-hidden border border-neutral-200 bg-white p-6 shadow-sm">
+    <Card className="relative overflow-hidden trip-themed-card border border-transparent p-6 shadow-sm">
       <div className="flex flex-col gap-5 md:flex-row">
         {previewImage && (
           <div className="md:w-44">

@@ -13,7 +13,7 @@ export default function PlanTrip() {
   }, [open, setLocation]);
 
   return (
-    <div className="min-h-screen bg-slate-900/20 backdrop-blur-sm">
+    <div className="trip-themed-background">
       <CreateTripModal open={open} onOpenChange={setOpen} />
     </div>
   );
