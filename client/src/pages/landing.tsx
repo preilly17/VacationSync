@@ -18,15 +18,38 @@ import {
   Star,
   Utensils,
   Vote,
-  Wallet,
   Users,
 } from "lucide-react"
 
 const heroChecklist = [
-  "Collaborative dashboard keeps flights, stays, and ideas side by side",
-  "Group calendar updates itself when proposals get the vote",
-  "Shared packing, grocery, and wish lists everyone can check off",
-  "Meal plans sync ingredients so no one double-buys",
+  "Shared itinerary everyone can explore together",
+  "Quick polls turn ideas into clear decisions",
+  "Calendar sync keeps every meetup in one place",
+  "Open workspace where every voice is heard",
+]
+
+const heroItinerary = [
+  {
+    time: "Thu • 9:00 AM",
+    title: "Rooftop breakfast meetup",
+    detail: "Hotel Lumia • confirmed for the whole crew",
+    statusLabel: "Confirmed",
+    statusClass: "border border-emerald-200 bg-emerald-50 text-emerald-600",
+  },
+  {
+    time: "Thu • 1:30 PM",
+    title: "Kayak along the coast",
+    detail: "Praia da Marinha • 6 going, 2 interested",
+    statusLabel: "Voting now",
+    statusClass: "border border-blue-200 bg-blue-50 text-blue-600",
+  },
+  {
+    time: "Thu • 7:00 PM",
+    title: "Group dinner & vote reveal",
+    detail: "Taberna do Mar • calendar invites sent",
+    statusLabel: "Synced",
+    statusClass: "border border-violet-200 bg-violet-50 text-violet-600",
+  },
 ]
 
 type Feature = {
@@ -204,11 +227,14 @@ export default function Landing() {
                   Group travel, actually organized
                 </Badge>
                 <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-semibold leading-tight drop-shadow-xl">
-                  Plan every group trip from one shared home base
+                  Collaborative trip planning without the chaos
                 </h1>
-                <p className="mt-6 text-lg text-white/80 max-w-xl">
-                  TripSync is the collaborative trip dashboard that turns quick proposals into confirmed plans, keeps calendars
-                  synced, and replaces the chaos of giant text threads with a joyful, visual workspace.
+                <p className="mt-6 text-lg text-white">
+                  No more group chats or messy spreadsheets.
+                </p>
+                <p className="mt-3 text-base text-white/80 max-w-xl">
+                  TripSync brings every traveler into a shared, visual workspace where plans stay transparent, decisions are easy,
+                  and the full itinerary is always up to date.
                 </p>
                 <ul className="mt-8 space-y-3">
                   {heroChecklist.map((item) => (
@@ -273,76 +299,101 @@ export default function Landing() {
                 <div className="absolute -top-24 -left-16 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
                 <div className="absolute -bottom-16 -right-10 h-56 w-56 rounded-full bg-emerald-400/20 blur-3xl" />
                 <Card className="relative border-none bg-white text-slate-900 shadow-2xl">
-                  <CardHeader className="pb-2">
+                  <CardHeader className="pb-3">
                     <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
-                      <Vote className="w-5 h-5 text-blue-600" />
-                      Trip decisions in the open
+                      <LayoutDashboard className="w-5 h-5 text-blue-600" />
+                      Shared itinerary view
                     </CardTitle>
                     <p className="text-sm text-slate-500">
-                      Compare proposals, tally votes, and keep everyone in the loop without leaving the workspace.
+                      See the day's plans, who's joining, and what's already locked in at a glance.
                     </p>
                   </CardHeader>
                   <CardContent className="pt-0 space-y-3">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">Algarve Beach Villa</p>
-                          <p className="text-xs text-slate-500">7 votes • 3 comments</p>
+                    {heroItinerary.map(({ time, title, detail, statusLabel, statusClass }) => (
+                      <div key={title} className="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{time}</p>
+                            <p className="mt-2 text-base font-semibold text-slate-900">{title}</p>
+                            <p className="mt-1 text-sm text-slate-500">{detail}</p>
+                          </div>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium ${statusClass}`}
+                          >
+                            <CircleCheck className="h-3.5 w-3.5" />
+                            {statusLabel}
+                          </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-600">
-                          <CircleCheck className="w-3 h-3" />
-                          Leading
-                        </span>
                       </div>
-                      <div className="mt-4 h-2 w-full rounded-full bg-slate-200">
-                        <div className="h-full w-4/5 rounded-full bg-blue-500" />
-                      </div>
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900">Boutique Alfama Flats</p>
-                          <p className="text-xs text-slate-500">5 votes • 8 watching</p>
-                        </div>
-                        <span className="inline-flex items-center gap-1 text-xs text-slate-500">
-                          <Users className="w-4 h-4" />
-                          gaining
-                        </span>
-                      </div>
-                      <div className="mt-4 h-2 w-full rounded-full bg-slate-200">
-                        <div className="h-full w-2/3 rounded-full bg-indigo-400" />
-                      </div>
-                    </div>
+                    ))}
                   </CardContent>
                 </Card>
-                <Card className="relative w-full max-w-sm border-none bg-slate-900 text-white/90 shadow-xl lg:self-end">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="flex items-center gap-2 text-base text-white">
-                      <Wallet className="w-5 h-5 text-emerald-300" />
-                      Expense snapshot
-                    </CardTitle>
-                    <p className="text-xs text-white/70">
-                      Everyone sees what they owe in real time—no awkward reminders.
-                    </p>
-                  </CardHeader>
-                  <CardContent className="pt-0 space-y-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span>Surf lesson deposit</span>
-                      <span className="font-semibold">$240.00</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Brunch at Dear Breakfast</span>
-                      <span className="font-semibold">$168.50</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Airbnb balance</span>
-                      <span className="font-semibold">$1,124.00</span>
-                    </div>
-                    <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-4 py-3 text-xs text-emerald-200">
-                      TripSync Split: 4 people settled, 2 pending
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="grid w-full max-w-sm gap-4 lg:self-end">
+                  <Card className="border-none bg-slate-900 text-white/90 shadow-xl">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-base text-white">
+                        <Vote className="w-5 h-5 text-emerald-300" />
+                        Proposal voting
+                      </CardTitle>
+                      <p className="text-xs text-white/70">Collect quick decisions without leaving the workspace.</p>
+                    </CardHeader>
+                    <CardContent className="pt-1 space-y-3 text-sm">
+                      <div className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-white">Algarve beach villa</span>
+                          <Badge className="rounded-full border-0 bg-emerald-400/25 px-3 py-1 text-[11px] font-medium text-emerald-100">
+                            Leading
+                          </Badge>
+                        </div>
+                        <div className="mt-3 h-2 w-full rounded-full bg-white/10">
+                          <div className="h-2 w-4/5 rounded-full bg-emerald-300" />
+                        </div>
+                        <p className="mt-2 text-xs text-white/60">8 of 10 votes in • closes in 1h</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/5 bg-white/5 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-white/90">Historic city lofts</span>
+                          <span className="text-xs text-white/60">Trailing</span>
+                        </div>
+                        <div className="mt-3 h-2 w-full rounded-full bg-white/10">
+                          <div className="h-2 w-1/2 rounded-full bg-violet-300/80" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="border-none bg-white text-slate-900 shadow-xl">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-base text-slate-900">
+                        <CalendarCheck className="w-5 h-5 text-indigo-500" />
+                        Calendar sync
+                      </CardTitle>
+                      <p className="text-xs text-slate-500">Instant updates keep everyone aligned before takeoff.</p>
+                    </CardHeader>
+                    <CardContent className="space-y-3 text-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-slate-900">Kayak along the coast</p>
+                          <p className="text-xs text-slate-500">Added to shared itinerary</p>
+                        </div>
+                        <Badge className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-600">
+                          Synced
+                        </Badge>
+                      </div>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-slate-900">Dinner at Taberna do Mar</p>
+                          <p className="text-xs text-slate-500">Calendar invite sent to everyone</p>
+                        </div>
+                        <Badge className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-medium text-blue-600">
+                          Updated
+                        </Badge>
+                      </div>
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                        Reminders scheduled 24 hours before each meetup.
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
             </div>
           </div>
