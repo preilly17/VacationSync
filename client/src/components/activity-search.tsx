@@ -589,7 +589,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
 
   return (
     <>
-      <Card>
+      <Card className="relative overflow-hidden trip-themed-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5" />
@@ -718,7 +718,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
         </CardContent>
       </Card>
 
-      <Card className="mt-6">
+      <Card className="relative overflow-hidden trip-themed-card mt-6">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="text-lg">Manually Added Activities</CardTitle>
@@ -758,7 +758,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                 return (
                   <div
                     key={activity.id}
-                    className="rounded-lg border border-neutral-200 bg-white p-4 shadow-sm"
+                    className="relative overflow-hidden trip-themed-card border border-transparent p-4 shadow-sm"
                   >
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div>
@@ -797,7 +797,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       {/* Activities Results */}
       {hasSearched ? (
         activitiesLoading ? (
-          <Card className="mt-4">
+          <Card className="relative overflow-hidden trip-themed-card mt-4">
             <CardContent className="text-center py-12">
               <TravelLoading variant="compass" size="lg" text="Discovering amazing activities..." />
             </CardContent>
@@ -807,7 +807,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
             {activities.map((activity) => (
               <Card
                 key={activity.id}
-                className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col"
+                className="relative overflow-hidden trip-themed-card hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col"
                 onClick={() => {
                   setSelectedActivity(activity);
                   setShowDetailsDialog(true);
@@ -854,7 +854,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
             ))}
           </div>
         ) : (
-          <Card className="mt-4">
+          <Card className="relative overflow-hidden trip-themed-card mt-4">
             <CardContent className="text-center py-12">
               <h3 className="text-xl font-bold text-neutral-900 mb-2">No Activities Found</h3>
               <p className="text-neutral-600 mb-4">

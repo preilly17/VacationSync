@@ -110,6 +110,78 @@
   --chip-default-glow: rgba(148, 163, 184, 0.24);
 }
 
+.trip-themed-background {
+  min-height: 100%;
+  background-color: hsl(210 40% 98%);
+  background-image:
+    radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 52%),
+    radial-gradient(circle at 82% 0%, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0) 56%),
+    linear-gradient(135deg, rgba(248, 250, 255, 0.96), rgba(243, 232, 255, 0.92));
+}
+
+.trip-themed-section {
+  border-radius: 2rem;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  background-image:
+    radial-gradient(circle at 12% 22%, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0) 55%),
+    radial-gradient(circle at 88% 8%, rgba(147, 51, 234, 0.16), rgba(147, 51, 234, 0) 58%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(236, 252, 255, 0.9));
+  box-shadow: 0 30px 55px -32px rgba(30, 64, 175, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+.trip-themed-card {
+  border-radius: 1.5rem;
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  background-image:
+    radial-gradient(circle at 10% 15%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 55%),
+    radial-gradient(circle at 90% 0%, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0) 58%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(241, 245, 255, 0.92));
+  box-shadow: 0 24px 48px -32px rgba(30, 64, 175, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.trip-themed-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(168, 85, 247, 0.05));
+  opacity: 0.8;
+}
+
+.dark .trip-themed-background {
+  background-color: hsl(222 47% 6%);
+  background-image:
+    radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.24), rgba(56, 189, 248, 0) 52%),
+    radial-gradient(circle at 82% 0%, rgba(147, 51, 234, 0.28), rgba(147, 51, 234, 0) 58%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.92));
+}
+
+.dark .trip-themed-section {
+  border-color: rgba(56, 189, 248, 0.28);
+  background-image:
+    radial-gradient(circle at 12% 22%, rgba(56, 189, 248, 0.24), rgba(56, 189, 248, 0) 55%),
+    radial-gradient(circle at 88% 8%, rgba(129, 140, 248, 0.22), rgba(129, 140, 248, 0) 58%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.88));
+  box-shadow: 0 30px 55px -30px rgba(2, 6, 23, 0.85);
+}
+
+.dark .trip-themed-card {
+  border-color: rgba(56, 189, 248, 0.32);
+  background-image:
+    radial-gradient(circle at 10% 15%, rgba(56, 189, 248, 0.28), rgba(56, 189, 248, 0) 55%),
+    radial-gradient(circle at 90% 0%, rgba(129, 140, 248, 0.24), rgba(129, 140, 248, 0) 58%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.86));
+  box-shadow: 0 28px 52px -30px rgba(2, 6, 23, 0.85);
+}
+
+.dark .trip-themed-card::after {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.16), rgba(129, 140, 248, 0.12));
+  opacity: 0.7;
+}
+
 .dark {
   --background: hsl(222 47% 6%);
   --foreground: hsl(210 40% 96%);
