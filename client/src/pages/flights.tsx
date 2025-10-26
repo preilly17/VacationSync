@@ -392,12 +392,13 @@ const getFlightPermissions = (
   const creatorId = getFlightCreatorId(flight);
   const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
   const admin = isUserTripAdmin(trip, currentUserId);
-  const canManage = Boolean(currentUserId && (isCreator || admin));
+  const canEdit = Boolean(currentUserId && (isCreator || admin));
+  const canDelete = Boolean(currentUserId && isCreator);
 
   return {
-    canEdit: canManage,
-    canDelete: canManage,
-    isAdminOverride: Boolean(canManage && !isCreator && admin),
+    canEdit,
+    canDelete,
+    isAdminOverride: Boolean(canEdit && !isCreator && admin),
   };
 };
 
@@ -2067,15 +2068,9 @@ export default function FlightsPage() {
     () =>
       flightsArray.filter((flight: FlightWithDetails) => {
         const sourceValue = (flight.bookingSource ?? '').toString().toLowerCase();
-        const isManualEntry = !sourceValue || sourceValue === 'manual';
-        if (!isManualEntry) {
-          return false;
-        }
-
-        const creatorId = getFlightCreatorId(flight);
-        return Boolean(currentUserId && creatorId && creatorId === currentUserId);
+        return !sourceValue || sourceValue === 'manual';
       }),
-    [flightsArray, currentUserId],
+    [flightsArray],
   );
 
   const [manualFlightsOpen, setManualFlightsOpen] = useState(() => manualFlights.length > 0);
@@ -2280,6 +2275,10 @@ export default function FlightsPage() {
     onSuccess: () => {
       if (tripId) {
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        });
       }
       toast({
         title: "Success",
@@ -2947,6 +2946,7 @@ export default function FlightsPage() {
                   const directionLabel = flight.flightType === 'return' ? 'Return' : 'Outbound';
                   const isConfirmed = (flight.status || 'proposed') === 'confirmed';
                   const notes = extractFlightNotes(flight);
+                  const permissions = getFlightPermissions(flight, trip ?? null, currentUserId);
 
                   return (
                     <div
@@ -2976,19 +2976,34 @@ export default function FlightsPage() {
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Switch
                             checked={isConfirmed}
-                            onCheckedChange={() => handleToggleFlightStatus(flight)}
+                            onCheckedChange={() => {
+                              if (permissions.canEdit) {
+                                handleToggleFlightStatus(flight);
+                              }
+                            }}
+                            disabled={!permissions.canEdit || updateFlightMutation.isPending}
+                            aria-disabled={!permissions.canEdit}
                           />
                           <span>{isConfirmed ? 'Confirmed' : 'Proposed'}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">Edit flight</span>
-                          </Button>
+                          {permissions.canEdit ? (
+                            <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
+                              <Edit className="h-4 w-4" />
+                              <span className="sr-only">Edit flight</span>
+                            </Button>
+                          ) : null}
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => deleteFlightMutation.mutate(flight.id)}
+                            onClick={() => {
+                              if (permissions.canDelete) {
+                                deleteFlightMutation.mutate(flight.id);
+                              }
+                            }}
+                            disabled={!permissions.canDelete || deleteFlightMutation.isPending}
+                            aria-disabled={!permissions.canDelete}
+                            title={!permissions.canDelete ? 'Only the creator can delete this flight' : undefined}
                           >
                             <Trash2 className="h-4 w-4" />
                             <span className="sr-only">Delete flight</span>

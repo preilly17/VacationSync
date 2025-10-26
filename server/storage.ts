@@ -7008,7 +7008,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     const isCreator = createdBy === userId;
 
-    if (!isCreator && !isAdmin) {
+    if (!isCreator) {
       throw new Error("Only the creator can delete this flight.");
     }
 
@@ -7021,6 +7021,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
       `,
       [flightId, tripId, userId, createdBy],
     );
+
+    await this.removeFlightProposalLinks(flightId);
 
     await query(
       `
@@ -7740,6 +7742,70 @@ ${selectUserColumns("participant_user", "participant_user_")}
     }
 
     return proposal;
+  }
+
+  private async removeFlightProposalLinks(flightId: number): Promise<void> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows } = await query<{
+      id: number;
+      proposal_id: number;
+    }>(
+      `
+      SELECT id, proposal_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = 'flight'
+        AND scheduled_table = 'flights'
+        AND scheduled_id = $1
+      `,
+      [flightId],
+    );
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const linkIds = rows.map((row) => row.id);
+    const proposalIds = Array.from(new Set(rows.map((row) => row.proposal_id)));
+
+    await query(
+      `DELETE FROM proposal_schedule_links WHERE id = ANY($1::int[])`,
+      [linkIds],
+    );
+
+    if (proposalIds.length === 0) {
+      return;
+    }
+
+    const { rows: remainingLinks } = await query<{ proposal_id: number }>(
+      `
+      SELECT proposal_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = 'flight'
+        AND proposal_id = ANY($1::int[])
+      `,
+      [proposalIds],
+    );
+
+    const proposalsWithLinks = new Set(remainingLinks.map((row) => row.proposal_id));
+    const proposalsToDelete = proposalIds.filter((proposalId) => !proposalsWithLinks.has(proposalId));
+
+    if (proposalsToDelete.length === 0) {
+      return;
+    }
+
+    await query(
+      `DELETE FROM flight_rankings WHERE proposal_id = ANY($1::int[])`,
+      [proposalsToDelete],
+    );
+    await query(
+      `DELETE FROM proposal_schedule_links WHERE proposal_type = 'flight' AND proposal_id = ANY($1::int[])`,
+      [proposalsToDelete],
+    );
+    await query(
+      `DELETE FROM flight_proposals WHERE id = ANY($1::int[])`,
+      [proposalsToDelete],
+    );
   }
 
   // PROPOSALS FEATURE: remove linked proposals when a saved hotel is deleted.
