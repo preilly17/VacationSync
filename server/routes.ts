@@ -29,6 +29,7 @@ import {
   type ActivityInviteStatus,
   type ActivityType,
   type ActivityWithDetails,
+  type User,
 } from "@shared/schema";
 import { createActivityV2 } from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
@@ -672,6 +673,23 @@ const demoUserSeed = {
 
 let demoUserEnsured = false;
 let demoUserEnsurePromise: Promise<void> | null = null;
+
+const sanitizeUserForClient = (user: User | null | undefined): User | null | undefined => {
+  if (!user) {
+    return user;
+  }
+
+  return {
+    ...user,
+    passwordHash: null,
+    cashAppUsername: null,
+    cashAppUsernameLegacy: null,
+    cashAppPhone: null,
+    cashAppPhoneLegacy: null,
+    venmoUsername: null,
+    venmoPhone: null,
+  };
+};
 
 const ensureDemoUserExists = async () => {
   if (process.env.NODE_ENV !== "development") {
@@ -3536,7 +3554,12 @@ export function setupRoutes(app: Express) {
       }
 
       const restaurants = await storage.getTripRestaurants(tripId);
-      res.json(restaurants);
+      const sanitizedRestaurants = restaurants.map((restaurant) => ({
+        ...restaurant,
+        user: sanitizeUserForClient(restaurant.user),
+      }));
+
+      res.json(sanitizedRestaurants);
     } catch (error: unknown) {
       console.error("Error fetching restaurants:", error);
       res.status(500).json({ message: "Failed to fetch restaurants" });
