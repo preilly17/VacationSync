@@ -398,12 +398,14 @@ const getFlightPermissions = (
   const creatorId = getFlightCreatorId(flight);
   const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
   const admin = isUserTripAdmin(trip, currentUserId);
-  const canManage = Boolean(currentUserId && (isCreator || admin));
+  const canManageStatus = Boolean(currentUserId && (isCreator || admin));
 
   return {
-    canEdit: canManage,
+    canEdit: isCreator,
     canDelete: isCreator,
-    isAdminOverride: false,
+    canManageStatus,
+    isCreator,
+    isAdminOverride: Boolean(admin && !isCreator),
   };
 };
 
@@ -2962,6 +2964,11 @@ export default function FlightsPage() {
               const arrivalDateTime = flight.arrivalTime
                 ? format(new Date(flight.arrivalTime), "MMM d, yyyy h:mm a")
                 : "Arrival time TBD";
+              const summaryTimeRange = flight.departureTime
+                ? `${format(new Date(flight.departureTime), "h:mm a")} → ${
+                    flight.arrivalTime ? format(new Date(flight.arrivalTime), "h:mm a") : "TBD"
+                  }`
+                : null;
               const summaryDate = flight.departureTime
                 ? format(new Date(flight.departureTime), "MMM d, yyyy")
                 : null;
@@ -3052,6 +3059,9 @@ export default function FlightsPage() {
                           {isManualEntry && <Badge variant="outline">Manual</Badge>}
                         </div>
                         <div className="text-sm text-muted-foreground">{routeSummary}</div>
+                        {summaryTimeRange && (
+                          <div className="text-xs text-muted-foreground">{summaryTimeRange}</div>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-1 text-right text-sm">
                         {summaryDate && <span className="font-medium text-foreground">{summaryDate}</span>}
@@ -3153,7 +3163,7 @@ export default function FlightsPage() {
                         <Switch
                           checked={statusValue === 'confirmed'}
                           onCheckedChange={() => handleToggleFlightStatus(flight)}
-                          disabled={!permissions.canEdit}
+                          disabled={!permissions.canManageStatus}
                         />
                         <span>{statusValue === 'confirmed' ? 'Confirmed' : 'Proposed'}</span>
                         {permissions.isAdminOverride && (
@@ -3163,15 +3173,17 @@ export default function FlightsPage() {
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEditFlight(flight)}
-                          disabled={!permissions.canEdit}
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit
-                        </Button>
+                        {permissions.isCreator && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditFlight(flight)}
+                            disabled={!permissions.canEdit}
+                          >
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -3180,17 +3192,19 @@ export default function FlightsPage() {
                           }}
                         >
                           <Users className="mr-2 h-4 w-4" />
-                          Propose to Group
+                          Propose
                         </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteFlightMutation.mutate(flight.id)}
-                          disabled={!permissions.canDelete}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
-                        </Button>
+                        {permissions.isCreator && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => deleteFlightMutation.mutate(flight.id)}
+                            disabled={!permissions.canDelete}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </AccordionContent>
