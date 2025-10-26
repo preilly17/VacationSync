@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Calendar,
+  Building,
   Plus,
   Users,
   MapPin,
@@ -5751,50 +5752,59 @@ function HotelBooking({
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Hotel Booking</h2>
-            <p className="text-gray-600">Find and book accommodations</p>
+      <div className="space-y-8">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1.5">
+            <h2 className="text-2xl font-semibold text-neutral-900">Stays</h2>
+            <p className="text-sm text-muted-foreground">
+              Keep your hotel plans, proposals, and confirmations easy for everyone to find.
+            </p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Button
-              onClick={focusSearchPanel}
-              className="bg-primary hover:bg-red-600 text-white"
-            >
-              <Search className="w-4 h-4 mr-2" />
-              Search Hotels
-            </Button>
-            <Button variant="outline" onClick={openManualForm}>
-              Manual Entry
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="inline-flex items-center gap-2 px-4">
+                <Plus className="h-4 w-4" />
+                Add stay
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={focusSearchPanel}>
+                <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+                Search hotels
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={openManualForm}>
+                <Building className="mr-2 h-4 w-4 text-muted-foreground" />
+                Add manually
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <div className="space-y-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <h3 className="text-lg font-semibold">Manually Added Hotels</h3>
-            {manualHotels.length > 0 ? (
-              <Button variant="outline" size="sm" onClick={openManualForm}>
-                Add stay
-              </Button>
-            ) : null}
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Your Saved Stays</h3>
+            <p className="text-sm text-muted-foreground">
+              Reservations you’ve tracked outside of the hotel search results.
+            </p>
           </div>
 
           {manualHotels.length === 0 ? (
-            <Card>
+            <Card className="border border-dashed border-border/60 bg-muted/20">
               <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-1">
-                  <p className="text-base font-medium text-neutral-900">No manual hotels yet</p>
+                  <p className="text-base font-medium text-neutral-900">No saved stays yet</p>
                   <p className="text-sm text-muted-foreground">
-                    Keep track of reservations booked outside of TripSync.
+                    Log confirmation details for hotels you’ve already booked.
                   </p>
                 </div>
-                <Button onClick={openManualForm}>Add a stay</Button>
+                <Button variant="outline" onClick={openManualForm} className="sm:w-auto">
+                  Add a stay
+                </Button>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4">
+            <div className="grid gap-3">
               {manualHotels.map((hotel) => {
                 const addressLine = [hotel.address, hotel.city, hotel.country]
                   .filter(Boolean)
@@ -5824,36 +5834,36 @@ function HotelBooking({
                   : null;
 
                 return (
-                  <Card key={hotel.id}>
-                    <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
+                  <Card key={hotel.id} className="border border-border/70 shadow-none">
+                    <CardHeader className="gap-3 space-y-0 pb-0 sm:flex-row sm:items-start sm:justify-between">
                       <div className="space-y-2">
-                        <CardTitle className="text-base font-semibold text-neutral-900">
+                        <CardTitle className="text-base font-medium text-neutral-900">
                           {hotel.hotelName || "Hotel"}
                         </CardTitle>
                         <CardDescription className="text-sm text-muted-foreground">
                           {addressLine || "Address TBD"}
                         </CardDescription>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="secondary">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <Badge variant="secondary" className="bg-muted px-2 py-1 font-medium text-foreground/80">
                             {checkInLabel} → {checkOutLabel}
                           </Badge>
                           {statusLabel ? (
-                            <Badge variant="outline" className="capitalize">
+                            <Badge variant="outline" className="capitalize border-border/70 text-foreground/80">
                               {statusLabel}
                             </Badge>
                           ) : null}
                           {proposalStatusLabel ? (
                             <Badge
                               variant={canShareWithGroup ? "outline" : "secondary"}
-                              className="capitalize"
+                              className="capitalize text-foreground/80"
                             >
                               Group: {proposalStatusLabel}
                             </Badge>
                           ) : null}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditHotel(hotel)}>
+                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                        <Button variant="outline" size="sm" onClick={() => handleEditHotel(hotel)} className="h-8 px-3">
                           Edit
                         </Button>
                         <Button
@@ -5864,6 +5874,7 @@ function HotelBooking({
                             !canShareWithGroup ||
                             (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
                           }
+                          className="h-8 px-3"
                         >
                           {proposeHotelMutation.isPending && proposingHotelId === hotel.id ? (
                             <>
@@ -5881,7 +5892,7 @@ function HotelBooking({
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              className="h-8 px-3 text-red-600 hover:bg-red-50 hover:text-red-700"
                             >
                               Delete
                             </Button>
@@ -5907,28 +5918,28 @@ function HotelBooking({
                         </AlertDialog>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 pb-4 pt-3">
                       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <p className="text-xs font-semibold uppercase text-muted-foreground">Total price</p>
-                          <p className="text-sm font-medium text-neutral-900">{totalPriceLabel}</p>
+                          <p className="text-xs font-medium text-muted-foreground">Total price</p>
+                          <p className="text-sm text-neutral-900">{totalPriceLabel}</p>
                         </div>
                         {nightlyPriceLabel ? (
                           <div>
-                            <p className="text-xs font-semibold uppercase text-muted-foreground">Price / night</p>
-                            <p className="text-sm font-medium text-neutral-900">{nightlyPriceLabel}</p>
+                            <p className="text-xs font-medium text-muted-foreground">Price / night</p>
+                            <p className="text-sm text-neutral-900">{nightlyPriceLabel}</p>
                           </div>
                         ) : null}
                         {hotel.bookingReference ? (
                           <div>
-                            <p className="text-xs font-semibold uppercase text-muted-foreground">Booking ref</p>
-                            <p className="text-sm font-medium text-neutral-900">{hotel.bookingReference}</p>
+                            <p className="text-xs font-medium text-muted-foreground">Booking ref</p>
+                            <p className="text-sm text-neutral-900">{hotel.bookingReference}</p>
                           </div>
                         ) : null}
                         {hotel.bookingSource ? (
                           <div>
-                            <p className="text-xs font-semibold uppercase text-muted-foreground">Source</p>
-                            <p className="text-sm font-medium text-neutral-900">{hotel.bookingSource}</p>
+                            <p className="text-xs font-medium text-muted-foreground">Source</p>
+                            <p className="text-sm text-neutral-900">{hotel.bookingSource}</p>
                           </div>
                         ) : null}
                       </div>
@@ -5940,7 +5951,7 @@ function HotelBooking({
           )}
         </div>
 
-        <div className="border-t border-gray-200" />
+        <div className="border-t border-border/60" />
 
         <HotelSearchPanel
           ref={searchPanelRef}

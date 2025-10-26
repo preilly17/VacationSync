@@ -23,7 +23,6 @@ import type { TripWithDates, HotelSearchResult } from "@shared/schema";
 import { format } from "date-fns";
 import {
   Building,
-  ChevronRight,
   DollarSign,
   Filter,
   Hotel,
@@ -641,45 +640,27 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
 
     return (
       <div ref={containerRef} id="hotel-search-panel" className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-[260px] flex-1">
-            <div className="search-header-gradient rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="airplane-animate">
-                  <Building className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-                    Accommodations Search
-                  </h1>
-                  <p className="text-gray-700">
-                    Search hotels to propose to your group and vote on group proposals
-                  </p>
-                </div>
-                <div className="flex gap-2 ml-auto">
-                  <Hotel className="h-5 w-5 text-blue-500" />
-                  <ChevronRight className="h-5 w-5 text-gray-400" />
-                  <Bed className="h-5 w-5 text-green-500" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Card className="border-primary/40 shadow-sm">
-          <CardHeader className="flex flex-col gap-2">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-primary" />
-                <CardTitle className="text-lg">Search Hotels for this Trip</CardTitle>
+        <Card className="border border-border/70 shadow-none">
+          <CardHeader className="space-y-3">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-neutral-900">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-base font-semibold text-neutral-900">
+                  Find Hotels for This Trip
+                </CardTitle>
               </div>
               {searchResults.length > 0 && (
-                <div className="text-sm text-muted-foreground">Found {searchResults.length} hotels</div>
+                <div className="text-xs font-medium text-muted-foreground">
+                  {searchResults.length} options
+                </div>
               )}
             </div>
+            <p className="text-sm text-muted-foreground">
+              Search hotels to propose to your group or save to your trip plan.
+            </p>
             {trip?.destination && (trip?.startDate || trip?.endDate) && (
-              <p className="text-sm text-muted-foreground">
-                Trip destination: {trip.destination}
+              <p className="text-xs text-muted-foreground">
+                {trip.destination}
                 {(trip.startDate || trip.endDate) && " • "}
                 {trip.startDate ? format(new Date(trip.startDate), "MMM d") : "Start TBD"}
                 {trip.endDate ? `–${format(new Date(trip.endDate), "MMM d")}` : ""}
@@ -847,112 +828,110 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
         </Card>
 
         {searchResults.length > 0 && (
-          <Card className="mt-6 sky-pattern">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Hotel className="h-5 w-5" />
-                    Available Hotels ({searchResults.length})
-                    {searchResults.length > 0 && hotelProposalsCount > 0 && (
-                      <span className="text-sm font-normal text-muted-foreground">
-                        ({searchResults.length} found + {hotelProposalsCount} group)
-                      </span>
-                    )}
+          <Card className="mt-6 border border-border/70 shadow-none">
+            <CardHeader className="space-y-3 border-b border-border/60 pb-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2 text-base font-semibold text-neutral-900">
+                    <Hotel className="h-5 w-5 text-muted-foreground" />
+                    Hotels we found ({searchResults.length})
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
-                    Hotels for {trip?.destination} •
-                    {trip?.startDate && ` ${format(new Date(trip.startDate), "MMM d")}`}
-                    {trip?.endDate && ` - ${format(new Date(trip.endDate), "MMM d")}`}
+                    {trip?.destination ? `For ${trip.destination}` : "Suggested stays"}
+                    {trip?.startDate && ` • ${format(new Date(trip.startDate), "MMM d")}`}
+                    {trip?.endDate && ` – ${format(new Date(trip.endDate), "MMM d")}`}
                   </p>
+                  {hotelProposalsCount > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {hotelProposalsCount} hotel proposals already shared with your group.
+                    </p>
+                  )}
                 </div>
-                <Button onClick={onLogHotelManually} variant="outline">
+                <Button onClick={onLogHotelManually} variant="outline" className="sm:w-auto">
                   <Building className="h-4 w-4 mr-2" />
-                  Log Hotel Manually
+                  Add stay manually
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-6 md:grid-cols-2">
+            <CardContent className="pt-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 {searchResults.map((hotel, index) => (
                   <Card
                     key={hotel.id || index}
-                    className={`relative overflow-hidden shadow-md hover:shadow-lg transition-all duration-300 ${
-                      hotel.isGroupProposal ? "border-blue-200 bg-blue-50/30" : "hotel-card-gradient border-0"
-                    } airplane-pattern`}
+                    className={`border border-border/60 shadow-none transition-shadow duration-200 hover:border-border/80 ${
+                      hotel.isGroupProposal ? "bg-blue-50/60 border-blue-200" : "bg-white"
+                    }`}
                   >
-                    <CardHeader className="pb-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="flex items-center gap-2">
-                              <Building className="h-4 w-4 text-blue-600 airplane-animate" />
-                              <CardTitle className="text-xl font-semibold text-gray-800">{hotel.name}</CardTitle>
-                            </div>
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Building className="h-4 w-4 text-muted-foreground" />
+                            <CardTitle className="text-base font-semibold text-neutral-900">{hotel.name}</CardTitle>
                             {hotel.isGroupProposal && (
-                              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300">
+                              <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
                                 <Users className="w-3 h-3 mr-1" />
                                 Group
                               </Badge>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground flex items-center gap-1 mt-2">
+                          <p className="flex items-center gap-1 text-sm text-muted-foreground">
                             <MapPin className="h-4 w-4" />
                             {hotel.location}
                           </p>
                           {hotel.isGroupProposal && hotel.proposedBy && (
-                            <p className="text-xs text-blue-600 mt-1">
+                            <p className="text-xs text-muted-foreground">
                               Proposed by {hotel.proposedBy.firstName}
                             </p>
                           )}
                         </div>
-                        <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-md">
-                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                          <span className="text-sm font-medium">{hotel.rating}</span>
+                        <div className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-sm font-medium text-neutral-900">
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-500" />
+                          {hotel.rating}
                         </div>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="bg-gradient-to-r from-green-50 to-blue-50 p-3 rounded-lg border border-green-100">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                      <div className="rounded-lg border border-border/70 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
                             <DollarSign className="h-4 w-4 text-green-600" />
-                            <span className="text-sm text-muted-foreground">Estimated Total:</span>
+                            Estimated total
                           </div>
-                          <span className="text-lg font-bold text-green-600">{hotel.price}</span>
+                          <span className="text-lg font-semibold text-green-600">{hotel.price}</span>
                         </div>
                         {hotel.pricePerNight && hotel.pricePerNight !== hotel.price && (
-                          <div className="flex items-center justify-between mt-1">
-                            <span className="text-xs text-muted-foreground ml-6">Est. Per Night:</span>
-                            <span className="text-sm font-medium text-green-600">{hotel.pricePerNight}</span>
+                          <div className="mt-1 flex items-center justify-between text-sm text-muted-foreground">
+                            <span>Per night</span>
+                            <span className="font-medium text-neutral-900">{hotel.pricePerNight}</span>
                           </div>
                         )}
-                        <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-200 mt-2">
-                          ⚠️ Estimates only - actual prices may differ significantly on booking sites
-                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Estimates only — check the booking site for final pricing.
+                        </p>
                       </div>
 
                       {hotel.amenities && (
-                        <div className="space-y-2">
-                          <span className="text-sm font-medium text-muted-foreground">Amenities:</span>
-                          <p className="text-sm text-gray-600 leading-relaxed">{hotel.amenities}</p>
+                        <div className="space-y-1">
+                          <span className="text-sm font-medium text-neutral-900">Amenities</span>
+                          <p className="text-sm text-muted-foreground leading-relaxed">{hotel.amenities}</p>
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between pt-2">
+                      <div className="flex items-center justify-between">
                         <Badge
                           variant="outline"
-                          className={`text-xs ${
+                          className={`px-2 py-1 text-xs font-medium ${
                             hotel.platform === "Amadeus"
-                              ? "bg-green-50 border-green-200 text-green-700"
-                              : "bg-blue-50 border-blue-200 text-blue-700"
+                              ? "border-green-200 bg-green-50 text-green-700"
+                              : "border-blue-200 bg-blue-50 text-blue-700"
                           }`}
                         >
-                          {hotel.platform === "Amadeus" ? "🔴 Live API Data" : "📊 Enhanced Database"}
+                          {hotel.platform === "Amadeus" ? "Live API data" : "Enhanced database"}
                         </Badge>
                       </div>
 
-                      <div className="flex gap-3 pt-2">
+                      <div className="flex gap-3 pt-1">
                         <Button
                           size="sm"
                           variant="outline"
@@ -975,10 +954,10 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
                               `https://www.booking.com/search.html?ss=${encodeURIComponent(hotel.name)}`;
                             window.open(bookingUrl, "_blank", "noopener,noreferrer");
                           }}
-                          className="flex-1 hover:bg-blue-50"
+                          className="flex-1"
                         >
                           <Bed className="h-4 w-4 mr-2" />
-                          Book Now
+                          Book now
                         </Button>
                         <Button
                           size="sm"
@@ -986,7 +965,7 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
                           className="flex-1"
                         >
                           <Users className="h-4 w-4 mr-2" />
-                          Add to Group Hotels
+                          Add to group stays
                         </Button>
                       </div>
                     </CardContent>
