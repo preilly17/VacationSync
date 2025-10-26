@@ -75,6 +75,19 @@ export default function RestaurantsPage() {
     firstFocusable?.focus();
   }, []);
 
+  const handleOpenManualDialog = useCallback(() => {
+    if (!tripId) {
+      toast({
+        title: "Open a trip to log restaurants",
+        description: "Select a trip first so we know where to save this reservation.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setShowBooking(true);
+  }, [toast, tripId]);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -87,9 +100,17 @@ export default function RestaurantsPage() {
 
     const manualParam = params.get("manual");
     if (manualParam === "1" || manualParam === "true") {
-      setShowBooking(true);
+      if (tripId) {
+        setShowBooking(true);
+      } else {
+        toast({
+          title: "Select a trip first",
+          description: "Open a trip to manually log restaurant plans.",
+          variant: "destructive",
+        });
+      }
     }
-  }, [focusSearchSection]);
+  }, [focusSearchSection, toast, tripId]);
 
   // Handle booking link clicks with tracking
   const handleBookingLinkClick = (restaurant: any, link: { text: string; url: string; type: string }) => {
@@ -184,7 +205,9 @@ export default function RestaurantsPage() {
           <Button
             variant="outline"
             className="w-full sm:w-auto"
-            onClick={() => setShowBooking(true)}
+            onClick={handleOpenManualDialog}
+            disabled={!tripId}
+            title={tripId ? undefined : "Open a trip to log restaurants manually"}
           >
             <NotebookPen className="h-4 w-4 mr-2" />
             Log Restaurant Manually
@@ -197,7 +220,7 @@ export default function RestaurantsPage() {
         tripId={tripId}
         trip={trip as TripWithDetails | undefined}
         user={user}
-        onLogRestaurantManually={() => setShowBooking(true)}
+        onLogRestaurantManually={handleOpenManualDialog}
         onProposeRestaurant={handleProposeToGroup}
         onBookingLinkClick={handleBookingLinkClick}
       />
@@ -228,7 +251,9 @@ export default function RestaurantsPage() {
                 <Button
                   variant="outline"
                   className="w-full sm:w-auto"
-                  onClick={() => setShowBooking(true)}
+                  onClick={handleOpenManualDialog}
+                  disabled={!tripId}
+                  title={tripId ? undefined : "Open a trip to log restaurants manually"}
                 >
                   <NotebookPen className="h-4 w-4 mr-2" />
                   Log Manually
@@ -350,11 +375,7 @@ export default function RestaurantsPage() {
       </div>
 
       {/* Booking Dialog */}
-      <RestaurantManualDialog
-        tripId={tripId}
-        open={showBooking}
-        onOpenChange={setShowBooking}
-      />
+      <RestaurantManualDialog tripId={tripId} open={showBooking} onOpenChange={setShowBooking} />
 
       {/* Booking Confirmation Modal */}
       <BookingConfirmationModal
