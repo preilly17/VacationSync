@@ -411,7 +411,7 @@ function ProposalsPage({
     }
 
     return new Set(
-      hotelProposals
+      filterActiveProposals(hotelProposals)
         .map((proposal) => proposal.currentUserRanking?.ranking)
         .filter((value): value is number => typeof value === "number"),
     );
@@ -423,7 +423,7 @@ function ProposalsPage({
     }
 
     return new Set(
-      flightProposals
+      filterActiveProposals(flightProposals)
         .map((proposal) => proposal.currentUserRanking?.ranking)
         .filter((value): value is number => typeof value === "number"),
     );
@@ -435,7 +435,7 @@ function ProposalsPage({
     }
 
     return new Set(
-      restaurantProposals
+      filterActiveProposals(restaurantProposals)
         .map((proposal) => proposal.currentUserRanking?.ranking)
         .filter((value): value is number => typeof value === "number"),
     );
