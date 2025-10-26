@@ -4,20 +4,20 @@ import { useParams, useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { format } from "date-fns";
-import { Plane, Clock, MapPin, Users, Edit, Trash2, Plus, Search, Filter, ArrowUpDown, SlidersHorizontal, Share2, ArrowLeft, Check, X, PlaneTakeoff, PlaneLanding, ArrowRight, ExternalLink, Loader2, ChevronDown } from "lucide-react";
+import { Plane, Clock, Users, Edit, Trash2, Plus, Search, ArrowLeft, PlaneTakeoff, PlaneLanding, ExternalLink, Loader2 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import LocationSearch, { type LocationResult } from "@/components/LocationSearch";
 import type {
@@ -629,6 +629,7 @@ function FlightSearchPanel({
   const [isLoadingArrivalAirports, setIsLoadingArrivalAirports] = useState(false);
   const [selectedDepartureAirport, setSelectedDepartureAirport] = useState(searchFormData.departure);
   const [selectedArrivalAirport, setSelectedArrivalAirport] = useState(searchFormData.arrival);
+  const [expandedResultKey, setExpandedResultKey] = useState<string | null>(null);
   const currentUserId = user?.id ?? null;
 
   const createLocationFromForm = (direction: 'departure' | 'arrival'): LocationResult | null => {
@@ -1465,85 +1466,142 @@ function FlightSearchPanel({
                       );
                     })()}
 
-                    <div className="space-y-4">
+                    <Accordion
+                      type="single"
+                      collapsible
+                      value={expandedResultKey ?? undefined}
+                      onValueChange={(value) => setExpandedResultKey(value || null)}
+                      className="space-y-3"
+                    >
                       {(filterResults[activeFilter].length > 0 ? filterResults[activeFilter] : searchResults).map(
                         (flight: any, index: number) => {
                           const normalizedPriceSource = flight.price ?? flight.totalPrice;
                           const priceLabel = formatPriceDisplay(normalizedPriceSource, flight.currency);
                           const hasNumericPrice = parseNumericAmount(normalizedPriceSource) !== null;
-                          const flightKey = getSearchFlightKey(flight);
+                          const flightKey = getSearchFlightKey(flight) || `flight-${index}`;
+                          const departureCode =
+                            flight.departure?.iataCode ||
+                            flight.departureCode ||
+                            cachedSearchParams?.originCode ||
+                            extractAirportCode(cachedSearchParams?.origin) ||
+                            extractAirportCode(searchFormData.departure) ||
+                            searchFormData.departure;
+                          const arrivalCode =
+                            flight.arrival?.iataCode ||
+                            flight.arrivalCode ||
+                            cachedSearchParams?.destinationCode ||
+                            extractAirportCode(cachedSearchParams?.destination) ||
+                            extractAirportCode(searchFormData.arrival) ||
+                            searchFormData.arrival;
+                          const summaryDepartureCode =
+                            typeof departureCode === "string" && departureCode
+                              ? departureCode.toUpperCase()
+                              : "Origin";
+                          const summaryArrivalCode =
+                            typeof arrivalCode === "string" && arrivalCode ? arrivalCode.toUpperCase() : "Destination";
+
+                          const departureLabel =
+                            flight.departure?.airport || flight.departureAirport || searchFormData.departure;
+                          const arrivalLabel = flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival;
+
+                          const formatDateTime = (value?: string) => {
+                            if (!value) return null;
+                            const parsed = new Date(value);
+                            if (Number.isNaN(parsed.getTime())) {
+                              return null;
+                            }
+                            return format(parsed, "MMM d, yyyy h:mm a");
+                          };
+
+                          const departureTimeLabel =
+                            formatDateTime(flight.departure?.time || flight.departureTime) || "Departure time varies";
+                          const arrivalTimeLabel =
+                            formatDateTime(flight.arrival?.time || flight.arrivalTime) || "Arrival time varies";
+
+                          const durationLabel = flight.duration
+                            ? flight.duration.replace("PT", "").replace("H", "h ").replace("M", "m")
+                            : "Duration varies";
+                          const stopsLabel =
+                            flight.stops !== undefined
+                              ? flight.stops === 0
+                                ? "Non-stop"
+                                : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`
+                              : null;
+
+                          const aircraftSource = flight.aircraft ?? flight.segments?.[0]?.aircraft ?? null;
+                          let aircraftLabel: string | null = null;
+                          if (typeof aircraftSource === "string") {
+                            aircraftLabel = aircraftSource;
+                          } else if (aircraftSource && typeof aircraftSource === "object") {
+                            aircraftLabel =
+                              aircraftSource.code ||
+                              aircraftSource.model ||
+                              aircraftSource.name ||
+                              (typeof aircraftSource.toString === "function" &&
+                              aircraftSource.toString() !== "[object Object]"
+                                ? aircraftSource.toString()
+                                : null);
+                          }
+
+                          const isCurrentFlightAdding = isAddingFlight && addingFlightKey === flightKey;
 
                           return (
-                            <div key={index} className="rounded-lg border p-4 transition-colors hover:bg-gray-50">
-                              <div className="mb-3 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="flex items-center gap-2">
+                            <AccordionItem
+                              key={flightKey}
+                              value={flightKey}
+                              className="overflow-hidden rounded-lg border bg-card"
+                            >
+                              <AccordionTrigger className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left hover:bg-muted/50 [&[data-state=open]]:rounded-t-lg">
+                                <div className="flex flex-col gap-2 text-left">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <Plane className="h-4 w-4 text-blue-600" />
                                     <span className="font-semibold">{getFlightAirlineName(flight)}</span>
-                                    <span className="text-gray-500">{flight.flightNumber || `Flight ${index + 1}`}</span>
+                                    <span className="text-sm text-muted-foreground">
+                                      {flight.flightNumber || `Flight ${index + 1}`}
+                                    </span>
+                                    <Badge className="bg-green-100 text-green-800">Available</Badge>
                                   </div>
-                                  <Badge className="bg-green-100 text-green-800">Available</Badge>
+                                  <div className="text-sm text-muted-foreground">
+                                    {summaryDepartureCode} → {summaryArrivalCode}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {durationLabel}
+                                    {stopsLabel ? ` • ${stopsLabel}` : ""}
+                                  </div>
                                 </div>
                                 <div className="text-right">
-                                  <div className="text-2xl font-bold text-green-600">{priceLabel}</div>
-                                  {hasNumericPrice && <div className="text-sm text-gray-500">per person</div>}
+                                  <div className="text-xl font-semibold text-green-600">{priceLabel}</div>
+                                  {hasNumericPrice && <div className="text-xs text-muted-foreground">per person</div>}
                                 </div>
-                              </div>
-
-                              <div className="mb-4 grid grid-cols-1 gap-4 text-sm md:grid-cols-3">
-                                <div className="flex items-center gap-2">
-                                  <PlaneTakeoff className="h-4 w-4 text-green-600" />
-                                  <div>
-                                    <div className="font-medium">
-                                      {flight.departure?.airport || flight.departureAirport || searchFormData.departure}
+                              </AccordionTrigger>
+                              <AccordionContent className="px-4 pb-4">
+                                <div className="grid gap-4 text-sm md:grid-cols-3">
+                                  <div className="flex items-start gap-3">
+                                    <PlaneTakeoff className="mt-1 h-4 w-4 text-green-600" />
+                                    <div>
+                                      <div className="font-medium">{departureLabel}</div>
+                                      <div className="text-xs text-muted-foreground">{departureTimeLabel}</div>
                                     </div>
-                                    <div className="text-gray-500">
-                                      {flight.departure?.time
-                                        ? new Date(flight.departure.time).toLocaleTimeString("en-US", {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                          })
-                                        : "Departure time varies"}
+                                  </div>
+                                  <div className="flex flex-col items-center justify-center gap-1 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
+                                    <Clock className="h-4 w-4" />
+                                    <span>{durationLabel}</span>
+                                    {stopsLabel && <span>{stopsLabel}</span>}
+                                  </div>
+                                  <div className="flex items-start gap-3">
+                                    <PlaneLanding className="mt-1 h-4 w-4 text-red-600" />
+                                    <div>
+                                      <div className="font-medium">{arrivalLabel}</div>
+                                      <div className="text-xs text-muted-foreground">{arrivalTimeLabel}</div>
                                     </div>
                                   </div>
                                 </div>
-                                <div className="flex items-center justify-center">
-                                  <ArrowRight className="h-4 w-4 text-gray-400" />
-                                  <div className="mx-2 text-xs text-gray-500">
-                                    {flight.duration
-                                      ? flight.duration.replace("PT", "").replace("H", "h ").replace("M", "m")
-                                      : "Duration varies"}
-                                  </div>
-                                  <ArrowRight className="h-4 w-4 text-gray-400" />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <PlaneLanding className="h-4 w-4 text-red-600" />
-                                  <div>
-                                    <div className="font-medium">
-                                      {flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival}
-                                    </div>
-                                    <div className="text-gray-500">
-                                      {flight.arrival?.time
-                                        ? new Date(flight.arrival.time).toLocaleTimeString("en-US", {
-                                            hour: "2-digit",
-                                            minute: "2-digit",
-                                          })
-                                        : "Arrival time varies"}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4 text-sm text-gray-600">
-                                  {flight.stops !== undefined && (
-                                    <span>
-                                      {flight.stops === 0 ? "Non-stop" : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`}
-                                    </span>
-                                  )}
+                                <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                                  {stopsLabel && <span>{stopsLabel}</span>}
                                   {flight.class && <span className="capitalize">{flight.class}</span>}
+                                  {aircraftLabel && <span>Aircraft: {aircraftLabel}</span>}
                                 </div>
-                                <div className="flex flex-wrap gap-2">
+                                <div className="mt-4 flex flex-wrap gap-2">
                                   <Button
                                     size="sm"
                                     variant="default"
@@ -1608,7 +1666,7 @@ function FlightSearchPanel({
                                     data-testid={`button-add-to-trip-${index}`}
                                     disabled={isAddingFlight}
                                   >
-                                    {isAddingFlight && addingFlightKey === flightKey ? (
+                                    {isCurrentFlightAdding ? (
                                       <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                         Adding...
@@ -1621,12 +1679,12 @@ function FlightSearchPanel({
                                     )}
                                   </Button>
                                 </div>
-                              </div>
-                            </div>
+                              </AccordionContent>
+                            </AccordionItem>
                           );
                         },
                       )}
-                    </div>
+                    </Accordion>
                   </CardContent>
                 </Card>
               </div>
@@ -2063,33 +2121,19 @@ export default function FlightsPage() {
   // Ensure flights is always an array
   const flightsArray = Array.isArray(flights) ? flights : [];
 
-  const manualFlights = useMemo(
-    () =>
-      flightsArray.filter((flight: FlightWithDetails) => {
-        const sourceValue = (flight.bookingSource ?? '').toString().toLowerCase();
-        const isManualEntry = !sourceValue || sourceValue === 'manual';
-        if (!isManualEntry) {
-          return false;
-        }
+  const sortedFlights = useMemo(() => {
+    return [...flightsArray].sort((a: FlightWithDetails, b: FlightWithDetails) => {
+      const aTime = a?.departureTime ? new Date(a.departureTime).getTime() : Number.NaN;
+      const bTime = b?.departureTime ? new Date(b.departureTime).getTime() : Number.NaN;
 
-        const creatorId = getFlightCreatorId(flight);
-        return Boolean(currentUserId && creatorId && creatorId === currentUserId);
-      }),
-    [flightsArray, currentUserId],
-  );
+      if (Number.isNaN(aTime) && Number.isNaN(bTime)) return 0;
+      if (Number.isNaN(aTime)) return 1;
+      if (Number.isNaN(bTime)) return -1;
+      return aTime - bTime;
+    });
+  }, [flightsArray]);
 
-  const [manualFlightsOpen, setManualFlightsOpen] = useState(() => manualFlights.length > 0);
-  const previousManualCountRef = useRef(manualFlights.length);
-
-  useEffect(() => {
-    if (manualFlights.length === 0) {
-      setManualFlightsOpen(false);
-    } else if (previousManualCountRef.current === 0 && manualFlights.length > 0) {
-      setManualFlightsOpen(true);
-    }
-
-    previousManualCountRef.current = manualFlights.length;
-  }, [manualFlights.length]);
+  const [expandedTripFlightId, setExpandedTripFlightId] = useState<string | null>(null);
 
   const { data: trip } = useQuery<TripWithDetails | undefined>({
     queryKey: [`/api/trips/${tripId}`],
@@ -2321,21 +2365,109 @@ export default function FlightsPage() {
   // Share flight with group as a proposal
   const shareFlightWithGroup = async (flight: any) => {
     try {
-      // Extract and format flight data for the proposal API (matching backend expectations)
+      const departureAirportName =
+        flight.departure?.airport ||
+        flight.departureAirport ||
+        extractAirportName(searchFormData.departure) ||
+        searchFormData.departure ||
+        "Departure TBD";
+
+      const arrivalAirportName =
+        flight.arrival?.airport ||
+        flight.arrivalAirport ||
+        extractAirportName(searchFormData.arrival) ||
+        searchFormData.arrival ||
+        "Arrival TBD";
+
+      const departureTimeValue =
+        flight.departure?.time ||
+        flight.departureTime ||
+        (typeof flight.departure_time === "string" ? flight.departure_time : undefined) ||
+        new Date().toISOString();
+
+      const arrivalTimeValue =
+        flight.arrival?.time ||
+        flight.arrivalTime ||
+        (typeof flight.arrival_time === "string" ? flight.arrival_time : undefined) ||
+        new Date().toISOString();
+
+      const stopsValue = (() => {
+        if (typeof flight.stops === "number") {
+          return flight.stops;
+        }
+        if (Array.isArray(flight.layovers)) {
+          return flight.layovers.length;
+        }
+        if (typeof flight.layovers === "string") {
+          try {
+            const parsed = JSON.parse(flight.layovers);
+            if (Array.isArray(parsed)) {
+              return parsed.length;
+            }
+          } catch {
+            return 0;
+          }
+        }
+        return 0;
+      })();
+
+      const durationValue =
+        flight.duration ||
+        (typeof flight.flightDuration === "number" && flight.flightDuration > 0
+          ? formatDuration(flight.flightDuration)
+          : undefined) ||
+        "2h 30m";
+
+      const aircraftSource = flight.aircraft ?? flight.segments?.[0]?.aircraft ?? null;
+      let aircraftValue: string | null = null;
+      if (typeof aircraftSource === "string") {
+        aircraftValue = aircraftSource;
+      } else if (aircraftSource && typeof aircraftSource === "object") {
+        aircraftValue =
+          aircraftSource.code ||
+          aircraftSource.model ||
+          aircraftSource.name ||
+          (typeof aircraftSource.toString === "function" && aircraftSource.toString() !== "[object Object]"
+            ? aircraftSource.toString()
+            : null);
+      }
+
+      const bookingClassValue =
+        flight.class ||
+        flight.bookingClass ||
+        (typeof flight.seatClass === "string" ? flight.seatClass : null) ||
+        "Economy";
+
+      const bookingUrlValue =
+        flight.bookingUrls?.kayak ||
+        flight.bookingUrls?.expedia ||
+        flight.bookingUrl ||
+        flight.purchaseUrl ||
+        "#";
+
+      const priceValue =
+        parseNumericAmount(flight.price ?? flight.totalPrice) ??
+        (typeof flight.price === "number" ? flight.price : 0);
+
       const proposalData = {
-        airline: flight.airline || 'Various Airlines',
-        flightNumber: flight.flightNumber || `Flight-${Date.now()}`,
-        departure: flight.departure?.airport || flight.departureAirport || searchFormData.departure,
-        departureTime: flight.departure?.time || flight.departureTime || new Date().toISOString(),
-        arrival: flight.arrival?.airport || flight.arrivalAirport || searchFormData.arrival, 
-        arrivalTime: flight.arrival?.time || flight.arrivalTime || new Date().toISOString(),
-        duration: flight.duration || '2h 30m',
-        stops: flight.stops !== undefined ? flight.stops : 0,
-        aircraft: flight.aircraft || 'Unknown Aircraft',
-        price: flight.price || flight.totalPrice || 0,
-        bookingClass: flight.class || 'Economy',
-        platform: 'Amadeus',
-        bookingUrl: flight.bookingUrls?.kayak || flight.bookingUrls?.expedia || '#'
+        airline:
+          flight.airline ||
+          flight.airlineName ||
+          (typeof flight.airlineCode === "string" ? getAirlineName(flight.airlineCode) : undefined) ||
+          getFlightAirlineName(flight) ||
+          "Various Airlines",
+        flightNumber: flight.flightNumber || flight.number || `Flight-${Date.now()}`,
+        departure: departureAirportName,
+        departureTime: departureTimeValue,
+        arrival: arrivalAirportName,
+        arrivalTime: arrivalTimeValue,
+        duration: durationValue,
+        stops: stopsValue,
+        aircraft: aircraftValue || "Unknown Aircraft",
+        price: priceValue,
+        bookingClass: bookingClassValue,
+        platform: flight.provider || flight.source || flight.bookingSource || "Trip",
+        bookingUrl: bookingUrlValue,
       };
 
       await apiRequest(`/api/trips/${tripId}/flight-proposals`, {
@@ -2916,93 +3048,251 @@ export default function FlightsPage() {
           isAddingFlight={addingFlightKey !== null}
           addingFlightKey={addingFlightKey}
         />
-
-      <Collapsible open={manualFlightsOpen} onOpenChange={setManualFlightsOpen}>
-        <div className="rounded-lg border bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-2 text-left text-sm font-medium text-neutral-900 focus:outline-none"
-              >
-                <ChevronDown
-                  className={`h-4 w-4 transition-transform ${manualFlightsOpen ? 'rotate-180' : ''}`}
-                />
-                Manually added flights
-              </button>
-            </CollapsibleTrigger>
-            <Button size="sm" onClick={openManualFlightDialog}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add flight
-            </Button>
+      <section className="mt-10 space-y-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold text-foreground">Trip flights</h2>
+            <p className="text-sm text-muted-foreground">
+              Review all flights saved to this trip. Click a flight to expand full details and manage it.
+            </p>
           </div>
-          <CollapsibleContent>
-            {manualFlights.length === 0 ? (
-              <div className="p-4 text-sm text-muted-foreground">
-                No manual flights yet. Use the search above or add one manually.
-              </div>
-            ) : (
-              <div className="divide-y">
-                {manualFlights.map((flight) => {
-                  const directionLabel = flight.flightType === 'return' ? 'Return' : 'Outbound';
-                  const isConfirmed = (flight.status || 'proposed') === 'confirmed';
-                  const notes = extractFlightNotes(flight);
+          <Button onClick={openManualFlightDialog} className="w-full md:w-auto">
+            <Plus className="mr-2 h-4 w-4" />
+            Add flight
+          </Button>
+        </div>
 
-                  return (
-                    <div
-                      key={flight.id}
-                      className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-neutral-900">
-                          <Plane className="h-4 w-4 text-blue-600" />
-                          <span>{formatManualAirlineFlightDisplay(flight)}</span>
-                          <Badge variant="secondary" className="uppercase">{directionLabel}</Badge>
-                          <Badge className={isConfirmed ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}>
-                            {isConfirmed ? 'Confirmed' : 'Proposed'}
-                          </Badge>
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {formatAirportDisplay(flight.departureAirport, flight.departureCode)} → {formatAirportDisplay(flight.arrivalAirport, flight.arrivalCode)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {flight.departureTime ? format(new Date(flight.departureTime), 'MMM d, yyyy h:mm a') : 'Departure time TBD'} • {flight.arrivalTime ? format(new Date(flight.arrivalTime), 'MMM d, yyyy h:mm a') : 'Arrival time TBD'}
-                        </div>
-                        {notes && (
-                          <div className="text-xs text-muted-foreground">Notes: {notes}</div>
-                        )}
+        {sortedFlights.length === 0 ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              No flights have been added yet. Use the search above or add one manually.
+            </CardContent>
+          </Card>
+        ) : (
+          <Accordion
+            type="single"
+            collapsible
+            value={expandedTripFlightId ?? undefined}
+            onValueChange={(value) => setExpandedTripFlightId(value || null)}
+            className="space-y-3"
+          >
+            {sortedFlights.map((flight) => {
+              const itemId = flight.id ? flight.id.toString() : `${flight.flightNumber}-${flight.departureTime}`;
+              const directionLabel =
+                (flight.flightType || "").toLowerCase() === "return" ? "Return" : "Outbound";
+              const statusValue = (flight.status ?? "proposed").toLowerCase();
+              const statusLabel = statusValue.charAt(0).toUpperCase() + statusValue.slice(1);
+              const statusBadgeClass = getFlightStatusColor(statusValue);
+              const departureLabel = formatAirportDisplay(flight.departureAirport, flight.departureCode);
+              const arrivalLabel = formatAirportDisplay(flight.arrivalAirport, flight.arrivalCode);
+              const departureDateTime = flight.departureTime
+                ? format(new Date(flight.departureTime), "MMM d, yyyy h:mm a")
+                : "Departure time TBD";
+              const arrivalDateTime = flight.arrivalTime
+                ? format(new Date(flight.arrivalTime), "MMM d, yyyy h:mm a")
+                : "Arrival time TBD";
+              const summaryDate = flight.departureTime
+                ? format(new Date(flight.departureTime), "MMM d, yyyy")
+                : null;
+              const priceLabel =
+                typeof flight.price === "number"
+                  ? formatCurrency(flight.price, { currency: flight.currency ?? "USD" })
+                  : null;
+              const durationLabel =
+                typeof flight.flightDuration === "number" && flight.flightDuration > 0
+                  ? formatDuration(flight.flightDuration)
+                  : null;
+              const layoverLabel = flight.layovers ? formatLayovers(flight.layovers) : null;
+              const notes = extractFlightNotes(flight);
+              const seatClassRaw = flight.seatClass ? flight.seatClass.toString().replace(/_/g, " ") : "";
+              const seatClassLabel = seatClassRaw
+                ? seatClassRaw
+                    .toLowerCase()
+                    .split(" ")
+                    .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
+                    .join(" ")
+                : null;
+              const stopsCount = (() => {
+                if (typeof (flight as any).stops === "number") {
+                  return (flight as any).stops;
+                }
+                if (Array.isArray(flight.layovers)) {
+                  return flight.layovers.length;
+                }
+                if (typeof flight.layovers === "string") {
+                  try {
+                    const parsed = JSON.parse(flight.layovers);
+                    if (Array.isArray(parsed)) {
+                      return parsed.length;
+                    }
+                  } catch {
+                    return null;
+                  }
+                }
+                return null;
+              })();
+              const stopsLabel =
+                typeof stopsCount === "number"
+                  ? stopsCount === 0
+                    ? "Non-stop"
+                    : `${stopsCount} stop${stopsCount > 1 ? "s" : ""}`
+                  : null;
+              const permissions = getFlightPermissions(flight, trip as TripWithDetails | null, currentUserId);
+              const isManualEntry =
+                !(flight.bookingSource ?? "") || (flight.bookingSource ?? "").toString().toLowerCase() === "manual";
+              const notesLabel = notes ? `Notes: ${notes}` : null;
+
+              return (
+                <AccordionItem
+                  key={itemId}
+                  value={itemId}
+                  className="overflow-hidden rounded-lg border bg-card"
+                >
+                  <AccordionTrigger className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left hover:bg-muted/50 [&[data-state=open]]:rounded-t-lg">
+                    <div className="flex flex-col gap-2 text-left">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Plane className="h-4 w-4 text-blue-600" />
+                        <span className="font-semibold">
+                          {flight.airline || formatManualAirlineFlightDisplay(flight)}
+                        </span>
+                        <span className="text-sm text-muted-foreground">{flight.flightNumber}</span>
+                        <Badge variant="secondary" className="uppercase">
+                          {directionLabel}
+                        </Badge>
+                        <Badge className={statusBadgeClass}>{statusLabel}</Badge>
+                        {isManualEntry && <Badge variant="outline">Manual</Badge>}
                       </div>
-                      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Switch
-                            checked={isConfirmed}
-                            onCheckedChange={() => handleToggleFlightStatus(flight)}
-                          />
-                          <span>{isConfirmed ? 'Confirmed' : 'Proposed'}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => handleEditFlight(flight)}>
-                            <Edit className="h-4 w-4" />
-                            <span className="sr-only">Edit flight</span>
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteFlightMutation.mutate(flight.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Delete flight</span>
-                          </Button>
-                        </div>
+                      <div className="text-sm text-muted-foreground">
+                        {departureLabel} → {arrivalLabel}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {summaryDate ? `${summaryDate} • ` : ""}
+                        {departureDateTime}
+                        {arrivalDateTime ? ` → ${arrivalDateTime}` : ""}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </CollapsibleContent>
-        </div>
-      </Collapsible>
+                    <div className="text-right">
+                      {priceLabel && <div className="text-sm font-semibold text-foreground">{priceLabel}</div>}
+                      {durationLabel && <div className="text-xs text-muted-foreground">{durationLabel}</div>}
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4 pb-4">
+                    <div className="grid gap-4 text-sm md:grid-cols-3">
+                      <div className="space-y-2 rounded-lg bg-muted/40 p-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <PlaneTakeoff className="h-4 w-4 text-green-600" />
+                          Departure
+                        </div>
+                        <div className="font-medium">{departureLabel}</div>
+                        <div className="text-xs text-muted-foreground">{departureDateTime}</div>
+                        {flight.departureTerminal && (
+                          <div className="text-xs text-muted-foreground">Terminal {flight.departureTerminal}</div>
+                        )}
+                        {flight.departureGate && (
+                          <div className="text-xs text-muted-foreground">Gate {flight.departureGate}</div>
+                        )}
+                      </div>
+                      <div className="space-y-2 rounded-lg bg-muted/40 p-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <PlaneLanding className="h-4 w-4 text-red-600" />
+                          Arrival
+                        </div>
+                        <div className="font-medium">{arrivalLabel}</div>
+                        <div className="text-xs text-muted-foreground">{arrivalDateTime}</div>
+                        {flight.arrivalTerminal && (
+                          <div className="text-xs text-muted-foreground">Terminal {flight.arrivalTerminal}</div>
+                        )}
+                        {flight.arrivalGate && (
+                          <div className="text-xs text-muted-foreground">Gate {flight.arrivalGate}</div>
+                        )}
+                      </div>
+                      <div className="space-y-2 rounded-lg bg-muted/40 p-3">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          <Clock className="h-4 w-4" />
+                          Trip summary
+                        </div>
+                        {durationLabel && <div>Duration: {durationLabel}</div>}
+                        {stopsLabel && <div>Stops: {stopsLabel}</div>}
+                        {seatClassLabel && <div>Cabin: {seatClassLabel}</div>}
+                        {flight.seatNumber && <div>Seat: {flight.seatNumber}</div>}
+                        {priceLabel && <div>Price: {priceLabel}</div>}
+                        {flight.bookingReference && <div>Reference: {flight.bookingReference}</div>}
+                        {flight.bookingSource && <div>Source: {flight.bookingSource}</div>}
+                        {flight.aircraft && <div>Aircraft: {flight.aircraft}</div>}
+                        {flight.purchaseUrl && (
+                          <a
+                            href={flight.purchaseUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            View booking
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    {layoverLabel && (
+                      <div className="mt-4 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
+                        Layovers: {layoverLabel}
+                      </div>
+                    )}
+                    {notesLabel && (
+                      <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
+                        {notesLabel}
+                      </div>
+                    )}
+                    <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <Switch
+                          checked={statusValue === 'confirmed'}
+                          onCheckedChange={() => handleToggleFlightStatus(flight)}
+                          disabled={!permissions.canEdit}
+                        />
+                        <span>{statusValue === 'confirmed' ? 'Confirmed' : 'Proposed'}</span>
+                        {permissions.isAdminOverride && (
+                          <Badge variant="outline" className="text-xs">
+                            Admin override
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditFlight(flight)}
+                          disabled={!permissions.canEdit}
+                        >
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void shareFlightWithGroup(flight);
+                          }}
+                        >
+                          <Users className="mr-2 h-4 w-4" />
+                          Propose to Group
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteFlightMutation.mutate(flight.id)}
+                          disabled={!permissions.canDelete}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </Accordion>
+        )}
+      </section>
   </div>
 );
 }
