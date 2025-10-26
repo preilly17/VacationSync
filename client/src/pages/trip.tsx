@@ -245,7 +245,7 @@ const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
   { key: "packing", label: "Packing", icon: Package },
   { key: "expenses", label: "Expenses", icon: DollarSign },
   { key: "flights", label: "Flights", icon: Plane },
-  { key: "hotels", label: "Hotels", icon: Hotel },
+  { key: "hotels", label: "Accommodations", icon: Hotel },
   { key: "proposals", label: "Proposals", icon: CheckCircle },
   { key: "wish-list", label: "Wish List", icon: Sparkles },
   { key: "activities", label: "Discover", icon: MapPin },
@@ -1902,18 +1902,18 @@ export default function Trip() {
                     <Plane className="w-5 h-5 mr-3" />
                     Flights
                   </button>
-                  {/* 6. Hotels */}
+                  {/* 6. Accommodations */}
                   <button
                     onClick={() => setActiveTab("hotels")}
                     className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "hotels" 
-                        ? "bg-primary text-white" 
+                      activeTab === "hotels"
+                        ? "bg-primary text-white"
                         : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
                     }`}
                     data-tutorial="hotels-tab"
                   >
                     <Hotel className="w-5 h-5 mr-3" />
-                    Hotels
+                    Accommodations
                   </button>
                   {/* 7. Discover Activities */}
                   <button
