@@ -691,16 +691,19 @@ function DayActivityList({
 
           const primaryDate = getActivityPrimaryDate(activityWithOptions);
           const scheduledStart = parseDateValue(activityWithOptions.startTime ?? activity.startTime ?? null);
+          const locationLabel = activity.location?.trim() ?? "";
           const metadata: string[] = [];
 
           const timeLabel = formatBadgeTime(scheduledStart ?? null);
-          if (timeLabel) {
-            metadata.push(timeLabel);
+
+          if (locationLabel.length > 0) {
+            metadata.push(locationLabel);
           }
 
-          if (activity.location && activity.location.trim().length > 0) {
-            metadata.push(activity.location);
-          }
+          const metadataLabel = metadata.join(" • ");
+          const showMetadataLabel = metadataLabel.length > 0;
+          const showTimeWithMetadata = Boolean(timeLabel && showMetadataLabel);
+          const showStandaloneTime = Boolean(timeLabel && !showMetadataLabel);
 
           const isHidden = index >= visibleCount;
 
@@ -727,6 +730,7 @@ function DayActivityList({
                     style={style}
                     className={cn(
                       "group/chip relative flex w-full items-start gap-2 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-2 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                      "min-h-[52px]",
                       "border-[var(--chip-border)]",
                       showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : null,
                       isProposal ? "border-dashed" : null,
@@ -742,21 +746,37 @@ function DayActivityList({
                         {categoryIcons[activity.category as keyof typeof categoryIcons] || categoryIcons.other}
                       </span>
                     </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1 text-[13px] font-semibold leading-[1.25] text-[var(--chip-text)] group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:leading-[1.25] group-data-[mode=micro]/mode:hidden">
-                        <span className="min-w-0 flex-1 whitespace-normal break-words text-left">
-                          {activity.name}
-                        </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex min-w-0 items-start gap-1.5 text-[13px] font-semibold leading-[1.25] text-[var(--chip-text)] group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:leading-[1.25] group-data-[mode=micro]/mode:hidden">
+                        <span className="truncate text-left">{activity.name}</span>
                         {isPersonalEvent && (
                           <span className="shrink-0 rounded-full bg-[var(--chip-border)]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--chip-text)]/75 leading-[1.1] group-data-[mode=compact]/mode:text-[9px] group-data-[mode=compact]/mode:px-1.5 group-data-[mode=micro]/mode:hidden">
                             <span className="h-1.5 w-1.5 rounded-full bg-[var(--chip-dot)]" />
                             Me
                           </span>
                         )}
-                        {(showPersonalProposalChip || showGlobalProposalChip) && (
+                      </div>
+                      {showMetadataLabel && (
+                        <div className="flex min-w-0 items-center gap-1 text-[11px] font-medium leading-[1.25] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden group-data-[mode=micro]/mode:hidden">
+                          {showTimeWithMetadata && <span className="shrink-0">{timeLabel}</span>}
+                          {showTimeWithMetadata && (
+                            <span aria-hidden className="text-[color:var(--calendar-muted)]/60">
+                              •
+                            </span>
+                          )}
+                          <span className="truncate text-left">{metadataLabel}</span>
+                        </div>
+                      )}
+                      {showStandaloneTime && (
+                        <div className="flex min-w-0 items-center text-[11px] font-medium leading-[1.25] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden group-data-[mode=micro]/mode:hidden">
+                          <span className="truncate text-left">{timeLabel}</span>
+                        </div>
+                      )}
+                      {(showPersonalProposalChip || showGlobalProposalChip) && (
+                        <div className="flex items-center">
                           <span
                             className={cn(
-                              "ml-auto shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.1]",
+                              "inline-flex shrink-0 items-center rounded-full px-1.75 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] leading-[1.1]",
                               showPersonalProposalChip
                                 ? "bg-white/70 text-[var(--chip-text)]"
                                 : "bg-[var(--chip-border)]/20 text-[var(--chip-text)]/80",
@@ -765,17 +785,12 @@ function DayActivityList({
                           >
                             Proposed
                           </span>
-                        )}
-                      </div>
-                      {metadata.length > 0 && (
-                        <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium leading-[1.25] text-[color:var(--calendar-muted)] group-data-[mode=compact]/mode:hidden group-data-[mode=micro]/mode:hidden">
-                          <span className="whitespace-normal break-words text-left">{metadata.join(" • ")}</span>
                         </div>
                       )}
                     </div>
                     <span
                       className={cn(
-                        "ml-auto shrink-0 rounded-full bg-[var(--chip-border)]/10 px-1.75 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)] leading-[1.1]",
+                        "ml-auto shrink-0 self-start rounded-full bg-[var(--chip-border)]/10 px-1.75 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-[color:var(--calendar-muted)] leading-[1.1]",
                         "group-data-[mode=compact]/mode:ml-1.5 group-data-[mode=compact]/mode:px-1.5",
                         "group-data-[mode=micro]/mode:ml-auto group-data-[mode=micro]/mode:bg-transparent group-data-[mode=micro]/mode:px-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-semibold group-data-[mode=micro]/mode:text-[var(--chip-text)] group-data-[mode=micro]/mode:tracking-[0.18em]",
                       )}
