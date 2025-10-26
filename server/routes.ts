@@ -4878,8 +4878,8 @@ export function setupRoutes(app: Express) {
     }
 
     try {
-      await storage.deleteFlight(flightId, userId);
-      res.json({ success: true });
+      const result = await storage.deleteFlight(flightId, userId);
+      res.json({ success: true, ...result });
     } catch (error: unknown) {
       console.error("Error deleting flight:", error);
       if (error instanceof Error) {

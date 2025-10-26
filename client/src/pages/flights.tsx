@@ -344,6 +344,12 @@ type FlightOwnershipCandidate = Partial<FlightWithDetails> & {
   created_by?: string | null;
 };
 
+type DeleteFlightResponse = {
+  success?: boolean;
+  removedProposalIds?: number[];
+  remainingProposalIds?: number[];
+};
+
 const getFlightCreatorId = (flight: FlightOwnershipCandidate): string | null => {
   if (typeof flight.userId === "string" && flight.userId) {
     return flight.userId;
@@ -396,8 +402,8 @@ const getFlightPermissions = (
 
   return {
     canEdit: canManage,
-    canDelete: canManage,
-    isAdminOverride: Boolean(canManage && !isCreator && admin),
+    canDelete: isCreator,
+    isAdminOverride: false,
   };
 };
 
@@ -2317,13 +2323,53 @@ export default function FlightsPage() {
 
   const deleteFlightMutation = useMutation({
     mutationFn: async (flightId: number) => {
-      return apiRequest(`/api/flights/${flightId}`, {
+      const res = await apiRequest(`/api/flights/${flightId}`, {
         method: "DELETE",
       });
+      return (await res.json()) as DeleteFlightResponse;
     },
-    onSuccess: () => {
+    onSuccess: (data, flightId) => {
       if (tripId) {
+        const removeFlight = (existing: unknown) => {
+          if (!Array.isArray(existing)) {
+            return existing;
+          }
+
+          return (existing as FlightWithDetails[]).filter((flight) => flight.id !== flightId);
+        };
+
+        queryClient.setQueryData([`/api/trips/${tripId}/flights`], removeFlight);
+        queryClient.setQueryData([`/api/trips/${tripId}/flights`, activeFilter], removeFlight);
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      }
+
+      if (tripId && data?.removedProposalIds?.length) {
+        const ids = new Set<number>(data.removedProposalIds);
+        const removeProposals = (existing: unknown) => {
+          if (!Array.isArray(existing)) {
+            return existing;
+          }
+
+          return (existing as { id: number }[]).filter((proposal) => !ids.has(proposal.id));
+        };
+
+        queryClient.setQueryData([`/api/trips/${tripId}/proposals/flights`], removeProposals);
+        queryClient.setQueryData(
+          [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          removeProposals,
+        );
+      }
+
+      if (tripId && data?.remainingProposalIds?.length) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        });
+      }
+
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] });
       }
       toast({
         title: "Success",
