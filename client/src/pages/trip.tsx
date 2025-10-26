@@ -3222,6 +3222,12 @@ interface TripFlightSearchFormState {
   cabinClass: TripCabinClass;
 }
 
+type DeleteFlightResponse = {
+  success?: boolean;
+  removedProposalIds?: number[];
+  remainingProposalIds?: number[];
+};
+
 // Flight Coordination Component
 function FlightCoordination({
   tripId,
@@ -3293,8 +3299,8 @@ function FlightCoordination({
 
       return {
         canEdit: canManage,
-        canDelete: canManage,
-        isAdminOverride: Boolean(canManage && !isCreator && isTripAdmin),
+        canDelete: isCreator,
+        isAdminOverride: false,
       };
     },
     [currentUserId, getFlightCreatorId, isTripAdmin],
@@ -4004,11 +4010,12 @@ function FlightCoordination({
 
   const deleteFlightMutation = useMutation({
     mutationFn: async (flightId: number) => {
-      return apiRequest(`/api/flights/${flightId}`, {
+      const res = await apiRequest(`/api/flights/${flightId}`, {
         method: "DELETE",
       });
+      return (await res.json()) as DeleteFlightResponse;
     },
-    onSuccess: async (_response, flightId) => {
+    onSuccess: async (data, flightId) => {
       queryClient.setQueryData<FlightWithDetails[] | undefined>(
         [`/api/trips/${tripId}/flights`],
         (existing) => {
@@ -4019,6 +4026,30 @@ function FlightCoordination({
           return existing.filter((flight) => flight.id !== flightId);
         },
       );
+
+      if (data?.removedProposalIds?.length) {
+        const ids = new Set<number>(data.removedProposalIds);
+        const removeProposals = (existing: unknown) => {
+          if (!Array.isArray(existing)) {
+            return existing;
+          }
+
+          return (existing as { id: number }[]).filter((proposal) => !ids.has(proposal.id));
+        };
+
+        queryClient.setQueryData([`/api/trips/${tripId}/proposals/flights`], removeProposals);
+        queryClient.setQueryData(
+          [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          removeProposals,
+        );
+      }
+
+      if (data?.remainingProposalIds?.length) {
+        await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+        await queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        });
+      }
 
       await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
       toast({

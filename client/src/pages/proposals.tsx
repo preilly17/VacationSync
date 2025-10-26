@@ -2022,7 +2022,7 @@ function ProposalsPage({
       proposal.currentUserRanking?.ranking ??
       getUserRanking(proposal.rankings || [], user?.id || "");
     const isCanceled = isCanceledStatus(proposal.status);
-    const canCancel = isMyProposal(proposal) && !isCanceled;
+    const canCancel = Boolean(proposal.permissions?.canCancel && !isCanceled);
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
