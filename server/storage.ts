@@ -1,4 +1,5 @@
 import { pool, query } from "./db";
+import type { PoolClient, QueryResultRow } from "pg";
 import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoShared";
 import {
   computeSplits,
@@ -6980,57 +6981,72 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async deleteFlight(flightId: number, userId: string): Promise<void> {
-    const { rows } = await query<{ user_id: string; trip_id: number }>(
-      `
-      SELECT user_id, trip_id
-      FROM flights
-      WHERE id = $1
-      `,
-      [flightId],
-    );
-
-    const existing = rows[0];
-    if (!existing) {
-      throw new Error("Flight not found");
-    }
-
-    const tripId = existing.trip_id;
-    const createdBy = existing.user_id;
-
-    const [isAdmin, isMember] = await Promise.all([
-      this.isTripAdmin(tripId, userId),
-      this.isTripMember(tripId, userId),
-    ]);
-
-    if (!isMember && !isAdmin) {
-      throw new Error("Flight not found");
-    }
-
-    const isCreator = createdBy === userId;
-
-    if (!isCreator) {
-      throw new Error("Only the creator can delete this flight.");
-    }
-
     await this.ensureFlightDeletionAuditTable();
+    await this.ensureProposalLinkStructures();
 
-    await query(
-      `
-      INSERT INTO flight_deletion_audit (flight_id, trip_id, requester_id, created_by)
-      VALUES ($1, $2, $3, $4)
-      `,
-      [flightId, tripId, userId, createdBy],
-    );
+    const client = await pool.connect();
 
-    await this.removeFlightProposalLinks(flightId);
+    try {
+      await client.query("BEGIN");
 
-    await query(
-      `
-      DELETE FROM flights
-      WHERE id = $1
-      `,
-      [flightId],
-    );
+      const { rows } = await client.query<{ user_id: string; trip_id: number }>(
+        `
+        SELECT user_id, trip_id
+        FROM flights
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [flightId],
+      );
+
+      const existing = rows[0];
+      if (!existing) {
+        throw new Error("Flight not found");
+      }
+
+      const tripId = existing.trip_id;
+      const createdBy = existing.user_id;
+
+      const [isAdmin, isMember] = await Promise.all([
+        this.isTripAdmin(tripId, userId),
+        this.isTripMember(tripId, userId),
+      ]);
+
+      if (!isMember && !isAdmin) {
+        throw new Error("Flight not found");
+      }
+
+      const isCreator = createdBy === userId;
+
+      if (!isCreator) {
+        throw new Error("Only the creator can delete this flight.");
+      }
+
+      await client.query(
+        `
+        INSERT INTO flight_deletion_audit (flight_id, trip_id, requester_id, created_by)
+        VALUES ($1, $2, $3, $4)
+        `,
+        [flightId, tripId, userId, createdBy],
+      );
+
+      await this.removeFlightProposalLinks(flightId, client);
+
+      await client.query(
+        `
+        DELETE FROM flights
+        WHERE id = $1
+        `,
+        [flightId],
+      );
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async getUserFlights(userId: string): Promise<FlightWithDetails[]> {
@@ -7744,10 +7760,20 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return proposal;
   }
 
-  private async removeFlightProposalLinks(flightId: number): Promise<void> {
+  private async removeFlightProposalLinks(
+    flightId: number,
+    client?: PoolClient,
+  ): Promise<void> {
     await this.ensureProposalLinkStructures();
 
-    const { rows } = await query<{
+    const exec = async <T extends QueryResultRow>(text: string, params: unknown[] = []) => {
+      if (client) {
+        return client.query<T>(text, params);
+      }
+      return query<T>(text, params);
+    };
+
+    const { rows } = await exec<{
       id: number;
       proposal_id: number;
     }>(
@@ -7768,7 +7794,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     const linkIds = rows.map((row) => row.id);
     const proposalIds = Array.from(new Set(rows.map((row) => row.proposal_id)));
 
-    await query(
+    await exec(
       `DELETE FROM proposal_schedule_links WHERE id = ANY($1::int[])`,
       [linkIds],
     );
@@ -7777,7 +7803,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       return;
     }
 
-    const { rows: remainingLinks } = await query<{ proposal_id: number }>(
+    const { rows: remainingLinks } = await exec<{ proposal_id: number }>(
       `
       SELECT proposal_id
       FROM proposal_schedule_links
@@ -7794,15 +7820,15 @@ ${selectUserColumns("participant_user", "participant_user_")}
       return;
     }
 
-    await query(
+    await exec(
       `DELETE FROM flight_rankings WHERE proposal_id = ANY($1::int[])`,
       [proposalsToDelete],
     );
-    await query(
+    await exec(
       `DELETE FROM proposal_schedule_links WHERE proposal_type = 'flight' AND proposal_id = ANY($1::int[])`,
       [proposalsToDelete],
     );
-    await query(
+    await exec(
       `DELETE FROM flight_proposals WHERE id = ANY($1::int[])`,
       [proposalsToDelete],
     );
