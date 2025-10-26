@@ -6127,7 +6127,12 @@ function RestaurantBooking({
               {restaurants.slice(0, 3).map((restaurant) => {
                 const displayName = (restaurant as any).restaurantName ?? restaurant.name ?? "Restaurant";
                 const displayAddress = restaurant.address ?? (restaurant as any).location ?? "";
-                const reservationStatus = restaurant.reservationStatus ?? "planned";
+                const reservationStatusRaw = restaurant.reservationStatus ?? "pending";
+                const reservationStatusLabel = reservationStatusRaw
+                  .split("_")
+                  .filter(Boolean)
+                  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                  .join(" ") || "Pending";
                 const reservationDate = restaurant.reservationDate
                   ? format(new Date(restaurant.reservationDate), "MMM dd")
                   : null;
@@ -6157,7 +6162,7 @@ function RestaurantBooking({
                     </div>
                     <div className="text-left sm:text-right">
                       <Badge variant="outline" className="uppercase tracking-wide">
-                        {reservationStatus}
+                        {reservationStatusLabel}
                       </Badge>
                       {restaurant.partySize && (
                         <p className="mt-1 text-sm text-gray-500">{restaurant.partySize} people</p>
