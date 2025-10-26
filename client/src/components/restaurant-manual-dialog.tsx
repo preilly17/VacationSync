@@ -184,7 +184,6 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         priceRange: data.priceRange,
         rating: data.rating,
         confirmationNumber: null,
-        reservationStatus: "planned",
         specialRequests: data.specialRequests?.trim() ? data.specialRequests.trim() : null,
         notes: null,
       };

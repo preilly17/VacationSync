@@ -261,7 +261,6 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
           priceRange: restaurant.priceRange || "$$",
           rating: Number.isFinite(ratingValue) ? ratingValue : null,
           confirmationNumber: null,
-          reservationStatus: "planned",
           specialRequests: null,
           notes: searchDietaryTags.length > 0 ? searchDietaryTags.join(", ") : null,
         };
