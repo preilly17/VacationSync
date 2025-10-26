@@ -3289,12 +3289,13 @@ function FlightCoordination({
     (flight: FlightWithDetails) => {
       const creatorId = getFlightCreatorId(flight);
       const isCreator = Boolean(currentUserId && creatorId && creatorId === currentUserId);
-      const canManage = Boolean(currentUserId && (isCreator || isTripAdmin));
+      const canEdit = Boolean(currentUserId && (isCreator || isTripAdmin));
+      const canDelete = Boolean(currentUserId && isCreator);
 
       return {
-        canEdit: canManage,
-        canDelete: canManage,
-        isAdminOverride: Boolean(canManage && !isCreator && isTripAdmin),
+        canEdit,
+        canDelete,
+        isAdminOverride: Boolean(canEdit && !isCreator && isTripAdmin),
       };
     },
     [currentUserId, getFlightCreatorId, isTripAdmin],
@@ -4021,6 +4022,10 @@ function FlightCoordination({
       );
 
       await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+      await queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+      });
       toast({
         title: "Flight removed",
         description: "The flight has been deleted.",
