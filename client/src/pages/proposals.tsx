@@ -45,7 +45,7 @@ import {
   Calendar,
   CheckCircle,
   XCircle,
-  User,
+  User as UserIcon,
   Activity,
 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
@@ -57,6 +57,7 @@ import type {
   TripWithDetails,
   ActivityInviteStatus,
   ProposalPermissions,
+  User,
 } from "@shared/schema";
 
 type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
@@ -65,6 +66,100 @@ type ParsedApiError = {
   status?: number;
   message: string;
 };
+
+type RankingBase = {
+  id: number;
+  proposalId: number;
+  userId: string;
+  ranking: number;
+  notes: string | null;
+  createdAt: string | Date | null;
+  updatedAt: string | Date | null;
+};
+
+type ProposalWithRankings<TRanking extends RankingBase> = {
+  id: number;
+  rankings: Array<TRanking & { user: User }>;
+  currentUserRanking?: TRanking;
+};
+
+type RankingMutationContext<T> = {
+  previousData: Array<{ key: readonly unknown[]; data: T | undefined }>;
+};
+
+const createOptimisticRankingId = (proposalId: number, ranking: number) =>
+  -Math.abs(proposalId * 100 + ranking);
+
+function applyOptimisticRankingUpdate<
+  TRanking extends RankingBase,
+  TProposal extends ProposalWithRankings<TRanking>,
+>(
+  proposal: TProposal,
+  user: User,
+  targetProposalId: number,
+  rankingValue: number,
+  now: string,
+): TProposal {
+  const existingRankingEntry = proposal.rankings.find(
+    (entry) => entry.userId === user.id,
+  );
+
+  if (proposal.id === targetProposalId) {
+    const rankingId =
+      proposal.currentUserRanking?.id ??
+      existingRankingEntry?.id ??
+      createOptimisticRankingId(proposal.id, rankingValue);
+    const createdAt =
+      proposal.currentUserRanking?.createdAt ??
+      existingRankingEntry?.createdAt ??
+      now;
+    const notes =
+      proposal.currentUserRanking?.notes ?? existingRankingEntry?.notes ?? null;
+    const rankingUser = existingRankingEntry?.user ?? user;
+
+    const updatedRanking = {
+      id: rankingId,
+      proposalId: proposal.id,
+      userId: user.id,
+      ranking: rankingValue,
+      notes,
+      createdAt,
+      updatedAt: now,
+    } as TRanking;
+
+    const rankingWithUser = {
+      ...updatedRanking,
+      user: rankingUser,
+    } as TRanking & { user: User };
+
+    const updatedRankings = proposal.rankings
+      .filter((entry) => entry.userId !== user.id)
+      .concat(rankingWithUser);
+
+    return {
+      ...proposal,
+      rankings: updatedRankings,
+      currentUserRanking: updatedRanking,
+    };
+  }
+
+  if (
+    proposal.currentUserRanking?.ranking === rankingValue ||
+    existingRankingEntry?.ranking === rankingValue
+  ) {
+    const updatedRankings = proposal.rankings.filter(
+      (entry) => entry.userId !== user.id,
+    );
+
+    return {
+      ...proposal,
+      rankings: updatedRankings,
+      currentUserRanking: undefined,
+    };
+  }
+
+  return proposal;
+}
 
 const parseApiError = (error: unknown): ParsedApiError => {
   if (error instanceof ApiError) {
@@ -308,6 +403,44 @@ function ProposalsPage({
     RestaurantProposalWithDetails
   >(restaurantProposalsData);
 
+  const userId = user?.id ?? null;
+
+  const hotelRankingsUsed = useMemo(() => {
+    if (!userId) {
+      return new Set<number>();
+    }
+
+    return new Set(
+      hotelProposals
+        .map((proposal) => proposal.currentUserRanking?.ranking)
+        .filter((value): value is number => typeof value === "number"),
+    );
+  }, [hotelProposals, userId]);
+
+  const flightRankingsUsed = useMemo(() => {
+    if (!userId) {
+      return new Set<number>();
+    }
+
+    return new Set(
+      flightProposals
+        .map((proposal) => proposal.currentUserRanking?.ranking)
+        .filter((value): value is number => typeof value === "number"),
+    );
+  }, [flightProposals, userId]);
+
+  const restaurantRankingsUsed = useMemo(() => {
+    if (!userId) {
+      return new Set<number>();
+    }
+
+    return new Set(
+      restaurantProposals
+        .map((proposal) => proposal.currentUserRanking?.ranking)
+        .filter((value): value is number => typeof value === "number"),
+    );
+  }, [restaurantProposals, userId]);
+
   const hotelProposalsHasError = Boolean(hotelProposalsError) || hotelProposalsInvalid;
   const flightProposalsHasError = Boolean(flightProposalsError) || flightProposalsInvalid;
   const activityProposalsHasError = Boolean(activityProposalsError) || activityProposalsInvalid;
@@ -335,12 +468,51 @@ function ProposalsPage({
   );
 
   // Hotel ranking mutation
-  const rankHotelMutation = useMutation({
+  const rankHotelMutation = useMutation<
+    unknown,
+    unknown,
+    { proposalId: number; ranking: number },
+    RankingMutationContext<HotelProposalWithDetails[]>
+  >({
     mutationFn: ({ proposalId, ranking }: { proposalId: number; ranking: number }) => {
       return apiRequest(`/api/hotel-proposals/${proposalId}/rank`, {
         method: "POST",
         body: { ranking },
       });
+    },
+    onMutate: async ({ proposalId, ranking }) => {
+      const context: RankingMutationContext<HotelProposalWithDetails[]> = {
+        previousData: [],
+      };
+
+      if (!tripId || !user) {
+        return context;
+      }
+
+      const now = new Date().toISOString();
+      const queryKeys: Array<readonly unknown[]> = [
+        [`/api/trips/${tripId}/proposals/hotels`],
+        [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+      ];
+
+      context.previousData = queryKeys.map((key) => ({
+        key,
+        data: queryClient.getQueryData<HotelProposalWithDetails[] | undefined>(key),
+      }));
+
+      for (const key of queryKeys) {
+        queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(key, (previous) => {
+          if (!previous) {
+            return previous;
+          }
+
+          return previous.map((proposal) =>
+            applyOptimisticRankingUpdate(proposal, user, proposalId, ranking, now),
+          );
+        });
+      }
+
+      return context;
     },
     onSuccess: () => {
       if (!tripId) {
@@ -356,7 +528,13 @@ function ProposalsPage({
         description: "Your hotel preference has been saved.",
       });
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      if (context?.previousData) {
+        for (const { key, data } of context.previousData) {
+          queryClient.setQueryData(key, data);
+        }
+      }
+
       if (isUnauthorizedError(error)) {
         window.location.href = "/login";
         return;
@@ -370,12 +548,51 @@ function ProposalsPage({
   });
 
   // Flight ranking mutation
-  const rankFlightMutation = useMutation({
+  const rankFlightMutation = useMutation<
+    unknown,
+    unknown,
+    { proposalId: number; ranking: number },
+    RankingMutationContext<FlightProposalWithDetails[]>
+  >({
     mutationFn: ({ proposalId, ranking }: { proposalId: number; ranking: number }) => {
       return apiRequest(`/api/flight-proposals/${proposalId}/rank`, {
         method: "POST",
         body: { ranking },
       });
+    },
+    onMutate: async ({ proposalId, ranking }) => {
+      const context: RankingMutationContext<FlightProposalWithDetails[]> = {
+        previousData: [],
+      };
+
+      if (!tripId || !user) {
+        return context;
+      }
+
+      const now = new Date().toISOString();
+      const queryKeys: Array<readonly unknown[]> = [
+        [`/api/trips/${tripId}/proposals/flights`],
+        [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+      ];
+
+      context.previousData = queryKeys.map((key) => ({
+        key,
+        data: queryClient.getQueryData<FlightProposalWithDetails[] | undefined>(key),
+      }));
+
+      for (const key of queryKeys) {
+        queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(key, (previous) => {
+          if (!previous) {
+            return previous;
+          }
+
+          return previous.map((proposal) =>
+            applyOptimisticRankingUpdate(proposal, user, proposalId, ranking, now),
+          );
+        });
+      }
+
+      return context;
     },
     onSuccess: () => {
       if (!tripId) {
@@ -390,7 +607,13 @@ function ProposalsPage({
         description: "Your flight preference has been saved.",
       });
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      if (context?.previousData) {
+        for (const { key, data } of context.previousData) {
+          queryClient.setQueryData(key, data);
+        }
+      }
+
       if (isUnauthorizedError(error)) {
         window.location.href = "/login";
         return;
@@ -404,12 +627,48 @@ function ProposalsPage({
   });
 
   // Restaurant ranking mutation
-  const rankRestaurantMutation = useMutation({
+  const rankRestaurantMutation = useMutation<
+    unknown,
+    unknown,
+    { proposalId: number; ranking: number },
+    RankingMutationContext<RestaurantProposalWithDetails[]>
+  >({
     mutationFn: ({ proposalId, ranking }: { proposalId: number; ranking: number }) => {
       return apiRequest(`/api/restaurant-proposals/${proposalId}/rank`, {
         method: "POST",
         body: { ranking },
       });
+    },
+    onMutate: async ({ proposalId, ranking }) => {
+      const context: RankingMutationContext<RestaurantProposalWithDetails[]> = {
+        previousData: [],
+      };
+
+      if (!tripId || !user) {
+        return context;
+      }
+
+      const now = new Date().toISOString();
+      const key: readonly unknown[] = ["/api/trips", tripId, "restaurant-proposals"];
+
+      context.previousData = [
+        {
+          key,
+          data: queryClient.getQueryData<RestaurantProposalWithDetails[] | undefined>(key),
+        },
+      ];
+
+      queryClient.setQueryData<RestaurantProposalWithDetails[] | undefined>(key, (previous) => {
+        if (!previous) {
+          return previous;
+        }
+
+        return previous.map((proposal) =>
+          applyOptimisticRankingUpdate(proposal, user, proposalId, ranking, now),
+        );
+      });
+
+      return context;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
@@ -418,7 +677,13 @@ function ProposalsPage({
         description: "Your restaurant preference has been saved.",
       });
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      if (context?.previousData) {
+        for (const { key, data } of context.previousData) {
+          queryClient.setQueryData(key, data);
+        }
+      }
+
       if (isUnauthorizedError(error)) {
         window.location.href = "/login";
         return;
@@ -1268,7 +1533,7 @@ function ProposalsPage({
 
           <div className="flex items-center justify-between text-sm text-neutral-600">
             <div className="flex items-center gap-2" data-testid={`text-activity-proposer-${proposal.id}`}>
-              <User className="w-4 h-4 text-neutral-400" />
+              <UserIcon className="w-4 h-4 text-neutral-400" />
               Proposed by {proposerName}
             </div>
             <Link
@@ -1332,7 +1597,9 @@ function ProposalsPage({
 
   // Restaurant proposal card component
   const RestaurantProposalCard = ({ proposal }: { proposal: RestaurantProposalWithDetails }) => {
-    const userRanking = getUserRanking(proposal.rankings || [], user?.id || '');
+    const userRanking =
+      proposal.currentUserRanking?.ranking ??
+      getUserRanking(proposal.rankings || [], user?.id || "");
     
     const isCanceled = isCanceledStatus(proposal.status);
     const canCancel = isMyProposal(proposal) && !isCanceled;
@@ -1416,7 +1683,7 @@ function ProposalsPage({
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               <span>Proposed by {proposal.proposer?.firstName || 'Unknown'}</span>
               <Clock className="w-4 h-4 ml-2" />
               <span data-testid={`text-restaurant-created-${proposal.id}`}>
@@ -1448,11 +1715,41 @@ function ProposalsPage({
                 <SelectValue placeholder="Rank this option" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
-                <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
-                <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
-                <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
-                <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
+                <SelectItem
+                  value="1"
+                  data-testid={`option-ranking-1-${proposal.id}`}
+                  disabled={restaurantRankingsUsed.has(1) && userRanking !== 1}
+                >
+                  🥇 1st Choice
+                </SelectItem>
+                <SelectItem
+                  value="2"
+                  data-testid={`option-ranking-2-${proposal.id}`}
+                  disabled={restaurantRankingsUsed.has(2) && userRanking !== 2}
+                >
+                  🥈 2nd Choice
+                </SelectItem>
+                <SelectItem
+                  value="3"
+                  data-testid={`option-ranking-3-${proposal.id}`}
+                  disabled={restaurantRankingsUsed.has(3) && userRanking !== 3}
+                >
+                  🥉 3rd Choice
+                </SelectItem>
+                <SelectItem
+                  value="4"
+                  data-testid={`option-ranking-4-${proposal.id}`}
+                  disabled={restaurantRankingsUsed.has(4) && userRanking !== 4}
+                >
+                  4th Choice
+                </SelectItem>
+                <SelectItem
+                  value="5"
+                  data-testid={`option-ranking-5-${proposal.id}`}
+                  disabled={restaurantRankingsUsed.has(5) && userRanking !== 5}
+                >
+                  5th Choice
+                </SelectItem>
               </SelectContent>
             </Select>
             
@@ -1481,7 +1778,9 @@ function ProposalsPage({
 
   // Hotel proposal card component
   const HotelProposalCard = ({ proposal }: { proposal: HotelProposalWithDetails }) => {
-    const userRanking = getUserRanking(proposal.rankings || [], user?.id || '');
+    const userRanking =
+      proposal.currentUserRanking?.ranking ??
+      getUserRanking(proposal.rankings || [], user?.id || "");
     const groupSize = trip?.members?.length || 0;
     const budgetBreakdown = calculateGroupBudget(proposal.price, groupSize);
     
@@ -1601,7 +1900,7 @@ function ProposalsPage({
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               <span>Proposed by {proposal.proposer?.firstName || 'Unknown'}</span>
               <Clock className="w-4 h-4 ml-2" />
               <span data-testid={`text-hotel-created-${proposal.id}`}>
@@ -1633,11 +1932,41 @@ function ProposalsPage({
                 <SelectValue placeholder="Rank this option" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
-                <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
-                <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
-                <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
-                <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
+                <SelectItem
+                  value="1"
+                  data-testid={`option-ranking-1-${proposal.id}`}
+                  disabled={hotelRankingsUsed.has(1) && userRanking !== 1}
+                >
+                  🥇 1st Choice
+                </SelectItem>
+                <SelectItem
+                  value="2"
+                  data-testid={`option-ranking-2-${proposal.id}`}
+                  disabled={hotelRankingsUsed.has(2) && userRanking !== 2}
+                >
+                  🥈 2nd Choice
+                </SelectItem>
+                <SelectItem
+                  value="3"
+                  data-testid={`option-ranking-3-${proposal.id}`}
+                  disabled={hotelRankingsUsed.has(3) && userRanking !== 3}
+                >
+                  🥉 3rd Choice
+                </SelectItem>
+                <SelectItem
+                  value="4"
+                  data-testid={`option-ranking-4-${proposal.id}`}
+                  disabled={hotelRankingsUsed.has(4) && userRanking !== 4}
+                >
+                  4th Choice
+                </SelectItem>
+                <SelectItem
+                  value="5"
+                  data-testid={`option-ranking-5-${proposal.id}`}
+                  disabled={hotelRankingsUsed.has(5) && userRanking !== 5}
+                >
+                  5th Choice
+                </SelectItem>
               </SelectContent>
             </Select>
             
@@ -1689,7 +2018,9 @@ function ProposalsPage({
 
   // Flight proposal card component
   const FlightProposalCard = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
-    const userRanking = getUserRanking(proposal.rankings || [], user?.id || "");
+    const userRanking =
+      proposal.currentUserRanking?.ranking ??
+      getUserRanking(proposal.rankings || [], user?.id || "");
     const isCanceled = isCanceledStatus(proposal.status);
     const canCancel = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
@@ -1765,7 +2096,7 @@ function ProposalsPage({
 
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               <span>Proposed by {proposal.proposer?.firstName || 'Unknown'}</span>
               <Clock className="w-4 h-4 ml-2" />
               <span data-testid={`text-flight-created-${proposal.id}`}>
@@ -1797,11 +2128,41 @@ function ProposalsPage({
                 <SelectValue placeholder="Rank this option" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="1" data-testid={`option-ranking-1-${proposal.id}`}>🥇 1st Choice</SelectItem>
-                <SelectItem value="2" data-testid={`option-ranking-2-${proposal.id}`}>🥈 2nd Choice</SelectItem>
-                <SelectItem value="3" data-testid={`option-ranking-3-${proposal.id}`}>🥉 3rd Choice</SelectItem>
-                <SelectItem value="4" data-testid={`option-ranking-4-${proposal.id}`}>4th Choice</SelectItem>
-                <SelectItem value="5" data-testid={`option-ranking-5-${proposal.id}`}>5th Choice</SelectItem>
+                <SelectItem
+                  value="1"
+                  data-testid={`option-ranking-1-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(1) && userRanking !== 1}
+                >
+                  🥇 1st Choice
+                </SelectItem>
+                <SelectItem
+                  value="2"
+                  data-testid={`option-ranking-2-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(2) && userRanking !== 2}
+                >
+                  🥈 2nd Choice
+                </SelectItem>
+                <SelectItem
+                  value="3"
+                  data-testid={`option-ranking-3-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(3) && userRanking !== 3}
+                >
+                  🥉 3rd Choice
+                </SelectItem>
+                <SelectItem
+                  value="4"
+                  data-testid={`option-ranking-4-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(4) && userRanking !== 4}
+                >
+                  4th Choice
+                </SelectItem>
+                <SelectItem
+                  value="5"
+                  data-testid={`option-ranking-5-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(5) && userRanking !== 5}
+                >
+                  5th Choice
+                </SelectItem>
               </SelectContent>
             </Select>
             
@@ -1874,7 +2235,7 @@ function ProposalsPage({
 
   const MyProposalsEmptyState = ({ hasAny }: { hasAny: boolean }) => (
     <div className="text-center py-12" data-testid="empty-my-proposals">
-      <User className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
+      <UserIcon className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
       <h3 className="text-lg font-semibold text-neutral-600 mb-2">
         {hasAny ? "No proposals match these filters." : "You haven’t proposed anything yet."}
       </h3>
@@ -2201,7 +2562,7 @@ function ProposalsPage({
               className="flex items-center gap-2"
               data-testid="tab-my-proposals"
             >
-              <User className="w-4 h-4" />
+              <UserIcon className="w-4 h-4" />
               My Proposals {totalMyProposals > 0 && `(${totalMyProposals})`}
             </TabsTrigger>
             <TabsTrigger value="hotels" className="flex items-center gap-2" data-testid="tab-hotels">

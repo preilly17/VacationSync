@@ -8668,6 +8668,76 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     return rows.map(mapRestaurantWithDetails);
   }
+  private async ensureUniqueHotelRankingsForTrip(tripId: number): Promise<void> {
+    const client = await pool.connect();
+    const rankingIdsToDelete: number[] = [];
+    const affectedProposalIds = new Set<number>();
+
+    try {
+      await client.query("BEGIN");
+
+      const { rows } = await client.query<{
+        id: number;
+        proposal_id: number;
+        user_id: string;
+        ranking: number;
+        updated_at: Date | null;
+        created_at: Date | null;
+      }>(
+        `
+        SELECT
+          hr.id,
+          hr.proposal_id,
+          hr.user_id,
+          hr.ranking,
+          hr.updated_at,
+          hr.created_at
+        FROM hotel_rankings hr
+        JOIN hotel_proposals hp ON hp.id = hr.proposal_id
+        WHERE hp.trip_id = $1
+        ORDER BY
+          hr.user_id,
+          hr.ranking,
+          COALESCE(hr.updated_at, hr.created_at) DESC,
+          hr.id DESC
+        `,
+        [tripId],
+      );
+
+      const seenKeys = new Set<string>();
+
+      for (const row of rows) {
+        const key = `${row.user_id}:${row.ranking}`;
+        if (seenKeys.has(key)) {
+          rankingIdsToDelete.push(row.id);
+          affectedProposalIds.add(row.proposal_id);
+        } else {
+          seenKeys.add(key);
+        }
+      }
+
+      if (rankingIdsToDelete.length > 0) {
+        await client.query(
+          `DELETE FROM hotel_rankings WHERE id = ANY($1::int[])`,
+          [rankingIdsToDelete],
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    await Promise.all(
+      Array.from(affectedProposalIds).map((proposalId) =>
+        this.updateHotelProposalAverageRanking(proposalId),
+      ),
+    );
+  }
+
   private async fetchHotelProposals(
     options: {
       tripId?: number;
@@ -8768,6 +8838,76 @@ ${selectUserColumns("participant_user", "participant_user_")}
         row,
         rankingsByProposal.get(row.id) ?? [],
         options.currentUserId,
+      ),
+    );
+  }
+
+  private async ensureUniqueFlightRankingsForTrip(tripId: number): Promise<void> {
+    const client = await pool.connect();
+    const rankingIdsToDelete: number[] = [];
+    const affectedProposalIds = new Set<number>();
+
+    try {
+      await client.query("BEGIN");
+
+      const { rows } = await client.query<{
+        id: number;
+        proposal_id: number;
+        user_id: string;
+        ranking: number;
+        updated_at: Date | null;
+        created_at: Date | null;
+      }>(
+        `
+        SELECT
+          fr.id,
+          fr.proposal_id,
+          fr.user_id,
+          fr.ranking,
+          fr.updated_at,
+          fr.created_at
+        FROM flight_rankings fr
+        JOIN flight_proposals fp ON fp.id = fr.proposal_id
+        WHERE fp.trip_id = $1
+        ORDER BY
+          fr.user_id,
+          fr.ranking,
+          COALESCE(fr.updated_at, fr.created_at) DESC,
+          fr.id DESC
+        `,
+        [tripId],
+      );
+
+      const seenKeys = new Set<string>();
+
+      for (const row of rows) {
+        const key = `${row.user_id}:${row.ranking}`;
+        if (seenKeys.has(key)) {
+          rankingIdsToDelete.push(row.id);
+          affectedProposalIds.add(row.proposal_id);
+        } else {
+          seenKeys.add(key);
+        }
+      }
+
+      if (rankingIdsToDelete.length > 0) {
+        await client.query(
+          `DELETE FROM flight_rankings WHERE id = ANY($1::int[])`,
+          [rankingIdsToDelete],
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    await Promise.all(
+      Array.from(affectedProposalIds).map((proposalId) =>
+        this.updateFlightProposalAverageRanking(proposalId),
       ),
     );
   }
@@ -8879,6 +9019,76 @@ ${selectUserColumns("participant_user", "participant_user_")}
         row,
         rankingsByProposal.get(row.id) ?? [],
         options.currentUserId,
+      ),
+    );
+  }
+
+  private async ensureUniqueRestaurantRankingsForTrip(tripId: number): Promise<void> {
+    const client = await pool.connect();
+    const rankingIdsToDelete: number[] = [];
+    const affectedProposalIds = new Set<number>();
+
+    try {
+      await client.query("BEGIN");
+
+      const { rows } = await client.query<{
+        id: number;
+        proposal_id: number;
+        user_id: string;
+        ranking: number;
+        updated_at: Date | null;
+        created_at: Date | null;
+      }>(
+        `
+        SELECT
+          rr.id,
+          rr.proposal_id,
+          rr.user_id,
+          rr.ranking,
+          rr.updated_at,
+          rr.created_at
+        FROM restaurant_rankings rr
+        JOIN restaurant_proposals rp ON rp.id = rr.proposal_id
+        WHERE rp.trip_id = $1
+        ORDER BY
+          rr.user_id,
+          rr.ranking,
+          COALESCE(rr.updated_at, rr.created_at) DESC,
+          rr.id DESC
+        `,
+        [tripId],
+      );
+
+      const seenKeys = new Set<string>();
+
+      for (const row of rows) {
+        const key = `${row.user_id}:${row.ranking}`;
+        if (seenKeys.has(key)) {
+          rankingIdsToDelete.push(row.id);
+          affectedProposalIds.add(row.proposal_id);
+        } else {
+          seenKeys.add(key);
+        }
+      }
+
+      if (rankingIdsToDelete.length > 0) {
+        await client.query(
+          `DELETE FROM restaurant_rankings WHERE id = ANY($1::int[])`,
+          [rankingIdsToDelete],
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    await Promise.all(
+      Array.from(affectedProposalIds).map((proposalId) =>
+        this.updateRestaurantProposalAverageRanking(proposalId),
       ),
     );
   }
@@ -9172,6 +9382,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
   ): Promise<HotelProposalWithDetails[]> {
     // PROPOSALS FEATURE: ensure manually saved hotels are represented as proposals.
     await this.ensureManualHotelsHaveProposals(tripId);
+    await this.ensureUniqueHotelRankingsForTrip(tripId);
     return this.fetchHotelProposals({
       tripId,
       currentUserId,
@@ -9194,19 +9405,78 @@ ${selectUserColumns("participant_user", "participant_user_")}
     ranking: InsertHotelRanking,
     userId: string,
   ): Promise<void> {
-    await query(
-      `
-      INSERT INTO hotel_rankings (proposal_id, user_id, ranking, notes)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
-        ranking = EXCLUDED.ranking,
-        notes = EXCLUDED.notes,
-        updated_at = NOW()
-      `,
-      [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
-    );
+    const client = await pool.connect();
+    let tripId: number | null = null;
+    const affectedProposalIds = new Set<number>();
 
-    await this.updateHotelProposalAverageRanking(ranking.proposalId);
+    try {
+      await client.query("BEGIN");
+
+      const { rows: proposalRows } = await client.query<{ trip_id: number }>(
+        `SELECT trip_id FROM hotel_proposals WHERE id = $1 FOR UPDATE`,
+        [ranking.proposalId],
+      );
+
+      const proposalRow = proposalRows[0];
+      if (!proposalRow) {
+        throw new Error("Hotel proposal not found");
+      }
+
+      tripId = proposalRow.trip_id;
+
+      const { rows: conflictingRows } = await client.query<{ proposal_id: number }>(
+        `
+        SELECT hr.proposal_id
+        FROM hotel_rankings hr
+        JOIN hotel_proposals hp ON hp.id = hr.proposal_id
+        WHERE hr.user_id = $1
+          AND hp.trip_id = $2
+          AND hr.ranking = $3
+          AND hr.proposal_id <> $4
+        `,
+        [userId, tripId, ranking.ranking, ranking.proposalId],
+      );
+
+      const conflictingProposalIds = conflictingRows.map((row) => row.proposal_id);
+
+      if (conflictingProposalIds.length > 0) {
+        await client.query(
+          `
+          DELETE FROM hotel_rankings
+          WHERE user_id = $1 AND proposal_id = ANY($2::int[])
+          `,
+          [userId, conflictingProposalIds],
+        );
+        conflictingProposalIds.forEach((id) => affectedProposalIds.add(id));
+      }
+
+      await client.query(
+        `
+        INSERT INTO hotel_rankings (proposal_id, user_id, ranking, notes)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+          ranking = EXCLUDED.ranking,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+        `,
+        [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
+      );
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    affectedProposalIds.add(ranking.proposalId);
+
+    await Promise.all(
+      Array.from(affectedProposalIds).map((proposalId) =>
+        this.updateHotelProposalAverageRanking(proposalId),
+      ),
+    );
   }
 
   async updateProposalAverageRanking(): Promise<void> {
@@ -9669,6 +9939,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     currentUserId: string,
     options: { proposedBy?: string } = {},
   ): Promise<FlightProposalWithDetails[]> {
+    await this.ensureUniqueFlightRankingsForTrip(tripId);
     return this.fetchFlightProposals({
       tripId,
       currentUserId,
@@ -9691,19 +9962,75 @@ ${selectUserColumns("participant_user", "participant_user_")}
     ranking: InsertFlightRanking,
     userId: string,
   ): Promise<void> {
-    await query(
-      `
-      INSERT INTO flight_rankings (proposal_id, user_id, ranking, notes)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
-        ranking = EXCLUDED.ranking,
-        notes = EXCLUDED.notes,
-        updated_at = NOW()
-      `,
-      [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
-    );
+    const client = await pool.connect();
+    const affectedProposalIds = new Set<number>();
 
-    await this.updateFlightProposalAverageRanking(ranking.proposalId);
+    try {
+      await client.query("BEGIN");
+
+      const { rows: proposalRows } = await client.query<{ trip_id: number }>(
+        `SELECT trip_id FROM flight_proposals WHERE id = $1 FOR UPDATE`,
+        [ranking.proposalId],
+      );
+
+      const proposalRow = proposalRows[0];
+      if (!proposalRow) {
+        throw new Error("Flight proposal not found");
+      }
+
+      const { rows: conflictingRows } = await client.query<{ proposal_id: number }>(
+        `
+        SELECT fr.proposal_id
+        FROM flight_rankings fr
+        JOIN flight_proposals fp ON fp.id = fr.proposal_id
+        WHERE fr.user_id = $1
+          AND fp.trip_id = $2
+          AND fr.ranking = $3
+          AND fr.proposal_id <> $4
+        `,
+        [userId, proposalRow.trip_id, ranking.ranking, ranking.proposalId],
+      );
+
+      const conflictingProposalIds = conflictingRows.map((row) => row.proposal_id);
+
+      if (conflictingProposalIds.length > 0) {
+        await client.query(
+          `
+          DELETE FROM flight_rankings
+          WHERE user_id = $1 AND proposal_id = ANY($2::int[])
+          `,
+          [userId, conflictingProposalIds],
+        );
+        conflictingProposalIds.forEach((id) => affectedProposalIds.add(id));
+      }
+
+      await client.query(
+        `
+        INSERT INTO flight_rankings (proposal_id, user_id, ranking, notes)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+          ranking = EXCLUDED.ranking,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+        `,
+        [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
+      );
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    affectedProposalIds.add(ranking.proposalId);
+
+    await Promise.all(
+      Array.from(affectedProposalIds).map((proposalId) =>
+        this.updateFlightProposalAverageRanking(proposalId),
+      ),
+    );
   }
 
   async updateFlightProposalAverageRanking(proposalId: number): Promise<void> {
@@ -10859,6 +11186,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     tripId: number,
     currentUserId: string,
   ): Promise<RestaurantProposalWithDetails[]> {
+    await this.ensureUniqueRestaurantRankingsForTrip(tripId);
     return this.fetchRestaurantProposals({ tripId, currentUserId });
   }
 
@@ -10877,19 +11205,75 @@ ${selectUserColumns("participant_user", "participant_user_")}
     ranking: InsertRestaurantRanking,
     userId: string,
   ): Promise<void> {
-    await query(
-      `
-      INSERT INTO restaurant_rankings (proposal_id, user_id, ranking, notes)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (proposal_id, user_id) DO UPDATE SET
-        ranking = EXCLUDED.ranking,
-        notes = EXCLUDED.notes,
-        updated_at = NOW()
-      `,
-      [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
-    );
+    const client = await pool.connect();
+    const affectedProposalIds = new Set<number>();
 
-    await this.updateRestaurantProposalAverageRanking(ranking.proposalId);
+    try {
+      await client.query("BEGIN");
+
+      const { rows: proposalRows } = await client.query<{ trip_id: number }>(
+        `SELECT trip_id FROM restaurant_proposals WHERE id = $1 FOR UPDATE`,
+        [ranking.proposalId],
+      );
+
+      const proposalRow = proposalRows[0];
+      if (!proposalRow) {
+        throw new Error("Restaurant proposal not found");
+      }
+
+      const { rows: conflictingRows } = await client.query<{ proposal_id: number }>(
+        `
+        SELECT rr.proposal_id
+        FROM restaurant_rankings rr
+        JOIN restaurant_proposals rp ON rp.id = rr.proposal_id
+        WHERE rr.user_id = $1
+          AND rp.trip_id = $2
+          AND rr.ranking = $3
+          AND rr.proposal_id <> $4
+        `,
+        [userId, proposalRow.trip_id, ranking.ranking, ranking.proposalId],
+      );
+
+      const conflictingProposalIds = conflictingRows.map((row) => row.proposal_id);
+
+      if (conflictingProposalIds.length > 0) {
+        await client.query(
+          `
+          DELETE FROM restaurant_rankings
+          WHERE user_id = $1 AND proposal_id = ANY($2::int[])
+          `,
+          [userId, conflictingProposalIds],
+        );
+        conflictingProposalIds.forEach((id) => affectedProposalIds.add(id));
+      }
+
+      await client.query(
+        `
+        INSERT INTO restaurant_rankings (proposal_id, user_id, ranking, notes)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (proposal_id, user_id) DO UPDATE SET
+          ranking = EXCLUDED.ranking,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+        `,
+        [ranking.proposalId, userId, ranking.ranking, ranking.notes ?? null],
+      );
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    affectedProposalIds.add(ranking.proposalId);
+
+    await Promise.all(
+      Array.from(affectedProposalIds).map((proposalId) =>
+        this.updateRestaurantProposalAverageRanking(proposalId),
+      ),
+    );
   }
 
   async updateRestaurantProposalAverageRanking(proposalId: number): Promise<void> {
