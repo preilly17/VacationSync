@@ -14,9 +14,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationsSection } from "@/components/notifications-section";
-import { Smartphone, Settings, MapPin, Plane, PlayCircle, ArrowLeft, Search, Loader2 } from "lucide-react";
+import { Smartphone, Settings, MapPin, Plane, PlayCircle, ArrowLeft, Search, Loader2, LogOut } from "lucide-react";
 import { useState, useEffect, useMemo, type KeyboardEvent } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import LocationUtils from "@/lib/locationUtils";
 
 type RawLocationResult = Awaited<ReturnType<typeof LocationUtils.searchLocations>> extends Array<infer U> ? U : never;
@@ -141,6 +141,7 @@ export default function Profile() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
 
   // Location search state
   const [locationQuery, setLocationQuery] = useState("");
@@ -402,6 +403,19 @@ export default function Profile() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await apiRequest('/api/auth/logout', { method: 'POST' });
+    } catch (error) {
+      console.error('Failed to log out via API', error);
+    } finally {
+      localStorage.clear();
+      sessionStorage.clear();
+      queryClient.clear();
+      setLocation('/');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -433,19 +447,30 @@ export default function Profile() {
         </Link>
       </div>
 
-      <div className="flex items-center gap-4 mb-8">
-        <Avatar className="w-16 h-16">
-          <AvatarImage src={user.profileImageUrl || undefined} />
-          <AvatarFallback>
-            {user.firstName?.[0] || user.email?.[0] || 'U'}
-          </AvatarFallback>
-        </Avatar>
-        <div>
-          <h1 className="text-2xl font-bold">
-            {user.firstName} {user.lastName}
-          </h1>
-          <p className="text-gray-600">{user.email}</p>
+      <div className="flex flex-col gap-4 mb-8 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <Avatar className="w-16 h-16">
+            <AvatarImage src={user.profileImageUrl || undefined} />
+            <AvatarFallback>
+              {user.firstName?.[0] || user.email?.[0] || "U"}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <h1 className="text-2xl font-bold">
+              {user.firstName} {user.lastName}
+            </h1>
+            <p className="text-gray-600">{user.email}</p>
+          </div>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="flex items-center justify-center gap-2 w-full sm:w-auto"
+          onClick={handleLogout}
+        >
+          <LogOut className="w-4 h-4" />
+          Log out of Profile
+        </Button>
       </div>
 
       <Card>
