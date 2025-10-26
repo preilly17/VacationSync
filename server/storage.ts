@@ -3033,8 +3033,14 @@ export class DatabaseStorage implements IStorage {
       `
       SELECT EXISTS (
         SELECT 1
-        FROM trip_members
-        WHERE trip_calendar_id = $1 AND user_id = $2
+        FROM trip_calendars tc
+        WHERE tc.id = $1
+          AND (tc.created_by = $2 OR EXISTS (
+            SELECT 1
+            FROM trip_members tm
+            WHERE tm.trip_calendar_id = tc.id
+              AND tm.user_id = $2
+          ))
       ) AS exists
       `,
       [tripId, userId],
