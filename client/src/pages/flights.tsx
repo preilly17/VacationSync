@@ -2829,206 +2829,30 @@ export default function FlightsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-4 mb-4">
-          <Link href={`/trip/${tripId}`}>
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="mb-6 flex items-center hover:bg-gray-50"
-              data-testid="button-back-to-dashboard"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Trip
-            </Button>
-          </Link>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">Flight Coordination</h1>
-            <p className="text-gray-600 mt-1">
-              Manage flights for {(trip as any)?.name || 'your trip'}
-            </p>
+      <div className="space-y-10">
+        <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-center gap-4">
+            <Link href={`/trip/${tripId}`}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center hover:bg-gray-50"
+                data-testid="button-back-to-dashboard"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Trip
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Flight Coordination</h1>
+              <p className="mt-1 text-gray-600">
+                Manage flights for {(trip as any)?.name || 'your trip'}
+              </p>
+            </div>
           </div>
-          <Dialog
-            open={isAddFlightOpen}
-            onOpenChange={(open) => {
-              setIsAddFlightOpen(open);
-              if (!open) {
-                setManualFlightErrors({});
-                setEditingFlight(null);
-                resetFlightForm();
-              }
-            }}
-          >
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingFlight ? "Edit manual flight" : "Add manual flight"}
-                </DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="manual-airline-flight">Airline + flight number</Label>
-                  <Input
-                    id="manual-airline-flight"
-                    placeholder="e.g., Delta DL1234"
-                    value={manualFlightForm.airlineFlight}
-                    aria-invalid={manualFlightErrors.airlineFlight ? 'true' : 'false'}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setManualFlightForm((prev) => ({ ...prev, airlineFlight: value }));
-                      setManualFlightErrors((prev) => ({ ...prev, airlineFlight: undefined }));
-                    }}
-                  />
-                  {manualFlightErrors.airlineFlight && (
-                    <p className="mt-1 text-sm text-destructive">{manualFlightErrors.airlineFlight}</p>
-                  )}
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="manual-direction">Direction</Label>
-                    <Select
-                      value={manualFlightForm.direction}
-                      onValueChange={(value) =>
-                        setManualFlightForm((prev) => ({ ...prev, direction: value as 'OUTBOUND' | 'RETURN' }))
-                      }
-                    >
-                      <SelectTrigger id="manual-direction">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="OUTBOUND">Outbound</SelectItem>
-                        <SelectItem value="RETURN">Return</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="manual-cabin">Cabin</Label>
-                    <Select
-                      value={manualFlightForm.cabin}
-                      onValueChange={(value) =>
-                        setManualFlightForm((prev) => ({ ...prev, cabin: value as CabinClass }))
-                      }
-                    >
-                      <SelectTrigger id="manual-cabin">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ECONOMY">Economy</SelectItem>
-                        <SelectItem value="PREMIUM_ECONOMY">Premium Economy</SelectItem>
-                        <SelectItem value="BUSINESS">Business</SelectItem>
-                        <SelectItem value="FIRST">First</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="manual-from">From</Label>
-                    <Input
-                      id="manual-from"
-                      placeholder="City or airport (e.g., Atlanta (ATL))"
-                      value={manualFlightForm.from}
-                      aria-invalid={manualFlightErrors.from ? 'true' : 'false'}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setManualFlightForm((prev) => ({ ...prev, from: value }));
-                        setManualFlightErrors((prev) => ({ ...prev, from: undefined }));
-                      }}
-                    />
-                    {manualFlightErrors.from && (
-                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.from}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="manual-to">To</Label>
-                    <Input
-                      id="manual-to"
-                      placeholder="City or airport (e.g., Los Angeles (LAX))"
-                      value={manualFlightForm.to}
-                      aria-invalid={manualFlightErrors.to ? 'true' : 'false'}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setManualFlightForm((prev) => ({ ...prev, to: value }));
-                        setManualFlightErrors((prev) => ({ ...prev, to: undefined }));
-                      }}
-                    />
-                    {manualFlightErrors.to && (
-                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.to}</p>
-                    )}
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="manual-departure">Departure date &amp; time (local)</Label>
-                    <Input
-                      id="manual-departure"
-                      type="datetime-local"
-                      value={manualFlightForm.departure}
-                      aria-invalid={manualFlightErrors.departure ? 'true' : 'false'}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setManualFlightForm((prev) => ({ ...prev, departure: value }));
-                        setManualFlightErrors((prev) => ({ ...prev, departure: undefined }));
-                      }}
-                    />
-                    {manualFlightErrors.departure && (
-                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.departure}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="manual-arrival">Arrival date &amp; time (local)</Label>
-                    <Input
-                      id="manual-arrival"
-                      type="datetime-local"
-                      value={manualFlightForm.arrival}
-                      aria-invalid={manualFlightErrors.arrival ? 'true' : 'false'}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setManualFlightForm((prev) => ({ ...prev, arrival: value }));
-                        setManualFlightErrors((prev) => ({ ...prev, arrival: undefined }));
-                      }}
-                    />
-                    {manualFlightErrors.arrival && (
-                      <p className="mt-1 text-sm text-destructive">{manualFlightErrors.arrival}</p>
-                    )}
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="manual-notes">Notes</Label>
-                  <Textarea
-                    id="manual-notes"
-                    placeholder="Add any optional notes"
-                    value={manualFlightForm.notes}
-                    onChange={(event) =>
-                      setManualFlightForm((prev) => ({ ...prev, notes: event.target.value }))
-                    }
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={handleCancelEdit}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleFlightSubmit}
-                    disabled={createFlightMutation.isPending || updateFlightMutation.isPending}
-                  >
-                    {createFlightMutation.isPending || updateFlightMutation.isPending ? (
-                      <>
-                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" />
-                        {editingFlight ? "Saving..." : "Adding..."}
-                      </>
-                    ) : (
-                      editingFlight ? "Update Flight" : "Save Flight"
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+        </header>
 
-      <FlightSearchPanel
+        <FlightSearchPanel
           searchFormData={searchFormData}
           setSearchFormData={setSearchFormData}
           onSearch={handleFlightSearch}
@@ -3048,35 +2872,36 @@ export default function FlightsPage() {
           isAddingFlight={addingFlightKey !== null}
           addingFlightKey={addingFlightKey}
         />
-      <section className="mt-10 space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold text-foreground">Trip flights</h2>
-            <p className="text-sm text-muted-foreground">
-              Review all flights saved to this trip. Click a flight to expand full details and manage it.
-            </p>
-          </div>
-          <Button onClick={openManualFlightDialog} className="w-full md:w-auto">
-            <Plus className="mr-2 h-4 w-4" />
-            Add flight
-          </Button>
-        </div>
 
-        {sortedFlights.length === 0 ? (
-          <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No flights have been added yet. Use the search above or add one manually.
-            </CardContent>
-          </Card>
-        ) : (
-          <Accordion
-            type="single"
-            collapsible
-            value={expandedTripFlightId ?? undefined}
-            onValueChange={(value) => setExpandedTripFlightId(value || null)}
-            className="space-y-3"
-          >
-            {sortedFlights.map((flight) => {
+        <section className="space-y-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold text-foreground">Trip flights</h2>
+              <p className="text-sm text-muted-foreground">
+                Review all flights saved to this trip. Click a flight to expand full details and manage it.
+              </p>
+            </div>
+            <Button onClick={openManualFlightDialog} className="w-full md:w-auto">
+              <Plus className="mr-2 h-4 w-4" />
+              Add manual flight
+            </Button>
+          </div>
+
+          {sortedFlights.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                No flights have been added yet. Use the search above or add one manually.
+              </CardContent>
+            </Card>
+          ) : (
+            <Accordion
+              type="single"
+              collapsible
+              value={expandedTripFlightId ?? undefined}
+              onValueChange={(value) => setExpandedTripFlightId(value || null)}
+              className="space-y-3"
+            >
+              {sortedFlights.map((flight) => {
               const itemId = flight.id ? flight.id.toString() : `${flight.flightNumber}-${flight.departureTime}`;
               const directionLabel =
                 (flight.flightType || "").toLowerCase() === "return" ? "Return" : "Outbound";
@@ -3325,10 +3150,189 @@ export default function FlightsPage() {
                   </AccordionContent>
                 </AccordionItem>
               );
-            })}
-          </Accordion>
+              })}
+            </Accordion>
         )}
       </section>
+    </div>
+
+    <Dialog
+      open={isAddFlightOpen}
+      onOpenChange={(open) => {
+        setIsAddFlightOpen(open);
+        if (!open) {
+          setManualFlightErrors({});
+          setEditingFlight(null);
+          resetFlightForm();
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {editingFlight ? "Edit manual flight" : "Add manual flight"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="manual-airline-flight">Airline + flight number</Label>
+            <Input
+              id="manual-airline-flight"
+              placeholder="e.g., Delta DL1234"
+              value={manualFlightForm.airlineFlight}
+              aria-invalid={manualFlightErrors.airlineFlight ? 'true' : 'false'}
+              onChange={(event) => {
+                const value = event.target.value;
+                setManualFlightForm((prev) => ({ ...prev, airlineFlight: value }));
+                setManualFlightErrors((prev) => ({ ...prev, airlineFlight: undefined }));
+              }}
+            />
+            {manualFlightErrors.airlineFlight && (
+              <p className="mt-1 text-sm text-destructive">{manualFlightErrors.airlineFlight}</p>
+            )}
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="manual-direction">Direction</Label>
+              <Select
+                value={manualFlightForm.direction}
+                onValueChange={(value) =>
+                  setManualFlightForm((prev) => ({ ...prev, direction: value as 'OUTBOUND' | 'RETURN' }))
+                }
+              >
+                <SelectTrigger id="manual-direction">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OUTBOUND">Outbound</SelectItem>
+                  <SelectItem value="RETURN">Return</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="manual-cabin">Cabin</Label>
+              <Select
+                value={manualFlightForm.cabin}
+                onValueChange={(value) =>
+                  setManualFlightForm((prev) => ({ ...prev, cabin: value as CabinClass }))
+                }
+              >
+                <SelectTrigger id="manual-cabin">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ECONOMY">Economy</SelectItem>
+                  <SelectItem value="PREMIUM_ECONOMY">Premium Economy</SelectItem>
+                  <SelectItem value="BUSINESS">Business</SelectItem>
+                  <SelectItem value="FIRST">First</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="manual-from">From</Label>
+              <Input
+                id="manual-from"
+                placeholder="City or airport (e.g., Atlanta (ATL))"
+                value={manualFlightForm.from}
+                aria-invalid={manualFlightErrors.from ? 'true' : 'false'}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setManualFlightForm((prev) => ({ ...prev, from: value }));
+                  setManualFlightErrors((prev) => ({ ...prev, from: undefined }));
+                }}
+              />
+              {manualFlightErrors.from && (
+                <p className="mt-1 text-sm text-destructive">{manualFlightErrors.from}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="manual-to">To</Label>
+              <Input
+                id="manual-to"
+                placeholder="City or airport (e.g., Los Angeles (LAX))"
+                value={manualFlightForm.to}
+                aria-invalid={manualFlightErrors.to ? 'true' : 'false'}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setManualFlightForm((prev) => ({ ...prev, to: value }));
+                  setManualFlightErrors((prev) => ({ ...prev, to: undefined }));
+                }}
+              />
+              {manualFlightErrors.to && (
+                <p className="mt-1 text-sm text-destructive">{manualFlightErrors.to}</p>
+              )}
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="manual-departure">Departure date &amp; time (local)</Label>
+              <Input
+                id="manual-departure"
+                type="datetime-local"
+                value={manualFlightForm.departure}
+                aria-invalid={manualFlightErrors.departure ? 'true' : 'false'}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setManualFlightForm((prev) => ({ ...prev, departure: value }));
+                  setManualFlightErrors((prev) => ({ ...prev, departure: undefined }));
+                }}
+              />
+              {manualFlightErrors.departure && (
+                <p className="mt-1 text-sm text-destructive">{manualFlightErrors.departure}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="manual-arrival">Arrival date &amp; time (local)</Label>
+              <Input
+                id="manual-arrival"
+                type="datetime-local"
+                value={manualFlightForm.arrival}
+                aria-invalid={manualFlightErrors.arrival ? 'true' : 'false'}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setManualFlightForm((prev) => ({ ...prev, arrival: value }));
+                  setManualFlightErrors((prev) => ({ ...prev, arrival: undefined }));
+                }}
+              />
+              {manualFlightErrors.arrival && (
+                <p className="mt-1 text-sm text-destructive">{manualFlightErrors.arrival}</p>
+              )}
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="manual-notes">Notes</Label>
+            <Textarea
+              id="manual-notes"
+              placeholder="Add any optional notes"
+              value={manualFlightForm.notes}
+              onChange={(event) =>
+                setManualFlightForm((prev) => ({ ...prev, notes: event.target.value }))
+              }
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={handleCancelEdit}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleFlightSubmit}
+              disabled={createFlightMutation.isPending || updateFlightMutation.isPending}
+            >
+              {createFlightMutation.isPending || updateFlightMutation.isPending ? (
+                <>
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-white" />
+                  {editingFlight ? "Saving..." : "Adding..."}
+                </>
+              ) : (
+                editingFlight ? "Update Flight" : "Save Flight"
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 );
 }
