@@ -9,22 +9,24 @@ import {
   CalendarCheck,
   CircleCheck,
   Clock,
+  LayoutDashboard,
+  ListChecks,
   MapPin,
   MessagesSquare,
   Plane,
-  Receipt,
   Sparkles,
   Star,
+  Utensils,
   Vote,
   Wallet,
   Users,
 } from "lucide-react"
 
 const heroChecklist = [
-  "Collect flights, stays, and activities in one shared board",
-  "Vote and comment together—no more scattered group chats",
-  "Personal schedules stay synced with the master itinerary",
-  "Split every cost automatically so no one chases receipts",
+  "Collaborative dashboard keeps flights, stays, and ideas side by side",
+  "Group calendar updates itself when proposals get the vote",
+  "Shared packing, grocery, and wish lists everyone can check off",
+  "Meal plans sync ingredients so no one double-buys",
 ]
 
 type Feature = {
@@ -35,28 +37,40 @@ type Feature = {
 
 const coreFeatures: Feature[] = [
   {
-    title: "One place to collect ideas",
+    title: "Collaborative trip dashboard",
     description:
-      "Save flights, stays, and activities side by side so everyone can compare options without digging through messages.",
-    icon: MapPin,
+      "Organize flights, stays, conversations, and files in a single, visual board that keeps everyone oriented.",
+    icon: LayoutDashboard,
   },
   {
-    title: "Vote on the plan in minutes",
+    title: "Shared group calendar",
     description:
-      "Use polls, reactions, and live tallies to see the group’s favorite choice emerge instantly.",
-    icon: Vote,
-  },
-  {
-    title: "Personal schedules, synced",
-    description:
-      "Each traveler sees a custom agenda that updates automatically when plans shift.",
+      "Auto-sync every confirmed plan to a master calendar so nobody misses the meetup or the morning hike.",
     icon: CalendarCheck,
   },
   {
-    title: "Expenses that balance themselves",
+    title: "Group votes that stick",
     description:
-      "Track payments, set who owes what, and settle up without a single spreadsheet.",
-    icon: Wallet,
+      "Let the crew pick flights, hotels, and activities with fast polls, reactions, and instant tallying.",
+    icon: Vote,
+  },
+  {
+    title: "Planning without the chaos",
+    description:
+      "Skip the endless text threads, spreadsheets, and DMs—TripSync keeps decisions and receipts in context.",
+    icon: MessagesSquare,
+  },
+  {
+    title: "Shared smart lists",
+    description:
+      "Packing, grocery, and wish lists stay synced across the group, complete with assignments and checkmarks.",
+    icon: ListChecks,
+  },
+  {
+    title: "Meal coordination made easy",
+    description:
+      "Plan group meals, split ingredients, and keep the pantry in sync so dinner nights feel effortless.",
+    icon: Utensils,
   },
 ]
 
@@ -68,28 +82,28 @@ type FlowStep = {
 
 const planningFlow: FlowStep[] = [
   {
-    title: "Collect every idea",
+    title: "Share simple proposals",
     description:
-      "Drop in flight deals, dream stays, and must-do experiences with rich details everyone can skim in seconds.",
+      "Drop flight deals, stays, and experience ideas into beautiful cards that the whole crew can scan in seconds.",
     icon: Sparkles,
   },
   {
     title: "Decide together",
     description:
-      "Votes, threads, and nudges happen inside TripSync so the best option rises to the top—without 97 unread messages.",
-    icon: MessagesSquare,
+      "Built-in voting, comments, and reactions mean the winning option becomes a confirmed plan without juggling apps.",
+    icon: Vote,
   },
   {
     title: "Sync the itinerary",
     description:
-      "Personal calendars update automatically and reminders keep the whole crew on time.",
+      "TripSync updates the shared calendar and personal agendas the moment something gets approved, complete with reminders.",
     icon: CalendarCheck,
   },
   {
-    title: "Settle up without stress",
+    title: "Stay coordinated",
     description:
-      "Track shared costs as you go and let TripSync split everything fairly when the adventure ends.",
-    icon: Receipt,
+      "Shared lists and ingredient syncing keep packing, grocery runs, and group meals organized long before wheels up.",
+    icon: ListChecks,
   },
 ]
 
@@ -187,14 +201,14 @@ export default function Landing() {
             <div className="grid gap-16 lg:grid-cols-2 lg:items-center">
               <div>
                 <Badge className="bg-white/15 text-white border border-white/30 uppercase tracking-wide">
-                  Plan group trips without the chaos
+                  Group travel, actually organized
                 </Badge>
                 <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-semibold leading-tight drop-shadow-xl">
-                  Make group travel planning feel like part of the adventure
+                  Plan every group trip from one shared home base
                 </h1>
                 <p className="mt-6 text-lg text-white/80 max-w-xl">
-                  TripSync replaces scattered chats and messy spreadsheets with one dynamic workspace built for planning together. Give
-                  your crew clarity, celebrate the best ideas, and keep the excitement high from proposal to takeoff.
+                  TripSync is the collaborative trip dashboard that turns quick proposals into confirmed plans, keeps calendars
+                  synced, and replaces the chaos of giant text threads with a joyful, visual workspace.
                 </p>
                 <ul className="mt-8 space-y-3">
                   {heroChecklist.map((item) => (
@@ -212,7 +226,7 @@ export default function Landing() {
                     onClick={() => (window.location.href = "/register")}
                     className="sunset-gradient text-white text-lg font-semibold px-8 h-auto py-4 shadow-2xl hover:shadow-3xl hover:-translate-y-0.5 transition"
                   >
-                    Start planning
+                    Start planning together
                     <ArrowRight className="w-5 h-5" />
                   </Button>
                   <Button
@@ -221,7 +235,7 @@ export default function Landing() {
                     onClick={() => document.getElementById("features")?.scrollIntoView({ behavior: "smooth" })}
                     className="border-white/40 bg-white/10 text-white hover:bg-white/20 h-auto px-8 py-4 text-lg"
                   >
-                    See what’s inside
+                    See how it works
                   </Button>
                 </div>
                 <div className="mt-12 flex flex-wrap items-center gap-6 text-sm text-white/80">
@@ -249,7 +263,7 @@ export default function Landing() {
                       ))}
                     </div>
                     <p className="mt-1 text-white/80">
-                      Loved by crews planning over 500 trips this year
+                      Loved by crews who launched 500+ trips this year
                     </p>
                   </div>
                 </div>
@@ -338,11 +352,11 @@ export default function Landing() {
           <div className="max-w-7xl mx-auto px-4 lg:px-8">
             <div className="max-w-3xl">
               <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight">
-                Everything your group needs to plan together
+                The toolkit for planning trips together—without the headache
               </h2>
               <p className="mt-4 text-lg text-slate-600">
-                TripSync keeps information, decisions, schedules, and expenses in one collaborative space so your next getaway feels
-                organized before you even pack.
+                Share a clear dashboard, sync the calendar, collect votes, and manage every list in one friendly workspace that keeps
+                momentum high and decisions easy.
               </p>
             </div>
             <div className="mt-12 grid gap-6 md:grid-cols-2">
@@ -379,11 +393,11 @@ export default function Landing() {
             <div className="grid gap-12 lg:grid-cols-[1.05fr,0.95fr]">
               <div>
                 <h2 className="text-3xl sm:text-4xl font-semibold">
-                  A shared flow that keeps everyone excited for takeoff
+                  Plan, vote, and lock the itinerary without leaving TripSync
                 </h2>
                 <p className="mt-4 text-lg text-white/80 max-w-2xl">
-                  From the first idea to the final receipt, TripSync is built around how groups actually plan. Check the flow, nudge the
-                  crew, and watch decisions happen faster than ever.
+                  Capture ideas as proposals, collect instant feedback, auto-sync the group calendar, and keep shared lists aligned so
+                  your crew always knows what’s next.
                 </p>
                 <div className="mt-10 space-y-6">
                   {planningFlow.map(({ title, description, icon: Icon }, index) => (
@@ -497,7 +511,8 @@ export default function Landing() {
               Create your first TripSync board today
             </h2>
             <p className="mt-4 text-lg text-white/80">
-              Bring your people together, capture every idea, and turn the planning chaos into a shared countdown to the trip.
+              Bring your people together, capture every idea, and turn planning chaos into a shared countdown with synced
+              calendars, smart lists, and effortless votes.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
               <Button
