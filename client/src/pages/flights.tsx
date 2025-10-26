@@ -2253,7 +2253,9 @@ export default function FlightsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flights"] });
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      }
       setEditingFlight(null);
       toast({
         title: "Success",
@@ -2276,7 +2278,9 @@ export default function FlightsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flights"] });
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      }
       toast({
         title: "Success",
         description: "Flight deleted successfully!",
@@ -2340,7 +2344,12 @@ export default function FlightsPage() {
       });
 
       // Invalidate flight proposals cache to refresh the list
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId.toString(), "flight-proposals"] });
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        });
+      }
       
       toast({
         title: "Flight Proposed to Group!",

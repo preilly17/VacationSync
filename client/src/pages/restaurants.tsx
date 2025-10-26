@@ -367,7 +367,10 @@ export default function RestaurantsPage() {
         markBookingAsAsked={markBookingAsAsked}
         onSuccess={() => {
           // Refresh activities if booking was confirmed
-          queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
+          if (tripId) {
+            queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
+            queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+          }
         }}
       />
 
