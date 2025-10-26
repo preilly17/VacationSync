@@ -3141,6 +3141,25 @@ export default function FlightsPage() {
               const isManualEntry =
                 !(flight.bookingSource ?? "") || (flight.bookingSource ?? "").toString().toLowerCase() === "manual";
               const notesLabel = notes ? `Notes: ${notes}` : null;
+              const summaryDepartureCode =
+                extractAirportCode(departureLabel) ?? flight.departureCode?.toUpperCase() ?? null;
+              const summaryArrivalCode =
+                extractAirportCode(arrivalLabel) ?? flight.arrivalCode?.toUpperCase() ?? null;
+              const departureSummary =
+                summaryDepartureCode ??
+                (departureLabel && departureLabel.trim().length > 0 ? departureLabel : null) ??
+                "Origin";
+              const arrivalSummary =
+                summaryArrivalCode ??
+                (arrivalLabel && arrivalLabel.trim().length > 0 ? arrivalLabel : null) ??
+                "Destination";
+              const routeSummary = `${departureSummary} → ${arrivalSummary}`;
+              const summaryFlightNumber =
+                flight.flightNumber?.trim() ||
+                formatManualAirlineFlightDisplay(flight) ||
+                flight.airline?.trim() ||
+                "Flight";
+              const airlineDisplay = flight.airline || formatManualAirlineFlightDisplay(flight);
 
               return (
                 <AccordionItem
@@ -3148,35 +3167,52 @@ export default function FlightsPage() {
                   value={itemId}
                   className="overflow-hidden rounded-lg border bg-card"
                 >
-                  <AccordionTrigger className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left hover:bg-muted/50 [&[data-state=open]]:rounded-t-lg">
-                    <div className="flex flex-col gap-2 text-left">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Plane className="h-4 w-4 text-blue-600" />
-                        <span className="font-semibold">
-                          {flight.airline || formatManualAirlineFlightDisplay(flight)}
-                        </span>
-                        <span className="text-sm text-muted-foreground">{flight.flightNumber}</span>
-                        <Badge variant="secondary" className="uppercase">
-                          {directionLabel}
-                        </Badge>
+                  <AccordionTrigger className="flex w-full items-center gap-4 px-4 py-4 text-left hover:bg-muted/50 [&[data-state=open]]:rounded-t-lg">
+                    <div className="flex w-full flex-wrap items-center justify-between gap-4">
+                      <div className="flex flex-col gap-1 text-left">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <Plane className="h-4 w-4 text-blue-600" />
+                          <span className="text-base font-semibold">{summaryFlightNumber}</span>
+                          {directionLabel && (
+                            <Badge variant="secondary" className="uppercase">
+                              {directionLabel}
+                            </Badge>
+                          )}
+                          {isManualEntry && <Badge variant="outline">Manual</Badge>}
+                        </div>
+                        <div className="text-sm text-muted-foreground">{routeSummary}</div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 text-right text-sm">
+                        {summaryDate && <span className="font-medium text-foreground">{summaryDate}</span>}
                         <Badge className={statusBadgeClass}>{statusLabel}</Badge>
-                        {isManualEntry && <Badge variant="outline">Manual</Badge>}
                       </div>
-                      <div className="text-sm text-muted-foreground">
-                        {departureLabel} → {arrivalLabel}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {summaryDate ? `${summaryDate} • ` : ""}
-                        {departureDateTime}
-                        {arrivalDateTime ? ` → ${arrivalDateTime}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      {priceLabel && <div className="text-sm font-semibold text-foreground">{priceLabel}</div>}
-                      {durationLabel && <div className="text-xs text-muted-foreground">{durationLabel}</div>}
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+                      <div className="flex flex-col gap-1 text-left">
+                        <span className="text-base font-semibold text-foreground">{airlineDisplay}</span>
+                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                          {routeSummary}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {departureDateTime}
+                          {arrivalDateTime ? ` → ${arrivalDateTime}` : ""}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={statusBadgeClass}>{statusLabel}</Badge>
+                        {directionLabel && (
+                          <Badge variant="secondary" className="uppercase">
+                            {directionLabel}
+                          </Badge>
+                        )}
+                        {seatClassLabel && <Badge variant="outline">{seatClassLabel}</Badge>}
+                        {priceLabel && (
+                          <span className="text-sm font-semibold text-foreground">{priceLabel}</span>
+                        )}
+                      </div>
+                    </div>
                     <div className="grid gap-4 text-sm md:grid-cols-3">
                       <div className="space-y-2 rounded-lg bg-muted/40 p-3">
                         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
