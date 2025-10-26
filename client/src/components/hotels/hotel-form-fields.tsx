@@ -5,6 +5,7 @@ import { differenceInCalendarDays, format } from "date-fns";
 import type { UseFormReturn } from "react-hook-form";
 import { CalendarIcon } from "lucide-react";
 
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { FormField, FormItem, FormLabel, FormMessage, FormControl } from "@/components/ui/form";
@@ -21,13 +22,10 @@ import {
 
 const requiredFields: Array<keyof HotelFormValues> = [
   "hotelName",
-  "address",
-  "city",
-  "country",
   "checkInDate",
   "checkOutDate",
-  "currency",
-  "status",
+  "pricePerNight",
+  "guestCount",
 ];
 
 const integerFields = new Set<keyof HotelFormValues>(["guestCount", "roomCount"]);
@@ -81,25 +79,22 @@ export function HotelFormFields({
   const checkOutValue = form.watch("checkOutDate");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {renderTextField(form, "hotelName")}
-        {renderTextField(form, "hotelChain", { placeholder: "Hilton Worldwide" })}
+        {renderNumberField(form, "hotelRating", { min: "0", max: "5", step: "0.1", placeholder: "4.5" })}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {renderTextField(form, "address", { placeholder: "123 Main St" })}
-        {renderTextField(form, "city", { placeholder: "Austin" })}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {renderTextField(form, "country", { placeholder: "United States" })}
-        {renderTextField(form, "zipCode", { placeholder: "78701" })}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {renderNumberField(form, "latitude", { step: "0.000001" })}
-        {renderNumberField(form, "longitude", { step: "0.000001" })}
+      <div className="space-y-3">
+        <p className="text-sm font-medium text-muted-foreground">Address</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {renderTextField(form, "address", { placeholder: "123 Main St" })}
+          {renderTextField(form, "city", { placeholder: "Austin" })}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {renderTextField(form, "zipCode", { placeholder: "78701" })}
+          {renderTextField(form, "country", { placeholder: "United States" })}
+        </div>
       </div>
 
       <div className="grid grid-cols-1">
@@ -198,47 +193,72 @@ export function HotelFormFields({
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {renderNumberField(form, "totalPrice", { min: "0", step: "0.01", placeholder: "299.00" })}
-        {renderNumberField(form, "pricePerNight", { min: "0", step: "0.01", placeholder: "99.00" })}
-        {renderSelectField(form, "currency")}
-        {renderSelectField(form, "status")}
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {renderNumberField(form, "pricePerNight", { min: "0", step: "0.01", placeholder: "99.00" })}
         {renderNumberField(form, "guestCount", { min: "1", step: "1" })}
         {renderNumberField(form, "roomCount", { min: "1", step: "1" })}
-        {renderNumberField(form, "hotelRating", { min: "1", max: "5", step: "1" })}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {renderTextField(form, "roomType", { placeholder: "Double Queen" })}
-        {renderTextField(form, "bookingReference", { placeholder: "ABC123" })}
-        {renderTextField(form, "bookingSource", { placeholder: "Travel agent" })}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {renderTextField(form, "purchaseUrl", { type: "url", placeholder: "https://portal.example.com" })}
-        {renderSelectField(form, "bookingPlatform", true)}
+      <div className="grid grid-cols-1 gap-4">
         {renderTextField(form, "bookingUrl", { type: "url", placeholder: "https://booking.com/..." })}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {renderTextField(form, "cancellationPolicy", { placeholder: "Free cancellation until 48 hours prior" })}
-        {renderTextField(form, "contactInfo", { placeholder: "Front desk: +1 (555) 555-5555" })}
-      </div>
-
-      <Separator />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {renderTextareaField(form, "amenities", "Separate amenities with commas or paste JSON.")}
-        {renderTextareaField(form, "policies", "Use JSON or descriptive text for important policies.")}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {renderTextareaField(form, "images", "Provide image URLs separated by commas or JSON array.")}
+      <div className="grid grid-cols-1 gap-4">
         {renderTextareaField(form, "notes", "Share group preferences or special requests.")}
       </div>
+
+      <Accordion type="single" collapsible className="overflow-hidden rounded-md border">
+        <AccordionItem value="advanced" className="border-b-0">
+          <AccordionTrigger className="px-4 text-sm font-medium">Advanced Details</AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-6 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderTextField(form, "hotelChain", { placeholder: "Hilton Worldwide" })}
+                {renderTextField(form, "roomType", { placeholder: "Double Queen" })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderTextField(form, "bookingReference", { placeholder: "ABC123" })}
+                {renderTextField(form, "bookingSource", { placeholder: "Travel agent" })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {renderNumberField(form, "totalPrice", { min: "0", step: "0.01", placeholder: "299.00" })}
+                {renderSelectField(form, "currency")}
+                {renderSelectField(form, "status")}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderNumberField(form, "latitude", { step: "0.000001" })}
+                {renderNumberField(form, "longitude", { step: "0.000001" })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {renderTextField(form, "purchaseUrl", { type: "url", placeholder: "https://portal.example.com" })}
+                {renderSelectField(form, "bookingPlatform", true)}
+                {renderTextField(form, "cancellationPolicy", {
+                  placeholder: "Free cancellation until 48 hours prior",
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {renderTextField(form, "contactInfo", { placeholder: "Front desk: +1 (555) 555-5555" })}
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {renderTextareaField(form, "amenities", "Separate amenities with commas or paste JSON.")}
+                {renderTextareaField(form, "policies", "Use JSON or descriptive text for important policies.")}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {renderTextareaField(form, "images", "Provide image URLs separated by commas or JSON array.")}
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       <div className="flex justify-end gap-3 pt-2">
         {showCancelButton && (

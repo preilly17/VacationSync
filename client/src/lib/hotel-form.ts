@@ -7,15 +7,33 @@ type TripDates = {
   endDate?: string | Date | null;
 };
 
-export const hotelFormSchema = insertHotelSchema.extend({
-  checkInDate: z.date(),
-  checkOutDate: z.date(),
-  amenities: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
-  contactInfo: z.string().optional().nullable(),
-  images: z.string().optional().nullable(),
-  policies: z.string().optional().nullable(),
-});
+export const hotelFormSchema = insertHotelSchema
+  .extend({
+    checkInDate: z.date(),
+    checkOutDate: z.date(),
+    amenities: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    contactInfo: z.string().optional().nullable(),
+    images: z.string().optional().nullable(),
+    policies: z.string().optional().nullable(),
+  })
+  .superRefine((values, ctx) => {
+    if (values.pricePerNight == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Price per night is required",
+        path: ["pricePerNight"],
+      });
+    }
+
+    if (values.guestCount == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Guest count is required",
+        path: ["guestCount"],
+      });
+    }
+  });
 
 export type HotelFormValues = z.infer<typeof hotelFormSchema>;
 
