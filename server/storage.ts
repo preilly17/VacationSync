@@ -10387,7 +10387,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
   async getTripWishListIdeas(
     tripId: number,
-    userId: string,
+    userId: string | null,
     options: {
       sort?: "newest" | "oldest" | "most_saved";
       tag?: string | null;
@@ -10398,8 +10398,22 @@ ${selectUserColumns("participant_user", "participant_user_")}
     await this.ensureWishListStructures();
 
     const conditions: string[] = ["i.trip_id = $1"];
-    const values: unknown[] = [tripId, userId];
-    let paramIndex = 3;
+    const values: unknown[] = [tripId];
+    let paramIndex = 2;
+
+    let savedByUserSelect = "FALSE AS saved_by_user,";
+
+    if (userId) {
+      values.push(userId);
+      savedByUserSelect = `
+        EXISTS (
+          SELECT 1
+          FROM trip_wish_list_saves s
+          WHERE s.item_id = i.id AND s.user_id = $2
+        ) AS saved_by_user,
+      `;
+      paramIndex = 3;
+    }
 
     if (options.tag) {
       conditions.push(
@@ -10457,11 +10471,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           FROM trip_wish_list_saves s
           WHERE s.item_id = i.id
         ) AS save_count,
-        EXISTS (
-          SELECT 1
-          FROM trip_wish_list_saves s
-          WHERE s.item_id = i.id AND s.user_id = $2
-        ) AS saved_by_user,
+        ${savedByUserSelect}
         (
           SELECT COUNT(*)::int
           FROM trip_wish_list_comments c
@@ -10485,7 +10495,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
       sql += " ORDER BY i.created_at DESC, i.id DESC";
     }
 
-    const { rows } = await query<WishListIdeaWithCountsRow>(sql, values);
+    const cleanedSql = sql.replace(/,\s*,/g, ",");
+
+    const { rows } = await query<WishListIdeaWithCountsRow>(cleanedSql, values);
 
     return rows.map(mapWishListIdeaWithDetails);
   }
