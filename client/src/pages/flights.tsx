@@ -3018,7 +3018,14 @@ export default function FlightsPage() {
               const permissions = getFlightPermissions(flight, trip as TripWithDetails | null, currentUserId);
               const isManualEntry =
                 !(flight.bookingSource ?? "") || (flight.bookingSource ?? "").toString().toLowerCase() === "manual";
-              const notesLabel = notes ? `Notes: ${notes}` : null;
+              const notesText = (() => {
+                if (!notes) {
+                  return null;
+                }
+
+                const trimmed = notes.trim();
+                return trimmed.length > 0 ? trimmed : null;
+              })();
               const summaryDepartureCode =
                 extractAirportCode(departureLabel) ?? flight.departureCode?.toUpperCase() ?? null;
               const summaryArrivalCode =
@@ -3065,34 +3072,16 @@ export default function FlightsPage() {
                       </div>
                       <div className="flex flex-col items-end gap-1 text-right text-sm">
                         {summaryDate && <span className="font-medium text-foreground">{summaryDate}</span>}
+                        {priceLabel && (
+                          <span className="text-base font-semibold text-foreground">{priceLabel}</span>
+                        )}
                         <Badge className={statusBadgeClass}>{statusLabel}</Badge>
                       </div>
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-                      <div className="flex flex-col gap-1 text-left">
-                        <span className="text-base font-semibold text-foreground">{airlineDisplay}</span>
-                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                          {routeSummary}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {departureDateTime}
-                          {arrivalDateTime ? ` → ${arrivalDateTime}` : ""}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={statusBadgeClass}>{statusLabel}</Badge>
-                        {directionLabel && (
-                          <Badge variant="secondary" className="uppercase">
-                            {directionLabel}
-                          </Badge>
-                        )}
-                        {seatClassLabel && <Badge variant="outline">{seatClassLabel}</Badge>}
-                        {priceLabel && (
-                          <span className="text-sm font-semibold text-foreground">{priceLabel}</span>
-                        )}
-                      </div>
+                    <div className="mb-4 text-sm">
+                      <span className="text-base font-semibold text-foreground">{airlineDisplay}</span>
                     </div>
                     <div className="grid gap-4 text-sm md:grid-cols-3">
                       <div className="space-y-2 rounded-lg bg-muted/40 p-3">
@@ -3132,7 +3121,6 @@ export default function FlightsPage() {
                         {stopsLabel && <div>Stops: {stopsLabel}</div>}
                         {seatClassLabel && <div>Cabin: {seatClassLabel}</div>}
                         {flight.seatNumber && <div>Seat: {flight.seatNumber}</div>}
-                        {priceLabel && <div>Price: {priceLabel}</div>}
                         {flight.bookingReference && <div>Reference: {flight.bookingReference}</div>}
                         {flight.bookingSource && <div>Source: {flight.bookingSource}</div>}
                         {flight.aircraft && <div>Aircraft: {flight.aircraft}</div>}
@@ -3153,9 +3141,12 @@ export default function FlightsPage() {
                         Layovers: {layoverLabel}
                       </div>
                     )}
-                    {notesLabel && (
-                      <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm text-muted-foreground">
-                        {notesLabel}
+                    {notesText && (
+                      <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm">
+                        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Notes
+                        </div>
+                        <p className="text-muted-foreground">{notesText}</p>
                       </div>
                     )}
                     <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
