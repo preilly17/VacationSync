@@ -3070,30 +3070,6 @@ export default function FlightsPage() {
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="px-4 pb-4">
-                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm">
-                      <div className="flex flex-col gap-1 text-left">
-                        <span className="text-base font-semibold text-foreground">{airlineDisplay}</span>
-                        <span className="text-xs uppercase tracking-wide text-muted-foreground">
-                          {routeSummary}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {departureDateTime}
-                          {arrivalDateTime ? ` → ${arrivalDateTime}` : ""}
-                        </span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={statusBadgeClass}>{statusLabel}</Badge>
-                        {directionLabel && (
-                          <Badge variant="secondary" className="uppercase">
-                            {directionLabel}
-                          </Badge>
-                        )}
-                        {seatClassLabel && <Badge variant="outline">{seatClassLabel}</Badge>}
-                        {priceLabel && (
-                          <span className="text-sm font-semibold text-foreground">{priceLabel}</span>
-                        )}
-                      </div>
-                    </div>
                     <div className="grid gap-4 text-sm md:grid-cols-3">
                       <div className="space-y-2 rounded-lg bg-muted/40 p-3">
                         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -3128,9 +3104,12 @@ export default function FlightsPage() {
                           <Clock className="h-4 w-4" />
                           Trip summary
                         </div>
+                        <div className="font-medium">{airlineDisplay}</div>
+                        {directionLabel && <div>Direction: {directionLabel}</div>}
+                        <div>Status: {statusLabel}</div>
+                        {seatClassLabel && <div>Cabin: {seatClassLabel}</div>}
                         {durationLabel && <div>Duration: {durationLabel}</div>}
                         {stopsLabel && <div>Stops: {stopsLabel}</div>}
-                        {seatClassLabel && <div>Cabin: {seatClassLabel}</div>}
                         {flight.seatNumber && <div>Seat: {flight.seatNumber}</div>}
                         {priceLabel && <div>Price: {priceLabel}</div>}
                         {flight.bookingReference && <div>Reference: {flight.bookingReference}</div>}
