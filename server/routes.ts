@@ -5413,25 +5413,23 @@ export function setupRoutes(app: Express) {
   });
 
   // Wish List / Ideas board routes
-  app.get("/api/trips/:tripId/wish-list", isAuthenticated, async (req: any, res) => {
+  app.get("/api/trips/:tripId/wish-list", async (req: any, res) => {
     try {
       const userId = getRequestUserId(req);
       const tripId = parseInt(req.params.tripId, 10);
-
-      if (!userId) {
-        return res.status(401).json({ message: "User ID not found" });
-      }
 
       if (Number.isNaN(tripId)) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
 
-      const isMember = await storage.isTripMember(tripId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+      let isAdmin = false;
 
-      const isAdmin = await storage.isTripAdmin(tripId, userId);
+      if (userId) {
+        const isMember = await storage.isTripMember(tripId, userId);
+        if (isMember) {
+          isAdmin = await storage.isTripAdmin(tripId, userId);
+        }
+      }
 
       const sortParam = typeof req.query.sort === "string" ? req.query.sort : undefined;
       const allowedSorts = new Set(["newest", "oldest", "most_saved"]);
@@ -5452,7 +5450,7 @@ export function setupRoutes(app: Express) {
           ? req.query.search.trim()
           : null;
 
-      const ideas = await storage.getTripWishListIdeas(tripId, userId, {
+      const ideas = await storage.getTripWishListIdeas(tripId, userId ?? null, {
         sort,
         tag,
         submittedBy,
@@ -5461,7 +5459,7 @@ export function setupRoutes(app: Express) {
 
       const enrichedIdeas = ideas.map((idea) => ({
         ...idea,
-        canDelete: isAdmin || idea.createdBy === userId,
+        canDelete: Boolean(userId && (isAdmin || idea.createdBy === userId)),
       }));
 
       const tagSet = new Set<string>();

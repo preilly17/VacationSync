@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -188,6 +188,19 @@ const getRelativeTime = (input?: string | Date | null) => {
   }
 
   return formatDistanceToNow(date, { addSuffix: true });
+};
+
+const getFullDate = (input?: string | Date | null) => {
+  if (!input) {
+    return "";
+  }
+
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return format(date, "MMMM d, yyyy");
 };
 
 export function WishListBoard({ tripId }: WishListBoardProps) {
@@ -1284,6 +1297,8 @@ function WishListIdeaCard({
   const previewImage = idea.thumbnailUrl || idea.imageUrl || metadata?.image || null;
   const linkHref = idea.url ?? metadata?.url ?? null;
   const linkDomain = getDomainFromUrl(linkHref, metadata?.siteName ?? null);
+  const addedOnDate = getFullDate(idea.createdAt);
+  const addedRelativeTime = getRelativeTime(idea.createdAt);
 
   const {
     data: comments = [],
@@ -1475,9 +1490,15 @@ function WishListIdeaCard({
               </Avatar>
               <div className="text-sm text-neutral-600">
                 <div className="font-medium text-neutral-900">
-                  {getUserDisplayName(idea.creator)}
+                  Added by {getUserDisplayName(idea.creator)}
                 </div>
-                <div>{getRelativeTime(idea.createdAt)}</div>
+                {(addedOnDate || addedRelativeTime) && (
+                  <div>
+                    {addedOnDate ? `Added on ${addedOnDate}` : null}
+                    {addedOnDate && addedRelativeTime ? " • " : null}
+                    {addedRelativeTime || null}
+                  </div>
+                )}
               </div>
             </div>
             {linkHref && (
