@@ -1165,6 +1165,12 @@ function FlightSearchPanel({
     }
   }, [autoSearch, onSearch, searchFormData.arrival, searchFormData.departure, searchFormData.departureDate]);
 
+  const candidateResults =
+    visibleFilterResults[activeFilter].length > 0
+      ? visibleFilterResults[activeFilter]
+      : visibleSearchResults;
+  const currentResults = candidateResults;
+
   return (
     <section className="rounded-2xl border bg-background p-4 shadow-sm sm:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -1528,11 +1534,6 @@ function FlightSearchPanel({
                   </CardHeader>
                   <CardContent>
                     {(() => {
-                      const candidateResults =
-                        visibleFilterResults[activeFilter].length > 0
-                          ? visibleFilterResults[activeFilter]
-                          : visibleSearchResults;
-                      const currentResults = candidateResults;
                       if (currentResults.length === 0) {
                         return (
                           <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/10 p-4 text-sm text-muted-foreground">
