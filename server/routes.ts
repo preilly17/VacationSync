@@ -5507,6 +5507,10 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
+      }
+
       if (Number.isNaN(tripId)) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
@@ -5558,6 +5562,10 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
+      }
+
       if (Number.isNaN(ideaId)) {
         return res.status(400).json({ message: "Invalid idea ID" });
       }
@@ -5589,6 +5597,10 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
+      }
+
       if (Number.isNaN(ideaId)) {
         return res.status(400).json({ message: "Invalid idea ID" });
       }
@@ -5618,6 +5630,10 @@ export function setupRoutes(app: Express) {
 
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
       }
 
       if (Number.isNaN(ideaId)) {
@@ -5665,6 +5681,10 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
+      }
+
       if (Number.isNaN(ideaId)) {
         return res.status(400).json({ message: "Invalid idea ID" });
       }
@@ -5699,6 +5719,10 @@ export function setupRoutes(app: Express) {
 
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
       }
 
       if (Number.isNaN(ideaId)) {
