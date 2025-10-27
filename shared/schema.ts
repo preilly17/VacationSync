@@ -1259,6 +1259,57 @@ const wishListUrlSchema = z
     return trimmed;
   });
 
+const normalizeWishListTags = (value: unknown): string[] => {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  const unique = new Set<string>();
+  const queue: unknown[] = [value];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || current === null) {
+      continue;
+    }
+
+    if (Array.isArray(current)) {
+      queue.push(...current);
+      continue;
+    }
+
+    if (typeof current === "object") {
+      queue.push(...Object.values(current as Record<string, unknown>));
+      continue;
+    }
+
+    let raw = "";
+    if (typeof current === "string") {
+      raw = current;
+    } else if (typeof current === "number" || typeof current === "boolean") {
+      raw = String(current);
+    } else {
+      continue;
+    }
+
+    const parts = raw
+      .split(/[,\n]/)
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+
+    for (const part of parts) {
+      unique.add(part);
+    }
+  }
+
+  return Array.from(unique);
+};
+
+const wishListTagsSchema = z.preprocess(
+  (value) => normalizeWishListTags(value),
+  z.array(z.string().min(1)).default([]),
+);
+
 export const insertWishListIdeaSchema = z.object({
   tripId: z.number(),
   title: z.string().trim().min(1, "Title is required"),
@@ -1270,22 +1321,7 @@ export const insertWishListIdeaSchema = z.object({
     const trimmed = value.trim();
     return trimmed === "" ? null : trimmed;
   }),
-  tags: z
-    .array(z.string().trim().min(1))
-    .optional()
-    .transform((value) => {
-      if (!value) {
-        return [] as string[];
-      }
-      const unique = new Set<string>();
-      for (const tag of value) {
-        const normalized = tag.trim();
-        if (normalized) {
-          unique.add(normalized);
-        }
-      }
-      return Array.from(unique);
-    }),
+  tags: wishListTagsSchema,
   thumbnailUrl: z.string().trim().optional().nullable().transform((value) => {
     if (!value) {
       return null;
@@ -1362,22 +1398,7 @@ export const insertWishListProposalDraftSchema = z.object({
     const trimmed = value.trim();
     return trimmed === "" ? null : trimmed;
   }),
-  tags: z
-    .array(z.string().trim().min(1))
-    .optional()
-    .transform((value) => {
-      if (!value) {
-        return [] as string[];
-      }
-      const unique = new Set<string>();
-      for (const tag of value) {
-        const normalized = tag.trim();
-        if (normalized) {
-          unique.add(normalized);
-        }
-      }
-      return Array.from(unique);
-    }),
+  tags: wishListTagsSchema,
   status: z.string().trim().default("draft"),
 });
 
