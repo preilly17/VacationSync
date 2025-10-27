@@ -2603,7 +2603,7 @@ export default function Trip() {
           </button>
 
           {/* // MOBILE-ONLY bottom tab bar */}
-          <nav className="md:hidden trip-themed-nav fixed inset-x-0 bottom-0 z-40 border-t border-white/20 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2">
+          <nav className="md:hidden trip-themed-nav overflow-hidden fixed inset-x-0 bottom-0 z-40 border-t border-white/20 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2">
             <div className="flex items-stretch gap-1 overflow-x-auto px-3">
               {MOBILE_TAB_ITEMS.map((item) => {
                 const Icon = item.icon;
