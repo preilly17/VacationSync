@@ -186,17 +186,21 @@ export default function HotelsPage() {
           rating: hotel.rating || 4,
           amenities: hotel.amenities || "WiFi, Breakfast",
           platform: hotel.platform,
-          bookingUrl: hotel.bookingUrl
+          bookingUrl: hotel.bookingUrl,
         }),
       });
-      
+
       toast({
         title: "Added to Group Hotels!",
         description: `${hotel.name} is now ready for everyone to review and rank.`,
       });
-      
+
       // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+      });
       
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
