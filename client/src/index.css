@@ -163,10 +163,11 @@
   --sidebar-accent-foreground: rgba(255, 255, 255, 0.92);
   --sidebar-border: rgba(255, 255, 255, 0.32);
   --sidebar-ring: rgba(255, 255, 255, 0.6);
+  background-color: hsl(210 40% 98%);
   background-image:
-    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.22), transparent 58%),
-    radial-gradient(circle at 85% 0%, rgba(255, 255, 255, 0.18), transparent 55%),
-    linear-gradient(150deg, rgba(56, 189, 248, 0.92), rgba(129, 140, 248, 0.94) 45%, rgba(244, 114, 182, 0.9));
+    radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 52%),
+    radial-gradient(circle at 82% 0%, rgba(168, 85, 247, 0.18), rgba(168, 85, 247, 0) 56%),
+    linear-gradient(135deg, rgba(248, 250, 255, 0.96), rgba(243, 232, 255, 0.92));
   box-shadow: 0 26px 52px -30px rgba(56, 189, 248, 0.38);
   color: var(--sidebar-foreground);
   backdrop-filter: blur(18px);
@@ -198,10 +199,11 @@
   --sidebar-accent-foreground: rgba(255, 255, 255, 0.96);
   --sidebar-border: rgba(148, 163, 184, 0.35);
   --sidebar-ring: rgba(255, 255, 255, 0.65);
+  background-color: hsl(222 47% 6%);
   background-image:
-    radial-gradient(circle at 18% 25%, rgba(148, 163, 184, 0.35), transparent 60%),
-    radial-gradient(circle at 82% 0%, rgba(148, 163, 184, 0.28), transparent 58%),
-    linear-gradient(150deg, rgba(30, 41, 59, 0.82), rgba(76, 29, 149, 0.78) 38%, rgba(88, 28, 135, 0.86));
+    radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.24), rgba(56, 189, 248, 0) 52%),
+    radial-gradient(circle at 82% 0%, rgba(147, 51, 234, 0.28), rgba(147, 51, 234, 0) 58%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(30, 41, 59, 0.92));
   box-shadow: 0 28px 54px -30px rgba(2, 6, 23, 0.85);
 }
 
