@@ -153,7 +153,6 @@
 
 .trip-themed-nav {
   position: relative;
-  overflow: hidden;
   border-color: rgba(255, 255, 255, 0.32);
   --sidebar-background: transparent;
   --sidebar-foreground: rgba(255, 255, 255, 0.94);
