@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -300,25 +299,25 @@ export function PackingList({ tripId }: PackingListProps) {
 
   if (isLoading) {
     return (
-      <Card className="relative overflow-hidden trip-themed-card p-6">
-        <div className="flex items-center space-x-2 mb-4">
-          <Package className="w-5 h-5" />
+      <div className="relative rounded-3xl border border-white/60 bg-white/95 p-6 shadow-[0_30px_60px_-40px_rgba(30,64,175,0.45)]">
+        <div className="mb-4 flex items-center space-x-2">
+          <Package className="h-5 w-5" />
           <h2 className="text-lg font-semibold">Packing Essentials</h2>
         </div>
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />
+            <div key={i} className="h-12 rounded bg-gray-100 animate-pulse" />
           ))}
         </div>
-      </Card>
+      </div>
     );
   }
 
   return (
-    <Card className="relative overflow-hidden trip-themed-card p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="relative rounded-3xl border border-white/60 bg-white/95 p-6 shadow-[0_30px_60px_-40px_rgba(30,64,175,0.45)]">
+      <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          <Package className="w-5 h-5" />
+          <Package className="h-5 w-5" />
           <h2 className="text-lg font-semibold">Packing Essentials</h2>
           <Badge variant="outline">
             {completedCount}/{totalCount} packed
@@ -388,10 +387,10 @@ export function PackingList({ tripId }: PackingListProps) {
       </form>
 
       {totalCount === 0 ? (
-        <div className="text-center py-8">
-          <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No packing items yet</h3>
-          <p className="text-gray-600 mb-4">
+        <div className="py-8 text-center">
+          <Package className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+          <h3 className="mb-2 text-lg font-medium text-gray-900">No packing items yet</h3>
+          <p className="mb-4 text-gray-600">
             Start adding essential items that everyone should consider packing for this trip.
           </p>
         </div>
@@ -399,16 +398,16 @@ export function PackingList({ tripId }: PackingListProps) {
         <div className="space-y-8">
           {/* Personal Items Section */}
           <div>
-            <div className="flex items-center space-x-2 mb-4">
-              <Users className="w-5 h-5 text-blue-600" />
+            <div className="mb-4 flex items-center space-x-2">
+              <Users className="h-5 w-5 text-blue-600" />
               <h3 className="text-lg font-medium text-gray-900">Personal Items</h3>
               <Badge variant="outline">
                 You: {personalItems.filter(item => item.isChecked).length}/{personalItems.length} packed
               </Badge>
             </div>
-            
+
             {Object.keys(groupedPersonalItems).length === 0 ? (
-              <div className="text-center py-6 bg-gray-50 rounded-lg">
+              <div className="rounded-lg bg-gray-50 py-6 text-center">
                 <p className="text-gray-600">No personal items added yet</p>
               </div>
             ) : (
@@ -496,18 +495,18 @@ export function PackingList({ tripId }: PackingListProps) {
 
           {/* Group Items Section */}
           <div>
-            <div className="flex items-center space-x-2 mb-4">
-              <Package className="w-5 h-5 text-green-600" />
+            <div className="mb-4 flex items-center space-x-2">
+              <Package className="h-5 w-5 text-green-600" />
               <h3 className="text-lg font-medium text-gray-900">Group Items</h3>
               <Badge variant="outline">
                 You: {groupItems.filter(item => item.isChecked).length}/{groupItems.length} handled
               </Badge>
             </div>
-            
+
             {Object.keys(groupedGroupItems).length === 0 ? (
-              <div className="text-center py-6 bg-gray-50 rounded-lg">
+              <div className="rounded-lg bg-gray-50 py-6 text-center">
                 <p className="text-gray-600">No group items added yet</p>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="mt-1 text-sm text-gray-500">
                   Add items that need to be purchased or coordinated by someone in the group
                 </p>
               </div>
@@ -601,6 +600,6 @@ export function PackingList({ tripId }: PackingListProps) {
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
