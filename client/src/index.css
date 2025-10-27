@@ -141,7 +141,8 @@
   backdrop-filter: blur(6px);
 }
 
-.trip-calendar-panel {
+.trip-calendar-panel,
+.trip-calendar-gradient {
   background-color: hsl(214 100% 97% / 0.92);
   background-image:
     radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.18), transparent 55%),
@@ -244,7 +245,8 @@
   box-shadow: 0 28px 52px -30px rgba(2, 6, 23, 0.85);
 }
 
-.dark .trip-calendar-panel {
+.dark .trip-calendar-panel,
+.dark .trip-calendar-gradient {
   background-color: hsla(222 47% 12% / 0.92);
   background-image:
     radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.26), transparent 55%),
