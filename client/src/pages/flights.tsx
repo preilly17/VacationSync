@@ -336,6 +336,44 @@ const getSearchFlightKey = (flight: any): string => {
   return identifierParts.join("-");
 };
 
+const getComparableFlightKey = (flight: any): string => {
+  const number = (flight?.flightNumber || flight?.number || flight?.id || "")
+    ?.toString()
+    .trim();
+  const departure = (flight?.departure?.time || flight?.departureTime || "")
+    ?.toString()
+    .trim();
+  const arrival = (flight?.arrival?.time || flight?.arrivalTime || "")
+    ?.toString()
+    .trim();
+  const origin = (
+    flight?.departure?.iataCode ||
+    flight?.departureCode ||
+    flight?.origin ||
+    flight?.from
+  )
+    ?.toString()
+    .trim();
+  const destination = (
+    flight?.arrival?.iataCode ||
+    flight?.arrivalCode ||
+    flight?.destination ||
+    flight?.to
+  )
+    ?.toString()
+    .trim();
+
+  const parts = [number, departure, arrival, origin, destination].filter(
+    (part) => typeof part === "string" && part.length > 0,
+  );
+
+  if (parts.length === 0) {
+    return JSON.stringify(flight);
+  }
+
+  return parts.join("|#|");
+};
+
 const TRIP_ADMIN_ROLES = new Set(["admin", "owner", "organizer"]);
 
 type FlightOwnershipCandidate = Partial<FlightWithDetails> & {
@@ -578,6 +616,7 @@ interface FlightSearchPanelProps {
   autoSearch?: boolean;
   isAddingFlight: boolean;
   addingFlightKey: string | null;
+  tripFlights: FlightWithDetails[];
 }
 
 type ManualFlightPayload = InsertFlight & {
@@ -625,6 +664,7 @@ function FlightSearchPanel({
   autoSearch = false,
   isAddingFlight,
   addingFlightKey,
+  tripFlights,
 }: FlightSearchPanelProps) {
   const { toast } = useToast();
   const fromInputRef = useRef<HTMLInputElement>(null);
@@ -639,6 +679,77 @@ function FlightSearchPanel({
   const [selectedArrivalAirport, setSelectedArrivalAirport] = useState(searchFormData.arrival);
   const [expandedResultKey, setExpandedResultKey] = useState<string | null>(null);
   const currentUserId = user?.id ?? null;
+
+  const savedFlightKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const flight of tripFlights) {
+      keys.add(getComparableFlightKey(flight));
+    }
+    return keys;
+  }, [tripFlights]);
+
+  const filterOutSavedFlights = useCallback(
+    (flights: any[] | undefined | null) => {
+      if (!Array.isArray(flights)) {
+        return [] as any[];
+      }
+
+      return flights.filter((flight) => {
+        const key = getComparableFlightKey(flight);
+        return !savedFlightKeys.has(key);
+      });
+    },
+    [savedFlightKeys],
+  );
+
+  const visibleSearchResults = useMemo(
+    () => filterOutSavedFlights(searchResults),
+    [filterOutSavedFlights, searchResults],
+  );
+
+  const visibleFilterResults = useMemo(() => {
+    return {
+      best: filterOutSavedFlights(filterResults.best),
+      cheapest: filterOutSavedFlights(filterResults.cheapest),
+      fastest: filterOutSavedFlights(filterResults.fastest),
+    };
+  }, [filterOutSavedFlights, filterResults.best, filterResults.cheapest, filterResults.fastest]);
+
+  const visibleFilterCounts = useMemo(() => {
+    const adjustCount = (originalCount: number, originalList: any[], filteredList: any[]) => {
+      if (!Array.isArray(originalList) || originalList.length === 0) {
+        return originalCount;
+      }
+
+      const removed = originalList.length - filteredList.length;
+      const base = typeof originalCount === "number" ? originalCount : originalList.length;
+      return Math.max(0, base - removed);
+    };
+
+    return {
+      best: adjustCount(filterResultCounts.best, filterResults.best, visibleFilterResults.best),
+      cheapest: adjustCount(
+        filterResultCounts.cheapest,
+        filterResults.cheapest,
+        visibleFilterResults.cheapest,
+      ),
+      fastest: adjustCount(
+        filterResultCounts.fastest,
+        filterResults.fastest,
+        visibleFilterResults.fastest,
+      ),
+    };
+  }, [
+    filterResultCounts.best,
+    filterResultCounts.cheapest,
+    filterResultCounts.fastest,
+    filterResults.best,
+    filterResults.cheapest,
+    filterResults.fastest,
+    visibleFilterResults.best,
+    visibleFilterResults.cheapest,
+    visibleFilterResults.fastest,
+  ]);
 
   const createLocationFromForm = (direction: 'departure' | 'arrival'): LocationResult | null => {
     const code = direction === 'departure' ? searchFormData.departure : searchFormData.arrival;
@@ -1339,7 +1450,10 @@ function FlightSearchPanel({
               </CardContent>
             </Card>
 
-            {searchResults.length > 0 && (
+            {(visibleSearchResults.length > 0 ||
+              visibleFilterResults.best.length > 0 ||
+              visibleFilterResults.cheapest.length > 0 ||
+              visibleFilterResults.fastest.length > 0) && (
               <div className="max-h-[60vh] overflow-auto pr-1">
                 <Card>
                   <CardHeader>
@@ -1363,9 +1477,9 @@ function FlightSearchPanel({
                             </div>
                           )}
                           🏆 Best
-                          {filterResultCounts.best > 0 && (
+                          {visibleFilterCounts.best > 0 && (
                             <Badge variant="secondary" className="ml-1 text-xs">
-                              {filterResultCounts.best}
+                              {visibleFilterCounts.best}
                             </Badge>
                           )}
                         </Button>
@@ -1383,9 +1497,9 @@ function FlightSearchPanel({
                             </div>
                           )}
                           💰 Cheapest
-                          {filterResultCounts.cheapest > 0 && (
+                          {visibleFilterCounts.cheapest > 0 && (
                             <Badge variant="secondary" className="ml-1 text-xs">
-                              {filterResultCounts.cheapest}
+                              {visibleFilterCounts.cheapest}
                             </Badge>
                           )}
                         </Button>
@@ -1403,9 +1517,9 @@ function FlightSearchPanel({
                             </div>
                           )}
                           ⚡ Fastest
-                          {filterResultCounts.fastest > 0 && (
+                          {visibleFilterCounts.fastest > 0 && (
                             <Badge variant="secondary" className="ml-1 text-xs">
-                              {filterResultCounts.fastest}
+                              {visibleFilterCounts.fastest}
                             </Badge>
                           )}
                         </Button>
@@ -1414,9 +1528,18 @@ function FlightSearchPanel({
                   </CardHeader>
                   <CardContent>
                     {(() => {
-                      const currentResults =
-                        filterResults[activeFilter].length > 0 ? filterResults[activeFilter] : searchResults;
-                      if (currentResults.length === 0) return null;
+                      const candidateResults =
+                        visibleFilterResults[activeFilter].length > 0
+                          ? visibleFilterResults[activeFilter]
+                          : visibleSearchResults;
+                      const currentResults = candidateResults;
+                      if (currentResults.length === 0) {
+                        return (
+                          <div className="rounded-md border border-dashed border-muted-foreground/30 bg-muted/10 p-4 text-sm text-muted-foreground">
+                            All flights from your latest search are already saved to this trip.
+                          </div>
+                        );
+                      }
 
                       const flightCount = currentResults.length;
                       const prices = currentResults
@@ -1481,12 +1604,12 @@ function FlightSearchPanel({
                       onValueChange={(value) => setExpandedResultKey(value || null)}
                       className="space-y-3"
                     >
-                      {(filterResults[activeFilter].length > 0 ? filterResults[activeFilter] : searchResults).map(
+                      {currentResults.map(
                         (flight: any, index: number) => {
                           const normalizedPriceSource = flight.price ?? flight.totalPrice;
                           const priceLabel = formatPriceDisplay(normalizedPriceSource, flight.currency);
                           const hasNumericPrice = parseNumericAmount(normalizedPriceSource) !== null;
-                          const flightKey = getSearchFlightKey(flight) || `flight-${index}`;
+                          const flightKey = getComparableFlightKey(flight) || `flight-${index}`;
                           const departureCode =
                             flight.departure?.iataCode ||
                             flight.departureCode ||
@@ -1697,6 +1820,16 @@ function FlightSearchPanel({
                 </Card>
               </div>
             )}
+
+            {visibleSearchResults.length === 0 &&
+              visibleFilterResults.best.length === 0 &&
+              visibleFilterResults.cheapest.length === 0 &&
+              visibleFilterResults.fastest.length === 0 &&
+              searchResults.length > 0 && (
+                <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-4 text-sm text-muted-foreground">
+                  All flights from your latest search are already saved to this trip.
+                </div>
+              )}
 
         </div>
       </div>
@@ -2584,7 +2717,7 @@ export default function FlightsPage() {
         return;
       }
 
-      const flightIdentifier = getSearchFlightKey(flight);
+      const flightIdentifier = getComparableFlightKey(flight);
       setAddingFlightKey(flightIdentifier);
 
       const fallbackDeparture = searchFormData.departureDate
@@ -2694,6 +2827,41 @@ export default function FlightsPage() {
         await apiRequest(`/api/trips/${tripId}/flights`, {
           method: "POST",
           body: flightPayload,
+        });
+
+        const filterByKey = (list: any[]) =>
+          Array.isArray(list)
+            ? list.filter((item) => getComparableFlightKey(item) !== flightIdentifier)
+            : [];
+
+        const adjustCount = (count: number, original: any[], filtered: any[]) => {
+          if (!Array.isArray(original) || original.length === 0) {
+            return count;
+          }
+
+          const removed = original.length - filtered.length;
+          const base = typeof count === "number" ? count : original.length;
+          return Math.max(0, base - removed);
+        };
+
+        setSearchResults((previous) => filterByKey(previous));
+
+        setFilterResults((previous) => {
+          const nextBest = filterByKey(previous.best);
+          const nextCheapest = filterByKey(previous.cheapest);
+          const nextFastest = filterByKey(previous.fastest);
+
+          setFilterResultCounts((counts) => ({
+            best: adjustCount(counts.best, previous.best, nextBest),
+            cheapest: adjustCount(counts.cheapest, previous.cheapest, nextCheapest),
+            fastest: adjustCount(counts.fastest, previous.fastest, nextFastest),
+          }));
+
+          return {
+            best: nextBest,
+            cheapest: nextCheapest,
+            fastest: nextFastest,
+          };
         });
 
         await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
@@ -2919,6 +3087,7 @@ export default function FlightsPage() {
           autoSearch={autoSearchRequested}
           isAddingFlight={addingFlightKey !== null}
           addingFlightKey={addingFlightKey}
+          tripFlights={sortedFlights}
         />
 
         <section className="space-y-4">
