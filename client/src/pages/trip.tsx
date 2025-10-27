@@ -2194,8 +2194,7 @@ export default function Trip() {
                         className="relative overflow-hidden space-y-6 border-b border-[color:var(--calendar-line)]/60 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
                       >
                         <div
-                          className="pointer-events-none absolute inset-0"
-                          style={{ backgroundImage: TRIP_COVER_GRADIENT }}
+                          className="pointer-events-none absolute inset-0 trip-calendar-gradient"
                           aria-hidden="true"
                         />
                         <div className="pointer-events-none absolute inset-0 bg-white/60 backdrop-blur-[1.5px] dark:bg-slate-950/60" aria-hidden="true" />
