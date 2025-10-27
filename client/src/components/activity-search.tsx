@@ -589,8 +589,8 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
 
   return (
     <>
-      <Card className="relative overflow-hidden trip-themed-card">
-        <CardHeader>
+      <Card>
+        <CardHeader className="border-b border-border/60 pb-4">
           <CardTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5" />
             Discover Activities
@@ -599,7 +599,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
             Search for activities and experiences at your destination
           </p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           {/* Location Search */}
           <div className="space-y-2">
             <Label>Search Destination</Label>
