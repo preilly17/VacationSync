@@ -2603,7 +2603,7 @@ export default function Trip() {
           </button>
 
           {/* // MOBILE-ONLY bottom tab bar */}
-          <nav className="md:hidden trip-themed-nav fixed inset-x-0 bottom-0 z-40 border-t pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2">
+          <nav className="md:hidden trip-themed-nav fixed inset-x-0 bottom-0 z-40 border-t border-white/20 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2">
             <div className="flex items-stretch gap-1 overflow-x-auto px-3">
               {MOBILE_TAB_ITEMS.map((item) => {
                 const Icon = item.icon;
@@ -2614,17 +2614,21 @@ export default function Trip() {
                     key={item.key}
                     type="button"
                     onClick={() => setActiveTab(item.key)}
-                    className={`relative flex min-h-[44px] flex-none basis-24 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${
-                      isActive ? "text-primary" : "text-neutral-500"
-                    }`}
+                    className={cn(
+                      "relative flex min-h-[44px] flex-none basis-24 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70",
+                      isActive
+                        ? "text-white"
+                        : "text-white/70 hover:text-white hover:bg-white/10"
+                    )}
                     data-testid={item.key === "proposals" ? "mobile-button-proposals" : item.key === "wish-list" ? "mobile-button-wish-list" : undefined}
                   >
                     <Icon className="h-5 w-5" aria-hidden="true" />
                     <span className="w-full truncate text-[11px]">{item.label}</span>
                     <span
-                      className={`mt-1 h-0.5 w-12 rounded-full transition-colors ${
-                        isActive ? "bg-primary" : "bg-transparent"
-                      }`}
+                      className={cn(
+                        "mt-1 h-0.5 w-12 rounded-full transition-colors",
+                        isActive ? "bg-white/80" : "bg-white/20"
+                      )}
                       aria-hidden="true"
                     />
                   </button>

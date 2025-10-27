@@ -14,14 +14,14 @@ interface MobileNavProps {
 export function MobileNav({ trip, user }: MobileNavProps) {
   // MOBILE-ONLY top navigation shell
   return (
-    <nav className="md:hidden trip-themed-nav border-b px-4 py-3 sticky top-0 z-50">
+    <nav className="md:hidden trip-themed-nav border-b border-white/20 px-4 py-3 sticky top-0 z-50">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <Sheet>
             <SheetTrigger asChild>
               {/* // MOBILE-ONLY enlarged tap target */}
               <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full">
-                <Menu className="w-5 h-5 text-neutral-600" />
+                <Menu className="w-5 h-5 text-white" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="w-64 p-0">
@@ -81,16 +81,16 @@ export function MobileNav({ trip, user }: MobileNavProps) {
               </div>
             </SheetContent>
           </Sheet>
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-white/15 border border-white/25">
             <Calendar className="text-white w-4 h-4" />
           </div>
-          <span className="text-lg font-semibold text-neutral-900">TripSync</span>
+          <span className="text-lg font-semibold text-white drop-shadow-sm">TripSync</span>
         </div>
         <div className="flex items-center space-x-3">
           <NotificationIcon />
-          <Avatar className="w-8 h-8">
+          <Avatar className="w-8 h-8 ring-2 ring-white/20">
             <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || 'User'} />
-            <AvatarFallback className="text-xs">
+            <AvatarFallback className="text-xs bg-white/15 text-white">
               {(user?.firstName?.[0] || user?.email?.[0] || 'U').toUpperCase()}
             </AvatarFallback>
           </Avatar>
