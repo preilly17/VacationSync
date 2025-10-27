@@ -36,6 +36,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
 import { ACTIVITY_CATEGORY_VALUES } from "@shared/activityValidation";
+import { extractPriceValue } from "@/lib/activities/price";
 import type { ActivityType, ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
 import { resolveTripTimezone } from "@/lib/timezone";
@@ -326,12 +327,14 @@ export default function Activities() {
         return null;
       })();
 
+      const sanitizedCost = extractPriceValue(activity.price);
+
       setActivityComposerPrefill({
         name: activity.name,
         description: activity.description ?? undefined,
         location: activity.location ?? undefined,
         category: normalizedCategory,
-        cost: activity.price ?? undefined,
+        cost: sanitizedCost ?? undefined,
         type: "PROPOSE",
       });
       setActivityComposerMode("PROPOSE");
