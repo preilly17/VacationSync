@@ -718,81 +718,85 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
         </CardContent>
       </Card>
 
-      <Card className="relative overflow-hidden trip-themed-card mt-6">
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <CardTitle className="text-lg">Manually Added Activities</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Keep track of activities you booked outside of VacationSync.
-            </p>
-          </div>
-          <Button variant="outline" size="sm" onClick={openManualForm}>
-            Add activity
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {manualActivitiesLoading ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
-            </div>
-          ) : hasManualActivities ? (
-            <div className="grid gap-4">
-              {sortedManualActivities.map((activity) => {
-                const metadata = parseManualActivityDescription(activity.description);
-                const startLabel = activity.startTime
-                  ? (() => {
-                      const date = new Date(activity.startTime as string);
-                      return Number.isNaN(date.getTime())
-                        ? "Date TBD"
-                        : format(date, "MMM d, yyyy • h:mm a");
-                    })()
-                  : "Date TBD";
-                const priceLabel =
-                  typeof activity.cost === "number"
-                    ? formatCurrency(activity.cost, {
-                        currency: metadata.currency,
-                        fallback: "",
-                      })
-                    : "";
-
-                return (
-                  <div
-                    key={activity.id}
-                    className="relative overflow-hidden trip-themed-card border border-transparent p-4 shadow-sm"
-                  >
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
-                        <p className="text-sm text-neutral-600">
-                          {activity.location || "Location TBD"}
-                        </p>
-                        <p className="text-sm text-neutral-500">{startLabel}</p>
-                      </div>
-                      <div className="flex flex-col items-start gap-2 sm:items-end">
-                        <Badge variant="outline" className="uppercase tracking-wide">
-                          {metadata.statusLabel}
-                        </Badge>
-                        {priceLabel ? (
-                          <span className="text-sm font-medium text-neutral-900">{priceLabel}</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-200 p-6 text-center">
-              <p className="text-sm text-neutral-600">
-                Log activities you booked elsewhere to keep everyone aligned.
-              </p>
-              <Button variant="outline" onClick={openManualForm}>
-                Add activity manually
+      <div className="relative mt-6">
+        <div className="rounded-[28px] bg-gradient-to-br from-sky-50 via-white to-violet-50 p-[1px] shadow-[0_26px_60px_-34px_rgba(30,64,175,0.45)]">
+          <div className="rounded-[26px] border border-white/70 bg-white shadow-md">
+            <div className="flex flex-col gap-3 border-b border-neutral-100 px-6 py-6 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-neutral-900">Manually Added Activities</h3>
+                <p className="text-sm text-muted-foreground">
+                  Keep track of activities you booked outside of VacationSync.
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={openManualForm} className="sm:shrink-0">
+                Add activity
               </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="px-6 pb-6 pt-4">
+              {manualActivitiesLoading ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
+                </div>
+              ) : hasManualActivities ? (
+                <div className="grid gap-4">
+                  {sortedManualActivities.map((activity) => {
+                    const metadata = parseManualActivityDescription(activity.description);
+                    const startLabel = activity.startTime
+                      ? (() => {
+                          const date = new Date(activity.startTime as string);
+                          return Number.isNaN(date.getTime())
+                            ? "Date TBD"
+                            : format(date, "MMM d, yyyy • h:mm a");
+                        })()
+                      : "Date TBD";
+                    const priceLabel =
+                      typeof activity.cost === "number"
+                        ? formatCurrency(activity.cost, {
+                            currency: metadata.currency,
+                            fallback: "",
+                          })
+                        : "";
+
+                    return (
+                      <div
+                        key={activity.id}
+                        className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                      >
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
+                            <p className="text-sm text-neutral-600">
+                              {activity.location || "Location TBD"}
+                            </p>
+                            <p className="text-sm text-neutral-500">{startLabel}</p>
+                          </div>
+                          <div className="flex flex-col items-start gap-2 sm:items-end">
+                            <Badge variant="outline" className="uppercase tracking-wide">
+                              {metadata.statusLabel}
+                            </Badge>
+                            {priceLabel ? (
+                              <span className="text-sm font-medium text-neutral-900">{priceLabel}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-neutral-200 bg-white p-6 text-center">
+                  <p className="text-sm text-neutral-600">
+                    Log activities you booked elsewhere to keep everyone aligned.
+                  </p>
+                  <Button variant="outline" onClick={openManualForm}>
+                    Add activity manually
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Activities Results */}
       {hasSearched ? (
