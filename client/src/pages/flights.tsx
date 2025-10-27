@@ -1179,7 +1179,8 @@ function FlightSearchPanel({
       </div>
 
       <div className="mt-6">
-        <div className="space-y-6">
+        <div className="flex flex-col gap-6">
+          <div className="order-1">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1449,11 +1450,13 @@ function FlightSearchPanel({
                 </form>
               </CardContent>
             </Card>
+          </div>
 
-            {(visibleSearchResults.length > 0 ||
-              visibleFilterResults.best.length > 0 ||
-              visibleFilterResults.cheapest.length > 0 ||
-              visibleFilterResults.fastest.length > 0) && (
+          {(visibleSearchResults.length > 0 ||
+            visibleFilterResults.best.length > 0 ||
+            visibleFilterResults.cheapest.length > 0 ||
+            visibleFilterResults.fastest.length > 0) && (
+            <div className="order-2">
               <div className="max-h-[60vh] overflow-auto pr-1">
                 <Card>
                   <CardHeader>
@@ -1819,17 +1822,18 @@ function FlightSearchPanel({
                   </CardContent>
                 </Card>
               </div>
-            )}
+            </div>
+          )}
 
-            {visibleSearchResults.length === 0 &&
-              visibleFilterResults.best.length === 0 &&
-              visibleFilterResults.cheapest.length === 0 &&
-              visibleFilterResults.fastest.length === 0 &&
-              searchResults.length > 0 && (
-                <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-4 text-sm text-muted-foreground">
-                  All flights from your latest search are already saved to this trip.
-                </div>
-              )}
+          {visibleSearchResults.length === 0 &&
+            visibleFilterResults.best.length === 0 &&
+            visibleFilterResults.cheapest.length === 0 &&
+            visibleFilterResults.fastest.length === 0 &&
+            searchResults.length > 0 && (
+              <div className="order-3 rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-4 text-sm text-muted-foreground">
+                All flights from your latest search are already saved to this trip.
+              </div>
+            )}
 
         </div>
       </div>
