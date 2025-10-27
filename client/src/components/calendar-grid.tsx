@@ -299,7 +299,7 @@ export function CalendarGrid({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[20px] border border-[color:var(--calendar-line)]/70 bg-[var(--calendar-canvas)]/90 p-4 shadow-[0_10px_30px_-12px_rgba(16,24,40,0.18)] transition-all duration-300 dark:shadow-[0_20px_44px_-18px_rgba(2,6,23,0.9)]">
+      <div className="trip-calendar-panel rounded-[20px] border border-[color:var(--calendar-line)]/70 p-4 shadow-[0_10px_30px_-12px_rgba(16,24,40,0.18)] transition-all duration-300 dark:shadow-[0_20px_44px_-18px_rgba(2,6,23,0.9)]">
         <div className="rounded-[18px] border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)]/95 backdrop-blur-xl">
           <div className="grid grid-cols-7 gap-2 px-4 pt-4 pb-3 text-center">
             {weekdays.map(day => (
