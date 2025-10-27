@@ -152,25 +152,62 @@
 }
 
 .trip-themed-nav {
-  border-color: rgba(56, 189, 248, 0.24);
-  background-color: rgba(255, 255, 255, 0.92);
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 255, 255, 0.32);
+  --sidebar-background: transparent;
+  --sidebar-foreground: rgba(255, 255, 255, 0.94);
+  --sidebar-primary: rgba(255, 255, 255, 0.24);
+  --sidebar-primary-foreground: rgba(15, 23, 42, 0.92);
+  --sidebar-accent: rgba(255, 255, 255, 0.16);
+  --sidebar-accent-foreground: rgba(255, 255, 255, 0.92);
+  --sidebar-border: rgba(255, 255, 255, 0.32);
+  --sidebar-ring: rgba(255, 255, 255, 0.6);
   background-image:
-    radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 55%),
-    radial-gradient(circle at 90% 0%, rgba(168, 85, 247, 0.16), rgba(168, 85, 247, 0) 58%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(236, 252, 255, 0.88));
-  box-shadow: 0 22px 44px -28px rgba(30, 64, 175, 0.5);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.22), transparent 58%),
+    radial-gradient(circle at 85% 0%, rgba(255, 255, 255, 0.18), transparent 55%),
+    linear-gradient(150deg, rgba(56, 189, 248, 0.92), rgba(129, 140, 248, 0.94) 45%, rgba(244, 114, 182, 0.9));
+  box-shadow: 0 26px 52px -30px rgba(56, 189, 248, 0.38);
+  color: var(--sidebar-foreground);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.trip-themed-nav::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
+  mix-blend-mode: screen;
+  opacity: 0.6;
+}
+
+.trip-themed-nav > * {
+  position: relative;
+  z-index: 1;
 }
 
 .dark .trip-themed-nav {
-  border-color: rgba(56, 189, 248, 0.32);
-  background-color: rgba(15, 23, 42, 0.78);
+  border-color: rgba(148, 163, 184, 0.35);
+  --sidebar-background: transparent;
+  --sidebar-foreground: rgba(255, 255, 255, 0.94);
+  --sidebar-primary: rgba(255, 255, 255, 0.24);
+  --sidebar-primary-foreground: rgba(15, 23, 42, 0.92);
+  --sidebar-accent: rgba(255, 255, 255, 0.18);
+  --sidebar-accent-foreground: rgba(255, 255, 255, 0.96);
+  --sidebar-border: rgba(148, 163, 184, 0.35);
+  --sidebar-ring: rgba(255, 255, 255, 0.65);
   background-image:
-    radial-gradient(circle at 12% 22%, rgba(56, 189, 248, 0.26), rgba(56, 189, 248, 0) 55%),
-    radial-gradient(circle at 88% 8%, rgba(129, 140, 248, 0.22), rgba(129, 140, 248, 0) 58%),
-    linear-gradient(135deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.9));
-  box-shadow: 0 24px 46px -28px rgba(2, 6, 23, 0.85);
+    radial-gradient(circle at 18% 25%, rgba(148, 163, 184, 0.35), transparent 60%),
+    radial-gradient(circle at 82% 0%, rgba(148, 163, 184, 0.28), transparent 58%),
+    linear-gradient(150deg, rgba(30, 41, 59, 0.82), rgba(76, 29, 149, 0.78) 38%, rgba(88, 28, 135, 0.86));
+  box-shadow: 0 28px 54px -30px rgba(2, 6, 23, 0.85);
+}
+
+.dark .trip-themed-nav::before {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(148, 163, 184, 0.1));
+  opacity: 0.55;
 }
 
 .dark .trip-themed-background {

@@ -27,13 +27,13 @@ interface SidebarProps {
 }
 
 const baseNavItemClasses =
-  "w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors duration-150";
+  "relative w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70";
 
 const inactiveNavItemClasses =
-  "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent hover:ring-1 hover:ring-sidebar-ring/40";
+  "text-white/75 hover:text-white hover:bg-white/10 hover:ring-1 hover:ring-white/30";
 
 const activeNavItemClasses =
-  "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-ring/60";
+  "bg-white/20 text-white shadow-lg shadow-black/10 ring-1 ring-white/45 backdrop-blur-sm";
 
 export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
   return (
@@ -41,22 +41,19 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
       <div className="flex h-full flex-col">
         {/* Logo */}
         <div className="flex items-center px-6 py-4 border-b border-sidebar-border/60">
-          <div className="w-10 h-10 bg-sidebar-primary rounded-xl flex items-center justify-center">
-            <Calendar className="text-sidebar-primary-foreground w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/15 border border-white/25">
+            <Calendar className="w-5 h-5 text-white" />
           </div>
-          <span className="ml-3 text-xl font-semibold text-sidebar-foreground">TripSync</span>
+          <span className="ml-3 text-xl font-semibold text-white drop-shadow-sm">TripSync</span>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-6 space-y-2">
           <Link
             href="/"
-            className={cn(
-              baseNavItemClasses,
-              "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent hover:ring-1 hover:ring-sidebar-ring/40",
-            )}
+            className={cn(baseNavItemClasses, inactiveNavItemClasses)}
           >
-            <Home className="w-4 h-4 mr-3" />
+            <Home className="w-4 h-4 mr-3 text-current" />
             All Trips
           </Link>
           {/* 1. Group Calendar */}
@@ -67,7 +64,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "calendar" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Calendar className="w-4 h-4 mr-3" />
+            <Calendar className="w-4 h-4 mr-3 text-current" />
             Group Calendar
           </button>
           {/* 2. My Schedule */}
@@ -78,7 +75,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "schedule" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Clock className="w-4 h-4 mr-3" />
+            <Clock className="w-4 h-4 mr-3 text-current" />
             My Schedule
           </button>
           {/* 3. Proposals */}
@@ -89,7 +86,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "proposals" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Vote className="w-4 h-4 mr-3" />
+            <Vote className="w-4 h-4 mr-3 text-current" />
             Proposals
           </button>
           {/* 4. Packing List */}
@@ -100,7 +97,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "packing" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Package className="w-4 h-4 mr-3" />
+            <Package className="w-4 h-4 mr-3 text-current" />
             Packing List
           </button>
           {/* 5. Flights */}
@@ -111,7 +108,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "flights" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Plane className="w-4 h-4 mr-3" />
+            <Plane className="w-4 h-4 mr-3 text-current" />
             Flights
           </button>
           {/* 6. Accommodations */}
@@ -122,7 +119,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "hotels" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Hotel className="w-4 h-4 mr-3" />
+            <Hotel className="w-4 h-4 mr-3 text-current" />
             Accommodations
           </button>
           {/* 7. Discover Activities */}
@@ -133,7 +130,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "activities" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <MapPin className="w-4 h-4 mr-3" />
+            <MapPin className="w-4 h-4 mr-3 text-current" />
             Discover Activities
           </button>
           {/* 8. Restaurants */}
@@ -144,7 +141,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "restaurants" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Utensils className="w-4 h-4 mr-3" />
+            <Utensils className="w-4 h-4 mr-3 text-current" />
             Restaurants
           </button>
           {/* 9. Groceries */}
@@ -155,7 +152,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "groceries" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <ShoppingCart className="w-4 h-4 mr-3" />
+            <ShoppingCart className="w-4 h-4 mr-3 text-current" />
             Groceries
           </button>
           {/* 10. Expenses */}
@@ -166,7 +163,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "expenses" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <DollarSign className="w-4 h-4 mr-3" />
+            <DollarSign className="w-4 h-4 mr-3 text-current" />
             Expenses
           </button>
           {/* 11. Wish List */}
@@ -177,7 +174,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "wish-list" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Sparkles className="w-4 h-4 mr-3" />
+            <Sparkles className="w-4 h-4 mr-3 text-current" />
             Wish List
           </button>
           <Link
@@ -187,16 +184,16 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
               activeTab === "members" ? activeNavItemClasses : inactiveNavItemClasses,
             )}
           >
-            <Users className="w-4 h-4 mr-3" />
+            <Users className="w-4 h-4 mr-3 text-current" />
             Member Schedules
           </Link>
           <button
             className={cn(
               baseNavItemClasses,
-              "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent hover:ring-1 hover:ring-sidebar-ring/40",
+              inactiveNavItemClasses,
             )}
           >
-            <Settings className="w-4 h-4 mr-3" />
+            <Settings className="w-4 h-4 mr-3 text-current" />
             Settings
           </button>
         </nav>
@@ -204,19 +201,19 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
         {/* User Profile */}
         <div className="px-4 py-4 border-t border-sidebar-border/60">
           <div className="flex items-center">
-            <Avatar className="w-10 h-10">
+            <Avatar className="w-10 h-10 ring-2 ring-white/20">
               <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
-              <AvatarFallback>
+              <AvatarFallback className="bg-white/15 text-white">
                 {(user?.firstName?.[0] || user?.email?.[0] || "U").toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="ml-3">
-              <p className="text-sm font-semibold text-sidebar-foreground">
+              <p className="text-sm font-semibold text-white">
                 {user?.firstName && user?.lastName
                   ? `${user.firstName} ${user.lastName}`
                   : user?.firstName || user?.email || "User"}
               </p>
-              <p className="text-xs text-sidebar-foreground/60">{user?.email}</p>
+              <p className="text-xs text-white/70">{user?.email}</p>
             </div>
           </div>
         </div>
