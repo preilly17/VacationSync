@@ -852,7 +852,7 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
           </div>
 
           <section
-            className="group relative overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/60"
+            className="group relative overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/60"
           >
             <span
               aria-hidden
