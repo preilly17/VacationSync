@@ -1033,6 +1033,34 @@ const mapUserFromPrefix = (
   };
 };
 
+const createFallbackUser = (userId: string | null | undefined): User => ({
+  id: userId ?? "",
+  email: "",
+  username: null,
+  firstName: null,
+  lastName: null,
+  phoneNumber: null,
+  passwordHash: null,
+  profileImageUrl: null,
+  cashAppUsername: null,
+  cashAppUsernameLegacy: null,
+  cashAppPhone: null,
+  cashAppPhoneLegacy: null,
+  venmoUsername: null,
+  venmoPhone: null,
+  timezone: null,
+  defaultLocation: null,
+  defaultLocationCode: null,
+  defaultCity: null,
+  defaultCountry: null,
+  authProvider: null,
+  notificationPreferences: null,
+  hasSeenHomeOnboarding: false,
+  hasSeenTripOnboarding: false,
+  createdAt: null,
+  updatedAt: null,
+});
+
 const selectUserColumns = (alias: string, prefix: string) => `
         ${alias}.id AS ${prefix}id,
         ${alias}.email AS ${prefix}email,
@@ -1178,10 +1206,15 @@ const mapHotelProposalWithDetails = (
 ): HotelProposalWithDetails => {
   const proposerId = normalizeUserId(row.proposed_by);
   const viewerId = normalizeUserId(currentUserId);
+  const hasProposerDetails =
+    row.proposer_id != null && String(row.proposer_id).trim().length > 0;
+  const proposer = hasProposerDetails
+    ? mapUserFromPrefix(row, "proposer_")
+    : createFallbackUser(row.proposed_by);
 
   return {
     ...mapHotelProposal(row),
-    proposer: mapUserFromPrefix(row, "proposer_"),
+    proposer,
     rankings,
     currentUserRanking:
       currentUserId != null
@@ -8871,7 +8904,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         hp.updated_at,
         ${selectUserColumns("u", "proposer_")}
       FROM hotel_proposals hp
-      JOIN users u ON u.id = hp.proposed_by
+      LEFT JOIN users u ON u.id = hp.proposed_by
       ${whereClause}
       ORDER BY hp.created_at DESC NULLS LAST, hp.id DESC
       `,
