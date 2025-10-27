@@ -2615,7 +2615,7 @@ export default function Trip() {
                     type="button"
                     onClick={() => setActiveTab(item.key)}
                     className={`relative flex min-h-[44px] flex-none basis-24 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors ${
-                      isActive ? "text-primary" : "text-neutral-500"
+                      isActive ? "text-white" : "text-white/70"
                     }`}
                     data-testid={item.key === "proposals" ? "mobile-button-proposals" : item.key === "wish-list" ? "mobile-button-wish-list" : undefined}
                   >
@@ -2623,7 +2623,7 @@ export default function Trip() {
                     <span className="w-full truncate text-[11px]">{item.label}</span>
                     <span
                       className={`mt-1 h-0.5 w-12 rounded-full transition-colors ${
-                        isActive ? "bg-primary" : "bg-transparent"
+                        isActive ? "bg-white/90" : "bg-white/20"
                       }`}
                       aria-hidden="true"
                     />

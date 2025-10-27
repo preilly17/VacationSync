@@ -30,17 +30,17 @@ const baseNavItemClasses =
   "w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors duration-150";
 
 const inactiveNavItemClasses =
-  "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent hover:ring-1 hover:ring-sidebar-ring/40";
+  "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-white/15 hover:ring-1 hover:ring-sidebar-ring/40";
 
 const activeNavItemClasses =
-  "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-ring/60";
+  "bg-sidebar-primary text-sidebar-primary-foreground shadow-[0_16px_32px_-22px_rgba(15,23,42,0.65)] ring-1 ring-sidebar-ring/60 backdrop-blur-sm border border-white/25";
 
 export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
   return (
-    <aside className="hidden lg:flex w-[260px] shrink-0 flex-col border border-sidebar-border/70 trip-themed-nav lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:overflow-x-hidden lg:z-20">
+    <aside className="hidden lg:flex w-[260px] shrink-0 flex-col border border-white/20 trip-themed-nav lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:overflow-x-hidden lg:z-20">
       <div className="flex h-full flex-col">
         {/* Logo */}
-        <div className="flex items-center px-6 py-4 border-b border-sidebar-border/60">
+        <div className="flex items-center px-6 py-4 border-b border-white/15">
           <div className="w-10 h-10 bg-sidebar-primary rounded-xl flex items-center justify-center">
             <Calendar className="text-sidebar-primary-foreground w-5 h-5" />
           </div>
@@ -53,7 +53,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
             href="/"
             className={cn(
               baseNavItemClasses,
-              "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent hover:ring-1 hover:ring-sidebar-ring/40",
+              "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-white/15 hover:ring-1 hover:ring-sidebar-ring/40",
             )}
           >
             <Home className="w-4 h-4 mr-3" />
@@ -193,7 +193,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
           <button
             className={cn(
               baseNavItemClasses,
-              "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent hover:ring-1 hover:ring-sidebar-ring/40",
+              "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-white/15 hover:ring-1 hover:ring-sidebar-ring/40",
             )}
           >
             <Settings className="w-4 h-4 mr-3" />
@@ -202,7 +202,7 @@ export function Sidebar({ trip, user, activeTab, onTabChange }: SidebarProps) {
         </nav>
 
         {/* User Profile */}
-        <div className="px-4 py-4 border-t border-sidebar-border/60">
+        <div className="px-4 py-4 border-t border-white/15">
           <div className="flex items-center">
             <Avatar className="w-10 h-10">
               <AvatarImage src={user?.profileImageUrl || undefined} alt={user?.firstName || "User"} />
