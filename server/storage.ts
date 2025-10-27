@@ -7293,14 +7293,18 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to create hotel");
     }
 
-    // PROPOSALS FEATURE: ensure this saved hotel appears in the proposals list.
-    await this.syncHotelProposalFromHotelRow(row);
+    // PROPOSALS FEATURE: keep linked proposals updated without auto-creating new ones.
+    await this.syncHotelProposalFromHotelRow(row, { allowCreate: false });
 
     return mapHotel(row);
   }
 
   // PROPOSALS FEATURE: create or update a linked hotel proposal for a manually saved hotel.
-  private async syncHotelProposalFromHotelRow(hotel: HotelRow): Promise<number> {
+  private async syncHotelProposalFromHotelRow(
+    hotel: HotelRow,
+    options: { allowCreate?: boolean } = {},
+  ): Promise<number | null> {
+    const { allowCreate = true } = options;
     await this.ensureProposalLinkStructures();
 
     const { rows: existingLinks } = await query<{
@@ -7399,6 +7403,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
         [hotel.trip_id, link.id],
       );
       return proposalId;
+    }
+
+    if (!allowCreate) {
+      return null;
     }
 
     const { rows: proposalRows } = await query<HotelProposalRow>(
@@ -7510,6 +7518,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
     }
 
     const proposalId = await this.syncHotelProposalFromHotelRow(hotel);
+    if (!proposalId) {
+      throw new Error("Failed to load hotel proposal");
+    }
+
     const proposal = await this.getHotelProposalById(proposalId, currentUserId);
     if (!proposal) {
       throw new Error("Failed to load hotel proposal");
@@ -8156,7 +8168,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     }
 
     // PROPOSALS FEATURE: keep the linked proposal in sync with manual hotel edits.
-    await this.syncHotelProposalFromHotelRow(updatedRow);
+    await this.syncHotelProposalFromHotelRow(updatedRow, { allowCreate: false });
 
     return mapHotel(updatedRow);
   }
@@ -9449,8 +9461,6 @@ ${selectUserColumns("participant_user", "participant_user_")}
     currentUserId: string,
     options: { proposedBy?: string } = {},
   ): Promise<HotelProposalWithDetails[]> {
-    // PROPOSALS FEATURE: ensure manually saved hotels are represented as proposals.
-    await this.ensureManualHotelsHaveProposals(tripId);
     await this.ensureUniqueHotelRankingsForTrip(tripId);
     return this.fetchHotelProposals({
       tripId,
