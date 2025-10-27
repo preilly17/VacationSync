@@ -369,7 +369,7 @@ export default function Activities() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-100">
+    <div className="min-h-screen bg-gradient-to-br from-white via-primary/5 to-emerald-50/60">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 lg:px-8 py-6">
         <div className="max-w-7xl mx-auto">
@@ -427,8 +427,8 @@ export default function Activities() {
         <div className="max-w-7xl mx-auto">
           <Collapsible open={isSearchPanelOpen} onOpenChange={setIsSearchPanelOpen}>
             {isSearchPanelOpen && (
-              <Card className="border border-neutral-200 shadow-sm">
-                <CardHeader className="space-y-1 border-b border-neutral-200 bg-neutral-50/80">
+              <Card className="border border-white/80 shadow-lg bg-white/95 backdrop-blur">
+                <CardHeader className="space-y-1 border-b border-neutral-200 bg-white/90 supports-[backdrop-filter]:bg-white/80">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <CardTitle className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
