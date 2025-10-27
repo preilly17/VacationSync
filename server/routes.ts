@@ -651,11 +651,27 @@ function getRequestUserId(req: any): string | undefined {
     return req.session.userId;
   }
 
-  if (req.user?.id) {
-    return req.user.id;
+  const user = req.user ?? {};
+
+  const possibleIds = [
+    user.id,
+    user.userId,
+    user.user_id,
+    user.sub,
+    user.subject,
+    user.profile?.id,
+    user.profile?.sub,
+    user.claims?.sub,
+    user.claims?.id,
+  ];
+
+  for (const candidate of possibleIds) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate;
+    }
   }
 
-  return req.user?.claims?.sub;
+  return undefined;
 }
 
 const DEMO_USER_ID = "demo-user";
