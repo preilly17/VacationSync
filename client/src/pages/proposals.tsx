@@ -2209,8 +2209,16 @@ function ProposalsPage({
   );
 
   // Empty state component
+  const proposalTypeRouteMap: Record<string, string> = {
+    Activity: "activities",
+    Hotel: "hotels",
+    Flight: "flights",
+    Restaurant: "restaurants",
+  };
+
   const EmptyState = ({ type, icon: Icon }: { type: string; icon: any }) => {
     const showGlobalEmpty = noProposalsAtAll;
+    const routeSegment = proposalTypeRouteMap[type] ?? type.toLowerCase();
 
     return (
       <div className="text-center py-12">
@@ -2223,7 +2231,7 @@ function ProposalsPage({
             ? "Suggest an activity, restaurant, hotel, or flight to get started."
             : `Group members can propose ${type.toLowerCase()} options for voting. Check the ${type} page to add proposals!`}
         </p>
-        <Link href={`/trip/${tripId}/${type.toLowerCase()}`}>
+        <Link href={`/trip/${tripId}/${routeSegment}`}>
           <Button data-testid={`button-add-${type.toLowerCase()}-proposal`}>
             <Icon className="w-4 h-4 mr-2" />
             Browse {type}
