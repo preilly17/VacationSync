@@ -5367,10 +5367,10 @@ function getAirlineName(code: string): string {
   return airlineMap[code] ?? code;
 }
 
-// "Active" proposals are still open for voting. Treat them as shareable so
-// manually saved hotels that sync as active proposals can still be resent to
-// the group for voting if needed.
-const SHARE_BLOCKING_STATUSES = new Set(["booked", "scheduled", "selected"]);
+// Allow travelers to resend saved stays even after they've been booked or
+// otherwise finalized. Only proposals that have been explicitly voided should
+// block sharing from the trip dashboard.
+const SHARE_BLOCKING_STATUSES = new Set(["archived", "void", "voided"]);
 
 function canShareHotelWithGroup(hotel: HotelWithDetails): boolean {
   if (!hotel.proposalId) {
@@ -5382,7 +5382,7 @@ function canShareHotelWithGroup(hotel: HotelWithDetails): boolean {
     return true;
   }
 
-  if (normalizedStatus === "canceled" || normalizedStatus === "cancelled") {
+  if (normalizedStatus.includes("cancel")) {
     return true;
   }
 
