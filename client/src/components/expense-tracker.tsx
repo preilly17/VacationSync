@@ -62,21 +62,21 @@ const summaryCardStyles: Record<
 > = {
   paid: {
     accent: "from-sky-400 via-sky-500 to-indigo-500",
-    surface: "bg-sky-500/10 dark:bg-sky-500/20",
+    surface: "bg-white/95 dark:bg-slate-950/50",
     icon: "bg-sky-500/15 text-sky-700 dark:bg-sky-500/25 dark:text-sky-100",
     focusRing: "focus-visible:ring-sky-500",
     dot: "bg-sky-500",
   },
   owe: {
     accent: "from-amber-400 via-orange-400 to-orange-500",
-    surface: "bg-amber-500/10 dark:bg-amber-500/20",
+    surface: "bg-white/95 dark:bg-slate-950/50",
     icon: "bg-amber-500/15 text-amber-700 dark:bg-amber-500/25 dark:text-amber-100",
     focusRing: "focus-visible:ring-amber-500",
     dot: "bg-amber-500",
   },
   owed: {
     accent: "from-emerald-400 via-emerald-500 to-teal-500",
-    surface: "bg-emerald-500/10 dark:bg-emerald-500/20",
+    surface: "bg-white/95 dark:bg-slate-950/50",
     icon: "bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-100",
     focusRing: "focus-visible:ring-emerald-500",
     dot: "bg-emerald-500",
