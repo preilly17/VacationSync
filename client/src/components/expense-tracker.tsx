@@ -892,7 +892,7 @@ export function ExpenseTracker({ tripId, user }: ExpenseTrackerProps) {
         <div
           role="group"
           tabIndex={0}
-          className="group relative overflow-hidden rounded-2xl border border-border/70 bg-indigo-500/5 p-5 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-28px_rgba(15,23,42,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-[#6366f1] dark:border-white/10 dark:bg-indigo-500/15 dark:shadow-[0_32px_56px_-30px_rgba(0,0,0,0.7)] dark:hover:shadow-[0_34px_60px_-26px_rgba(0,0,0,0.75)]"
+          className="group relative overflow-hidden rounded-2xl border border-border/70 bg-white/95 p-5 shadow-[0_20px_44px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-[3px] hover:shadow-[0_22px_48px_-28px_rgba(15,23,42,0.55)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-[#6366f1] dark:border-white/10 dark:bg-slate-950/50 dark:shadow-[0_28px_54px_-32px_rgba(0,0,0,0.68)] dark:hover:shadow-[0_30px_58px_-28px_rgba(0,0,0,0.72)]"
         >
           <span
             aria-hidden
