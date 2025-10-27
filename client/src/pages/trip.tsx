@@ -1820,6 +1820,13 @@ export default function Trip() {
   }
 
   // MOBILE-ONLY: Force Safari to respect viewport height on mobile.
+  const navButtonBaseClasses =
+    "w-full flex items-center px-4 py-3 text-left rounded-xl transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70";
+  const navButtonInactiveClasses =
+    "text-white/80 hover:text-white hover:bg-white/10 hover:ring-1 hover:ring-white/30";
+  const navButtonActiveClasses =
+    "bg-white/20 text-white shadow-lg shadow-black/10 ring-1 ring-white/45 backdrop-blur-sm";
+
   return (
     <>
       <div className="min-h-dvh md:min-h-screen bg-neutral-100">
@@ -1835,149 +1842,138 @@ export default function Trip() {
           <div className="md:flex md:h-screen">
             {/* Vertical Tab Navigation */}
             <aside
-              className="hidden md:flex w-[240px] shrink-0 flex-col border-r border-gray-200 bg-white md:sticky md:top-0 md:h-screen md:overflow-y-auto md:overflow-x-hidden md:self-start md:z-20"
+              className="hidden md:flex w-[240px] shrink-0 flex-col border border-sidebar-border/70 trip-themed-nav md:sticky md:top-0 md:h-screen md:overflow-y-auto md:overflow-x-hidden md:self-start md:z-20"
               data-tutorial="trip-navigation"
             >
               <div className="p-6">
-                <h2 className="text-lg font-semibold text-neutral-900 mb-4">Trip Sections</h2>
+                <h2 className="text-lg font-semibold text-white drop-shadow-sm mb-4">Trip Sections</h2>
                 <nav className="space-y-2">
                   {/* 1. Group Calendar */}
                   <button
                     onClick={() => setActiveTab("calendar")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "calendar" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "calendar" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                   >
-                    <Calendar className="w-5 h-5 mr-3" />
+                    <Calendar className="w-5 h-5 mr-3 text-current" />
                     Group Calendar
                   </button>
                   {/* 2. My Schedule */}
                   <button
                     onClick={() => setActiveTab("schedule")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "schedule"
-                        ? "bg-primary text-white"
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "schedule" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                     data-onboarding="personal-schedule"
                   >
-                    <UserIcon className="w-5 h-5 mr-3" />
+                    <UserIcon className="w-5 h-5 mr-3 text-current" />
                     My Schedule
                   </button>
                   {/* 3. Proposals */}
                   <button
                     onClick={() => setActiveTab("proposals")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "proposals" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "proposals" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                     data-testid="button-proposals"
                   >
-                    <CheckCircle className="w-5 h-5 mr-3" />
+                    <CheckCircle className="w-5 h-5 mr-3 text-current" />
                     Proposals
                   </button>
                   {/* 4. Packing List */}
                   <button
                     onClick={() => setActiveTab("packing")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "packing" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "packing" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                   >
-                    <Package className="w-5 h-5 mr-3" />
+                    <Package className="w-5 h-5 mr-3 text-current" />
                     Packing List
                   </button>
                   {/* 5. Flights */}
                   <button
                     onClick={() => setActiveTab("flights")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "flights" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "flights" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                     data-tutorial="flights-tab"
                   >
-                    <Plane className="w-5 h-5 mr-3" />
+                    <Plane className="w-5 h-5 mr-3 text-current" />
                     Flights
                   </button>
                   {/* 6. Accommodations */}
                   <button
                     onClick={() => setActiveTab("hotels")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "hotels"
-                        ? "bg-primary text-white"
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "hotels" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                     data-tutorial="hotels-tab"
                   >
-                    <Hotel className="w-5 h-5 mr-3" />
+                    <Hotel className="w-5 h-5 mr-3 text-current" />
                     Accommodations
                   </button>
                   {/* 7. Discover Activities */}
                   <button
                     onClick={() => setActiveTab("activities")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "activities" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "activities" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                     data-tutorial="activities-tab"
                   >
-                    <MapPin className="w-5 h-5 mr-3" />
+                    <MapPin className="w-5 h-5 mr-3 text-current" />
                     Discover Activities
                   </button>
                   {/* 8. Restaurants */}
                   <button
                     onClick={() => setActiveTab("restaurants")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "restaurants" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "restaurants" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                   >
-                    <Utensils className="w-5 h-5 mr-3" />
+                    <Utensils className="w-5 h-5 mr-3 text-current" />
                     Restaurants
                   </button>
                   {/* 9. Groceries */}
                   <button
                     onClick={() => setActiveTab("groceries")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "groceries" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "groceries" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                   >
-                    <ShoppingCart className="w-5 h-5 mr-3" />
+                    <ShoppingCart className="w-5 h-5 mr-3 text-current" />
                     Groceries
                   </button>
                   {/* 10. Expenses */}
                   <button
                     onClick={() => setActiveTab("expenses")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "expenses" 
-                        ? "bg-primary text-white" 
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "expenses" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                     data-tutorial="expenses-tab"
                   >
-                    <DollarSign className="w-5 h-5 mr-3" />
+                    <DollarSign className="w-5 h-5 mr-3 text-current" />
                     Expenses
                   </button>
                   {/* 11. Wish List */}
                   <button
                     onClick={() => setActiveTab("wish-list")}
-                    className={`w-full flex items-center px-4 py-3 text-left rounded-lg transition-colors ${
-                      activeTab === "wish-list"
-                        ? "bg-primary text-white"
-                        : "text-neutral-600 hover:bg-gray-50 hover:text-neutral-900"
-                    }`}
+                    className={cn(
+                      navButtonBaseClasses,
+                      activeTab === "wish-list" ? navButtonActiveClasses : navButtonInactiveClasses,
+                    )}
                     data-testid="button-wish-list"
                   >
-                    <Sparkles className="w-5 h-5 mr-3" />
+                    <Sparkles className="w-5 h-5 mr-3 text-current" />
                     Wish List
                   </button>
                 </nav>
