@@ -918,7 +918,7 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="relative overflow-hidden trip-themed-card border border-transparent p-6 shadow-sm">
+      <Card className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-neutral-900">
@@ -1035,7 +1035,7 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
           />
         </div>
       ) : ideas.length === 0 ? (
-        <Card className="flex flex-col items-center justify-center gap-4 border border-dashed border-neutral-300 bg-neutral-50 p-10 text-center">
+        <Card className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-neutral-300 bg-white p-10 text-center shadow-sm">
           <Sparkles className="h-10 w-10 text-primary" />
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">
@@ -1341,7 +1341,7 @@ function WishListIdeaCard({
   };
 
   return (
-    <Card className="relative overflow-hidden trip-themed-card border border-transparent p-6 shadow-sm">
+    <Card className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
       <div className="flex flex-col gap-5 md:flex-row">
         {previewImage && (
           <div className="md:w-44">
