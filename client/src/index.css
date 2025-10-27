@@ -156,13 +156,13 @@
   overflow: hidden;
   border-color: rgba(255, 255, 255, 0.32);
   --sidebar-background: transparent;
-  --sidebar-foreground: rgba(255, 255, 255, 0.94);
-  --sidebar-primary: rgba(255, 255, 255, 0.24);
-  --sidebar-primary-foreground: rgba(15, 23, 42, 0.92);
-  --sidebar-accent: rgba(255, 255, 255, 0.16);
-  --sidebar-accent-foreground: rgba(255, 255, 255, 0.92);
-  --sidebar-border: rgba(255, 255, 255, 0.32);
-  --sidebar-ring: rgba(255, 255, 255, 0.6);
+  --sidebar-foreground: rgba(15, 23, 42, 0.9);
+  --sidebar-primary: rgba(37, 99, 235, 0.14);
+  --sidebar-primary-foreground: rgba(248, 250, 255, 0.98);
+  --sidebar-accent: rgba(15, 118, 110, 0.08);
+  --sidebar-accent-foreground: rgba(30, 41, 59, 0.9);
+  --sidebar-border: rgba(37, 99, 235, 0.16);
+  --sidebar-ring: rgba(37, 99, 235, 0.35);
   background-color: hsl(210 40% 98%);
   background-image:
     radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0) 52%),
