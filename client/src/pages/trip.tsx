@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Calendar,
@@ -4403,189 +4404,6 @@ function FlightCoordination({
         {/* Top-right Manual Entry button removed per requirements */}
       </div>
 
-      <div className="space-y-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-lg font-semibold">Manually Added Flights</h3>
-          {manualFlights.length > 0 ? (
-            <Button variant="outline" size="sm" onClick={openManualFlightForm}>
-              Add flight
-            </Button>
-          ) : null}
-        </div>
-
-        {manualFlights.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <p className="text-base font-medium text-neutral-900">No manual flights yet</p>
-                <p className="text-sm text-muted-foreground">
-                  Log flights you've booked elsewhere so the group can stay in sync.
-                </p>
-              </div>
-              <Button onClick={openManualFlightForm}>Add a flight</Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid gap-4">
-            {manualFlights.map((flight) => {
-              const formattedDepartureLabel = flight.departureCode
-                ? `${flight.departureAirport ?? flight.departureCode} (${flight.departureCode})`
-                : flight.departureAirport || flight.departureCode || "TBD";
-              const formattedArrivalLabel = flight.arrivalCode
-                ? `${flight.arrivalAirport ?? flight.arrivalCode} (${flight.arrivalCode})`
-                : flight.arrivalAirport || flight.arrivalCode || "TBD";
-              const departureTimeLabel = formatFlightProposalDateTime(flight.departureTime);
-              const arrivalTimeLabel = formatFlightProposalDateTime(flight.arrivalTime);
-              const priceLabel = formatCurrency(flight.price, {
-                currency: flight.currency ?? "USD",
-                fallback: "—",
-              });
-              const permissions = getFlightPermissions(flight);
-
-              return (
-                <Card key={flight.id}>
-                  <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-2">
-                      <CardTitle className="text-base font-semibold text-neutral-900">
-                        {[flight.airline, flight.flightNumber].filter(Boolean).join(" ") || "Flight"}
-                      </CardTitle>
-                      <CardDescription className="text-sm text-muted-foreground">
-                        {formattedDepartureLabel} → {formattedArrivalLabel}
-                      </CardDescription>
-                      <div className="flex flex-wrap gap-2">
-                        {flight.flightType ? (
-                          <Badge variant="secondary">{formatTitleCase(flight.flightType)}</Badge>
-                        ) : null}
-                        {flight.status ? (
-                          <Badge variant="outline" className="capitalize">
-                            {formatTitleCase(flight.status)}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {permissions.canEdit ? (
-                        <Button variant="outline" size="sm" onClick={() => handleEditFlight(flight)}>
-                          Edit
-                        </Button>
-                      ) : null}
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleProposeFlight(flight)}
-                        disabled={
-                          Boolean(flight.proposalId) ||
-                          (proposeFlightMutation.isPending && proposingFlightId === flight.id)
-                        }
-                      >
-                        {proposeFlightMutation.isPending && proposingFlightId === flight.id ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Proposing...
-                          </>
-                        ) : flight.proposalId ? (
-                          "Proposed"
-                        ) : (
-                          "Propose to Group"
-                        )}
-                      </Button>
-                      {permissions.canDelete ? (
-                        <AlertDialog>
-                          {permissions.isAdminOverride ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AlertDialogTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                                  >
-                                    Delete
-                                  </Button>
-                                </AlertDialogTrigger>
-                              </TooltipTrigger>
-                              <TooltipContent>Admin</TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <AlertDialogTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                              >
-                                Delete
-                              </Button>
-                            </AlertDialogTrigger>
-                          )}
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete flight?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will remove the flight from your trip plan. This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => deleteFlightMutation.mutate(flight.id)}
-                                className="bg-red-600 hover:bg-red-700"
-                                disabled={deleteFlightMutation.isPending}
-                              >
-                                Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      ) : null}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase text-muted-foreground">Departure</p>
-                        <p className="text-sm font-medium text-neutral-900">{formattedDepartureLabel}</p>
-                        <p className="text-sm text-muted-foreground">{departureTimeLabel}</p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold uppercase text-muted-foreground">Arrival</p>
-                        <p className="text-sm font-medium text-neutral-900">{formattedArrivalLabel}</p>
-                        <p className="text-sm text-muted-foreground">{arrivalTimeLabel}</p>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase text-muted-foreground">Price</p>
-                        <p className="text-sm font-medium text-neutral-900">{priceLabel}</p>
-                      </div>
-                      {flight.bookingReference ? (
-                        <div>
-                          <p className="text-xs font-semibold uppercase text-muted-foreground">Booking ref</p>
-                          <p className="text-sm font-medium text-neutral-900">{flight.bookingReference}</p>
-                        </div>
-                      ) : null}
-                      {flight.seatClass ? (
-                        <div>
-                          <p className="text-xs font-semibold uppercase text-muted-foreground">Seat class</p>
-                          <p className="text-sm font-medium text-neutral-900">{formatTitleCase(flight.seatClass)}</p>
-                        </div>
-                      ) : null}
-                      {flight.aircraft ? (
-                        <div>
-                          <p className="text-xs font-semibold uppercase text-muted-foreground">Aircraft</p>
-                          <p className="text-sm font-medium text-neutral-900">{flight.aircraft}</p>
-                        </div>
-                      ) : null}
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-gray-200" />
-
       <Card>
         <CardContent className="space-y-6 p-6">
           <form
@@ -4906,12 +4724,198 @@ function FlightCoordination({
               <p className="text-sm text-gray-600">Search for flights to start coordinating with your group.</p>
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+      </CardContent>
+    </Card>
 
-      {searchResults.length === 0 && !isSearching && !hasSearched && flights.length > 0 && (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="text-lg font-semibold">Manually Added Flights</h3>
+        {manualFlights.length > 0 ? (
+          <Button variant="outline" size="sm" onClick={openManualFlightForm}>
+            Add flight
+          </Button>
+        ) : null}
+      </div>
+
+      {manualFlights.length === 0 ? (
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <p className="text-base font-medium text-neutral-900">No manual flights yet</p>
+              <p className="text-sm text-muted-foreground">
+                Log flights you've booked elsewhere so the group can stay in sync.
+              </p>
+            </div>
+            <Button onClick={openManualFlightForm}>Add a flight</Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Accordion type="multiple" className="space-y-3">
+          {manualFlights.map((flight) => {
+            const formattedDepartureLabel = flight.departureCode
+              ? `${flight.departureAirport ?? flight.departureCode} (${flight.departureCode})`
+              : flight.departureAirport || flight.departureCode || "TBD";
+            const formattedArrivalLabel = flight.arrivalCode
+              ? `${flight.arrivalAirport ?? flight.arrivalCode} (${flight.arrivalCode})`
+              : flight.arrivalAirport || flight.arrivalCode || "TBD";
+            const departureTimeLabel = formatFlightProposalDateTime(flight.departureTime);
+            const arrivalTimeLabel = formatFlightProposalDateTime(flight.arrivalTime);
+            const priceLabel = formatCurrency(flight.price, {
+              currency: flight.currency ?? "USD",
+              fallback: "—",
+            });
+            const permissions = getFlightPermissions(flight);
+            const isProposing = proposeFlightMutation.isPending && proposingFlightId === flight.id;
+
+            return (
+              <AccordionItem
+                key={flight.id}
+                value={`flight-${flight.id}`}
+                className="overflow-hidden rounded-lg border bg-card"
+              >
+                <AccordionTrigger className="flex w-full flex-col items-start gap-2 px-4 py-4 text-left text-base font-semibold text-neutral-900 hover:no-underline sm:flex-row sm:items-center sm:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{[flight.airline, flight.flightNumber].filter(Boolean).join(" ") || "Flight"}</span>
+                      {flight.flightType ? (
+                        <Badge variant="secondary">{formatTitleCase(flight.flightType)}</Badge>
+                      ) : null}
+                      {flight.status ? (
+                        <Badge variant="outline" className="capitalize">
+                          {formatTitleCase(flight.status)}
+                        </Badge>
+                      ) : null}
+                    </div>
+                    <p className="text-sm font-normal text-muted-foreground">
+                      {formattedDepartureLabel} → {formattedArrivalLabel}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-start gap-1 text-sm font-normal text-muted-foreground sm:items-end">
+                    <span>{departureTimeLabel}</span>
+                    <span>{arrivalTimeLabel}</span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
+                    {permissions.canEdit ? (
+                      <Button variant="outline" size="sm" onClick={() => handleEditFlight(flight)}>
+                        Edit
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleProposeFlight(flight)}
+                      disabled={Boolean(flight.proposalId) || isProposing}
+                    >
+                      {isProposing ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Proposing...
+                        </>
+                      ) : flight.proposalId ? (
+                        "Proposed"
+                      ) : (
+                        "Propose to Group"
+                      )}
+                    </Button>
+                    {permissions.canDelete ? (
+                      <AlertDialog>
+                        {permissions.isAdminOverride ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                >
+                                  Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>Admin</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            >
+                              Delete
+                            </Button>
+                          </AlertDialogTrigger>
+                        )}
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete flight?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will remove the flight from your trip plan. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteFlightMutation.mutate(flight.id)}
+                              className="bg-red-600 hover:bg-red-700"
+                              disabled={deleteFlightMutation.isPending}
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Departure</p>
+                      <p className="text-sm font-medium text-neutral-900">{formattedDepartureLabel}</p>
+                      <p className="text-sm text-muted-foreground">{departureTimeLabel}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Arrival</p>
+                      <p className="text-sm font-medium text-neutral-900">{formattedArrivalLabel}</p>
+                      <p className="text-sm text-muted-foreground">{arrivalTimeLabel}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Price</p>
+                      <p className="text-sm font-medium text-neutral-900">{priceLabel}</p>
+                    </div>
+                    {flight.bookingReference ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Booking ref</p>
+                        <p className="text-sm font-medium text-neutral-900">{flight.bookingReference}</p>
+                      </div>
+                    ) : null}
+                    {flight.seatClass ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Seat class</p>
+                        <p className="text-sm font-medium text-neutral-900">{formatTitleCase(flight.seatClass)}</p>
+                      </div>
+                    ) : null}
+                    {flight.aircraft ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Aircraft</p>
+                        <p className="text-sm font-medium text-neutral-900">{flight.aircraft}</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
+        </Accordion>
+      )}
+    </div>
+
+    {searchResults.length === 0 && !isSearching && !hasSearched && flights.length > 0 && (
+      <Card>
+        <CardContent className="p-6">
             <div className="space-y-4">
               {flights.slice(0, 3).map((flight: any) => (
                 <div key={flight.id} className="flex items-center justify-between rounded-lg border p-4">
