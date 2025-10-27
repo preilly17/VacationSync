@@ -740,13 +740,13 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
       <div
         key={item.id}
         className={cn(
-          "group flex items-start gap-3 rounded-md border border-transparent bg-transparent px-3 py-2 transition-all duration-200",
-          "hover:border-sky-500/30 hover:bg-sky-500/5 dark:hover:border-sky-500/30 dark:hover:bg-sky-500/10",
-          "focus-within:border-sky-500/30 focus-within:bg-sky-500/5 dark:focus-within:border-sky-500/30 dark:focus-within:bg-sky-500/10",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-sky-500",
-          "focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-offset-background focus-within:ring-sky-500",
+          "group flex items-start gap-3 rounded-xl border border-border/60 bg-white px-4 py-3 shadow-sm transition-all duration-200 dark:border-white/10 dark:bg-slate-950",
+          "hover:border-sky-500/40 hover:bg-sky-50 hover:shadow-md dark:hover:border-sky-500/40 dark:hover:bg-sky-900/40",
+          "focus-within:border-sky-500/50 focus-within:bg-sky-50 focus-within:shadow-md dark:focus-within:border-sky-500/50 dark:focus-within:bg-sky-900/40",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "focus-within:outline-none focus-within:ring-2 focus-within:ring-sky-500 focus-within:ring-offset-2 focus-within:ring-offset-background",
           item.purchased
-            ? "border-sky-500/40 bg-sky-500/10 dark:border-sky-500/40 dark:bg-sky-500/20"
+            ? "border-sky-500/50 bg-sky-50 dark:border-sky-500/50 dark:bg-sky-900/50"
             : undefined,
         )}
       >
@@ -828,13 +828,13 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
   return (
     <TooltipProvider delayDuration={0}>
       <div
-        className="relative overflow-hidden rounded-3xl border border-border/70 bg-indigo-500/5 p-4 shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm sm:p-6 dark:border-white/10 dark:bg-indigo-500/15 dark:shadow-[0_32px_56px_-30px_rgba(0,0,0,0.7)]"
+        className="relative overflow-hidden rounded-[2.75rem] border border-border/70 bg-gradient-to-br from-indigo-500/25 via-sky-500/15 to-transparent p-[1.5px] shadow-[0_24px_48px_-32px_rgba(15,23,42,0.5)] sm:p-[2px] dark:border-white/10 dark:from-indigo-500/30 dark:via-sky-500/20"
       >
-        <span
+        <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.18),_transparent_55%)]"
         />
-        <div className="space-y-10">
+        <div className="relative rounded-[1.75rem] bg-white p-6 shadow-sm sm:p-8 dark:bg-slate-950">
           <div className="flex flex-col gap-2 pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div>
               <h1 className="mb-4 text-3xl font-semibold leading-[1.1]">Grocery List</h1>
@@ -851,18 +851,12 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
             </Button>
           </div>
 
-          <section
-            className="group relative overflow-hidden rounded-2xl border border-border/70 bg-white shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/60"
-          >
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
-            />
-            <div className="px-4 pb-4 pt-[calc(1rem+6px)]">
-              <header>
-                <h2 className="mb-3 text-xl font-semibold leading-[1.22]">Items</h2>
+          <div className="space-y-8">
+            <section className="rounded-2xl border border-border/60 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
+              <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-semibold leading-[1.22]">Items</h2>
               </header>
-              <div className="relative mb-3 max-w-md">
+              <div className="relative mt-4 max-w-md">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={searchTerm}
@@ -872,68 +866,62 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
                 />
               </div>
 
-              {isLoadingGroceries ? (
-                <div className="rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
-                  Loading groceries…
-                </div>
-              ) : isGroceriesError ? (
-                <div className="space-y-3 rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
-                  <p>We couldn't load the grocery list.</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => invalidateGroceries()}
-                  >
-                    Try again
-                  </Button>
-                </div>
-              ) : filteredItems.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
-                  Nothing needed yet. Add an item or propose a group meal.
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-3">
-                    {sortedItems.map((item) => renderItemRow(item))}
+              <div className="mt-4 space-y-4">
+                {isLoadingGroceries ? (
+                  <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground dark:border-white/10 dark:bg-slate-900/60">
+                    Loading groceries…
                   </div>
-                  {purchasedItems.length > 0 && (
-                    <div className="flex justify-end pt-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleClearPurchased}
-                        disabled={isClearingPurchased}
-                      >
-                        {isClearingPurchased ? "Clearing…" : "Clear purchased"}
-                      </Button>
+                ) : isGroceriesError ? (
+                  <div className="space-y-3 rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground dark:border-white/10 dark:bg-slate-900/60">
+                    <p>We couldn't load the grocery list.</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => invalidateGroceries()}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                ) : filteredItems.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground dark:border-white/10 dark:bg-slate-900/60">
+                    Nothing needed yet. Add an item or propose a group meal.
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {sortedItems.map((item) => renderItemRow(item))}
                     </div>
-                  )}
-                </>
-              )}
-            </div>
-          </section>
+                    {purchasedItems.length > 0 && (
+                      <div className="flex justify-end pt-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleClearPurchased}
+                          disabled={isClearingPurchased}
+                        >
+                          {isClearingPurchased ? "Clearing…" : "Clear purchased"}
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </section>
 
-          <Separator />
+            <Separator />
 
-          <section
-            className="group relative overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-[0_24px_48px_-34px_rgba(15,23,42,0.45)] transition-all duration-300 hover:-translate-y-[2px] hover:shadow-[0_26px_52px_-30px_rgba(15,23,42,0.55)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/60"
-          >
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-[6px] bg-gradient-to-r from-[#f97316] via-[#f472b6] to-[#6366f1] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
-            />
-            <div className="px-4 pb-4 pt-[calc(1rem+6px)]">
+            <section className="rounded-2xl border border-border/60 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-900">
               <header>
                 <h2 className="text-xl font-semibold leading-[1.22]">Group Meals</h2>
                 <p className="mt-2 text-sm text-muted-foreground leading-[1.5]">Propose dinners and vote together.</p>
               </header>
 
               {activeMeals.length === 0 && declinedMeals.length === 0 ? (
-                <div className="mt-3 rounded-md border border-dashed border-border/60 bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
+                <div className="mt-4 rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-6 text-center text-sm text-muted-foreground dark:border-white/10 dark:bg-slate-900/60">
                   No meal ideas yet. Propose your first group dinner.
                 </div>
               ) : (
-                <div className="mt-3 space-y-3">
+                <div className="mt-4 space-y-3">
                   {activeMeals.map((meal) => (
                     <GroupMealCard
                       key={meal.id}
@@ -958,10 +946,9 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
                   ))}
                 </div>
               )}
-
               {declinedMeals.length > 0 && (
-                <div className="mt-3 overflow-hidden rounded-xl border border-border/60 bg-muted/40">
-                  <details>
+                <div className="mt-4 overflow-hidden rounded-xl border border-border/60 bg-muted/20 dark:border-white/10 dark:bg-slate-900/60">
+                  <details className="group">
                     <summary className="flex cursor-pointer items-baseline justify-between gap-3 px-4 py-3 text-sm font-medium leading-[1.22]">
                       Declined <span className="text-muted-foreground">({declinedMeals.length})</span>
                     </summary>
@@ -992,8 +979,8 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
                   </details>
                 </div>
               )}
-            </div>
-          </section>
+            </section>
+          </div>
 
           <AddItemDialog
             mode={addMode}
@@ -1015,6 +1002,7 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
       </div>
     </TooltipProvider>
   );
+
 }
 
 interface AddItemDialogProps {
