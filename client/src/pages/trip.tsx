@@ -5821,12 +5821,45 @@ function HotelBooking({
           </DropdownMenu>
         </div>
 
+        <HotelSearchPanel
+          ref={searchPanelRef}
+          tripId={tripId}
+          trip={
+            trip
+              ? {
+                  id: trip.id,
+                  name: trip.name,
+                  destination: trip.destination,
+                  startDate: trip.startDate,
+                  endDate: trip.endDate,
+                  shareCode: trip.shareCode,
+                  createdBy: trip.createdBy,
+                  createdAt: trip.createdAt ?? undefined,
+                }
+              : null
+          }
+          onLogHotelManually={openManualForm}
+          onShareHotelWithGroup={shareHotelWithGroup}
+          storeBookingIntent={storeBookingIntent}
+          hotelProposalsCount={hotelProposals.length}
+          toast={toast}
+        />
+
+        <div className="border-t border-border/60" />
+
         <div className="space-y-4">
-          <div className="space-y-1">
-            <h3 className="text-lg font-semibold text-neutral-900">Your Saved Stays</h3>
-            <p className="text-sm text-muted-foreground">
-              Reservations you’ve tracked outside of the hotel search results.
-            </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold text-neutral-900">Manually Added Stays</h3>
+              <p className="text-sm text-muted-foreground">
+                Reservations you’ve tracked outside of the hotel search results.
+              </p>
+            </div>
+            {manualHotels.length > 0 ? (
+              <Button variant="outline" onClick={openManualForm} className="sm:w-auto">
+                Add stay
+              </Button>
+            ) : null}
           </div>
 
           {manualHotels.length === 0 ? (
@@ -5844,7 +5877,7 @@ function HotelBooking({
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-3">
+            <Accordion type="multiple" className="space-y-3">
               {manualHotels.map((hotel) => {
                 const addressLine = [hotel.address, hotel.city, hotel.country]
                   .filter(Boolean)
@@ -5874,19 +5907,15 @@ function HotelBooking({
                   : null;
 
                 return (
-                  <Card key={hotel.id} className="border border-border/70 shadow-none">
-                    <CardHeader className="gap-3 space-y-0 pb-0 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="space-y-2">
-                        <CardTitle className="text-base font-medium text-neutral-900">
-                          {hotel.hotelName || "Hotel"}
-                        </CardTitle>
-                        <CardDescription className="text-sm text-muted-foreground">
-                          {addressLine || "Address TBD"}
-                        </CardDescription>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <Badge variant="secondary" className="bg-muted px-2 py-1 font-medium text-foreground/80">
-                            {checkInLabel} → {checkOutLabel}
-                          </Badge>
+                  <AccordionItem
+                    key={hotel.id}
+                    value={`hotel-${hotel.id}`}
+                    className="overflow-hidden rounded-lg border bg-card"
+                  >
+                    <AccordionTrigger className="flex w-full flex-col items-start gap-3 px-4 py-4 text-left text-base font-semibold text-neutral-900 hover:no-underline sm:flex-row sm:items-center sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{hotel.hotelName || "Hotel"}</span>
                           {statusLabel ? (
                             <Badge variant="outline" className="capitalize border-border/70 text-foreground/80">
                               {statusLabel}
@@ -5901,9 +5930,20 @@ function HotelBooking({
                             </Badge>
                           ) : null}
                         </div>
+                        <p className="text-sm font-normal text-muted-foreground">
+                          {addressLine || "Address TBD"}
+                        </p>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                        <Button variant="outline" size="sm" onClick={() => handleEditHotel(hotel)} className="h-8 px-3">
+                      <div className="flex flex-col items-start gap-1 text-sm font-normal text-muted-foreground sm:items-end">
+                        <span>
+                          {checkInLabel} → {checkOutLabel}
+                        </span>
+                        <span>{totalPriceLabel}</span>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="px-4 pb-4">
+                      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
+                        <Button variant="outline" size="sm" onClick={() => handleEditHotel(hotel)}>
                           Edit
                         </Button>
                         <Button
@@ -5914,7 +5954,6 @@ function HotelBooking({
                             !canShareWithGroup ||
                             (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
                           }
-                          className="h-8 px-3"
                         >
                           {proposeHotelMutation.isPending && proposingHotelId === hotel.id ? (
                             <>
@@ -5932,7 +5971,7 @@ function HotelBooking({
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 px-3 text-red-600 hover:bg-red-50 hover:text-red-700"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
                             >
                               Delete
                             </Button>
@@ -5957,9 +5996,8 @@ function HotelBooking({
                           </AlertDialogContent>
                         </AlertDialog>
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4 pb-4 pt-3">
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <p className="text-xs font-medium text-muted-foreground">Total price</p>
                           <p className="text-sm text-neutral-900">{totalPriceLabel}</p>
@@ -5983,39 +6021,13 @@ function HotelBooking({
                           </div>
                         ) : null}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </AccordionContent>
+                  </AccordionItem>
                 );
               })}
-            </div>
+            </Accordion>
           )}
         </div>
-
-        <div className="border-t border-border/60" />
-
-        <HotelSearchPanel
-          ref={searchPanelRef}
-          tripId={tripId}
-          trip={
-            trip
-              ? {
-                  id: trip.id,
-                  name: trip.name,
-                  destination: trip.destination,
-                  startDate: trip.startDate,
-                  endDate: trip.endDate,
-                  shareCode: trip.shareCode,
-                  createdBy: trip.createdBy,
-                  createdAt: trip.createdAt ?? undefined,
-                }
-              : null
-          }
-          onLogHotelManually={openManualForm}
-          onShareHotelWithGroup={shareHotelWithGroup}
-          storeBookingIntent={storeBookingIntent}
-          hotelProposalsCount={hotelProposals.length}
-          toast={toast}
-        />
 
         <Dialog
           open={isManualHotelFormOpen}
