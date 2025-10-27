@@ -2320,7 +2320,7 @@ export default function Trip() {
                               onDayOverflowClick={handleGroupDayOverflow}
                             />
                             {filteredActivities.length === 0 && (
-                              <div className="relative mt-6 overflow-hidden rounded-[24px] border border-[color:var(--calendar-line)]/60 bg-[var(--calendar-canvas)]/90 py-12 text-center shadow-[0_22px_60px_-28px_rgba(16,24,40,0.35)]">
+                              <div className="trip-calendar-panel relative mt-6 overflow-hidden rounded-[24px] border border-[color:var(--calendar-line)]/60 py-12 text-center shadow-[0_22px_60px_-28px_rgba(16,24,40,0.35)]">
                                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_62%)] dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.26),transparent_62%)]" />
                                 <div className="relative z-10 mx-auto flex max-w-xl flex-col items-center gap-5 px-6">
                                   <div className="flex h-16 w-16 items-center justify-center rounded-full border border-[color:var(--calendar-line)]/50 bg-[var(--calendar-surface)] shadow-[0_18px_40px_-24px_rgba(16,24,40,0.45)]">

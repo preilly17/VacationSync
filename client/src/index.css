@@ -141,6 +141,14 @@
   backdrop-filter: blur(6px);
 }
 
+.trip-calendar-panel {
+  background-color: hsl(214 100% 97% / 0.92);
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.18), transparent 55%),
+    radial-gradient(circle at 82% 2%, rgba(168, 85, 247, 0.16), transparent 58%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(236, 252, 255, 0.9));
+}
+
 .trip-themed-card::after {
   content: "";
   position: absolute;
@@ -234,6 +242,14 @@
     radial-gradient(circle at 90% 0%, rgba(129, 140, 248, 0.24), rgba(129, 140, 248, 0) 58%),
     linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.86));
   box-shadow: 0 28px 52px -30px rgba(2, 6, 23, 0.85);
+}
+
+.dark .trip-calendar-panel {
+  background-color: hsla(222 47% 12% / 0.92);
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.26), transparent 55%),
+    radial-gradient(circle at 82% 2%, rgba(129, 140, 248, 0.22), transparent 58%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.9));
 }
 
 .dark .trip-themed-card::after {
