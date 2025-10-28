@@ -1654,14 +1654,11 @@ export default function Home() {
             </div>
           </section>
 
-          <section aria-labelledby="dashboard-activity" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 id="dashboard-activity" className="text-2xl font-semibold text-slate-900">
-                Recent activity
-              </h2>
-            </div>
-            <DashboardNotifications memberLookup={memberLookup} tripLookup={tripLookup} />
-          </section>
+          <DashboardNotifications
+            sectionId="dashboard-activity"
+            memberLookup={memberLookup}
+            tripLookup={tripLookup}
+          />
 
           <section
             aria-labelledby="dashboard-highlights"
