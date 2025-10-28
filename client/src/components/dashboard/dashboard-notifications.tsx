@@ -53,6 +53,7 @@ export type DashboardNotificationTripLookup = Record<
 interface DashboardNotificationsProps {
   memberLookup: DashboardNotificationMemberLookup;
   tripLookup: DashboardNotificationTripLookup;
+  sectionId?: string;
 }
 
 type NotificationWithDetails = Notification & {
@@ -81,8 +82,9 @@ const MAX_NOTIFICATIONS = 25;
 export function DashboardNotifications({
   memberLookup,
   tripLookup,
+  sectionId = "dashboard-activity",
 }: DashboardNotificationsProps) {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
 
   const {
     data: notifications = [],
@@ -95,9 +97,17 @@ export function DashboardNotifications({
     refetchInterval: 120_000,
   });
 
+  const relevantNotifications = useMemo(
+    () =>
+      user?.id
+        ? notifications.filter((notification) => notification.userId === user.id)
+        : [],
+    [notifications, user?.id],
+  );
+
   const feedItems = useMemo(
-    () => notifications.slice(0, MAX_NOTIFICATIONS),
-    [notifications],
+    () => relevantNotifications.slice(0, MAX_NOTIFICATIONS),
+    [relevantNotifications],
   );
 
   const normalizedNameEntries = useMemo(
@@ -160,35 +170,41 @@ export function DashboardNotifications({
     </div>
   );
 
+  const shouldHideWidget =
+    !authLoading &&
+    !isLoading &&
+    !error &&
+    (!user || relevantNotifications.length === 0);
+
+  if (shouldHideWidget) {
+    return null;
+  }
+
   return (
-    <Card className="rounded-2xl border border-slate-200/80 bg-white p-0 shadow-sm">
+    <section aria-labelledby={sectionId} className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 id={sectionId} className="text-2xl font-semibold text-slate-900">
+          Notifications
+        </h2>
+      </div>
+      <Card className="rounded-2xl border border-slate-200/80 bg-white p-0 shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">Trip activity</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Notifications</h3>
           <p className="text-sm text-slate-500">Catch up on the latest updates from your crew.</p>
         </div>
-        {feedItems.length > 0 ? (
+        {relevantNotifications.length > 0 ? (
           <Badge className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] text-xs font-semibold text-white shadow-sm">
-            {feedItems.length}
+            {relevantNotifications.length}
           </Badge>
         ) : null}
       </div>
       <div className="px-2 pb-4 pt-2">
-        {isLoading ? (
+        {authLoading || isLoading ? (
           renderSkeleton()
         ) : error ? (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-6 text-sm text-amber-900">
             We couldn’t load your activity feed right now. Try refreshing the page.
-          </div>
-        ) : feedItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-14 text-center">
-            <Sparkles className="h-6 w-6 text-[#ff7e5f]" aria-hidden="true" />
-            <div className="space-y-1">
-              <p className="text-base font-medium text-slate-700">No updates just yet</p>
-              <p className="text-sm text-slate-500">
-                New trip activity will show up here as your team plans together.
-              </p>
-            </div>
           </div>
         ) : (
           <ScrollArea className="max-h-[420px] pr-4">
@@ -292,7 +308,8 @@ export function DashboardNotifications({
           </ScrollArea>
         )}
       </div>
-    </Card>
+      </Card>
+    </section>
   );
 }
 
