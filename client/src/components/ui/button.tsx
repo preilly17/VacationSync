@@ -10,7 +10,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "sunset-gradient text-white shadow-[0_20px_60px_-25px_rgba(244,114,182,0.55)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_32px_90px_-32px_rgba(244,114,182,0.55)] ring-offset-slate-900",
+          "trip-page-gradient text-white shadow-[0_20px_60px_-25px_rgba(99,102,241,0.48)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_32px_90px_-32px_rgba(79,70,229,0.48)] ring-offset-slate-900",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:

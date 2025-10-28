@@ -79,6 +79,11 @@ type ActorDetails = DashboardNotificationMemberProfile & {
 
 const MAX_NOTIFICATIONS = 25;
 
+const DASHBOARD_ACCENT_GRADIENT = "from-[#38bdf8] via-[#6366f1] to-[#a855f7]";
+const DASHBOARD_ACCENT_GRADIENT_SOFT = "from-[#60a5fa] via-[#818cf8] to-[#c4b5fd]";
+const DASHBOARD_ACCENT_GRADIENT_BOLD = "from-[#2563eb] via-[#4f46e5] to-[#7c3aed]";
+const DASHBOARD_ACCENT_GRADIENT_AQUA = "from-[#22d3ee] via-[#38bdf8] to-[#6366f1]";
+
 export function DashboardNotifications({
   memberLookup,
   tripLookup,
@@ -187,14 +192,14 @@ export function DashboardNotifications({
           Notifications
         </h2>
       </div>
-      <Card className="rounded-2xl border border-slate-200/80 bg-white p-0 shadow-sm">
+      <Card className="dashboard-themed-card p-0">
       <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Notifications</h3>
           <p className="text-sm text-slate-500">Catch up on the latest updates from your crew.</p>
         </div>
         {relevantNotifications.length > 0 ? (
-          <Badge className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] text-xs font-semibold text-white shadow-sm">
+          <Badge className="rounded-full bg-gradient-to-r from-[#38bdf8] via-[#6366f1] to-[#a855f7] text-xs font-semibold text-white shadow-sm">
             {relevantNotifications.length}
           </Badge>
         ) : null}
@@ -231,7 +236,7 @@ export function DashboardNotifications({
                 const timestamp = formatNotificationTimestamp(notification.createdAt);
                 const baseClasses = cn(
                   "group relative flex items-start gap-4 rounded-2xl border border-transparent bg-white/40 px-4 py-3 transition-colors",
-                  "hover:border-slate-200 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ff7e5f]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+                  "hover:border-slate-200 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
                 );
 
                 const content = (
@@ -251,7 +256,7 @@ export function DashboardNotifications({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-semibold text-slate-900">{tripName}</span>
                         {notification.isRead ? null : (
-                          <span className="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          <span className="flex items-center gap-1 rounded-full bg-gradient-to-r from-[#38bdf8] via-[#6366f1] to-[#a855f7] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                             New
                           </span>
                         )}
@@ -278,14 +283,14 @@ export function DashboardNotifications({
                           </span>
                         </div>
                         {timestamp ? (
-                          <span className="bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] bg-clip-text font-semibold text-transparent">
+                          <span className="bg-gradient-to-r from-[#38bdf8] via-[#6366f1] to-[#a855f7] bg-clip-text font-semibold text-transparent">
                             {timestamp}
                           </span>
                         ) : null}
                       </div>
                     </div>
                     {href ? (
-                      <div className="ml-auto flex h-full items-center text-slate-300 transition-colors group-hover:text-[#ff7e5f]">
+                      <div className="ml-auto flex h-full items-center text-slate-300 transition-colors group-hover:text-[#6366f1]">
                         <ChevronRight className="h-4 w-4" aria-hidden="true" />
                       </div>
                     ) : null}
@@ -416,7 +421,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("flight") || combined.includes("flight")) {
     return {
       icon: type.includes("landing") ? PlaneLanding : type.includes("takeoff") ? PlaneTakeoff : Plane,
-      gradient: "from-[#4facfe] to-[#00f2fe]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_AQUA,
       view: "flights",
       label: "Flight update",
     };
@@ -425,7 +430,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("hotel") || combined.includes("hotel")) {
     return {
       icon: Hotel,
-      gradient: "from-[#f093fb] to-[#f5576c]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_SOFT,
       view: "hotels",
       label: "Hotel update",
     };
@@ -434,7 +439,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("restaurant") || combined.includes("restaurant") || combined.includes("dinner")) {
     return {
       icon: Utensils,
-      gradient: "from-[#f83600] to-[#f9d423]",
+      gradient: DASHBOARD_ACCENT_GRADIENT,
       view: "restaurants",
       label: "Dining update",
     };
@@ -443,7 +448,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("grocery") || combined.includes("grocery") || combined.includes("shopping")) {
     return {
       icon: ShoppingCart,
-      gradient: "from-[#0ba360] to-[#3cba92]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_AQUA,
       view: "groceries",
       label: "Grocery update",
     };
@@ -452,7 +457,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("expense") || type.includes("payment") || combined.includes("expense") || combined.includes("payment")) {
     return {
       icon: DollarSign,
-      gradient: "from-[#f6d365] to-[#fda085]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_BOLD,
       view: "expenses",
       label: "Expense update",
     };
@@ -461,7 +466,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("member") || combined.includes("member") || combined.includes("invite")) {
     return {
       icon: Users,
-      gradient: "from-[#a18cd1] to-[#fbc2eb]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_SOFT,
       view: "members",
       label: "Crew update",
     };
@@ -476,7 +481,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   ) {
     return {
       icon: Calendar,
-      gradient: "from-[#ff7e5f] to-[#feb47b]",
+      gradient: DASHBOARD_ACCENT_GRADIENT,
       view: "activities",
       label: "Activity update",
     };
@@ -485,7 +490,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("packing") || combined.includes("packing")) {
     return {
       icon: ClipboardList,
-      gradient: "from-[#43cea2] to-[#185a9d]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_BOLD,
       view: "packing",
       label: "Packing list",
     };
@@ -494,7 +499,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("proposal") || combined.includes("proposal")) {
     return {
       icon: MessageSquare,
-      gradient: "from-[#667eea] to-[#764ba2]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_SOFT,
       view: "proposals",
       label: "Proposal update",
     };
@@ -503,7 +508,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("itinerary") || combined.includes("itinerary")) {
     return {
       icon: Compass,
-      gradient: "from-[#00c6ff] to-[#0072ff]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_AQUA,
       view: "schedule",
       label: "Itinerary",
     };
@@ -512,7 +517,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("lodging") || combined.includes("lodging")) {
     return {
       icon: Building2,
-      gradient: "from-[#f6d365] to-[#fda085]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_SOFT,
       view: "hotels",
       label: "Stay update",
     };
@@ -521,7 +526,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
   if (type.includes("checklist") || combined.includes("checklist")) {
     return {
       icon: CheckSquare,
-      gradient: "from-[#11998e] to-[#38ef7d]",
+      gradient: DASHBOARD_ACCENT_GRADIENT_AQUA,
       view: "packing",
       label: "Checklist",
     };
@@ -529,7 +534,7 @@ function resolveNotificationVisual(notification: NotificationWithDetails): Notif
 
   return {
     icon: Sparkles,
-    gradient: "from-[#654ea3] to-[#ff7e5f]",
+    gradient: DASHBOARD_ACCENT_GRADIENT,
     view: null,
     label: "Trip update",
   };

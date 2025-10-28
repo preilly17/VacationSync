@@ -48,6 +48,13 @@
   --on-header-muted: rgba(248, 250, 255, 0.65);
   --header-shadow: 0 8px 24px -12px rgba(15, 23, 42, 0.35);
 
+  --trip-page-gradient: linear-gradient(
+    135deg,
+    rgba(56, 189, 248, 0.92),
+    rgba(129, 140, 248, 0.9),
+    rgba(168, 85, 247, 0.9)
+  );
+
   /* Neutral tokens tuned for light UI */
   --neutral-900: hsl(222 47% 12%);
   --neutral-600: hsl(215 16% 45%);
@@ -114,42 +121,43 @@
   min-height: 100%;
   background-color: hsl(210 40% 98%);
   background-image:
-    radial-gradient(circle at 16% 18%, rgba(255, 126, 95, 0.16), rgba(255, 126, 95, 0) 55%),
-    radial-gradient(circle at 84% 4%, rgba(101, 78, 163, 0.2), rgba(101, 78, 163, 0) 58%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 255, 0.92));
+    radial-gradient(circle at 18% 18%, rgba(56, 189, 248, 0.16), transparent 55%),
+    radial-gradient(circle at 82% 4%, rgba(168, 85, 247, 0.16), transparent 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(241, 245, 249, 0.92));
 }
 
 .dashboard-themed-section {
   border-radius: 2rem;
-  border: 1px solid rgba(255, 126, 95, 0.18);
+  border: 1px solid rgba(148, 163, 184, 0.35);
   background-image:
-    radial-gradient(circle at 14% 22%, rgba(255, 126, 95, 0.16), rgba(255, 126, 95, 0) 55%),
-    radial-gradient(circle at 86% 6%, rgba(101, 78, 163, 0.18), rgba(101, 78, 163, 0) 60%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 244, 239, 0.9));
-  box-shadow: 0 32px 60px -34px rgba(101, 78, 163, 0.35);
-  backdrop-filter: blur(10px);
+    radial-gradient(circle at 14% 22%, rgba(56, 189, 248, 0.14), transparent 55%),
+    radial-gradient(circle at 86% 6%, rgba(168, 85, 247, 0.14), transparent 60%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.94));
+  box-shadow: 0 32px 60px -36px rgba(37, 99, 235, 0.28);
+  backdrop-filter: blur(12px);
 }
 
 .dashboard-themed-card {
   position: relative;
   border-radius: 1.75rem;
-  border: 1px solid rgba(255, 126, 95, 0.22);
-  background-image:
-    radial-gradient(circle at 12% 18%, rgba(255, 126, 95, 0.18), rgba(255, 126, 95, 0) 55%),
-    radial-gradient(circle at 88% 4%, rgba(101, 78, 163, 0.2), rgba(101, 78, 163, 0) 58%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(254, 243, 239, 0.9));
-  box-shadow: 0 28px 52px -34px rgba(101, 78, 163, 0.38);
-  backdrop-filter: blur(8px);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background-color: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 28px 52px -36px rgba(37, 99, 235, 0.28);
+  backdrop-filter: blur(10px);
 }
 
 .dashboard-themed-card::after {
   content: "";
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  height: 4px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: var(--trip-page-gradient);
+  opacity: 0.9;
   pointer-events: none;
-  background: linear-gradient(135deg, rgba(255, 126, 95, 0.08), rgba(101, 78, 163, 0.06));
-  opacity: 0.85;
 }
 
 .trip-themed-background {
@@ -755,7 +763,11 @@ body.dark .page-shell::after {
   .travel-gradient {
     background: linear-gradient(135deg, hsl(203 89% 53%) 0%, hsl(174 72% 56%) 100%);
   }
-  
+
+  .trip-page-gradient {
+    background: var(--trip-page-gradient);
+  }
+
   .sunset-gradient {
     background: linear-gradient(135deg, hsl(25 85% 65%) 0%, hsl(340 75% 55%) 100%);
   }

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { buildApiUrl } from "@/lib/api";
 
 export const TRIP_COVER_GRADIENT =
-  "linear-gradient(135deg, rgba(255, 126, 95, 0.88), rgba(254, 180, 123, 0.85), rgba(101, 78, 163, 0.85))";
+  "linear-gradient(135deg, rgba(37, 99, 235, 0.9), rgba(248, 250, 255, 0.86), rgba(168, 85, 247, 0.88))";
 
 type CoverPhotoSrcSetOptions = {
   full?: string | null | undefined;

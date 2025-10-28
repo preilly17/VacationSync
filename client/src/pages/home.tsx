@@ -1124,11 +1124,13 @@ export default function Home() {
                     <p className="text-sm font-semibold text-slate-900">{trip.name}</p>
                     <p className="text-xs text-slate-500">{formatDateRange(trip.startDate, trip.endDate)}</p>
                   </div>
-                  <span className="text-xs font-semibold text-[#ff7e5f]">Open trip →</span>
+                  <span className="text-xs font-semibold text-[#2563eb]">Open trip →</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <Badge className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">{trip.destination}</Badge>
-                  <Badge className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+                  <Badge className="rounded-full bg-gradient-to-r from-sky-100 via-indigo-100 to-violet-100 px-3 py-1 font-medium text-sky-700">
+                    {trip.destination}
+                  </Badge>
+                  <Badge className="rounded-full bg-gradient-to-r from-sky-100 via-indigo-100 to-violet-100 px-3 py-1 font-medium text-sky-700">
                     {getTravelersLabel(trip.travelersCount)}
                   </Badge>
                 </div>
@@ -1142,7 +1144,7 @@ export default function Home() {
           <button
             type="button"
             onClick={handleScrollToUpcoming}
-            className="text-sm font-semibold text-[#ff7e5f] transition hover:text-[#654ea3]"
+            className="text-sm font-semibold text-[#2563eb] transition hover:text-[#7C5CFF]"
           >
             View all trips
           </button>
@@ -1190,7 +1192,7 @@ export default function Home() {
                         <p className="text-xs text-slate-500">{destination.country}</p>
                       ) : null}
                     </div>
-                    <Badge className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    <Badge className="rounded-full bg-gradient-to-r from-sky-100 via-indigo-100 to-violet-100 px-3 py-1 text-xs font-semibold text-sky-700">
                       {destination.tripCount} {destination.tripCount === 1 ? "trip" : "trips"}
                     </Badge>
                   </div>
@@ -1220,12 +1222,12 @@ export default function Home() {
                       <p className="text-xs text-slate-500">{destination.country}</p>
                     ) : null}
                   </div>
-                  <Badge className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  <Badge className="rounded-full bg-gradient-to-r from-sky-100 via-indigo-100 to-violet-100 px-3 py-1 text-xs font-semibold text-sky-700">
                     {destination.tripCount} {destination.tripCount === 1 ? "trip" : "trips"}
                   </Badge>
                 </div>
                 <p className="text-xs text-slate-500">Next: {nextTripDateRange}</p>
-                <span className="text-xs font-semibold text-[#ff7e5f]">Open trip →</span>
+                <span className="text-xs font-semibold text-[#2563eb]">Open trip →</span>
               </Link>
             );
           })}
@@ -1279,10 +1281,10 @@ export default function Home() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <Badge className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+            <Badge className="rounded-full bg-gradient-to-r from-sky-100 via-indigo-100 to-violet-100 px-3 py-1 font-medium text-sky-700">
               {startsToday ? "Today" : `${daysToNextTrip} ${daysToNextTrip === 1 ? "day" : "days"} to go`}
             </Badge>
-            <Badge className="rounded-full bg-slate-100 px-3 py-1 font-medium text-slate-700">
+            <Badge className="rounded-full bg-gradient-to-r from-sky-100 via-indigo-100 to-violet-100 px-3 py-1 font-medium text-sky-700">
               {travelerCountLabel}
             </Badge>
           </div>
@@ -1292,14 +1294,14 @@ export default function Home() {
               <ul className="space-y-1.5 text-sm text-slate-600">
                 {NEXT_TRIP_CHECKLIST.map((item) => (
                   <li key={item} className="flex items-start gap-2">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#ff7e5f]" aria-hidden="true" />
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 text-[#2563eb]" aria-hidden="true" />
                     <span>{item}</span>
                   </li>
                 ))}
               </ul>
             </div>
           ) : null}
-          <span className="inline-flex items-center text-xs font-semibold text-[#ff7e5f]">Open trip →</span>
+          <span className="inline-flex items-center text-xs font-semibold text-[#2563eb]">Open trip →</span>
         </Link>
       );
     }
@@ -1782,7 +1784,7 @@ export default function Home() {
                       ref={statsPanelRef}
                       tabIndex={-1}
                       onKeyDown={handlePanelKeyDown}
-                      className="dashboard-themed-card space-y-6 rounded-2xl p-6 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]"
+                      className="dashboard-themed-card space-y-6 rounded-2xl p-6 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6366f1]"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="space-y-1">
@@ -1793,7 +1795,7 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={handleClosePanel}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6366f1]"
                           aria-label="Close details panel"
                         >
                           <X className="h-4 w-4" aria-hidden="true" />
@@ -1869,7 +1871,7 @@ export default function Home() {
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {insights.map((insight) => (
                   <Link key={insight.id} href={insight.href} className="group">
-                    <Card className="dashboard-themed-card flex h-full flex-col justify-between overflow-hidden p-6 transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-[0_32px_70px_-35px_rgba(101,78,163,0.45)]">
+                    <Card className="dashboard-themed-card flex h-full flex-col justify-between overflow-hidden p-6 transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-[0_32px_70px_-35px_rgba(79,70,229,0.45)]">
                       <div className="space-y-3">
                         <span className="text-2xl" aria-hidden="true">
                           {insight.icon}
@@ -1877,7 +1879,7 @@ export default function Home() {
                         <h3 className="text-lg font-semibold text-slate-900">{insight.title}</h3>
                         <p className="text-sm text-slate-500">{insight.description}</p>
                       </div>
-                      <span className="mt-6 text-sm font-semibold text-[#ff7e5f]">Go to trip →</span>
+                      <span className="mt-6 text-sm font-semibold text-[#2563eb]">Go to trip →</span>
                     </Card>
                   </Link>
                 ))}
@@ -1960,7 +1962,7 @@ function TripCard({ trip }: TripCardProps) {
       data-trip-id={trip.id}
       className="group block h-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#7C5CFF]"
     >
-      <Card className="dashboard-themed-card flex h-full flex-col overflow-hidden transition duration-200 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_35px_80px_-40px_rgba(101,78,163,0.5)] group-active:-translate-y-0.5">
+      <Card className="dashboard-themed-card flex h-full flex-col overflow-hidden transition duration-200 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_35px_80px_-40px_rgba(79,70,229,0.48)] group-active:-translate-y-0.5">
         <div className="relative aspect-video overflow-hidden">
           <div
             className="pointer-events-none absolute inset-0"
@@ -1988,10 +1990,10 @@ function TripCard({ trip }: TripCardProps) {
             aria-hidden="true"
           />
           <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-center gap-2 text-xs font-medium text-white">
-            <Badge className="rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+            <Badge className="rounded-full bg-gradient-to-r from-white/90 via-sky-50/85 to-violet-50/85 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
               {formatDateRange(trip.startDate, trip.endDate)}
             </Badge>
-            <Badge className="rounded-full bg-white/60 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+            <Badge className="rounded-full bg-gradient-to-r from-white/80 via-sky-50/70 to-violet-50/75 px-3 py-1 text-xs font-medium text-slate-700 backdrop-blur">
               {getTravelersLabel(trip.travelersCount)}
             </Badge>
           </div>
@@ -2012,12 +2014,12 @@ function TripCard({ trip }: TripCardProps) {
                 </Avatar>
               ))}
             </div>
-            <Badge variant="secondary" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+            <Badge variant="secondary" className="rounded-full bg-gradient-to-r from-sky-100 via-indigo-100 to-violet-100 px-3 py-1 text-xs font-medium text-sky-700">
               Planning {trip.progressPercent}%
             </Badge>
           </div>
           <Progress value={trip.progressPercent} className="h-2 rounded-full bg-slate-100" />
-          <span className="mt-auto inline-flex items-center font-semibold text-[#ff7e5f]">
+          <span className="mt-auto inline-flex items-center font-semibold text-[#2563eb]">
             Open trip →
           </span>
         </div>
