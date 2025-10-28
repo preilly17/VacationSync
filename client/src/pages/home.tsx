@@ -54,6 +54,12 @@ import { Link } from "wouter";
 import tripSyncLogo from "@/assets/tripsync-logo.svg";
 import { StatCard } from "@/components/dashboard/stat-card";
 import {
+  DashboardNotifications,
+  type DashboardNotificationMemberProfile,
+  type DashboardNotificationMemberLookup,
+  type DashboardNotificationTripLookup,
+} from "@/components/dashboard/dashboard-notifications";
+import {
   selectAllDestinationsUnique,
   selectNextTrip,
   selectUniqueTravelersThisYear,
@@ -822,6 +828,69 @@ export default function Home() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [sortedTrips, today, user?.id]);
 
+  const memberLookup = useMemo<DashboardNotificationMemberLookup>(() => {
+    const byId: DashboardNotificationMemberLookup["byId"] = {};
+    const byName: DashboardNotificationMemberLookup["byName"] = {};
+
+    for (const trip of sortedTrips) {
+      for (const member of trip.members) {
+        if (!member.user) {
+          continue;
+        }
+
+        const profile = {
+          name: getMemberDisplayName(member.user),
+          avatar: member.user.profileImageUrl ?? null,
+          initial: getMemberInitial(member.user),
+        } satisfies DashboardNotificationMemberProfile;
+
+        const existingById = byId[member.userId];
+        if (!existingById || (!existingById.avatar && profile.avatar)) {
+          byId[member.userId] = profile;
+        }
+
+        const addNameVariant = (value: string | null | undefined) => {
+          if (!value) {
+            return;
+          }
+          const normalized = value.trim().toLowerCase();
+          if (!normalized) {
+            return;
+          }
+          const existing = byName[normalized];
+          if (!existing || (!existing.avatar && profile.avatar)) {
+            byName[normalized] = profile;
+          }
+        };
+
+        addNameVariant(profile.name);
+        addNameVariant(profile.name.replace(/[^a-z0-9 ]/gi, ""));
+
+        const firstSegment = profile.name.split(/\s+/)[0] ?? null;
+        addNameVariant(firstSegment);
+
+        addNameVariant(member.user.email?.toLowerCase() ?? null);
+        addNameVariant(member.user.username ?? null);
+      }
+    }
+
+    return { byId, byName } satisfies DashboardNotificationMemberLookup;
+  }, [sortedTrips]);
+
+  const tripLookup = useMemo<DashboardNotificationTripLookup>(() => {
+    const lookup: DashboardNotificationTripLookup = {};
+
+    for (const trip of sortedTrips) {
+      const displayName = trip.name?.trim() || trip.destination || "Trip";
+      lookup[trip.id] = {
+        name: displayName,
+        destination: trip.destination ?? null,
+      };
+    }
+
+    return lookup;
+  }, [sortedTrips]);
+
   const statsLoading = isLoading && !trips;
   const isError = Boolean(error);
   const upcomingCount = upcomingTripsForStats.length;
@@ -1583,6 +1652,15 @@ export default function Home() {
                 ) : null}
               </div>
             </div>
+          </section>
+
+          <section aria-labelledby="dashboard-activity" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 id="dashboard-activity" className="text-2xl font-semibold text-slate-900">
+                Recent activity
+              </h2>
+            </div>
+            <DashboardNotifications memberLookup={memberLookup} tripLookup={tripLookup} />
           </section>
 
           <section
