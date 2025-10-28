@@ -4395,7 +4395,7 @@ export function setupRoutes(app: Express) {
         }
 
         const rawHotelId = parsedRequest.data.hotelId ?? parsedRequest.data.id;
-        const hotelId =
+        let hotelId =
           typeof rawHotelId === 'number'
             ? rawHotelId
             : rawHotelId != null
@@ -4403,9 +4403,27 @@ export function setupRoutes(app: Express) {
             : NaN;
 
         if (!Number.isFinite(hotelId)) {
-          return res
-            .status(400)
-            .json({ message: "Hotel ID is required to propose to the group" });
+          const { hotelId: _ignoredHotelId, id: _ignoredId, ...maybeHotel } = parsedRequest.data;
+          const parsedHotelPayload = insertHotelSchema.safeParse({
+            ...maybeHotel,
+            tripId,
+          });
+
+          if (!parsedHotelPayload.success) {
+            return res.status(400).json({
+              message:
+                "Provide either an existing hotelId or the required hotel details to share with the group.",
+              errors: parsedHotelPayload.error.issues,
+            });
+          }
+
+          try {
+            const createdHotel = await storage.createHotel(parsedHotelPayload.data, userId);
+            hotelId = createdHotel.id;
+          } catch (creationError: unknown) {
+            console.error("Error creating hotel before proposing:", creationError);
+            return res.status(500).json({ message: "Failed to prepare hotel for proposal" });
+          }
         }
 
         const proposal = await storage.ensureHotelProposalForSavedHotel({
