@@ -66,9 +66,8 @@ import { ExpenseTracker } from "@/components/expense-tracker";
 import { GroceryList } from "@/components/grocery-list";
 import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
 import { RestaurantManualDialog } from "@/components/restaurant-manual-dialog";
-import { RestaurantLinkBuilderModal } from "@/components/restaurants/RestaurantLinkBuilderModal";
 import { RestaurantManualAddModal } from "@/components/restaurants/RestaurantManualAddModal";
-import type { RestaurantManualAddPrefill, RestaurantLinkBuilderResult } from "@/types/restaurants";
+import type { RestaurantManualAddPrefill, RestaurantPlatform } from "@/types/restaurants";
 import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/hotel-search-panel";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 
@@ -6100,7 +6099,6 @@ function RestaurantBooking({
     enabled: !!tripId,
   });
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [linkBuilderOpen, setLinkBuilderOpen] = useState(false);
   const [manualAddOpen, setManualAddOpen] = useState(false);
   const [manualAddPrefill, setManualAddPrefill] = useState<RestaurantManualAddPrefill | null>(null);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
@@ -6181,21 +6179,6 @@ function RestaurantBooking({
     return undefined;
   }, [trip]);
 
-  const defaultPartySize = useMemo(() => {
-    if (trip?.memberCount && trip.memberCount > 0) {
-      return trip.memberCount;
-    }
-
-    if (trip?.members && trip.members.length > 0) {
-      return trip.members.length;
-    }
-
-    return undefined;
-  }, [trip]);
-
-  const defaultLatitude = trip?.latitude ?? null;
-  const defaultLongitude = trip?.longitude ?? null;
-
   const handleBookingLinkClick = useCallback(
     (_restaurant: any, link: { text: string; url: string }) => {
       if (!link?.url) {
@@ -6209,17 +6192,27 @@ function RestaurantBooking({
     []
   );
 
-  const handleLinkBuilderOpened = useCallback(
-    (result: RestaurantLinkBuilderResult) => {
-      publishAnalytics("manual_add_opened", { tab: "restaurants", platform: result.platform });
+  const handleExternalRestaurantSearch = useCallback(
+    (details: {
+      platform: RestaurantPlatform;
+      url: string;
+      date: string;
+      partySize: number;
+      city: string;
+      time?: string;
+    }) => {
+      publishAnalytics("link_opened", { tab: "restaurants", platform: details.platform });
+      publishAnalytics("manual_add_opened", { tab: "restaurants", platform: details.platform });
+
+      const fallbackCity = details.city?.trim() || resolvedCity || undefined;
 
       setManualAddPrefill({
-        platform: result.platform,
-        url: result.url,
-        date: result.date,
-        time: result.time,
-        partySize: result.partySize,
-        city: result.city || resolvedCity || undefined,
+        platform: details.platform,
+        url: details.url,
+        date: details.date,
+        time: details.time ?? undefined,
+        partySize: details.partySize,
+        city: fallbackCity,
         country: resolvedCountry || undefined,
       });
       setManualAddOpen(true);
@@ -6250,10 +6243,6 @@ function RestaurantBooking({
           <Button type="button" variant="outline" onClick={() => setManualDialogOpen(true)}>
             Log restaurant manually
           </Button>
-          <Button type="button" onClick={() => setLinkBuilderOpen(true)}>
-            <ExternalLink className="mr-2 h-4 w-4" />
-            Build restaurant link
-          </Button>
         </div>
       </div>
 
@@ -6264,6 +6253,7 @@ function RestaurantBooking({
         user={user ?? undefined}
         onBookingLinkClick={handleBookingLinkClick}
         onLogRestaurantManually={() => setManualDialogOpen(true)}
+        onExternalSearch={handleExternalRestaurantSearch}
       />
 
       {hasRestaurants && (
@@ -6331,19 +6321,6 @@ function RestaurantBooking({
         tripId={tripId}
         open={manualDialogOpen}
         onOpenChange={setManualDialogOpen}
-      />
-
-      <RestaurantLinkBuilderModal
-        open={linkBuilderOpen}
-        onOpenChange={setLinkBuilderOpen}
-        defaultCity={resolvedCity}
-        stateCode={resolvedStateCode}
-        startDate={trip?.startDate ?? null}
-        endDate={trip?.endDate ?? null}
-        defaultPartySize={defaultPartySize}
-        defaultLatitude={defaultLatitude}
-        defaultLongitude={defaultLongitude}
-        onLinkOpened={handleLinkBuilderOpened}
       />
 
       <RestaurantManualAddModal

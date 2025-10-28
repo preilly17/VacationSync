@@ -1,6 +1,6 @@
-import { forwardRef, useCallback, useEffect, useMemo, useState } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { format, parse } from "date-fns";
 import {
   CalendarIcon,
   ChefHat,
@@ -24,16 +24,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
-import SmartLocationSearch from "@/components/SmartLocationSearch";
+import SmartLocationSearch, { type LocationResult as SmartLocationResult } from "@/components/SmartLocationSearch";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
+import { buildOpenTableUrl, buildResyUrl } from "@/utils/urlBuilders/restaurants";
 
 import type { TripWithDetails } from "@shared/schema";
+import type { RestaurantPlatform } from "@/types/restaurants";
 
 const distanceRadiusMap: Record<string, number> = {
   "0.5": 800,
@@ -59,27 +62,57 @@ export interface RestaurantSearchPanelProps {
   onLogRestaurantManually?: () => void;
   onProposeRestaurant?: (restaurant: any) => void;
   onBookingLinkClick?: (restaurant: any, link: { text: string; url: string; type: string }) => void;
+  onExternalSearch?: (details: {
+    platform: RestaurantPlatform;
+    url: string;
+    date: string;
+    partySize: number;
+    city: string;
+    time?: string;
+    stateCode?: string;
+    latitude?: number;
+    longitude?: number;
+  }) => void;
+  initialSearchDate?: Date;
+  initialSearchTime?: string;
+  initialPartySize?: number;
 }
 
 export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearchPanelProps>(
-  ({ tripId, trip, user, onLogRestaurantManually, onProposeRestaurant, onBookingLinkClick }, ref) => {
+  (
+    {
+      tripId,
+      trip,
+      user,
+      onLogRestaurantManually,
+      onProposeRestaurant,
+      onBookingLinkClick,
+      onExternalSearch,
+      initialSearchDate,
+      initialSearchTime,
+      initialPartySize,
+    },
+    ref,
+  ) => {
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
     const normalizedTripId = typeof tripId === "string" ? parseInt(tripId, 10) : tripId;
 
     const [searchLocation, setSearchLocation] = useState("");
+    const [selectedLocation, setSelectedLocation] = useState<SmartLocationResult | null>(null);
     const [searchCuisine, setSearchCuisine] = useState("all");
     const [searchPriceRange, setSearchPriceRange] = useState("all");
     const [sortBy, setSortBy] = useState("rating");
-    const [searchDate, setSearchDate] = useState<Date | undefined>(new Date());
-    const [searchTime, setSearchTime] = useState("7:00 PM");
-    const [searchPartySize, setSearchPartySize] = useState(2);
+    const [searchDate, setSearchDate] = useState<Date | undefined>(initialSearchDate ?? new Date());
+    const [searchTime, setSearchTime] = useState(initialSearchTime ?? "7:00 PM");
+    const [searchPartySize, setSearchPartySize] = useState(initialPartySize ?? 2);
     const [searchRating, setSearchRating] = useState("all");
     const [searchDistance, setSearchDistance] = useState("all");
     const [searchOpenNow, setSearchOpenNow] = useState(false);
     const [searchDietaryTags, setSearchDietaryTags] = useState<string[]>([]);
     const [hasSearched, setHasSearched] = useState(false);
+    const lastSelectedLocationRef = useRef<string | null>(null);
 
     const { data: searchResults = [], isLoading: searchLoading, refetch } = useQuery({
       queryKey: [
@@ -315,10 +348,221 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
       refetch();
     }, [refetch, searchLocation, toast]);
 
-    const handleLocationSelect = (location: any) => {
-      const cityName = location.name || location.displayName.split(",")[0];
-      setSearchLocation(cityName);
-    };
+    const handleLocationSelect = useCallback((location: SmartLocationResult) => {
+      const candidates: string[] = [];
+      if (typeof location.cityName === "string") {
+        candidates.push(location.cityName.trim());
+      }
+      if (typeof location.name === "string") {
+        candidates.push(location.name.trim());
+      }
+      if (typeof location.displayName === "string") {
+        const [firstPart] = location.displayName.split(",");
+        if (firstPart) {
+          candidates.push(firstPart.trim());
+        }
+      }
+
+      const nextLocation = candidates.find((value) => value.length > 0) ?? "";
+      const normalized = nextLocation.length > 0 ? nextLocation : searchLocation.trim();
+
+      setSearchLocation(normalized);
+      setSelectedLocation(location);
+      lastSelectedLocationRef.current = normalized.length > 0 ? normalized : null;
+    }, [searchLocation]);
+
+    const handleLocationQueryChange = useCallback(
+      (value: string) => {
+        setSearchLocation(value);
+        const trimmed = value.trim();
+
+        if (!trimmed) {
+          setSelectedLocation(null);
+          lastSelectedLocationRef.current = null;
+          return;
+        }
+
+        if (lastSelectedLocationRef.current && trimmed !== lastSelectedLocationRef.current.trim()) {
+          setSelectedLocation(null);
+        }
+      },
+      [],
+    );
+
+    const derivedLocation = useMemo(() => {
+      const fallbackCity = searchLocation.trim();
+      let city = fallbackCity;
+
+      if (selectedLocation) {
+        const candidateCityValues = [
+          typeof selectedLocation.cityName === "string" ? selectedLocation.cityName.trim() : "",
+          typeof selectedLocation.name === "string" ? selectedLocation.name.trim() : "",
+        ];
+
+        if (typeof selectedLocation.displayName === "string") {
+          const [firstPart] = selectedLocation.displayName.split(",");
+          if (firstPart) {
+            candidateCityValues.push(firstPart.trim());
+          }
+        }
+
+        city = candidateCityValues.find((value) => value.length > 0) ?? fallbackCity;
+      }
+
+      const rawState =
+        (selectedLocation && typeof selectedLocation.state === "string" ? selectedLocation.state : undefined) ??
+        (selectedLocation &&
+        typeof (selectedLocation as Record<string, unknown>).stateCode === "string"
+          ? ((selectedLocation as Record<string, unknown>).stateCode as string)
+          : undefined) ??
+        (selectedLocation && typeof selectedLocation.region === "string" ? selectedLocation.region : undefined);
+
+      const trimmedState = rawState?.trim();
+      const stateCode =
+        trimmedState && /^[A-Za-z]{2}$/.test(trimmedState) ? trimmedState.toUpperCase() : undefined;
+
+      const latitude =
+        selectedLocation && typeof selectedLocation.latitude === "number" && Number.isFinite(selectedLocation.latitude)
+          ? selectedLocation.latitude
+          : undefined;
+      const longitude =
+        selectedLocation &&
+        typeof selectedLocation.longitude === "number" && Number.isFinite(selectedLocation.longitude)
+          ? selectedLocation.longitude
+          : undefined;
+
+      return {
+        city,
+        stateCode,
+        latitude,
+        longitude,
+      };
+    }, [searchLocation, selectedLocation]);
+
+    const formatDateYYYYMMDD = useCallback((value?: Date) => {
+      if (!value || Number.isNaN(value.getTime())) {
+        return "";
+      }
+
+      return format(value, "yyyy-MM-dd");
+    }, []);
+
+    const formatTimeHHmm = useCallback((value?: string) => {
+      if (!value) {
+        return "";
+      }
+
+      const trimmed = value.trim();
+      if (!trimmed) {
+        return "";
+      }
+
+      if (/^\d{2}:\d{2}$/.test(trimmed)) {
+        return trimmed;
+      }
+
+      try {
+        const parsedTime = parse(trimmed, "h:mm a", new Date());
+        if (Number.isNaN(parsedTime.getTime())) {
+          return "";
+        }
+
+        return format(parsedTime, "HH:mm");
+      } catch (error) {
+        return "";
+      }
+    }, []);
+
+    const openInNewTab = useCallback((url: string) => {
+      if (typeof window !== "undefined") {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    }, []);
+
+    const reservationDetails = useMemo(() => {
+      const date = formatDateYYYYMMDD(searchDate);
+      const time = formatTimeHHmm(searchTime);
+      const partySize = Math.max(1, Number(searchPartySize) || 1);
+      const hasCity = derivedLocation.city.trim().length > 0;
+      const hasDate = Boolean(date);
+      const hasPartySize = partySize >= 1;
+      const resyDisabled = !(hasCity && hasDate && hasPartySize);
+      const openTableDisabled = resyDisabled || !time;
+
+      return {
+        date,
+        time,
+        partySize,
+        hasCity,
+        resyDisabled,
+        openTableDisabled,
+      };
+    }, [derivedLocation.city, formatDateYYYYMMDD, formatTimeHHmm, searchDate, searchPartySize, searchTime]);
+
+    const handleSearchResy = useCallback(() => {
+      if (reservationDetails.resyDisabled) {
+        return;
+      }
+
+      const city = derivedLocation.city.trim();
+      if (!city || !reservationDetails.date) {
+        return;
+      }
+
+      const url = buildResyUrl({
+        city,
+        stateCode: derivedLocation.stateCode,
+        date: reservationDetails.date,
+        partySize: reservationDetails.partySize,
+      });
+
+      openInNewTab(url);
+      onExternalSearch?.({
+        platform: "resy",
+        url,
+        date: reservationDetails.date,
+        partySize: reservationDetails.partySize,
+        city,
+        stateCode: derivedLocation.stateCode,
+        latitude: derivedLocation.latitude,
+        longitude: derivedLocation.longitude,
+      });
+    }, [derivedLocation, onExternalSearch, openInNewTab, reservationDetails]);
+
+    const handleSearchOpenTable = useCallback(() => {
+      if (reservationDetails.openTableDisabled) {
+        return;
+      }
+
+      const city = derivedLocation.city.trim();
+      if (!city || !reservationDetails.date || !reservationDetails.time) {
+        return;
+      }
+
+      const url = buildOpenTableUrl({
+        city,
+        date: reservationDetails.date,
+        time: reservationDetails.time,
+        partySize: reservationDetails.partySize,
+        latitude: derivedLocation.latitude,
+        longitude: derivedLocation.longitude,
+      });
+
+      openInNewTab(url);
+      onExternalSearch?.({
+        platform: "open_table",
+        url,
+        date: reservationDetails.date,
+        time: reservationDetails.time,
+        partySize: reservationDetails.partySize,
+        city,
+        stateCode: derivedLocation.stateCode,
+        latitude: derivedLocation.latitude,
+        longitude: derivedLocation.longitude,
+      });
+    }, [derivedLocation, onExternalSearch, openInNewTab, reservationDetails]);
+
+    const { resyDisabled, openTableDisabled } = reservationDetails;
 
     const handleAddFromSearch = (restaurant: any) => {
       if (!normalizedTripId) {
@@ -376,6 +620,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
                     placeholder="Enter city, airport, or region..."
                     value={searchLocation}
                     onLocationSelect={handleLocationSelect}
+                    onQueryChange={handleLocationQueryChange}
                     className="w-full"
                   />
                 </div>
@@ -579,27 +824,63 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
                   Adjust filters, then search when you're ready.
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 w-full sm:w-auto">
-                  <Button type="submit" disabled={searchLoading} className="w-full sm:w-auto">
-                    {searchLoading ? (
-                      <div className="flex items-center gap-2">
-                        <TravelLoading variant="compass" size="sm" />
-                        Searching...
-                      </div>
-                    ) : (
-                      "Search Restaurants"
-                    )}
-                  </Button>
-                  {onLogRestaurantManually && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full sm:w-auto"
-                      onClick={onLogRestaurantManually}
-                    >
-                      <NotebookPen className="h-4 w-4 mr-2" />
-                      Log Restaurant Manually
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full sm:w-auto"
+                          onClick={handleSearchOpenTable}
+                          disabled={openTableDisabled}
+                          aria-label="Search OpenTable"
+                          data-testid="button-search-open-table"
+                        >
+                          Search OpenTable
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Build link and search on OpenTable</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full sm:w-auto"
+                          onClick={handleSearchResy}
+                          disabled={resyDisabled}
+                          aria-label="Search Resy"
+                          data-testid="button-search-resy"
+                        >
+                          Search Resy
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Build link and search on Resy</TooltipContent>
+                    </Tooltip>
+                  </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2 w-full sm:w-auto">
+                    <Button type="submit" disabled={searchLoading} className="w-full sm:w-auto">
+                      {searchLoading ? (
+                        <div className="flex items-center gap-2">
+                          <TravelLoading variant="compass" size="sm" />
+                          Searching...
+                        </div>
+                      ) : (
+                        "Search Restaurants"
+                      )}
                     </Button>
-                  )}
+                    {onLogRestaurantManually && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        onClick={onLogRestaurantManually}
+                      >
+                        <NotebookPen className="h-4 w-4 mr-2" />
+                        Log Restaurant Manually
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </form>
