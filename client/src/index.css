@@ -110,6 +110,48 @@
   --chip-default-glow: rgba(148, 163, 184, 0.24);
 }
 
+.dashboard-themed-background {
+  min-height: 100%;
+  background-color: hsl(210 40% 98%);
+  background-image:
+    radial-gradient(circle at 16% 18%, rgba(255, 126, 95, 0.16), rgba(255, 126, 95, 0) 55%),
+    radial-gradient(circle at 84% 4%, rgba(101, 78, 163, 0.2), rgba(101, 78, 163, 0) 58%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 245, 255, 0.92));
+}
+
+.dashboard-themed-section {
+  border-radius: 2rem;
+  border: 1px solid rgba(255, 126, 95, 0.18);
+  background-image:
+    radial-gradient(circle at 14% 22%, rgba(255, 126, 95, 0.16), rgba(255, 126, 95, 0) 55%),
+    radial-gradient(circle at 86% 6%, rgba(101, 78, 163, 0.18), rgba(101, 78, 163, 0) 60%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 244, 239, 0.9));
+  box-shadow: 0 32px 60px -34px rgba(101, 78, 163, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.dashboard-themed-card {
+  position: relative;
+  border-radius: 1.75rem;
+  border: 1px solid rgba(255, 126, 95, 0.22);
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(255, 126, 95, 0.18), rgba(255, 126, 95, 0) 55%),
+    radial-gradient(circle at 88% 4%, rgba(101, 78, 163, 0.2), rgba(101, 78, 163, 0) 58%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(254, 243, 239, 0.9));
+  box-shadow: 0 28px 52px -34px rgba(101, 78, 163, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.dashboard-themed-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 126, 95, 0.08), rgba(101, 78, 163, 0.06));
+  opacity: 0.85;
+}
+
 .trip-themed-background {
   min-height: 100%;
   background-color: hsl(210 40% 98%);
