@@ -892,7 +892,13 @@ export default function Trip() {
       return 0;
     }
 
-    const parsed = Number(id);
+    const trimmed = id.trim();
+    const match = trimmed.match(/^(\d+)/);
+    if (!match) {
+      return 0;
+    }
+
+    const parsed = Number.parseInt(match[1], 10);
     return Number.isFinite(parsed) ? parsed : 0;
   }, [id]);
   const queryClient = useQueryClient();
