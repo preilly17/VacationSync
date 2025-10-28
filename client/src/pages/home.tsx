@@ -1655,6 +1655,60 @@ export default function Home() {
             </div>
           </section>
 
+          <section aria-labelledby="upcoming-trips-heading" className="space-y-6">
+            <h2
+              id="upcoming-trips-heading"
+              ref={upcomingSectionRef}
+              className="text-2xl font-semibold text-slate-900"
+            >
+              Upcoming trips
+            </h2>
+
+            {error ? (
+              <Card className="rounded-2xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
+                We’re having trouble loading your trips right now. Try refreshing the page.
+              </Card>
+            ) : null}
+
+            {isLoading ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <Card
+                    key={`trip-skeleton-${index}`}
+                    className="dashboard-themed-card overflow-hidden p-4"
+                  >
+                    <Skeleton className="aspect-video w-full rounded-xl" />
+                    <div className="mt-4 space-y-2">
+                      <Skeleton className="h-5 w-2/3" />
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-2 w-full rounded-full" />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            ) : upcomingSummaries.length > 0 ? (
+              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {upcomingSummaries.map((trip) => (
+                  <TripCard key={trip.id} trip={trip} />
+                ))}
+              </div>
+            ) : (
+              <Card className="dashboard-themed-card flex flex-col items-center justify-center gap-5 p-10 text-center">
+                <div className="text-5xl">🌅</div>
+                <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
+                <p className="max-w-md text-sm text-slate-500">
+                  Start planning a new adventure to see it appear here with all the essentials at a glance.
+                </p>
+                <Button
+                  onClick={handlePlanTrip}
+                  className="h-auto rounded-full px-6 py-2.5 text-base font-semibold shadow-lg transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+                >
+                  Plan a New Trip
+                </Button>
+              </Card>
+            )}
+          </section>
+
           <DashboardNotifications
             sectionId="dashboard-activity"
             memberLookup={memberLookup}
@@ -1805,60 +1859,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-          </section>
-
-          <section aria-labelledby="upcoming-trips-heading" className="space-y-6">
-            <h2
-              id="upcoming-trips-heading"
-              ref={upcomingSectionRef}
-              className="text-2xl font-semibold text-slate-900"
-            >
-              Upcoming trips
-            </h2>
-
-            {error ? (
-              <Card className="rounded-2xl border border-amber-200 bg-amber-50/80 p-6 text-amber-900">
-                We’re having trouble loading your trips right now. Try refreshing the page.
-              </Card>
-            ) : null}
-
-            {isLoading ? (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <Card
-                    key={`trip-skeleton-${index}`}
-                    className="dashboard-themed-card overflow-hidden p-4"
-                  >
-                    <Skeleton className="aspect-video w-full rounded-xl" />
-                    <div className="mt-4 space-y-2">
-                      <Skeleton className="h-5 w-2/3" />
-                      <Skeleton className="h-4 w-1/2" />
-                      <Skeleton className="h-2 w-full rounded-full" />
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            ) : upcomingSummaries.length > 0 ? (
-              <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {upcomingSummaries.map((trip) => (
-                  <TripCard key={trip.id} trip={trip} />
-                ))}
-              </div>
-            ) : ( 
-              <Card className="dashboard-themed-card flex flex-col items-center justify-center gap-5 p-10 text-center">
-                <div className="text-5xl">🌅</div>
-                <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
-                <p className="max-w-md text-sm text-slate-500">
-                  Start planning a new adventure to see it appear here with all the essentials at a glance.
-                </p>
-                <Button
-                  onClick={handlePlanTrip}
-                  className="h-auto rounded-full px-6 py-2.5 text-base font-semibold shadow-lg transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl"
-                >
-                  Plan a New Trip
-                </Button>
-              </Card>
-            )}
           </section>
 
           {(insights.length > 0 || primaryTrip) && (
