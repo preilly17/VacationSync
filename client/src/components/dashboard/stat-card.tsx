@@ -52,14 +52,14 @@ export const StatCard = forwardRef<HTMLButtonElement, StatCardProps>(
       <div
         data-testid={testId}
         className={cn(
-          "group relative flex flex-col rounded-2xl border border-slate-200/70 bg-white shadow-sm transition duration-200",
-          "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1 before:rounded-t-2xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
+          "group relative flex flex-col overflow-hidden rounded-2xl dashboard-themed-card transition duration-200",
+          "before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-1.5 before:rounded-t-2xl before:bg-gradient-to-r before:from-[#ff7e5f] before:via-[#feb47b] before:to-[#654ea3]",
           isInteractive
             ? "focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[#654ea3]"
             : "opacity-90",
           isSelected
-            ? "shadow-lg ring-2 ring-[#654ea3]/25"
-            : "hover:-translate-y-0.5 hover:shadow-md",
+            ? "translate-y-0 shadow-[0_32px_70px_-35px_rgba(101,78,163,0.55)] ring-2 ring-[#654ea3]/35"
+            : "hover:-translate-y-0.5 hover:shadow-[0_35px_80px_-40px_rgba(101,78,163,0.45)]",
         )}
       >
         <button
@@ -70,7 +70,7 @@ export const StatCard = forwardRef<HTMLButtonElement, StatCardProps>(
           aria-controls={controlsId}
           disabled={!isInteractive}
           className={cn(
-            "flex w-full flex-col gap-6 rounded-2xl p-6 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]",
+            "relative z-[1] flex w-full flex-col gap-6 rounded-2xl bg-transparent p-6 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]",
             isInteractive ? "cursor-pointer" : "cursor-default",
           )}
           onClick={() => {

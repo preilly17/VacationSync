@@ -46,6 +46,7 @@ import {
   CheckCircle2,
   Globe2,
   Plane,
+  Sparkles,
   UserRound,
   MapPin,
   X,
@@ -84,9 +85,6 @@ const HowItWorksPanel = lazy(() =>
 
 const LAST_CONVERSION_KEY = "dashboard.converter.last";
 const HOW_IT_WORKS_DISMISSED_KEY = "dismissedHowItWorks";
-
-const HERO_OVERLAY_GRADIENT =
-  "linear-gradient(180deg, rgba(15, 23, 42, 0.75), rgba(15, 23, 42, 0.55))";
 
 const MAX_UPCOMING_PREVIEW = 5;
 const NEXT_TRIP_CHECKLIST = [
@@ -1102,7 +1100,7 @@ export default function Home() {
           <Button
             size="sm"
             onClick={handlePlanTrip}
-            className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-4 text-white shadow-md transition-opacity hover:opacity-90"
+            className="h-auto rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
           >
             Plan a New Trip
           </Button>
@@ -1330,7 +1328,7 @@ export default function Home() {
           <Button
             size="sm"
             onClick={handleInviteMore}
-            className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-4 text-white shadow-md transition-opacity hover:opacity-90"
+            className="h-auto rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
           >
             Invite more
           </Button>
@@ -1339,40 +1337,40 @@ export default function Home() {
     } else {
       panelContent = (
         <div className="space-y-4">
-          <div className="space-y-3">
-            {travelerSummaries.map((traveler) => (
-              <div
-                key={`traveler-summary-${traveler.id}`}
-                className="flex items-start gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm"
-              >
-                <Avatar className="h-10 w-10 border-2 border-white bg-slate-100">
-                  <AvatarImage src={traveler.avatar ?? undefined} alt={traveler.name} loading="lazy" />
-                  <AvatarFallback>{traveler.initial}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 space-y-2">
-                  <p className="text-sm font-semibold text-slate-900">{traveler.name}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {traveler.trips.map((trip) => (
-                      <div
-                        key={`traveler-${traveler.id}-trip-${trip.id}`}
-                        className="flex flex-wrap items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-[11px] text-slate-600"
-                      >
-                        <span className="font-medium text-slate-700">{trip.name}</span>
-                        <span className="text-slate-500">· {formatDateRange(trip.startDate, trip.endDate)}</span>
-                      </div>
-                    ))}
-                  </div>
+        <div className="space-y-3">
+          {travelerSummaries.map((traveler) => (
+            <div
+              key={`traveler-summary-${traveler.id}`}
+              className="flex items-start gap-3 rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm"
+            >
+              <Avatar className="h-10 w-10 border-2 border-white bg-slate-100">
+                <AvatarImage src={traveler.avatar ?? undefined} alt={traveler.name} loading="lazy" />
+                <AvatarFallback>{traveler.initial}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 space-y-2">
+                <p className="text-sm font-semibold text-slate-900">{traveler.name}</p>
+                <div className="flex flex-wrap gap-2">
+                  {traveler.trips.map((trip) => (
+                    <div
+                      key={`traveler-${traveler.id}-trip-${trip.id}`}
+                      className="flex flex-wrap items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-[11px] text-slate-600"
+                    >
+                      <span className="font-medium text-slate-700">{trip.name}</span>
+                      <span className="text-slate-500">· {formatDateRange(trip.startDate, trip.endDate)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-          <Button
-            size="sm"
-            onClick={handleInviteMore}
-            className="self-start rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-4 text-white shadow-md transition-opacity hover:opacity-90"
-          >
-            Invite more
-          </Button>
+            </div>
+          ))}
+        </div>
+        <Button
+          size="sm"
+          onClick={handleInviteMore}
+          className="self-start h-auto rounded-full px-4 py-2 text-sm font-semibold shadow-md transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
+        >
+          Invite more
+        </Button>
         </div>
       );
     }
@@ -1407,7 +1405,7 @@ export default function Home() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100">
+    <div className="dashboard-themed-background min-h-screen">
       <header role="banner" className="dashboard-header sticky top-0 z-50">
         <div className="mx-auto flex w-full max-w-[1240px] items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <Link
@@ -1596,7 +1594,7 @@ export default function Home() {
 
           <section
             aria-labelledby="dashboard-hero"
-            className="relative overflow-hidden rounded-[32px] border border-white/20 bg-slate-900 p-8 text-white shadow-xl backdrop-blur-lg sm:p-12"
+            className="relative overflow-hidden rounded-[36px] border border-white/12 bg-slate-900/95 p-8 text-white shadow-[0_45px_90px_-40px_rgba(15,23,42,0.85)] backdrop-blur-xl sm:p-12"
           >
             <div
               className="pointer-events-none absolute inset-0"
@@ -1620,33 +1618,36 @@ export default function Home() {
               />
             ) : null}
             <div
-              className="pointer-events-none absolute inset-0"
-              style={{ backgroundImage: HERO_OVERLAY_GRADIENT }}
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-slate-900/80 via-slate-900/35 to-slate-950/80"
               aria-hidden="true"
             />
-            <div className="relative flex flex-col gap-6">
-              <div className="text-sm uppercase tracking-[0.2em] text-white/80">
-                Your travel hub
-              </div>
-              <div className="flex flex-col gap-4">
-                <div className="space-y-4">
-                  <h1 id="dashboard-hero" className="text-4xl font-semibold sm:text-5xl">
+            <div className="relative flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl space-y-5">
+                <div className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.3em] text-white/80">
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  <span>Your travel hub</span>
+                </div>
+                <div className="space-y-3">
+                  <h1
+                    id="dashboard-hero"
+                    className="text-4xl font-bold tracking-tight drop-shadow-sm sm:text-5xl"
+                  >
                     Dashboard
                   </h1>
-                  <p className="text-base text-white/80">
+                  <p className="max-w-2xl text-sm text-white/80 sm:text-base">
                     Plan new trips and see what’s next—all in one place.
                   </p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <Button
                   onClick={handlePlanTrip}
-                  className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-base font-semibold text-white shadow-lg transition-opacity hover:opacity-90"
+                  className="h-auto rounded-full px-6 py-3 text-base font-semibold shadow-xl transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-2xl"
                 >
                   Plan a New Trip
                 </Button>
                 {nextTripChip ? (
-                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-medium text-white/90">
+                  <span className="rounded-full bg-white/15 px-3 py-1 text-xs font-medium text-white/90">
                     {nextTripChip}
                   </span>
                 ) : null}
@@ -1662,7 +1663,7 @@ export default function Home() {
 
           <section
             aria-labelledby="dashboard-highlights"
-            className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm"
+            className="dashboard-themed-section p-6"
           >
             <h2 id="dashboard-highlights" className="sr-only">
               Highlights
@@ -1781,7 +1782,7 @@ export default function Home() {
                       ref={statsPanelRef}
                       tabIndex={-1}
                       onKeyDown={handlePanelKeyDown}
-                      className="space-y-6 rounded-2xl border border-slate-200/70 bg-white p-6 shadow-lg outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]"
+                      className="dashboard-themed-card space-y-6 rounded-2xl p-6 outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#654ea3]"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="space-y-1">
@@ -1826,7 +1827,7 @@ export default function Home() {
                 {Array.from({ length: 3 }).map((_, index) => (
                   <Card
                     key={`trip-skeleton-${index}`}
-                    className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm"
+                    className="dashboard-themed-card overflow-hidden p-4"
                   >
                     <Skeleton className="aspect-video w-full rounded-xl" />
                     <div className="mt-4 space-y-2">
@@ -1843,8 +1844,8 @@ export default function Home() {
                   <TripCard key={trip.id} trip={trip} />
                 ))}
               </div>
-            ) : (
-              <Card className="flex flex-col items-center justify-center gap-5 rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
+            ) : ( 
+              <Card className="dashboard-themed-card flex flex-col items-center justify-center gap-5 p-10 text-center">
                 <div className="text-5xl">🌅</div>
                 <h3 className="text-2xl font-semibold text-slate-900">Ready for your next getaway?</h3>
                 <p className="max-w-md text-sm text-slate-500">
@@ -1852,7 +1853,7 @@ export default function Home() {
                 </p>
                 <Button
                   onClick={handlePlanTrip}
-                  className="rounded-full bg-gradient-to-r from-[#ff7e5f] via-[#feb47b] to-[#654ea3] px-6 text-white shadow-md transition-opacity hover:opacity-90"
+                  className="h-auto rounded-full px-6 py-2.5 text-base font-semibold shadow-lg transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl"
                 >
                   Plan a New Trip
                 </Button>
@@ -1868,7 +1869,7 @@ export default function Home() {
               <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                 {insights.map((insight) => (
                   <Link key={insight.id} href={insight.href} className="group">
-                    <Card className="flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm transition-transform group-hover:-translate-y-1 group-hover:shadow-md">
+                    <Card className="dashboard-themed-card flex h-full flex-col justify-between overflow-hidden p-6 transition-transform duration-200 group-hover:-translate-y-1 group-hover:shadow-[0_32px_70px_-35px_rgba(101,78,163,0.45)]">
                       <div className="space-y-3">
                         <span className="text-2xl" aria-hidden="true">
                           {insight.icon}
@@ -1881,7 +1882,7 @@ export default function Home() {
                   </Link>
                 ))}
                 {primaryTrip ? (
-                  <Card className="flex h-full flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-6 text-left shadow-sm">
+                  <Card className="dashboard-themed-card flex h-full flex-col justify-between p-6 text-left">
                     <div className="flex flex-col gap-3">
                       <span className="text-sm font-semibold uppercase tracking-wide text-slate-600">
                         Next destination
@@ -1959,7 +1960,7 @@ function TripCard({ trip }: TripCardProps) {
       data-trip-id={trip.id}
       className="group block h-full cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#7C5CFF]"
     >
-      <Card className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm transition duration-200 ease-out group-hover:-translate-y-1 group-hover:shadow-lg group-active:-translate-y-0.5">
+      <Card className="dashboard-themed-card flex h-full flex-col overflow-hidden transition duration-200 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_35px_80px_-40px_rgba(101,78,163,0.5)] group-active:-translate-y-0.5">
         <div className="relative aspect-video overflow-hidden">
           <div
             className="pointer-events-none absolute inset-0"
