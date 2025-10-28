@@ -2533,7 +2533,7 @@ export default function Trip() {
 
                 {activeTab === "wish-list" && (
                   <div className="trip-themed-section p-6" data-testid="wish-list-section">
-                    <WishListBoard tripId={numericTripId} />
+                    <WishListBoard tripId={numericTripId} shareCode={trip?.shareCode ?? null} />
                   </div>
                 )}
 

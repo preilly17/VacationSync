@@ -36,7 +36,7 @@ import {
   Tag,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { cn } from "@/lib/utils";
@@ -64,6 +64,7 @@ const SORT_LABELS: Record<"newest" | "oldest" | "most_saved", string> = {
 
 interface WishListBoardProps {
   tripId: number;
+  shareCode?: string | null;
 }
 
 interface WishListIdeasResponse {
@@ -203,7 +204,7 @@ const getFullDate = (input?: string | Date | null) => {
   return format(date, "MMMM d, yyyy");
 };
 
-export function WishListBoard({ tripId }: WishListBoardProps) {
+export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -257,6 +258,15 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
     () => ["wish-list", tripId, filters] as const,
     [tripId, filters],
   );
+
+  const normalizedShareCode = useMemo(() => {
+    if (!shareCode) {
+      return null;
+    }
+
+    const trimmed = shareCode.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }, [shareCode]);
 
   const {
     data,
@@ -762,18 +772,20 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
     },
   });
 
+  type CreateIdeaPayload = {
+    title: string;
+    url: string | null;
+    notes: string | null;
+    tags: string[];
+    thumbnailUrl: string | null;
+    imageUrl: string | null;
+    metadata: LinkPreviewMetadata | null;
+  };
+
   const createIdeaMutation = useMutation<
     { idea: WishListIdeaWithDetails },
     Error,
-    {
-      title: string;
-      url: string | null;
-      notes: string | null;
-      tags: string[];
-      thumbnailUrl: string | null;
-      imageUrl: string | null;
-      metadata: LinkPreviewMetadata | null;
-    }
+    CreateIdeaPayload
   >({
     mutationFn: async (payload) => {
       const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
@@ -793,19 +805,96 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
       setIsAddModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ["wish-list", tripId] });
     },
-    onError: (error) => {
-      const err = error as Error;
-      if (isUnauthorizedError(err)) {
-        handleUnauthorized();
-        return;
-      }
-      toast({
-        title: "Failed to add idea",
-        description: err.message || "Please try again.",
-        variant: "destructive",
-      });
-    },
   });
+
+  const attemptCreateIdea = useCallback(
+    async (payload: CreateIdeaPayload) => {
+      let joinAttempted = false;
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          await createIdeaMutation.mutateAsync(payload);
+          return;
+        } catch (error) {
+          if (error instanceof ApiError) {
+            if (error.status === 401) {
+              handleUnauthorized();
+              return;
+            }
+
+            if (error.status === 403 && normalizedShareCode && !joinAttempted) {
+              joinAttempted = true;
+              try {
+                await apiRequest(`/api/trips/join/${normalizedShareCode}`, {
+                  method: "POST",
+                  body: {},
+                });
+
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ["/api/trips"] }),
+                  queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] }),
+                ]);
+
+                toast({
+                  title: "You’re now part of the trip",
+                  description: "We added you to the trip so your idea can be shared.",
+                });
+
+                continue;
+              } catch (joinError) {
+                if (joinError instanceof ApiError) {
+                  if (joinError.status === 401) {
+                    handleUnauthorized();
+                    return;
+                  }
+
+                  toast({
+                    title: "Failed to join trip",
+                    description: joinError.message || "Please try again.",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+
+                toast({
+                  title: "Failed to join trip",
+                  description:
+                    joinError instanceof Error
+                      ? joinError.message
+                      : "Please try again.",
+                  variant: "destructive",
+                });
+                return;
+              }
+            }
+
+            toast({
+              title: "Failed to add idea",
+              description: error.message || "Please try again.",
+              variant: "destructive",
+            });
+            return;
+          }
+
+          toast({
+            title: "Failed to add idea",
+            description:
+              error instanceof Error ? error.message : "Please try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+    },
+    [
+      createIdeaMutation,
+      handleUnauthorized,
+      normalizedShareCode,
+      queryClient,
+      toast,
+      tripId,
+    ],
+  );
 
   const handleToggleSave = async (ideaId: number) => {
     try {
@@ -861,7 +950,7 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
     setCustomTagInput("");
   };
 
-  const handleSubmitIdea = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmitIdea = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
@@ -881,7 +970,7 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
       ),
     );
 
-    const payload = {
+    const payload: CreateIdeaPayload = {
       title: trimmedTitle,
       url: link.trim() ? link.trim() : null,
       notes: notes.trim() ? notes.trim() : null,
@@ -891,7 +980,7 @@ export function WishListBoard({ tripId }: WishListBoardProps) {
       metadata: metadataPreview,
     };
 
-    createIdeaMutation.mutate(payload);
+    await attemptCreateIdea(payload);
   };
 
   const toggleSavePendingId =
