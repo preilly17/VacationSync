@@ -5544,10 +5544,21 @@ export function setupRoutes(app: Express) {
       });
 
       const created = await storage.createWishListIdea(validatedData, userId);
-      const detailedIdea = await storage.getWishListIdeaForUser(created.id, userId);
+      let detailedIdea = await storage.getWishListIdeaForUser(created.id, userId);
 
       if (!detailedIdea) {
-        throw new Error("Failed to load created wish list idea");
+        const creator = await storage.getUser(userId);
+        if (!creator) {
+          throw new Error("Failed to load created wish list idea");
+        }
+
+        detailedIdea = {
+          ...created,
+          creator,
+          saveCount: 0,
+          commentCount: 0,
+          currentUserSaved: false,
+        };
       }
 
       const isAdmin = await storage.isTripAdmin(tripId, userId);
