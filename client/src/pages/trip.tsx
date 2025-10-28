@@ -66,6 +66,9 @@ import { ExpenseTracker } from "@/components/expense-tracker";
 import { GroceryList } from "@/components/grocery-list";
 import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
 import { RestaurantManualDialog } from "@/components/restaurant-manual-dialog";
+import { RestaurantLinkBuilderModal } from "@/components/restaurants/RestaurantLinkBuilderModal";
+import { RestaurantManualAddModal } from "@/components/restaurants/RestaurantManualAddModal";
+import type { RestaurantManualAddPrefill, RestaurantLinkBuilderResult } from "@/types/restaurants";
 import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/hotel-search-panel";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
 
@@ -6097,7 +6100,101 @@ function RestaurantBooking({
     enabled: !!tripId,
   });
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [linkBuilderOpen, setLinkBuilderOpen] = useState(false);
+  const [manualAddOpen, setManualAddOpen] = useState(false);
+  const [manualAddPrefill, setManualAddPrefill] = useState<RestaurantManualAddPrefill | null>(null);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const publishAnalytics = useCallback((eventName: string, payload: Record<string, unknown>) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const analyticsWindow = window as typeof window & {
+      analytics?: { track?: (event: string, detail?: Record<string, unknown>) => void };
+    };
+
+    try {
+      analyticsWindow.analytics?.track?.(eventName, payload);
+    } catch (error) {
+      console.warn("Failed to publish analytics event", error);
+    }
+  }, []);
+
+  const resolvedCity = useMemo(() => {
+    if (!trip) {
+      return "";
+    }
+
+    if (trip.cityName && trip.cityName.trim().length > 0) {
+      return trip.cityName;
+    }
+
+    const destination = trip.destination ?? "";
+    const parts = destination
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    return parts[0] ?? "";
+  }, [trip]);
+
+  const resolvedCountry = useMemo(() => {
+    if (!trip) {
+      return "";
+    }
+
+    if (trip.countryName && trip.countryName.trim().length > 0) {
+      return trip.countryName;
+    }
+
+    const destination = trip.destination ?? "";
+    const parts = destination
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (parts.length === 0) {
+      return "";
+    }
+
+    return parts[parts.length - 1] ?? "";
+  }, [trip]);
+
+  const resolvedStateCode = useMemo(() => {
+    if (!trip?.destination) {
+      return undefined;
+    }
+
+    const parts = trip.destination
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (parts.length >= 2) {
+      const candidate = parts[1];
+      if (/^[A-Za-z]{2}$/.test(candidate)) {
+        return candidate.toUpperCase();
+      }
+    }
+
+    return undefined;
+  }, [trip]);
+
+  const defaultPartySize = useMemo(() => {
+    if (trip?.memberCount && trip.memberCount > 0) {
+      return trip.memberCount;
+    }
+
+    if (trip?.members && trip.members.length > 0) {
+      return trip.members.length;
+    }
+
+    return undefined;
+  }, [trip]);
+
+  const defaultLatitude = trip?.latitude ?? null;
+  const defaultLongitude = trip?.longitude ?? null;
 
   const handleBookingLinkClick = useCallback(
     (_restaurant: any, link: { text: string; url: string }) => {
@@ -6110,6 +6207,24 @@ function RestaurantBooking({
       }
     },
     []
+  );
+
+  const handleLinkBuilderOpened = useCallback(
+    (result: RestaurantLinkBuilderResult) => {
+      publishAnalytics("manual_add_opened", { tab: "restaurants", platform: result.platform });
+
+      setManualAddPrefill({
+        platform: result.platform,
+        url: result.url,
+        date: result.date,
+        time: result.time,
+        partySize: result.partySize,
+        city: result.city || resolvedCity || undefined,
+        country: resolvedCountry || undefined,
+      });
+      setManualAddOpen(true);
+    },
+    [publishAnalytics, resolvedCity, resolvedCountry],
   );
 
   if (isLoading) {
@@ -6130,6 +6245,15 @@ function RestaurantBooking({
           <p className="text-gray-600">
             Make dining plans for your group and keep everything in one place.
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setManualDialogOpen(true)}>
+            Log restaurant manually
+          </Button>
+          <Button type="button" onClick={() => setLinkBuilderOpen(true)}>
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Build restaurant link
+          </Button>
         </div>
       </div>
 
@@ -6208,15 +6332,41 @@ function RestaurantBooking({
         open={manualDialogOpen}
         onOpenChange={setManualDialogOpen}
       />
+
+      <RestaurantLinkBuilderModal
+        open={linkBuilderOpen}
+        onOpenChange={setLinkBuilderOpen}
+        defaultCity={resolvedCity}
+        stateCode={resolvedStateCode}
+        startDate={trip?.startDate ?? null}
+        endDate={trip?.endDate ?? null}
+        defaultPartySize={defaultPartySize}
+        defaultLatitude={defaultLatitude}
+        defaultLongitude={defaultLongitude}
+        onLinkOpened={handleLinkBuilderOpened}
+      />
+
+      <RestaurantManualAddModal
+        tripId={tripId}
+        open={manualAddOpen}
+        onOpenChange={(nextOpen) => {
+          setManualAddOpen(nextOpen);
+          if (!nextOpen) {
+            setManualAddPrefill(null);
+          }
+        }}
+        prefill={manualAddPrefill ?? undefined}
+        onSuccess={() => setManualAddPrefill(null)}
+      />
     </div>
   );
 }
 
 // Members Modal Component
-function MembersModal({ open, onOpenChange, trip }: { 
-  open: boolean; 
-  onOpenChange: (open: boolean) => void; 
-  trip: TripWithDetails; 
+function MembersModal({ open, onOpenChange, trip }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  trip: TripWithDetails;
 }) {
   const { user } = useAuth();
 
@@ -6277,6 +6427,8 @@ function MembersModal({ open, onOpenChange, trip }: {
     </Dialog>
   );
 }
+
+export { RestaurantBooking };
 
 // Weather interfaces
 interface WeatherCondition {
