@@ -1,5 +1,18 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isWithinInterval, isSameMonth } from "date-fns";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
+  startOfDay,
+  endOfDay,
+  addDays,
+  eachDayOfInterval,
+  isSameDay,
+  isWithinInterval,
+  isSameMonth,
+} from "date-fns";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
@@ -21,6 +34,9 @@ interface CalendarGridProps {
   ) => void;
   currentUserId?: string;
   highlightPersonalProposals?: boolean;
+  viewMode?: "month" | "week";
+  weekStartsOn?: Date;
+  selectedActivityId?: number | null;
 }
 
 const categoryIcons = {
@@ -252,10 +268,23 @@ export function CalendarGrid({
   onDayOverflowClick,
   currentUserId,
   highlightPersonalProposals,
+  viewMode = "month",
+  weekStartsOn,
+  selectedActivityId,
 }: CalendarGridProps) {
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
-  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+  const effectiveWeekStart = viewMode === "week"
+    ? startOfDay(weekStartsOn ?? startOfWeek(currentMonth))
+    : null;
+  const effectiveWeekEnd = viewMode === "week" && effectiveWeekStart
+    ? endOfDay(addDays(effectiveWeekStart, 6))
+    : null;
+
+  const days = viewMode === "week" && effectiveWeekStart && effectiveWeekEnd
+    ? eachDayOfInterval({ start: effectiveWeekStart, end: effectiveWeekEnd })
+    : eachDayOfInterval({ start: monthStart, end: monthEnd });
 
   const proposalFallbackDate = parseDateValue(trip.startDate) ?? parseDateValue(trip.endDate);
 
@@ -289,9 +318,12 @@ export function CalendarGrid({
   };
 
   const isTripDay = (day: Date) => {
+    const tripStart = startOfDay(parseDateValue(trip.startDate) ?? new Date(trip.startDate));
+    const tripEnd = endOfDay(parseDateValue(trip.endDate) ?? new Date(trip.endDate));
+
     return isWithinInterval(day, {
-      start: new Date(trip.startDate),
-      end: new Date(trip.endDate)
+      start: tripStart,
+      end: tripEnd,
     });
   };
 
@@ -310,20 +342,22 @@ export function CalendarGrid({
           </div>
           <div className="h-px w-full bg-[color:var(--calendar-line)]/70" />
           <div className="grid grid-cols-7 gap-2 px-4 pb-4 pt-3">
-            {Array.from({ length: monthStart.getDay() }, (_, index) => (
-              <div
-                key={`empty-${index}`}
-                className="h-32 rounded-2xl border border-dashed border-[color:var(--calendar-line)]/30 bg-transparent"
-                aria-hidden
-              />
-            ))}
+            {viewMode === "month"
+              ? Array.from({ length: monthStart.getDay() }, (_, index) => (
+                  <div
+                    key={`empty-${index}`}
+                    className="h-32 rounded-2xl border border-dashed border-[color:var(--calendar-line)]/30 bg-transparent"
+                    aria-hidden
+                  />
+                ))
+              : null}
 
             {days.map(day => {
               const dayActivities = getActivitiesForDay(day);
               const isTripActive = isTripDay(day);
               const isSelected = Boolean(selectedDate && isSameDay(day, selectedDate));
               const isToday = isSameDay(day, new Date());
-              const outsideMonth = !isSameMonth(day, currentMonth);
+              const outsideMonth = viewMode === "month" ? !isSameMonth(day, currentMonth) : false;
 
               const dayClasses = cn(
                 "group/day relative flex h-32 flex-col overflow-hidden rounded-2xl border border-transparent bg-[var(--calendar-surface)]/95 p-2.5 shadow-[0_6px_18px_-14px_rgba(15,23,42,0.35)] transition-all duration-200 ease-out dark:shadow-[0_10px_24px_-16px_rgba(2,6,23,0.7)] lg:h-40",
@@ -392,6 +426,7 @@ export function CalendarGrid({
                       highlightPersonalProposals={highlightPersonalProposals}
                       currentUserId={currentUserId}
                       onOverflowClick={onDayOverflowClick}
+                      selectedActivityId={selectedActivityId}
                     />
                   )}
                 </div>
@@ -416,6 +451,7 @@ interface DayActivityListProps {
   ) => void;
   highlightPersonalProposals?: boolean;
   currentUserId?: string;
+  selectedActivityId?: number | null;
 }
 
 function DayActivityList({
@@ -425,6 +461,7 @@ function DayActivityList({
   onOverflowClick,
   highlightPersonalProposals,
   currentUserId,
+  selectedActivityId,
 }: DayActivityListProps) {
   const [layout, setLayout] = useState<LayoutState>({
     mode: "normal",
@@ -703,14 +740,15 @@ function DayActivityList({
           const metadataLabel = metadata.join(" • ");
           const showMetadataLabel = metadataLabel.length > 0;
           const showTimeWithMetadata = Boolean(timeLabel && showMetadataLabel);
-          const showStandaloneTime = Boolean(timeLabel && !showMetadataLabel);
+        const showStandaloneTime = Boolean(timeLabel && !showMetadataLabel);
 
-          const isHidden = index >= visibleCount;
+        const isHidden = index >= visibleCount;
+        const isSelected = selectedActivityId === activity.id;
 
-          return (
-            <div
-              key={activity.id}
-              data-calendar-chip-wrapper
+        return (
+          <div
+            key={activity.id}
+            data-calendar-chip-wrapper
               data-hidden={isHidden ? "true" : "false"}
               className={cn(
                 "relative",
@@ -723,21 +761,23 @@ function DayActivityList({
                     type="button"
                     data-calendar-chip
                     data-hidden={isHidden ? "true" : "false"}
-                    onClick={event => {
-                      event.stopPropagation();
-                      onActivityClick?.(activity);
-                    }}
-                    style={style}
-                    className={cn(
-                      "group/chip relative flex w-full items-start gap-2 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-2 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
-                      "min-h-[52px]",
-                      "border-[var(--chip-border)]",
-                      showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : null,
-                      isProposal ? "border-dashed" : null,
-                      "data-[hidden=true]:hidden",
-                      "group-data-[mode=compact]/mode:rounded-lg group-data-[mode=compact]/mode:px-2 group-data-[mode=compact]/mode:py-1.5 group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:font-semibold group-data-[mode=compact]/mode:gap-1.5",
-                      "group-data-[mode=micro]/mode:rounded-md group-data-[mode=micro]/mode:px-1.5 group-data-[mode=micro]/mode:py-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-medium group-data-[mode=micro]/mode:items-center group-data-[mode=micro]/mode:gap-1.5",
-                    )}
+                  onClick={event => {
+                    event.stopPropagation();
+                    onActivityClick?.(activity);
+                  }}
+                  style={style}
+                  aria-pressed={isSelected}
+                  className={cn(
+                    "group/chip relative flex w-full items-start gap-2 rounded-xl border bg-[var(--chip-bg)] px-2.5 py-2 text-left text-[13px] font-semibold text-[var(--chip-text)] shadow-[0_8px_20px_-14px_rgba(15,23,42,0.4)] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_12px_26px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chip-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--calendar-surface)]",
+                    "min-h-[52px]",
+                    "border-[var(--chip-border)]",
+                    showPersonalProposalChip || showGlobalProposalChip ? "pr-2" : null,
+                    isProposal ? "border-dashed" : null,
+                    isSelected ? "ring-2 ring-[var(--chip-ring)]" : null,
+                    "data-[hidden=true]:hidden",
+                    "group-data-[mode=compact]/mode:rounded-lg group-data-[mode=compact]/mode:px-2 group-data-[mode=compact]/mode:py-1.5 group-data-[mode=compact]/mode:text-[12px] group-data-[mode=compact]/mode:font-semibold group-data-[mode=compact]/mode:gap-1.5",
+                    "group-data-[mode=micro]/mode:rounded-md group-data-[mode=micro]/mode:px-1.5 group-data-[mode=micro]/mode:py-1 group-data-[mode=micro]/mode:text-[11px] group-data-[mode=micro]/mode:font-medium group-data-[mode=micro]/mode:items-center group-data-[mode=micro]/mode:gap-1.5",
+                  )}
                     aria-label={formatActivityAriaLabel(activity, day)}
                   >
                     <span className="flex items-start gap-1.5 pt-0.5">
