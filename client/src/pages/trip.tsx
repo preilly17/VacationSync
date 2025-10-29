@@ -893,7 +893,7 @@ export default function Trip() {
     }
 
     const trimmed = id.trim();
-    const match = trimmed.match(/^(\d+)/);
+    const match = trimmed.match(/^([0-9]+)/);
     if (!match) {
       return 0;
     }
