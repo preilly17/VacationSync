@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -44,6 +46,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
@@ -115,6 +118,9 @@ import {
   addDays,
   subDays,
   startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
   isSameDay,
   isSameMonth,
   isBefore,
@@ -148,6 +154,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   clearExternalRedirect,
   hasExternalRedirect,
@@ -161,7 +168,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const TRIP_TAB_KEYS = [
   "calendar",
-  "schedule",
   "proposals",
   "packing",
   "flights",
@@ -179,6 +185,49 @@ const isTripTab = (value: string): value is TripTab =>
   TRIP_TAB_KEYS.includes(value as TripTab);
 
 type SummaryPanel = "activities" | "rsvps" | "next";
+
+type CalendarViewMode = "month" | "week" | "day";
+
+type CalendarEventType = "flights" | "hotels" | "activities" | "restaurants" | "personal";
+
+const CALENDAR_EVENT_TYPES: CalendarEventType[] = [
+  "flights",
+  "hotels",
+  "activities",
+  "restaurants",
+  "personal",
+];
+
+const CALENDAR_EVENT_TYPE_META: Record<CalendarEventType, { label: string; icon: LucideIcon }> = {
+  flights: { label: "Flights", icon: Plane },
+  hotels: { label: "Hotels", icon: Hotel },
+  activities: { label: "Activities", icon: Sparkles },
+  restaurants: { label: "Restaurants", icon: Utensils },
+  personal: { label: "Personal", icon: UserIcon },
+};
+
+type CalendarFilterState = {
+  people: string[];
+  types: Record<CalendarEventType, boolean>;
+  statuses: { proposed: boolean; scheduled: boolean };
+};
+
+const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
+  people: ["everyone"],
+  types: {
+    flights: true,
+    hotels: true,
+    activities: true,
+    restaurants: true,
+    personal: true,
+  },
+  statuses: {
+    proposed: true,
+    scheduled: true,
+  },
+};
+
+const CALENDAR_FILTER_STORAGE_PREFIX = "vacationsync:trip-calendar-filters";
 
 const formatFlightProposalDateTime = (
   value?: string | Date | null,
@@ -245,8 +294,7 @@ type DayDetailsState = {
 
 // MOBILE-ONLY bottom navigation config
 const MOBILE_TAB_ITEMS: { key: TripTab; label: string; icon: LucideIcon }[] = [
-  { key: "calendar", label: "Group", icon: Calendar },
-  { key: "schedule", label: "Personal", icon: Clock },
+  { key: "calendar", label: "Calendar", icon: Calendar },
   { key: "packing", label: "Packing", icon: Package },
   { key: "expenses", label: "Expenses", icon: DollarSign },
   { key: "flights", label: "Flights", icon: Plane },
@@ -351,6 +399,207 @@ const getActivityDateCandidates = (activity: ActivityWithSchedulingDetails): Dat
 const getActivityComparisonPoint = (activity: ActivityWithSchedulingDetails): Date | null => {
   const end = getActivityEndDate(activity);
   return end ?? getActivityPrimaryDate(activity);
+};
+
+const normalizeUserId = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return null;
+};
+
+const isActivityCreator = (activity: ActivityWithDetails, userId?: string | null): boolean => {
+  const normalizedUserId = normalizeUserId(userId);
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  const postedById = normalizeUserId(activity.postedBy);
+  if (postedById && postedById === normalizedUserId) {
+    return true;
+  }
+
+  const posterId = normalizeUserId(activity.poster?.id);
+  return Boolean(posterId && posterId === normalizedUserId);
+};
+
+const getActivityVisibilityMetadata = (
+  activity: ActivityWithDetails,
+): { visibility: string | null; sharedFlag: boolean | null } => {
+  const base = activity as ActivityWithDetails & {
+    visibility?: string | null;
+    shared?: boolean | null;
+    settings?: { visibility?: string | null; shared?: boolean | null } | null;
+    permissions?: { visibility?: string | null; shared?: boolean | null } | null;
+  };
+
+  const visibility = base.visibility
+    ?? base.settings?.visibility
+    ?? base.permissions?.visibility
+    ?? null;
+
+  const sharedFlag = base.shared
+    ?? base.settings?.shared
+    ?? base.permissions?.shared
+    ?? null;
+
+  return { visibility, sharedFlag };
+};
+
+const isPersonalEvent = (
+  activity: ActivityWithDetails,
+  currentUserId?: string | null,
+): boolean => {
+  const { visibility, sharedFlag } = getActivityVisibilityMetadata(activity);
+  if (visibility) {
+    const normalizedVisibility = visibility.toLowerCase();
+    if (["private", "personal", "me"].includes(normalizedVisibility)) {
+      return true;
+    }
+    if (["trip", "shared", "group", "public"].includes(normalizedVisibility)) {
+      return false;
+    }
+  }
+
+  if (sharedFlag === false) {
+    return true;
+  }
+
+  if (sharedFlag === true) {
+    return false;
+  }
+
+  const inviteIds = (activity.invites ?? []).map((invite) => normalizeUserId(invite.userId)).filter(Boolean);
+  const uniqueInviteIds = new Set(inviteIds);
+
+  if (uniqueInviteIds.size === 0) {
+    return true;
+  }
+
+  if (uniqueInviteIds.size === 1) {
+    const [onlyInvite] = Array.from(uniqueInviteIds);
+    const creatorId = normalizeUserId(activity.postedBy) ?? normalizeUserId(activity.poster?.id);
+    if (onlyInvite && creatorId && onlyInvite === creatorId) {
+      return true;
+    }
+  }
+
+  if (currentUserId) {
+    const currentUserInvite = activity.invites?.find((invite) => normalizeUserId(invite.userId) === normalizeUserId(currentUserId));
+    if (!currentUserInvite && !isActivityCreator(activity, currentUserId)) {
+      return false;
+    }
+  }
+
+  return false;
+};
+
+const isPersonalEventSharedWithTrip = (activity: ActivityWithDetails): boolean => {
+  const { visibility, sharedFlag } = getActivityVisibilityMetadata(activity);
+  if (sharedFlag === true) {
+    return true;
+  }
+
+  if (sharedFlag === false) {
+    return false;
+  }
+
+  if (visibility) {
+    const normalizedVisibility = visibility.toLowerCase();
+    if (["trip", "shared", "group", "public"].includes(normalizedVisibility)) {
+      return true;
+    }
+    if (["private", "personal", "me"].includes(normalizedVisibility)) {
+      return false;
+    }
+  }
+
+  return false;
+};
+
+const deriveCalendarEventType = (
+  activity: ActivityWithDetails,
+  currentUserId?: string | null,
+): CalendarEventType => {
+  if (isPersonalEvent(activity, currentUserId)) {
+    return "personal";
+  }
+
+  const category = (activity.category ?? "").toLowerCase();
+  if (["flight", "flights", "air", "airport"].some((token) => category.includes(token))) {
+    return "flights";
+  }
+
+  if (["hotel", "stay", "lodging", "resort"].some((token) => category.includes(token))) {
+    return "hotels";
+  }
+
+  if (["restaurant", "food", "dining", "meal", "brunch"].some((token) => category.includes(token))) {
+    return "restaurants";
+  }
+
+  return "activities";
+};
+
+const activityMatchesAnySelectedPerson = (
+  activity: ActivityWithDetails,
+  selectedPeople: string[],
+  currentUserId?: string | null,
+): boolean => {
+  if (selectedPeople.length === 0 || selectedPeople.includes("everyone")) {
+    return true;
+  }
+
+  const normalizedCurrentUserId = normalizeUserId(currentUserId);
+  const normalizedSelections = selectedPeople.map((value) => value === "me" ? normalizedCurrentUserId : normalizeUserId(value)).filter(Boolean);
+  if (normalizedSelections.length === 0) {
+    return true;
+  }
+
+  return normalizedSelections.some((personId) => activityMatchesPeopleFilter(activity, personId ?? ""));
+};
+
+const activityOccursWithinRange = (
+  activity: ActivityWithDetails,
+  rangeStart: Date | null,
+  rangeEnd: Date | null,
+  proposalFallbackDate: Date | null,
+): boolean => {
+  if (!rangeStart && !rangeEnd) {
+    return true;
+  }
+
+  const scheduling = activity as ActivityWithSchedulingDetails;
+  const candidates = getActivityDateCandidates(scheduling);
+
+  if (candidates.length === 0 && activity.type === "PROPOSE" && proposalFallbackDate) {
+    candidates.push(proposalFallbackDate);
+  }
+
+  if (candidates.length === 0) {
+    return true;
+  }
+
+  return candidates.some((candidate) => {
+    if (rangeStart && isBefore(candidate, rangeStart) && !isSameDay(candidate, rangeStart)) {
+      return false;
+    }
+
+    if (rangeEnd && isAfter(candidate, rangeEnd) && !isSameDay(candidate, rangeEnd)) {
+      return false;
+    }
+
+    return true;
+  });
 };
 
 interface DayViewProps {
@@ -916,17 +1165,16 @@ export default function Trip() {
   const [showWeatherModal, setShowWeatherModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TripTab>("calendar");
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [peopleFilter, setPeopleFilter] = useState("all");
+  const [calendarView, setCalendarView] = useState<CalendarViewMode>("month");
+  const [calendarViewDate, setCalendarViewDate] = useState<Date | null>(null);
+  const [calendarFilters, setCalendarFilters] = useState<CalendarFilterState>(DEFAULT_CALENDAR_FILTER_STATE);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [groupCalendarView, setGroupCalendarView] = useState<"month" | "day">("month");
-  const [scheduleCalendarView, setScheduleCalendarView] = useState<"month" | "day">("month");
-  const [groupViewDate, setGroupViewDate] = useState<Date | null>(null);
-  const [scheduleViewDate, setScheduleViewDate] = useState<Date | null>(null);
   const [selectedActivityId, setSelectedActivityId] = useState<number | null>(null);
+  const [expandedActivityId, setExpandedActivityId] = useState<number | null>(null);
   const cancelingActivityNameRef = useRef<string | null>(null);
   const [isActivityDialogOpen, setIsActivityDialogOpen] = useState(false);
   const [summaryPanel, setSummaryPanel] = useState<SummaryPanel | null>(null);
+  const debouncedCalendarFilters = useDebouncedValue(calendarFilters, 250);
   const [shouldShowFlightReturnPrompt, setShouldShowFlightReturnPrompt] = useState(false);
   const [shouldShowHotelReturnPrompt, setShouldShowHotelReturnPrompt] = useState(false);
   const [shouldShowActivityReturnPrompt, setShouldShowActivityReturnPrompt] = useState(false);
@@ -937,6 +1185,7 @@ export default function Trip() {
   const [dayDetailsState, setDayDetailsState] = useState<DayDetailsState | null>(null);
   const [isDayDetailsOpen, setIsDayDetailsOpen] = useState(false);
   const dayDetailsContentRef = useRef<HTMLDivElement>(null);
+  const filtersHydratedRef = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1104,7 +1353,7 @@ export default function Trip() {
     [],
   );
 
-  const handleGroupDayOverflow = useCallback(
+  const handleCalendarDayOverflow = useCallback(
     (
       day: Date,
       dayActivities: ActivityWithDetails[],
@@ -1112,18 +1361,6 @@ export default function Trip() {
       trigger: HTMLButtonElement | null,
     ) => {
       openDayDetails(day, dayActivities, hiddenCount, trigger, "group");
-    },
-    [openDayDetails],
-  );
-
-  const handlePersonalDayOverflow = useCallback(
-    (
-      day: Date,
-      dayActivities: ActivityWithDetails[],
-      hiddenCount: number,
-      trigger: HTMLButtonElement | null,
-    ) => {
-      openDayDetails(day, dayActivities, hiddenCount, trigger, "personal");
     },
     [openDayDetails],
   );
@@ -1163,7 +1400,78 @@ export default function Trip() {
   const { data: activities = [], isLoading: activitiesLoading } = useQuery<ActivityWithDetails[]>({
     queryKey: [`/api/trips/${id}/activities`],
     enabled: !!id && isAuthenticated,
+    refetchInterval: 30000,
+    refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storageTripId = trip?.id ?? numericTripIdFromRoute;
+    if (!storageTripId || filtersHydratedRef.current) {
+      return;
+    }
+
+    const storageKey = `${CALENDAR_FILTER_STORAGE_PREFIX}:${storageTripId}`;
+
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      if (!raw) {
+        filtersHydratedRef.current = true;
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Partial<CalendarFilterState> | null;
+      if (!parsed || typeof parsed !== "object") {
+        filtersHydratedRef.current = true;
+        return;
+      }
+
+      const next: CalendarFilterState = {
+        people: Array.isArray(parsed.people) && parsed.people.length > 0
+          ? parsed.people.map((value) => String(value))
+          : DEFAULT_CALENDAR_FILTER_STATE.people,
+        types: {
+          ...DEFAULT_CALENDAR_FILTER_STATE.types,
+          ...(parsed.types ?? {}),
+        },
+        statuses: {
+          ...DEFAULT_CALENDAR_FILTER_STATE.statuses,
+          ...(parsed.statuses ?? {}),
+        },
+      };
+
+      filtersHydratedRef.current = true;
+      setCalendarFilters(next);
+    } catch {
+      filtersHydratedRef.current = true;
+    }
+  }, [trip?.id, numericTripIdFromRoute]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!filtersHydratedRef.current) {
+      return;
+    }
+
+    const storageTripId = trip?.id ?? numericTripIdFromRoute;
+    if (!storageTripId) {
+      return;
+    }
+
+    const storageKey = `${CALENDAR_FILTER_STORAGE_PREFIX}:${storageTripId}`;
+
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(debouncedCalendarFilters));
+    } catch {
+      // Ignore storage errors (e.g., quota exceeded or privacy mode)
+    }
+  }, [debouncedCalendarFilters, trip?.id, numericTripIdFromRoute]);
 
   const numericTripId = useMemo(() => {
     if (trip?.id && Number.isFinite(trip.id)) {
@@ -1179,6 +1487,13 @@ export default function Trip() {
     }
     return activities.find((activity) => activity.id === selectedActivityId) ?? null;
   }, [activities, selectedActivityId]);
+
+  const expandedActivity = useMemo(() => {
+    if (!expandedActivityId) {
+      return null;
+    }
+    return activities.find((activity) => activity.id === expandedActivityId) ?? null;
+  }, [activities, expandedActivityId]);
 
   const respondToInviteMutation = useMutation({
     mutationFn: async ({
@@ -1239,7 +1554,8 @@ export default function Trip() {
 
   const handleActivityClick = useCallback((activity: ActivityWithDetails) => {
     setSelectedActivityId(activity.id);
-    setIsActivityDialogOpen(true);
+    setExpandedActivityId((previous) => (previous === activity.id ? null : activity.id));
+    setIsActivityDialogOpen(false);
   }, []);
 
   const submitRsvpAction = useCallback(
@@ -1296,6 +1612,7 @@ export default function Trip() {
       cancelingActivityNameRef.current = null;
       setIsActivityDialogOpen(false);
       setSelectedActivityId(null);
+      setExpandedActivityId(null);
     },
     onError: (error: unknown) => {
       cancelingActivityNameRef.current = null;
@@ -1384,8 +1701,8 @@ export default function Trip() {
     if (primaryDate) {
       const targetDate = clampDateToTrip(primaryDate);
       setActiveTab("calendar");
-      setGroupCalendarView("day");
-      setGroupViewDate(targetDate);
+      setCalendarView("day");
+      setCalendarViewDate(targetDate);
       setSelectedDate(targetDate);
     }
 
@@ -1404,17 +1721,51 @@ export default function Trip() {
     enabled: !!id && isAuthenticated,
   });
 
-  // Category filter options
-  const categories = [
-    "all",
-    ...Array.from(new Set(activities.map((activity) => activity.category).filter(Boolean)))
-  ];
+  const calendarPeopleOptions = useMemo(
+    () => {
+      const options: {
+        value: string;
+        label: string;
+        avatarUrl?: string | null;
+        fallback: string;
+      }[] = [
+        {
+          value: "everyone",
+          label: "Everyone",
+          avatarUrl: null,
+          fallback: "E",
+        },
+      ];
 
-  // People filter options
-  const people = [
-    "all",
-    ...(trip?.members || []).map((member: any) => member.userId)
-  ];
+      if (user) {
+        const fallback = (user.firstName?.[0]
+          ?? user.lastName?.[0]
+          ?? user.username?.[0]
+          ?? user.email?.[0]
+          ?? "M").toUpperCase();
+        options.push({
+          value: "me",
+          label: "Me",
+          avatarUrl: user.profileImageUrl,
+          fallback,
+        });
+      }
+
+      for (const member of trip?.members ?? []) {
+        const label = getParticipantDisplayName(member.user);
+        const fallback = (label?.[0] ?? member.user.email?.[0] ?? "G").toUpperCase();
+        options.push({
+          value: member.userId,
+          label,
+          avatarUrl: member.user.profileImageUrl,
+          fallback,
+        });
+      }
+
+      return options;
+    },
+    [trip?.members, user],
+  );
 
   const tripStartDate = useMemo(() => {
     const parsed = parseTripDateToLocal(trip?.startDate);
@@ -1468,79 +1819,163 @@ export default function Trip() {
 
   useEffect(() => {
     if (tripStartDate) {
-      setGroupViewDate((prev) => (prev ? prev : tripStartDate));
-      setScheduleViewDate((prev) => (prev ? prev : tripStartDate));
+      setCalendarViewDate((prev) => (prev ? prev : tripStartDate));
       setSelectedDate((prev) => (prev ? prev : tripStartDate));
     }
   }, [tripStartDate]);
 
   useEffect(() => {
-    if (activeTab === "calendar" && groupCalendarView === "day" && groupViewDate) {
-      setSelectedDate(groupViewDate);
-    }
-  }, [activeTab, groupCalendarView, groupViewDate]);
+    if (calendarView === "day" || calendarView === "week") {
+      const base = calendarViewDate
+        ?? selectedDate
+        ?? tripStartDate
+        ?? currentMonth;
 
-  useEffect(() => {
-    if (activeTab === "schedule" && scheduleCalendarView === "day" && scheduleViewDate) {
-      setSelectedDate(scheduleViewDate);
+      if (!base) {
+        return;
+      }
+
+      const normalized = clampDateToTrip(base);
+      if (!calendarViewDate || calendarViewDate.getTime() !== normalized.getTime()) {
+        setCalendarViewDate(normalized);
+      }
+      setSelectedDate(normalized);
     }
-  }, [activeTab, scheduleCalendarView, scheduleViewDate]);
+  }, [calendarView, calendarViewDate, clampDateToTrip, currentMonth, selectedDate, tripStartDate]);
+
+  const calendarRange = useMemo(() => {
+    if (calendarView === "month") {
+      return {
+        start: startOfMonth(currentMonth),
+        end: endOfMonth(currentMonth),
+      };
+    }
+
+    const baseCandidate = calendarViewDate
+      ?? selectedDate
+      ?? tripStartDate
+      ?? currentMonth;
+
+    if (calendarView === "week") {
+      const start = startOfWeek(baseCandidate ?? new Date());
+      return { start, end: endOfWeek(start) };
+    }
+
+    if (calendarView === "day") {
+      const day = baseCandidate ? startOfDay(baseCandidate) : null;
+      return { start: day, end: day ? endOfDay(day) : null };
+    }
+
+    return { start: null, end: null };
+  }, [calendarView, calendarViewDate, currentMonth, selectedDate, tripStartDate]);
+
+  const calendarRangeStart = calendarRange.start;
+  const calendarRangeEnd = calendarRange.end;
+
+  const currentCalendarDay = calendarViewDate ?? tripStartDate ?? null;
+
+  const calendarStep = calendarView === "week" ? 7 : 1;
+
+  const canGoToPreviousCalendarPeriod = useMemo(() => {
+    if (!currentCalendarDay || !tripStartDate) {
+      return false;
+    }
+
+    const candidate = clampDateToTrip(subDays(currentCalendarDay, calendarStep));
+    return !isBefore(candidate, tripStartDate);
+  }, [calendarStep, currentCalendarDay, tripStartDate]);
+
+  const canGoToNextCalendarPeriod = useMemo(() => {
+    if (!currentCalendarDay || !tripEndDate) {
+      return false;
+    }
+
+    const candidate = clampDateToTrip(addDays(currentCalendarDay, calendarStep));
+    return !isAfter(candidate, tripEndDate);
+  }, [calendarStep, currentCalendarDay, tripEndDate]);
+
+  const calendarViewLabel = useMemo(() => {
+    if (calendarView === "month") {
+      return format(currentMonth, "MMMM yyyy");
+    }
+
+    if (calendarView === "week") {
+      const start = calendarRangeStart ?? currentCalendarDay ?? new Date();
+      const end = calendarRangeEnd ?? start;
+
+      if (isSameMonth(start, end)) {
+        return `${format(start, "MMM d")} – ${format(end, "d, yyyy")}`;
+      }
+
+      return `${format(start, "MMM d")} – ${format(end, "MMM d, yyyy")}`;
+    }
+
+    const day = currentCalendarDay ?? calendarRangeStart ?? new Date();
+    return format(day, "EEEE, MMM d, yyyy");
+  }, [calendarRangeEnd, calendarRangeStart, calendarView, currentCalendarDay, currentMonth]);
+
+  const canGoToPreviousMonth = useMemo(() => {
+    if (!tripStartDate) {
+      return true;
+    }
+
+    const previousMonthStart = startOfMonth(subMonths(currentMonth, 1));
+    return !isBefore(previousMonthStart, startOfDay(tripStartDate));
+  }, [currentMonth, tripStartDate]);
+
+  const canGoToNextMonth = useMemo(() => {
+    if (!tripEndDate) {
+      return true;
+    }
+
+    const nextMonthEnd = endOfMonth(addMonths(currentMonth, 1));
+    return !isAfter(nextMonthEnd, endOfDay(tripEndDate));
+  }, [currentMonth, tripEndDate]);
 
   const filteredActivities = useMemo(() => {
-    let filtered = activities;
-
-    if (categoryFilter !== "all") {
-      filtered = filtered.filter((activity) => activity.category === categoryFilter);
-    }
-
-    if (peopleFilter !== "all") {
-      filtered = filtered.filter((activity) => activityMatchesPeopleFilter(activity, peopleFilter));
-    }
-
-    return filtered;
-  }, [activities, categoryFilter, peopleFilter]);
-
-  const myScheduleActivities = useMemo(() => {
-    if (!user) return [];
-
-    const seen = new Set<number>();
+    const { people, types, statuses } = debouncedCalendarFilters;
 
     return activities.filter((activity) => {
-      if (!activity) {
+      const activityType = (activity.type ?? "").toString().toUpperCase();
+      if (activityType === "PROPOSE") {
+        if (!statuses.proposed) {
+          return false;
+        }
+      } else if (!statuses.scheduled) {
         return false;
       }
 
-      const normalizedType = activity.type;
-      const isProposal = normalizedType === "PROPOSE";
-      const isCreator = activity.postedBy === user.id || activity.poster.id === user.id;
-
-      if (isProposal) {
-        if (!isCreator) {
-          return false;
-        }
-      } else {
-        const hasAcceptedInvite = Boolean(
-          activity.invites?.some(
-            (invite) => invite.userId === user.id && invite.status === "accepted",
-          )
-            || (activity.currentUserInvite?.userId === user.id
-              && activity.currentUserInvite.status === "accepted")
-            || activity.isAccepted,
-        );
-
-        if (!isCreator && !hasAcceptedInvite) {
-          return false;
-        }
-      }
-
-      if (seen.has(activity.id)) {
+      const eventType = deriveCalendarEventType(activity, user?.id ?? null);
+      if (!types[eventType]) {
         return false;
       }
 
-      seen.add(activity.id);
+      if (
+        eventType === "personal"
+        && !isActivityCreator(activity, user?.id ?? null)
+        && !isPersonalEventSharedWithTrip(activity)
+      ) {
+        return false;
+      }
+
+      if (!activityMatchesAnySelectedPerson(activity, people, user?.id ?? null)) {
+        return false;
+      }
+
+      if (!activityOccursWithinRange(activity, calendarRangeStart, calendarRangeEnd, proposalFallbackDate)) {
+        return false;
+      }
+
       return true;
     });
-  }, [activities, user]);
+  }, [
+    activities,
+    calendarRangeEnd,
+    calendarRangeStart,
+    debouncedCalendarFilters,
+    proposalFallbackDate,
+    user?.id,
+  ]);
 
   const filteredMyInvitedActivities = useMemo(() => {
     if (!user) return [];
@@ -1570,72 +2005,134 @@ export default function Trip() {
       return aTime - bTime;
     });
   }, [filteredMyInvitedActivities]);
-  const currentGroupDay = groupViewDate ?? tripStartDate ?? null;
-  const currentScheduleDay = scheduleViewDate ?? tripStartDate ?? null;
-
-  const canGoToPreviousGroupDay = Boolean(
-    currentGroupDay && tripStartDate && isAfter(currentGroupDay, tripStartDate),
-  );
-  const canGoToNextGroupDay = Boolean(
-    currentGroupDay && tripEndDate && isBefore(currentGroupDay, tripEndDate),
-  );
-  const canGoToPreviousScheduleDay = Boolean(
-    currentScheduleDay && tripStartDate && isAfter(currentScheduleDay, tripStartDate),
-  );
-  const canGoToNextScheduleDay = Boolean(
-    currentScheduleDay && tripEndDate && isBefore(currentScheduleDay, tripEndDate),
-  );
-
-  const handleGroupViewChange = (view: "month" | "day") => {
-    setGroupCalendarView(view);
-    if (view === "day") {
-      const baseDate = groupViewDate ?? selectedDate ?? tripStartDate;
-      if (baseDate) {
-        const normalized = clampDateToTrip(baseDate);
-        setGroupViewDate(normalized);
-        setSelectedDate(normalized);
-      }
+  const handleCalendarViewChange = (view: CalendarViewMode) => {
+    setCalendarView(view);
+    if (view === "day" || view === "week") {
+      const baseDate = calendarViewDate ?? selectedDate ?? tripStartDate ?? new Date();
+      const normalized = clampDateToTrip(baseDate);
+      setCalendarViewDate(normalized);
+      setSelectedDate(normalized);
     }
   };
 
-  const handleScheduleViewChange = (view: "month" | "day") => {
-    setScheduleCalendarView(view);
-    if (view === "day") {
-      const baseDate = scheduleViewDate ?? selectedDate ?? tripStartDate;
-      if (baseDate) {
-        const normalized = clampDateToTrip(baseDate);
-        setScheduleViewDate(normalized);
-        setSelectedDate(normalized);
-      }
+  const handleCalendarPrevious = () => {
+    if (!currentCalendarDay || !canGoToPreviousCalendarPeriod) {
+      return;
     }
-  };
 
-  const handleGroupPreviousDay = () => {
-    if (!currentGroupDay || !canGoToPreviousGroupDay) return;
-    const previous = clampDateToTrip(subDays(currentGroupDay, 1));
-    setGroupViewDate(previous);
+    const previous = clampDateToTrip(subDays(currentCalendarDay, calendarStep));
+    setCalendarViewDate(previous);
     setSelectedDate(previous);
   };
 
-  const handleGroupNextDay = () => {
-    if (!currentGroupDay || !canGoToNextGroupDay) return;
-    const next = clampDateToTrip(addDays(currentGroupDay, 1));
-    setGroupViewDate(next);
+  const handleCalendarNext = () => {
+    if (!currentCalendarDay || !canGoToNextCalendarPeriod) {
+      return;
+    }
+
+    const next = clampDateToTrip(addDays(currentCalendarDay, calendarStep));
+    setCalendarViewDate(next);
     setSelectedDate(next);
   };
 
-  const handleSchedulePreviousDay = () => {
-    if (!currentScheduleDay || !canGoToPreviousScheduleDay) return;
-    const previous = clampDateToTrip(subDays(currentScheduleDay, 1));
-    setScheduleViewDate(previous);
-    setSelectedDate(previous);
+  const inlineAccordionValue = expandedActivityId ? `${expandedActivityId}` : "";
+
+  const handleInlineAccordionValueChange = useCallback(
+    (value: string) => {
+      if (!value) {
+        setExpandedActivityId(null);
+        return;
+      }
+
+      const numeric = Number.parseInt(value, 10);
+      if (Number.isNaN(numeric)) {
+        setExpandedActivityId(null);
+        return;
+      }
+
+      setExpandedActivityId(numeric);
+      setSelectedActivityId(numeric);
+    },
+    [setExpandedActivityId, setSelectedActivityId],
+  );
+
+  const selectedPeople = calendarFilters.people;
+
+  const selectedPeopleDisplay = useMemo(() => {
+    if (selectedPeople.includes("everyone")) {
+      return "Everyone";
+    }
+
+    const labels = calendarPeopleOptions
+      .filter((option) => selectedPeople.includes(option.value))
+      .map((option) => option.label);
+
+    if (labels.length === 0) {
+      return "Everyone";
+    }
+
+    if (labels.length <= 2) {
+      return labels.join(", ");
+    }
+
+    return `${labels.slice(0, 2).join(", ")} +${labels.length - 2}`;
+  }, [calendarPeopleOptions, selectedPeople]);
+
+  const togglePersonFilter = (value: string, checked: boolean) => {
+    setCalendarFilters((previous) => {
+      let nextPeople = previous.people;
+
+      if (checked) {
+        if (value === "everyone") {
+          nextPeople = ["everyone"];
+        } else {
+          nextPeople = Array.from(
+            new Set([
+              ...previous.people.filter((person) => person !== "everyone"),
+              value,
+            ]),
+          );
+        }
+      } else {
+        nextPeople = previous.people.filter((person) => person !== value);
+        if (nextPeople.length === 0) {
+          nextPeople = ["everyone"];
+        }
+      }
+
+      return {
+        ...previous,
+        people: nextPeople,
+      };
+    });
   };
 
-  const handleScheduleNextDay = () => {
-    if (!currentScheduleDay || !canGoToNextScheduleDay) return;
-    const next = clampDateToTrip(addDays(currentScheduleDay, 1));
-    setScheduleViewDate(next);
-    setSelectedDate(next);
+  const toggleStatusFilter = (status: keyof CalendarFilterState["statuses"], nextState?: boolean) => {
+    setCalendarFilters((previous) => ({
+      ...previous,
+      statuses: {
+        ...previous.statuses,
+        [status]: typeof nextState === "boolean" ? nextState : !previous.statuses[status],
+      },
+    }));
+  };
+
+  const activeTypeValues = useMemo(
+    () => CALENDAR_EVENT_TYPES.filter((type) => calendarFilters.types[type]),
+    [calendarFilters.types],
+  );
+
+  const handleTypeGroupChange = (values: string[]) => {
+    setCalendarFilters((previous) => {
+      const nextTypes = { ...previous.types };
+      for (const type of CALENDAR_EVENT_TYPES) {
+        nextTypes[type] = values.includes(type);
+      }
+      return {
+        ...previous,
+        types: nextTypes,
+      };
+    });
   };
 
   const openAddActivityModal = (
@@ -1693,8 +2190,7 @@ export default function Trip() {
 
     if (highlightDate) {
       setSelectedDate(highlightDate);
-      setGroupViewDate(highlightDate);
-      setScheduleViewDate(highlightDate);
+      setCalendarViewDate(highlightDate);
     }
 
     setAddActivityMode(mode);
@@ -1702,22 +2198,13 @@ export default function Trip() {
     setShowAddActivity(true);
   };
 
-  const handleOpenAddActivityForGroup = () => {
+  const handleOpenAddActivityForCalendar = () => {
     const baseDate =
-      groupCalendarView === "day"
-        ? currentGroupDay ?? tripStartDate
-        : selectedDate ?? currentGroupDay ?? tripStartDate;
+      calendarView === "day"
+        ? currentCalendarDay ?? tripStartDate
+        : selectedDate ?? currentCalendarDay ?? tripStartDate;
 
     openAddActivityModal({ date: baseDate, mode: "SCHEDULED", allowModeToggle: true });
-  };
-
-  const handleOpenAddActivityForSchedule = () => {
-    const baseDate =
-      scheduleCalendarView === "day"
-        ? currentScheduleDay ?? tripStartDate
-        : selectedDate ?? currentScheduleDay ?? tripStartDate;
-
-    openAddActivityModal({ date: baseDate, mode: "SCHEDULED", allowModeToggle: false });
   };
 
   const totalMembers = trip?.members?.length ?? 0;
@@ -1853,7 +2340,7 @@ export default function Trip() {
               <div className="p-6">
                 <h2 className="text-lg font-semibold text-white drop-shadow-sm mb-4">Trip Sections</h2>
                 <nav className="space-y-2">
-                  {/* 1. Group Calendar */}
+                  {/* 1. Calendar */}
                   <button
                     onClick={() => setActiveTab("calendar")}
                     className={cn(
@@ -1862,21 +2349,9 @@ export default function Trip() {
                     )}
                   >
                     <Calendar className="w-5 h-5 mr-3 text-current" />
-                    Group Calendar
+                    Calendar
                   </button>
-                  {/* 2. My Schedule */}
-                  <button
-                    onClick={() => setActiveTab("schedule")}
-                    className={cn(
-                      navButtonBaseClasses,
-                      activeTab === "schedule" ? navButtonActiveClasses : navButtonInactiveClasses,
-                    )}
-                    data-onboarding="personal-schedule"
-                  >
-                    <UserIcon className="w-5 h-5 mr-3 text-current" />
-                    My Schedule
-                  </button>
-                  {/* 3. Proposals */}
+                  {/* 2. Proposals */}
                   <button
                     onClick={() => setActiveTab("proposals")}
                     className={cn(
@@ -2204,113 +2679,167 @@ export default function Trip() {
                         />
                         <div className="pointer-events-none absolute inset-0 bg-white/60 backdrop-blur-[1.5px] dark:bg-slate-950/60" aria-hidden="true" />
                         <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" aria-hidden="true" />
-                        <div className="relative z-[1] flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="relative">
-                            <CardTitle className="text-lg font-semibold text-[color:var(--calendar-ink)]">
-                              Group activity calendar
-                            </CardTitle>
-                            <p className="text-sm text-[color:var(--calendar-muted)]">
-                              Use filters to focus on the plans that matter right now.
-                            </p>
-                          </div>
-                          <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
-                                View
-                              </span>
-                              <Select
-                                value={groupCalendarView}
-                                onValueChange={(value) => handleGroupViewChange(value as "month" | "day")}
-                              >
-                                <SelectTrigger className="min-w-[150px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
-                                  <SelectValue placeholder="Select view" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="month">Month view</SelectItem>
-                                  <SelectItem value="day">Day view</SelectItem>
-                                </SelectContent>
-                              </Select>
+                        <div className="relative z-[1] space-y-5">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <CardTitle className="text-lg font-semibold text-[color:var(--calendar-ink)]">
+                                Calendar
+                              </CardTitle>
+                              <p className="text-sm text-[color:var(--calendar-muted)]">
+                                Combine group plans and personal events with focused filters.
+                              </p>
                             </div>
-                            {groupCalendarView === "month" && (
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                  View
+                                </span>
+                                <Select
+                                  value={calendarView}
+                                  onValueChange={(value) => handleCalendarViewChange(value as CalendarViewMode)}
+                                >
+                                  <SelectTrigger className="min-w-[160px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
+                                    <SelectValue placeholder="Select view" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="month">Month</SelectItem>
+                                    <SelectItem value="week">Week</SelectItem>
+                                    <SelectItem value="day">Day</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
                               <div className="flex items-center gap-2 rounded-full bg-[color:var(--calendar-surface)]/95 px-2 py-1 shadow-sm">
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                                  aria-label="Previous month"
+                                  onClick={calendarView === "month" ? () => setCurrentMonth(subMonths(currentMonth, 1)) : handleCalendarPrevious}
+                                  disabled={calendarView === "month" ? !canGoToPreviousMonth : !canGoToPreviousCalendarPeriod}
+                                  aria-label={calendarView === "day" ? "Previous day" : calendarView === "week" ? "Previous week" : "Previous month"}
                                 >
                                   <ChevronLeft className="h-4 w-4" />
                                 </Button>
-                                <span className="min-w-[140px] text-center text-sm font-semibold text-[color:var(--calendar-ink)]">
-                                  {format(currentMonth, 'MMMM yyyy')}
+                                <span className="min-w-[160px] text-center text-sm font-semibold text-[color:var(--calendar-ink)]">
+                                  {calendarViewLabel}
                                 </span>
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                                  aria-label="Next month"
+                                  onClick={calendarView === "month" ? () => setCurrentMonth(addMonths(currentMonth, 1)) : handleCalendarNext}
+                                  disabled={calendarView === "month" ? !canGoToNextMonth : !canGoToNextCalendarPeriod}
+                                  aria-label={calendarView === "day" ? "Next day" : calendarView === "week" ? "Next week" : "Next month"}
                                 >
                                   <ChevronRight className="h-4 w-4" />
                                 </Button>
                               </div>
-                            )}
-                            <Button
-                              onClick={handleOpenAddActivityForGroup}
-                              className="bg-primary text-white hover:bg-red-600"
-                            >
-                              <Plus className="mr-2 h-4 w-4" />
-                              Add Activity
-                            </Button>
+                              <Button
+                                onClick={handleOpenAddActivityForCalendar}
+                                className="bg-primary text-white hover:bg-primary/90"
+                              >
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add Activity
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                        <div className="relative z-[1] flex flex-wrap items-end gap-6">
-                            <div className="flex flex-col gap-1">
-                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-100">
-                                <Filter className="h-3.5 w-3.5" />
-                                Category
-                              </span>
-                              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                                <SelectTrigger className="min-w-[180px] bg-[color:var(--calendar-surface)] text-neutral-900 dark:text-neutral-100">
-                                  <SelectValue placeholder="All activities" />
-                                </SelectTrigger>
-                              <SelectContent>
-                                {categories.map((category) => (
-                                  <SelectItem key={category} value={category}>
-                                    {category === "all" ? "All activities" : category}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                            <div className="flex flex-col gap-1">
-                              <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-900 dark:text-neutral-100">
-                                <Users className="h-3.5 w-3.5" />
-                                Person
-                              </span>
-                              <Select value={peopleFilter} onValueChange={setPeopleFilter}>
-                                <SelectTrigger className="min-w-[200px] bg-[color:var(--calendar-surface)] text-neutral-900 dark:text-neutral-100">
-                                  <SelectValue placeholder="Everyone" />
-                                </SelectTrigger>
-                              <SelectContent>
-                                {people.map((personId) => {
-                                  const member = trip?.members?.find((m: any) => m.userId === personId);
-                                  const displayName = personId === "all" ? "Everyone" :
-                                    member?.user ? `${member.user.firstName} ${member.user.lastName}`.trim() :
-                                    member?.userId === user?.id ? "You" : "Unknown";
-
-                                  return (
-                                    <SelectItem key={personId} value={personId}>
-                                      {displayName}
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
+                          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    className="flex items-center gap-2 rounded-full border-[color:var(--calendar-line)]/60 bg-[color:var(--calendar-surface)] px-3 py-2 text-sm font-medium text-[color:var(--calendar-ink)] shadow-sm hover:bg-[color:var(--calendar-surface)]/80"
+                                  >
+                                    <Users className="h-4 w-4" />
+                                    <span>People</span>
+                                    <span className="max-w-[140px] truncate text-xs text-[color:var(--calendar-muted)]">
+                                      {selectedPeopleDisplay}
+                                    </span>
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  align="start"
+                                  className="w-[260px] space-y-2 rounded-xl border border-[color:var(--calendar-line)]/60 bg-[color:var(--calendar-surface)] p-3 shadow-xl"
+                                >
+                                  <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                    Filter by people
+                                  </p>
+                                  <div className="space-y-2">
+                                    {calendarPeopleOptions.map((option) => {
+                                      const checkboxId = `calendar-people-${option.value}`;
+                                      return (
+                                        <label
+                                          key={option.value}
+                                          htmlFor={checkboxId}
+                                          className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-sm text-[color:var(--calendar-ink)] transition-colors hover:bg-[color:var(--calendar-canvas-accent)]/60"
+                                        >
+                                          <Checkbox
+                                            id={checkboxId}
+                                            checked={selectedPeople.includes(option.value)}
+                                            onCheckedChange={(checked) => togglePersonFilter(option.value, checked === true)}
+                                          />
+                                          <Avatar className="h-7 w-7">
+                                            <AvatarImage src={option.avatarUrl ?? undefined} alt={option.label} />
+                                            <AvatarFallback>{option.fallback}</AvatarFallback>
+                                          </Avatar>
+                                          <span>{option.label}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                              <div className="flex flex-col gap-1">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                  Type
+                                </span>
+                                <ToggleGroup
+                                  type="multiple"
+                                  value={activeTypeValues}
+                                  onValueChange={handleTypeGroupChange}
+                                  className="flex flex-wrap gap-2"
+                                >
+                                  {CALENDAR_EVENT_TYPES.map((type) => {
+                                    const { label, icon: Icon } = CALENDAR_EVENT_TYPE_META[type];
+                                    const isActive = calendarFilters.types[type];
+                                    return (
+                                      <ToggleGroupItem
+                                        key={type}
+                                        value={type}
+                                        className={cn(
+                                          "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide",
+                                          isActive
+                                            ? "border-primary bg-primary text-white shadow-sm"
+                                            : "border-[color:var(--calendar-line)]/60 bg-[color:var(--calendar-surface)] text-[color:var(--calendar-muted)]",
+                                        )}
+                                      >
+                                        <Icon className="h-3.5 w-3.5" />
+                                        {label}
+                                      </ToggleGroupItem>
+                                    );
+                                  })}
+                                </ToggleGroup>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]">
+                                <Checkbox
+                                  checked={calendarFilters.statuses.proposed}
+                                  onCheckedChange={(checked) => toggleStatusFilter("proposed", checked === true)}
+                                />
+                                <span>Proposed</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]">
+                                <Checkbox
+                                  checked={calendarFilters.statuses.scheduled}
+                                  onCheckedChange={(checked) => toggleStatusFilter("scheduled", checked === true)}
+                                />
+                                <span>Scheduled</span>
+                              </label>
+                            </div>
                           </div>
                         </div>
                       </CardHeader>
                       <CardContent className="p-6" data-tutorial="group-calendar">
-                        {groupCalendarView === "month" ? (
+                        {calendarView === "month" ? (
                           <>
                             <CalendarGrid
                               currentMonth={currentMonth}
@@ -2321,7 +2850,9 @@ export default function Trip() {
                                 openAddActivityModal({ date });
                               }}
                               onActivityClick={handleActivityClick}
-                              onDayOverflowClick={handleGroupDayOverflow}
+                              onDayOverflowClick={handleCalendarDayOverflow}
+                              viewMode="month"
+                              selectedActivityId={expandedActivityId}
                             />
                             {filteredActivities.length === 0 && (
                               <div className="trip-calendar-panel relative mt-6 overflow-hidden rounded-[24px] border border-[color:var(--calendar-line)]/60 py-12 text-center shadow-[0_22px_60px_-28px_rgba(16,24,40,0.35)]">
@@ -2338,7 +2869,7 @@ export default function Trip() {
                                   </div>
                                   <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
                                     <Button
-                                      onClick={handleOpenAddActivityForGroup}
+                                      onClick={handleOpenAddActivityForCalendar}
                                       className="bg-primary text-white hover:bg-primary/90"
                                     >
                                       <MapPin className="mr-2 h-4 w-4" />
@@ -2349,14 +2880,29 @@ export default function Trip() {
                               </div>
                             )}
                           </>
-                        ) : currentGroupDay ? (
-                          <DayView
-                            date={currentGroupDay}
+                        ) : calendarView === "week" ? (
+                          <CalendarGrid
+                            currentMonth={(calendarRangeStart ?? currentCalendarDay ?? currentMonth) ?? currentMonth}
                             activities={filteredActivities}
-                            onPreviousDay={handleGroupPreviousDay}
-                            onNextDay={handleGroupNextDay}
-                            canGoPrevious={canGoToPreviousGroupDay}
-                            canGoNext={canGoToNextGroupDay}
+                            trip={trip}
+                            selectedDate={selectedDate}
+                            onDayClick={(date) => {
+                              openAddActivityModal({ date });
+                            }}
+                            onActivityClick={handleActivityClick}
+                            onDayOverflowClick={handleCalendarDayOverflow}
+                            viewMode="week"
+                            weekStartsOn={calendarRangeStart ?? undefined}
+                            selectedActivityId={expandedActivityId}
+                          />
+                        ) : currentCalendarDay ? (
+                          <DayView
+                            date={currentCalendarDay}
+                            activities={filteredActivities}
+                            onPreviousDay={handleCalendarPrevious}
+                            onNextDay={handleCalendarNext}
+                            canGoPrevious={canGoToPreviousCalendarPeriod}
+                            canGoNext={canGoToNextCalendarPeriod}
                             emptyStateMessage="No activities scheduled for this day yet. Use the Add Activity button to plan something fun."
                             onActivityClick={handleActivityClick}
                             currentUser={user}
@@ -2369,121 +2915,166 @@ export default function Trip() {
                             Trip dates are needed to show the calendar view.
                           </div>
                         )}
+
+                        {expandedActivity ? (
+                          <div className="mt-6">
+                            {(() => {
+                              const activityWithScheduling = expandedActivity as ActivityWithSchedulingDetails;
+                              const primaryDate = getActivityPrimaryDate(activityWithScheduling);
+                              const dateLabel = primaryDate
+                                ? format(primaryDate, "EEEE, MMM d, yyyy")
+                                : "Date to be determined";
+                              const timeLabel = formatActivityTimeRange(
+                                activityWithScheduling.startTime ?? expandedActivity.startTime ?? null,
+                                activityWithScheduling.endTime ?? expandedActivity.endTime ?? null,
+                                activityWithScheduling.timeOptions ?? null,
+                              );
+                              const locationLabel = expandedActivity.location?.trim() || null;
+                              const statusLabel = expandedActivity.type === "PROPOSE" ? "PROPOSED" : "SCHEDULED";
+                              const isCreator = Boolean(
+                                user?.id
+                                  && (expandedActivity.postedBy === user.id
+                                    || expandedActivity.poster?.id === user.id),
+                              );
+                              const eventType = deriveCalendarEventType(expandedActivity, user?.id ?? null);
+                              const isPersonalEvent = eventType === "personal";
+                              const guestInvites = expandedActivity.invites ?? [];
+                              const sharedGuests = guestInvites.filter((invite) => invite.status !== "declined");
+                              const hasGuests = sharedGuests.length > 0;
+                              const notes = expandedActivity.description?.trim() ?? "";
+                              const handleEdit = () => {
+                                setSelectedActivityId(expandedActivity.id);
+                                setIsActivityDialogOpen(true);
+                              };
+                              const handleProposeChange = () => {
+                                const proposalDate = primaryDate ?? tripStartDate ?? new Date();
+                                openAddActivityModal({
+                                  date: proposalDate,
+                                  mode: "PROPOSE",
+                                  allowModeToggle: false,
+                                });
+                              };
+                              const handleDelete = () => {
+                                handleCancelActivity(expandedActivity);
+                              };
+
+                              return (
+                                <Accordion
+                                  type="single"
+                                  collapsible
+                                  value={inlineAccordionValue}
+                                  onValueChange={handleInlineAccordionValueChange}
+                                  className="rounded-2xl border border-[color:var(--calendar-line)]/60 bg-[var(--calendar-surface)]/95 shadow-[0_22px_45px_-28px_rgba(16,24,40,0.28)]"
+                                >
+                                  <AccordionItem value={`${expandedActivity.id}`} className="overflow-hidden rounded-2xl">
+                                    <AccordionTrigger className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-semibold text-[color:var(--calendar-ink)]">
+                                          {expandedActivity.name}
+                                        </p>
+                                        <p className="mt-1 text-xs text-[color:var(--calendar-muted)]">
+                                          {dateLabel} • {timeLabel}
+                                        </p>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        {isPersonalEvent ? (
+                                          <Badge className="rounded-full bg-[color:var(--calendar-canvas-accent)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--calendar-ink)]">
+                                            Personal
+                                          </Badge>
+                                        ) : null}
+                                        <Badge className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">
+                                          {statusLabel}
+                                        </Badge>
+                                      </div>
+                                    </AccordionTrigger>
+                                    <AccordionContent className="space-y-4 px-4 pb-4 pt-1 text-sm text-[color:var(--calendar-ink)]">
+                                      <div className="grid gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                            When
+                                          </p>
+                                          <p>{dateLabel}</p>
+                                          <p className="text-[color:var(--calendar-muted)]">{timeLabel}</p>
+                                        </div>
+                                        <div className="space-y-2">
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                            Where
+                                          </p>
+                                          <p>{locationLabel ?? "Location to be announced"}</p>
+                                        </div>
+                                      </div>
+                                      {hasGuests ? (
+                                        <div>
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                            Guests
+                                          </p>
+                                          <div className="mt-2 flex flex-wrap items-center gap-3">
+                                            {sharedGuests.map((invite) => {
+                                              const member = invite.user;
+                                              const displayName = getParticipantDisplayName(member);
+                                              const fallback = (displayName?.[0] ?? "G").toUpperCase();
+                                              return (
+                                                <div key={`${invite.userId}-${invite.status}`} className="flex items-center gap-2">
+                                                  <Avatar className="h-8 w-8 border border-[color:var(--calendar-line)]/60">
+                                                    <AvatarImage src={member?.profileImageUrl ?? undefined} alt={displayName} />
+                                                    <AvatarFallback>{fallback}</AvatarFallback>
+                                                  </Avatar>
+                                                  <div className="flex flex-col">
+                                                    <span className="text-sm font-medium text-[color:var(--calendar-ink)]">{displayName}</span>
+                                                    <span className="text-xs text-[color:var(--calendar-muted)] capitalize">{invite.status}</span>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        </div>
+                                      ) : null}
+                                      {notes.length > 0 ? (
+                                        <div>
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
+                                            Notes
+                                          </p>
+                                          <p className="mt-2 whitespace-pre-wrap text-sm text-[color:var(--calendar-ink)]/90">
+                                            {notes}
+                                          </p>
+                                        </div>
+                                      ) : null}
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        {isCreator ? (
+                                          <>
+                                            <Button size="sm" onClick={handleEdit}>
+                                              Edit
+                                            </Button>
+                                            <Button size="sm" variant="outline" onClick={handleProposeChange}>
+                                              Propose Change
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              variant="destructive"
+                                              onClick={handleDelete}
+                                              disabled={cancelActivityMutation.isPending}
+                                            >
+                                              {cancelActivityMutation.isPending ? "Deleting…" : "Delete"}
+                                            </Button>
+                                          </>
+                                        ) : (
+                                          <Button size="sm" variant="outline" onClick={handleEdit}>
+                                            View full details
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </AccordionContent>
+                                  </AccordionItem>
+                                </Accordion>
+                              );
+                            })()}
+                          </div>
+                        ) : null}
                       </CardContent>
                     </Card>
                   </div>
                 )}
 
-                {activeTab === "schedule" && (
-                  <div>
-                    <Card className="mb-6 overflow-hidden border-none shadow-xl">
-                      <CardHeader
-                        className="relative overflow-hidden space-y-4 border-b border-[color:var(--calendar-line)]/60 px-6 py-6 ring-1 ring-inset ring-[color:var(--calendar-line)]/30"
-                      >
-                        <div
-                          className="pointer-events-none absolute inset-0 trip-calendar-gradient"
-                          aria-hidden="true"
-                        />
-                        <div className="pointer-events-none absolute inset-0 bg-white/60 backdrop-blur-[1.5px] dark:bg-slate-950/60" aria-hidden="true" />
-                        <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:shadow-[inset_0_1px_0_rgba(148,163,184,0.18)]" aria-hidden="true" />
-                        <div className="relative z-[1] flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <CardTitle className="text-lg font-semibold text-[color:var(--calendar-ink)]">My Schedule</CardTitle>
-                            <p className="text-sm text-[color:var(--calendar-muted)]">Things you’re going to or created.</p>
-                          </div>
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-[color:var(--calendar-muted)]">
-                                View
-                              </span>
-                              <Select
-                                value={scheduleCalendarView}
-                                onValueChange={(value) => handleScheduleViewChange(value as "month" | "day")}
-                              >
-                                <SelectTrigger className="min-w-[150px] bg-[color:var(--calendar-surface)] text-[color:var(--calendar-ink)]">
-                                  <SelectValue placeholder="Select view" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="month">Month view</SelectItem>
-                                  <SelectItem value="day">Day view</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            {scheduleCalendarView === "month" && (
-                              <div className="flex items-center gap-2 rounded-full bg-[color:var(--calendar-surface)]/95 px-2 py-1 shadow-sm">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-                                >
-                                  <ChevronLeft className="w-4 h-4" />
-                                </Button>
-                                <span className="min-w-[120px] text-center text-sm font-semibold text-[color:var(--calendar-ink)]">
-                                  {format(currentMonth, 'MMMM yyyy')}
-                                </span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-                                >
-                                  <ChevronRight className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            )}
-                            <Button
-                              onClick={handleOpenAddActivityForSchedule}
-                              className="bg-primary text-white hover:bg-red-600"
-                            >
-                              <Plus className="mr-2 h-4 w-4" />
-                              Add Activity
-                            </Button>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="p-6">
-                        {scheduleCalendarView === "month" ? (
-                          <CalendarGrid
-                            currentMonth={currentMonth}
-                            activities={myScheduleActivities}
-                            trip={trip}
-                            selectedDate={selectedDate}
-                            currentUserId={user?.id}
-                            highlightPersonalProposals
-                            onDayClick={(date) => {
-                              openAddActivityModal({
-                                date,
-                                mode: "SCHEDULED",
-                                allowModeToggle: false,
-                              });
-                            }}
-                            onActivityClick={handleActivityClick}
-                            onDayOverflowClick={handlePersonalDayOverflow}
-                          />
-                        ) : currentScheduleDay ? (
-                          <DayView
-                            date={currentScheduleDay}
-                            activities={myScheduleActivities}
-                            onPreviousDay={handleSchedulePreviousDay}
-                            onNextDay={handleScheduleNextDay}
-                            canGoPrevious={canGoToPreviousScheduleDay}
-                            canGoNext={canGoToNextScheduleDay}
-                            emptyStateMessage="No activities you're going to or created for this day yet."
-                            onActivityClick={handleActivityClick}
-                            currentUser={user}
-                            onSubmitRsvp={(activity, action) => submitRsvpAction(activity.id, action)}
-                            isRsvpPending={respondToInviteMutation.isPending}
-                            viewMode="personal"
-                            proposalFallbackDate={proposalFallbackDate}
-                          />
-                        ) : (
-                          <div className="rounded-lg border border-dashed border-neutral-300 bg-neutral-50 p-8 text-center text-sm text-neutral-600">
-                            Trip dates are needed to show the calendar view.
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                )}
 
                 {activeTab === "packing" && (
                   <div className="trip-themed-section p-6">
@@ -2588,10 +3179,10 @@ export default function Trip() {
           <button
             type="button"
             onClick={() => {
-              if (activeTab === "schedule") {
-                openAddActivityModal({ mode: "SCHEDULED", allowModeToggle: false });
-              } else if (activeTab === "proposals") {
+              if (activeTab === "proposals") {
                 openAddActivityModal({ mode: "PROPOSE", allowModeToggle: false });
+              } else if (activeTab === "calendar") {
+                handleOpenAddActivityForCalendar();
               } else {
                 openAddActivityModal({});
               }
