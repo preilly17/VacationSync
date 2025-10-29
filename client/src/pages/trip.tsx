@@ -48,6 +48,7 @@ import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
+import { activityMatchesPeopleFilter } from "@/lib/activityFilters";
 import {
   TRIP_COVER_GRADIENT,
   buildCoverPhotoSrcSet,
@@ -1493,11 +1494,7 @@ export default function Trip() {
     }
 
     if (peopleFilter !== "all") {
-      filtered = filtered.filter((activity) =>
-        activity.invites?.some(
-          (invite) => invite.userId === peopleFilter && invite.status === "accepted",
-        ),
-      );
+      filtered = filtered.filter((activity) => activityMatchesPeopleFilter(activity, peopleFilter));
     }
 
     return filtered;
