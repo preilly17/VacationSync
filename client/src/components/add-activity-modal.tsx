@@ -635,6 +635,19 @@ export function AddActivityModal({
     return !isDateWithinRange(candidate, startDateMin || null, startDateMax || null);
   }, [watchedStartDate, startDateMin, startDateMax]);
 
+  useEffect(() => {
+    if (mode !== "PROPOSE") {
+      return;
+    }
+
+    const fieldState = form.getFieldState("startTime");
+    if (!fieldState.error) {
+      return;
+    }
+
+    form.clearErrors("startTime");
+  }, [form, mode]);
+
   const handleValidationError = useCallback(
     (error: ActivityValidationError) => {
       if (error.fieldErrors.length > 0) {
