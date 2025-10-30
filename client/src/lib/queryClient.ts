@@ -108,6 +108,27 @@ export async function apiRequest(
     });
 
     await throwIfResNotOk(res);
+
+    const contentType = res.headers.get("content-type") ?? "";
+    if (contentType.includes("text/html")) {
+      const redirectedPath = (() => {
+        try {
+          return new URL(res.url).pathname;
+        } catch {
+          return "";
+        }
+      })();
+
+      const isAuthRedirect = res.redirected && redirectedPath.includes("/login");
+      throw new ApiError(
+        isAuthRedirect ? 401 : res.status || 500,
+        null,
+        isAuthRedirect
+          ? "Unauthorized"
+          : "API returned HTML instead of JSON",
+      );
+    }
+
     return res;
   } catch (error) {
     if (error instanceof ApiError) {
