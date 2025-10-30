@@ -561,6 +561,19 @@ export async function createActivityV2({
     }
   }
 
+  const creatorIdValue = String(creatorId).trim();
+  if (creatorIdValue.length === 0) {
+    const error = new Error("invalid_creator");
+    (error as any).code = "VALIDATION";
+    (error as any).details = [
+      {
+        field: "creator_id",
+        message: "A valid activity creator is required.",
+      },
+    ];
+    throw error;
+  }
+
   const inviteeSet = new Set(
     (data.invitee_ids ?? []).map((id) => String(id).trim()).filter((id) => id.length > 0),
   );
@@ -568,6 +581,13 @@ export async function createActivityV2({
   const tripMemberIds = new Set(
     trip.members.map((member) => String(member.userId)).filter((id) => id.trim().length > 0),
   );
+
+  const tripCreatorId = typeof trip.createdBy === "string" ? trip.createdBy.trim() : "";
+  if (tripCreatorId.length > 0) {
+    tripMemberIds.add(tripCreatorId);
+  }
+
+  tripMemberIds.add(creatorIdValue);
 
   const invalidInvitees = Array.from(inviteeSet).filter((id) => !tripMemberIds.has(id));
   if (invalidInvitees.length > 0) {
@@ -577,19 +597,6 @@ export async function createActivityV2({
       {
         field: "invitee_ids",
         message: "All invitees must be members of this trip.",
-      },
-    ];
-    throw error;
-  }
-
-  const creatorIdValue = String(creatorId).trim();
-  if (creatorIdValue.length === 0) {
-    const error = new Error("invalid_creator");
-    (error as any).code = "VALIDATION";
-    (error as any).details = [
-      {
-        field: "creator_id",
-        message: "A valid activity creator is required.",
       },
     ];
     throw error;
