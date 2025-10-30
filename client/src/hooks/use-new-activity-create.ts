@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 const STORAGE_KEY = "feature:new-activity-create";
 
 export function useNewActivityCreate(): boolean {
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -14,10 +14,10 @@ export function useNewActivityCreate(): boolean {
 
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
-      if (stored === "off") {
-        setEnabled(false);
-      } else if (stored === "on") {
+      if (stored === "on") {
         setEnabled(true);
+      } else if (stored === "off") {
+        setEnabled(false);
       }
     } catch {
       // Ignore storage access issues and keep default
