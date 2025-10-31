@@ -2174,16 +2174,15 @@ export default function Trip() {
     const highlightDate = highlightCandidate ? clampDateToTrip(highlightCandidate) : null;
 
     if (prefillDateSource) {
-      const formattedStartDate = formatDateInTimezone(prefillDateSource, activityTimezone);
-      const formattedStartTime = prefillTimeSource
-        ? formatTimeInTimezone(prefillTimeSource, activityTimezone)
-        : undefined;
+      if (prefillTimeSource) {
+        const formattedStartDate = formatDateInTimezone(prefillDateSource, activityTimezone);
+        const formattedStartTime = formatTimeInTimezone(prefillTimeSource, activityTimezone);
 
-      setAddActivityPrefill(
-        formattedStartTime
-          ? { startDate: formattedStartDate, startTime: formattedStartTime }
-          : { startDate: formattedStartDate },
-      );
+        setAddActivityPrefill({ startDate: formattedStartDate, startTime: formattedStartTime });
+      } else {
+        const formattedStartDate = format(prefillDateSource, "yyyy-MM-dd");
+        setAddActivityPrefill({ startDate: formattedStartDate });
+      }
     } else {
       setAddActivityPrefill(null);
     }
