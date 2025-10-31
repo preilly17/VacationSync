@@ -398,7 +398,6 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const hasManualActivities = sortedManualActivities.length > 0;
   const canBuildExternalLink = Boolean((locationSearch.trim() || trip?.destination) && trip?.startDate);
 
-  const tripIdQueryKey = useMemo(() => String(tripId), [tripId]);
   const currentUser = _user ?? null;
   const currentUserId = currentUser?.id ?? undefined;
   const tripMembers = useMemo(
@@ -443,7 +442,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     tripId,
     scheduledActivitiesQueryKey: [`/api/trips/${tripId}/activities`],
     proposalActivitiesQueryKey: [`/api/trips/${tripId}/proposals/activities`],
-    calendarActivitiesQueryKey: ["/api/trips", tripIdQueryKey, "activities"],
+    calendarActivitiesQueryKey: [`/api/trips/${tripId}/activities`],
     members: tripMembers,
     currentUserId,
     enabled: tripId > 0 && tripMembers.length > 0,
