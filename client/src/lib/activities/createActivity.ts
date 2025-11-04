@@ -77,6 +77,37 @@ const generateOptimisticId = (() => {
   };
 })();
 
+const stringifyQueryKey = (queryKey: QueryKey): string => {
+  if (typeof queryKey === "string") {
+    return queryKey;
+  }
+
+  try {
+    return JSON.stringify(queryKey, (_key, value) => {
+      if (typeof value === "function") {
+        return value.toString();
+      }
+
+      if (value instanceof Date) {
+        return value.toISOString();
+      }
+
+      return value;
+    });
+  } catch (error) {
+    console.warn("Failed to stringify query key for comparison", error);
+    return String(queryKey);
+  }
+};
+
+const areQueryKeysEqual = (a: QueryKey, b: QueryKey): boolean => {
+  if (a === b) {
+    return true;
+  }
+
+  return stringifyQueryKey(a) === stringifyQueryKey(b);
+};
+
 export function useCreateActivity({
   tripId,
   scheduledActivitiesQueryKey,
@@ -123,6 +154,11 @@ export function useCreateActivity({
         } satisfies OptimisticContext;
       }
 
+      const calendarSharesScheduledKey = areQueryKeysEqual(
+        scheduledActivitiesQueryKey,
+        calendarActivitiesQueryKey,
+      );
+
       const optimisticActivity = buildOptimisticActivity(
         variables,
         variables.__meta.payload,
@@ -131,19 +167,26 @@ export function useCreateActivity({
         currentUserId,
       );
 
-      await Promise.all([
+      const cancellationPromises = [
         queryClient.cancelQueries({ queryKey: scheduledActivitiesQueryKey }),
         queryClient.cancelQueries({ queryKey: proposalActivitiesQueryKey }),
-        queryClient.cancelQueries({ queryKey: calendarActivitiesQueryKey }),
-      ]);
+      ];
+
+      if (!calendarSharesScheduledKey) {
+        cancellationPromises.push(queryClient.cancelQueries({ queryKey: calendarActivitiesQueryKey }));
+      }
+
+      await Promise.all(cancellationPromises);
 
       const previousScheduled = queryClient.getQueryData<ActivityWithDetails[]>(scheduledActivitiesQueryKey);
       const previousProposals = queryClient.getQueryData<ActivityWithDetails[]>(proposalActivitiesQueryKey);
-      const previousCalendar = queryClient.getQueryData<ActivityWithDetails[]>(calendarActivitiesQueryKey);
+      const previousCalendar = calendarSharesScheduledKey
+        ? previousScheduled
+        : queryClient.getQueryData<ActivityWithDetails[]>(calendarActivitiesQueryKey);
 
       const affectsScheduled = variables.type === "SCHEDULED";
       const affectsProposals = variables.type === "PROPOSE";
-      const affectsCalendar = affectsScheduled;
+      const affectsCalendar = calendarSharesScheduledKey ? false : affectsScheduled;
 
       const applyUpdate = (queryKey: QueryKey, shouldAdd: boolean) => {
         if (!shouldAdd) return;
@@ -165,7 +208,7 @@ export function useCreateActivity({
       return {
         previousScheduled,
         previousProposals,
-        previousCalendar,
+        previousCalendar: calendarSharesScheduledKey ? undefined : previousCalendar,
         optimisticId: variables.__meta.optimisticId,
         submissionType: variables.type,
         affected: {
