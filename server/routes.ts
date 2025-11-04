@@ -5442,10 +5442,11 @@ export function setupRoutes(app: Express) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
 
+      let isMember = false;
       let isAdmin = false;
 
       if (userId) {
-        const isMember = await storage.isTripMember(tripId, userId);
+        isMember = await storage.isTripMember(tripId, userId);
         if (isMember) {
           isAdmin = await storage.isTripAdmin(tripId, userId);
         }
@@ -5510,6 +5511,7 @@ export function setupRoutes(app: Express) {
           submitters,
           sort,
           isAdmin,
+          isMember,
         },
       });
     } catch (error: unknown) {
