@@ -76,17 +76,8 @@ export default function RestaurantsPage() {
   }, []);
 
   const handleOpenManualDialog = useCallback(() => {
-    if (!tripId) {
-      toast({
-        title: "Open a trip to log restaurants",
-        description: "Select a trip first so we know where to save this reservation.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setShowBooking(true);
-  }, [toast, tripId]);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -100,17 +91,9 @@ export default function RestaurantsPage() {
 
     const manualParam = params.get("manual");
     if (manualParam === "1" || manualParam === "true") {
-      if (tripId) {
-        setShowBooking(true);
-      } else {
-        toast({
-          title: "Select a trip first",
-          description: "Open a trip to manually log restaurant plans.",
-          variant: "destructive",
-        });
-      }
+      setShowBooking(true);
     }
-  }, [focusSearchSection, toast, tripId]);
+  }, [focusSearchSection]);
 
   // Handle booking link clicks with tracking
   const handleBookingLinkClick = (restaurant: any, link: { text: string; url: string; type: string }) => {

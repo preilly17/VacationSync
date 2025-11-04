@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { CalendarIcon } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -79,17 +80,28 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [selectedTripId, setSelectedTripId] = useState<number | null>(normalizedTripId ?? null);
+  const [tripSelectionError, setTripSelectionError] = useState<string | null>(null);
 
-  const cachedTrip = useMemo<TripWithDetails | undefined>(() => {
-    if (!normalizedTripId) {
+  const { data: tripsData = [], isLoading: tripsLoading } = useQuery<TripWithDetails[]>({
+    queryKey: ["/api/trips"],
+    enabled: !normalizedTripId,
+  });
+
+  const availableTrips = tripsData ?? [];
+
+  const effectiveTripId = normalizedTripId ?? selectedTripId ?? undefined;
+
+  const tripContext = useMemo<TripWithDetails | undefined>(() => {
+    if (!effectiveTripId) {
       return undefined;
     }
 
     const candidateKeys: Array<readonly unknown[]> = [
-      [`/api/trips/${normalizedTripId}`],
-      [`/api/trips/${String(normalizedTripId)}`],
-      ["/api/trips", normalizedTripId],
-      ["/api/trips", String(normalizedTripId)],
+      [`/api/trips/${effectiveTripId}`],
+      [`/api/trips/${String(effectiveTripId)}`],
+      ["/api/trips", effectiveTripId],
+      ["/api/trips", String(effectiveTripId)],
     ];
 
     for (const key of candidateKeys) {
@@ -99,8 +111,12 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
       }
     }
 
+    if (!normalizedTripId) {
+      return availableTrips.find((trip) => trip.id === effectiveTripId);
+    }
+
     return undefined;
-  }, [normalizedTripId, queryClient]);
+  }, [availableTrips, effectiveTripId, normalizedTripId, queryClient]);
 
   const getCityAndCountry = (address: string) => {
     const parts = address
@@ -119,14 +135,14 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
     }
 
     if (!city) {
-      city = cachedTrip?.cityName || null;
+      city = tripContext?.cityName || null;
     }
 
     if (!country) {
       country =
-        cachedTrip?.countryName ||
+        tripContext?.countryName ||
         (() => {
-          const destination = cachedTrip?.destination ?? "";
+          const destination = tripContext?.destination ?? "";
           const destinationParts = destination
             .split(",")
             .map((part) => part.trim())
@@ -154,19 +170,36 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
   useEffect(() => {
     if (!open) {
       form.reset(defaultFormValues);
+      setTripSelectionError(null);
+      setSelectedTripId(normalizedTripId ?? null);
     }
-  }, [open, form]);
+  }, [open, form, normalizedTripId]);
+
+  useEffect(() => {
+    if (normalizedTripId) {
+      setSelectedTripId(normalizedTripId);
+      setTripSelectionError(null);
+      return;
+    }
+
+    if (open && !selectedTripId && availableTrips.length > 0) {
+      setSelectedTripId(availableTrips[0].id);
+    }
+  }, [availableTrips, normalizedTripId, open, selectedTripId]);
+
+  useEffect(() => {
+    if (selectedTripId) {
+      setTripSelectionError(null);
+    }
+  }, [selectedTripId]);
 
   const createRestaurantMutation = useMutation({
-    mutationFn: async (data: RestaurantFormData) => {
-      if (!normalizedTripId) {
-        throw new Error("No trip context available");
-      }
+    mutationFn: async ({ data, tripId: targetTripId }: { data: RestaurantFormData; tripId: number }) => {
       const { city, country } = getCityAndCountry(data.address);
       const reservationDate = format(data.reservationDate, "yyyy-MM-dd");
 
       const payload = {
-        tripId: Number(normalizedTripId),
+        tripId: Number(targetTripId),
         name: data.name,
         address: data.address,
         city,
@@ -188,19 +221,20 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         notes: null,
       };
 
-      return apiRequest(`/api/trips/${normalizedTripId}/restaurants`, {
+      return apiRequest(`/api/trips/${targetTripId}/restaurants`, {
         method: "POST",
         body: payload,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      const targetTripId = variables?.tripId;
       toast({
         title: "Restaurant Added",
         description: "Restaurant reservation has been added to your trip.",
       });
-      if (normalizedTripId) {
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurants"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", String(normalizedTripId), "restaurants"] });
+      if (targetTripId != null) {
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", targetTripId, "restaurants"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", String(targetTripId), "restaurants"] });
       }
       form.reset(defaultFormValues);
       onOpenChange(false);
@@ -228,7 +262,12 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
   });
 
   const handleSubmit = form.handleSubmit((values) => {
-    createRestaurantMutation.mutate(values);
+    if (!effectiveTripId) {
+      setTripSelectionError("Select a trip before saving this reservation.");
+      return;
+    }
+
+    createRestaurantMutation.mutate({ data: values, tripId: effectiveTripId });
   });
 
   return (
@@ -240,6 +279,46 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
 
         <Form {...form}>
           <form onSubmit={handleSubmit} className="space-y-4">
+            {!normalizedTripId && (
+              <div className="space-y-2">
+                <Label htmlFor="manual-restaurant-trip">Trip</Label>
+                <Select
+                  value={selectedTripId ? String(selectedTripId) : ""}
+                  onValueChange={(value) => {
+                    const parsed = Number.parseInt(value, 10);
+                    setSelectedTripId(Number.isNaN(parsed) ? null : parsed);
+                  }}
+                  disabled={tripsLoading || availableTrips.length === 0}
+                >
+                  <SelectTrigger id="manual-restaurant-trip">
+                    <SelectValue
+                      placeholder={
+                        tripsLoading
+                          ? "Loading trips..."
+                          : availableTrips.length === 0
+                            ? "No trips available"
+                            : "Select a trip"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTrips.map((trip) => (
+                      <SelectItem key={trip.id} value={String(trip.id)}>
+                        {trip.name || trip.destination}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {tripSelectionError ? (
+                  <p className="text-sm text-destructive">{tripSelectionError}</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    We’ll save this reservation to the selected trip.
+                  </p>
+                )}
+              </div>
+            )}
+
             <FormField
               control={form.control}
               name="name"
