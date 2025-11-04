@@ -22,6 +22,9 @@ import {
 
 const requiredFields: Array<keyof HotelFormValues> = [
   "hotelName",
+  "address",
+  "city",
+  "country",
   "checkInDate",
   "checkOutDate",
   "pricePerNight",
