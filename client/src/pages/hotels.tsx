@@ -304,10 +304,16 @@ export default function HotelsPage() {
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
-      // PROPOSALS FEATURE: sync manual hotel saves with the proposals tab.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
+        // PROPOSALS FEATURE: sync manual hotel saves with the proposals tab.
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        }),
+      ]);
       toast({
         title: "Hotel added successfully",
         description: "Your hotel booking has been saved to the trip.",
@@ -341,10 +347,16 @@ export default function HotelsPage() {
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
-      // PROPOSALS FEATURE: ensure proposal details reflect the latest hotel edits.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
+        // PROPOSALS FEATURE: ensure proposal details reflect the latest hotel edits.
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        }),
+      ]);
       toast({
         title: "Hotel updated successfully",
         description: "Your hotel booking has been updated.",
@@ -377,10 +389,16 @@ export default function HotelsPage() {
         method: "DELETE",
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
-      // PROPOSALS FEATURE: remove deleted hotels from the proposals list immediately.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
+        // PROPOSALS FEATURE: remove deleted hotels from the proposals list immediately.
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        }),
+      ]);
       toast({
         title: "Hotel deleted successfully",
         description: "Your hotel booking has been removed.",
