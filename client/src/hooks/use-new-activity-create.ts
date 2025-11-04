@@ -3,12 +3,14 @@
 import { useEffect, useState } from "react";
 
 const STORAGE_KEY = "feature:new-activity-create";
+const ENVIRONMENT_FLAG = import.meta.env.VITE_ENABLE_NEW_ACTIVITY_CREATE === "true";
 
 export function useNewActivityCreate(): boolean {
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (!ENVIRONMENT_FLAG || typeof window === "undefined") {
+      setEnabled(false);
       return;
     }
 
@@ -22,8 +24,8 @@ export function useNewActivityCreate(): boolean {
     } catch {
       // Ignore storage access issues and keep default
     }
-  }, []);
+  }, [ENVIRONMENT_FLAG]);
 
-  return enabled;
+  return ENVIRONMENT_FLAG && enabled;
 }
 
