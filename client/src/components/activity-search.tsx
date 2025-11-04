@@ -438,11 +438,21 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     [toast],
   );
 
+  const scheduledActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/activities`], [tripId]);
+  const proposalActivitiesQueryKey = useMemo(
+    () => [`/api/trips/${tripId}/proposals/activities`],
+    [tripId],
+  );
+  const calendarActivitiesQueryKey = useMemo(
+    () => [...scheduledActivitiesQueryKey],
+    [scheduledActivitiesQueryKey],
+  );
+
   const manualCreateActivity = useCreateActivity({
     tripId,
-    scheduledActivitiesQueryKey: [`/api/trips/${tripId}/activities`],
-    proposalActivitiesQueryKey: [`/api/trips/${tripId}/proposals/activities`],
-    calendarActivitiesQueryKey: [`/api/trips/${tripId}/activities`],
+    scheduledActivitiesQueryKey,
+    proposalActivitiesQueryKey,
+    calendarActivitiesQueryKey,
     members: tripMembers,
     currentUserId,
     enabled: tripId > 0 && tripMembers.length > 0,

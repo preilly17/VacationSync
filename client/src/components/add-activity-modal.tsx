@@ -425,7 +425,10 @@ export function AddActivityModal({
 
   const scheduledActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/activities`], [tripId]);
   const proposalActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/proposals/activities`], [tripId]);
-  const calendarActivitiesQueryKey = scheduledActivitiesQueryKey;
+  const calendarActivitiesQueryKey = useMemo(
+    () => [...scheduledActivitiesQueryKey],
+    [scheduledActivitiesQueryKey],
+  );
   const resolvedTimezone = useMemo(
     () => resolveTripTimezone({ tripTimezone }),
     [tripTimezone],
