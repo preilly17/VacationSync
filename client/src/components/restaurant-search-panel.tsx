@@ -311,6 +311,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
         if (normalizedTripId) {
           const queryKeyId = typeof tripId === "undefined" ? normalizedTripId : tripId;
           queryClient.invalidateQueries({ queryKey: ["/api/trips", queryKeyId, "restaurants"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/trips", queryKeyId, "restaurant-proposals"] });
         }
       },
       onError: (error) => {

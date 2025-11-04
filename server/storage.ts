@@ -181,6 +181,80 @@ const safeNumberOrNull = (
   return Number.isFinite(numeric) ? numeric : null;
 };
 
+const toDateOnlyIso = (value: Date | string | null | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString().slice(0, 10);
+};
+
+const parseTimeStringToMinutes = (value: string | null | undefined): number | null => {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?:\s*(am|pm))?$/i);
+  if (!match) {
+    return null;
+  }
+
+  let hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+    return null;
+  }
+
+  const period = match[3]?.toLowerCase();
+  if (period === "am") {
+    if (hours === 12) {
+      hours = 0;
+    }
+  } else if (period === "pm") {
+    if (hours !== 12) {
+      hours += 12;
+    }
+  }
+
+  // Accept 24-hour times like 19:30 where no period is provided
+  if (period === undefined && hours >= 24) {
+    return null;
+  }
+
+  return hours * 60 + minutes;
+};
+
+const inferRestaurantMealTime = (value: string | null | undefined): string | null => {
+  const minutes = parseTimeStringToMinutes(value);
+  if (minutes === null) {
+    return null;
+  }
+
+  if (minutes >= 300 && minutes < 660) {
+    return "breakfast";
+  }
+
+  if (minutes >= 660 && minutes < 900) {
+    return "lunch";
+  }
+
+  if (minutes >= 900 && minutes < 1320) {
+    return "dinner";
+  }
+
+  return "drinks";
+};
+
 const parseAverageRanking = (value: unknown): number | null => {
   if (value === null || value === undefined) {
     return null;
@@ -8422,7 +8496,264 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to create restaurant");
     }
 
+    await this.syncRestaurantProposalFromRestaurantRow(row);
+
     return mapRestaurant(row);
+  }
+
+  private async syncRestaurantProposalFromRestaurantRow(
+    restaurant: RestaurantRow,
+    options: { allowCreate?: boolean } = {},
+  ): Promise<number | null> {
+    const { allowCreate = true } = options;
+    await this.ensureProposalLinkStructures();
+
+    const { rows: existingLinks } = await query<{
+      id: number;
+      proposal_id: number;
+    }>(
+      `
+      SELECT id, proposal_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = 'restaurant'
+        AND scheduled_table = 'restaurants'
+        AND scheduled_id = $1
+      LIMIT 1
+      `,
+      [restaurant.id],
+    );
+
+    const addressSegments = [restaurant.address, restaurant.city, restaurant.country]
+      .map((segment) => (segment ?? "").trim())
+      .filter((segment) => segment.length > 0);
+
+    const seenAddressSegments = new Set<string>();
+    const normalizedAddress =
+      addressSegments
+        .filter((segment) => {
+          const key = segment.toLowerCase();
+          if (seenAddressSegments.has(key)) {
+            return false;
+          }
+          seenAddressSegments.add(key);
+          return true;
+        })
+        .join(", ") || restaurant.address;
+
+    const reservationUrl = restaurant.open_table_url ?? restaurant.website ?? null;
+    const ratingValue = safeNumberOrNull(restaurant.rating);
+    const priceRange = toOptionalString(restaurant.price_range) ?? null;
+    const preferredMealTime = inferRestaurantMealTime(restaurant.reservation_time);
+    const reservationDateIso = toDateOnlyIso(restaurant.reservation_date);
+    const preferredDates = reservationDateIso ? [reservationDateIso] : [];
+
+    const features: string[] = [];
+    if (Number.isFinite(restaurant.party_size) && restaurant.party_size > 0) {
+      features.push(`Party of ${restaurant.party_size}`);
+    }
+    if (restaurant.reservation_time?.trim()) {
+      features.push(`Time: ${restaurant.reservation_time.trim()}`);
+    }
+    if (restaurant.special_requests?.trim()) {
+      features.push(`Requests: ${restaurant.special_requests.trim()}`);
+    }
+
+    const dietarySource = restaurant.special_requests?.trim();
+    const dietaryOptions = dietarySource
+      ? dietarySource
+          .split(/[,;]+/)
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0)
+      : [];
+
+    const normalizedStatus = (restaurant.reservation_status ?? "").toLowerCase();
+    let proposalStatus = "booked";
+    if (normalizedStatus.includes("cancel")) {
+      proposalStatus = "canceled";
+    } else if (normalizedStatus.includes("pending") || normalizedStatus.includes("hold")) {
+      proposalStatus = "proposed";
+    } else if (
+      ["booked", "confirmed", "active", "selected", "scheduled"].includes(normalizedStatus)
+    ) {
+      proposalStatus = normalizedStatus;
+    }
+
+    const notesLower = (restaurant.notes ?? "").toLowerCase();
+    let platform = "Manual Reservation";
+    if (restaurant.open_table_url) {
+      platform = "OpenTable";
+    } else if (notesLower.includes("resy")) {
+      platform = "Resy";
+    } else if (notesLower.includes("yelp")) {
+      platform = "Yelp";
+    } else if (notesLower.includes("google")) {
+      platform = "Google Maps";
+    }
+
+    const dietaryJson = dietaryOptions.length > 0 ? toDbJson(dietaryOptions) : null;
+    const preferredDatesJson = preferredDates.length > 0 ? toDbJson(preferredDates) : null;
+    const featuresJson = features.length > 0 ? toDbJson(features) : null;
+
+    if (existingLinks.length > 0) {
+      const link = existingLinks[0];
+      const proposalId = link.proposal_id;
+      await query(
+        `
+        UPDATE restaurant_proposals
+        SET
+          trip_id = $1,
+          proposed_by = $2,
+          restaurant_name = $3,
+          address = $4,
+          cuisine_type = $5,
+          price_range = $6,
+          rating = $7,
+          phone_number = $8,
+          website = $9,
+          reservation_url = $10,
+          platform = $11,
+          atmosphere = $12,
+          specialties = $13,
+          dietary_options = $14,
+          preferred_meal_time = $15,
+          preferred_dates = $16,
+          features = $17,
+          status = $18,
+          updated_at = NOW()
+        WHERE id = $19
+        `,
+        [
+          restaurant.trip_id,
+          restaurant.user_id,
+          restaurant.name,
+          normalizedAddress,
+          restaurant.cuisine_type ?? null,
+          priceRange,
+          ratingValue,
+          restaurant.phone_number ?? null,
+          restaurant.website ?? null,
+          reservationUrl,
+          platform,
+          null,
+          null,
+          dietaryJson,
+          preferredMealTime,
+          preferredDatesJson,
+          featuresJson,
+          proposalStatus,
+          proposalId,
+        ],
+      );
+      await query(
+        `UPDATE proposal_schedule_links SET trip_id = $1 WHERE id = $2`,
+        [restaurant.trip_id, link.id],
+      );
+      return proposalId;
+    }
+
+    if (!allowCreate) {
+      return null;
+    }
+
+    const created = await this.createRestaurantProposal(
+      {
+        tripId: restaurant.trip_id,
+        restaurantName: restaurant.name,
+        address: normalizedAddress,
+        cuisineType: restaurant.cuisine_type ?? null,
+        priceRange,
+        rating: ratingValue,
+        phoneNumber: restaurant.phone_number ?? null,
+        website: restaurant.website ?? null,
+        reservationUrl,
+        platform,
+        atmosphere: null,
+        specialties: null,
+        dietaryOptions: dietaryOptions.length > 0 ? dietaryOptions : null,
+        preferredMealTime,
+        preferredDates,
+        features: features.length > 0 ? features : null,
+        status: proposalStatus,
+      },
+      restaurant.user_id,
+    );
+
+    await query(
+      `
+      INSERT INTO proposal_schedule_links (
+        proposal_type,
+        proposal_id,
+        scheduled_table,
+        scheduled_id,
+        trip_id
+      )
+      VALUES ('restaurant', $1, 'restaurants', $2, $3)
+      ON CONFLICT DO NOTHING
+      `,
+      [created.id, restaurant.id, restaurant.trip_id],
+    );
+
+    return created.id;
+  }
+
+  private async ensureManualRestaurantsHaveProposals(tripId: number): Promise<void> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows } = await query<RestaurantRow>(
+      `
+      SELECT r.*
+      FROM restaurants r
+      LEFT JOIN proposal_schedule_links psl
+        ON psl.proposal_type = 'restaurant'
+       AND psl.scheduled_table = 'restaurants'
+       AND psl.scheduled_id = r.id
+      WHERE r.trip_id = $1
+        AND psl.id IS NULL
+      `,
+      [tripId],
+    );
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    for (const restaurant of rows) {
+      await this.syncRestaurantProposalFromRestaurantRow(restaurant);
+    }
+  }
+
+  private async removeRestaurantProposalLinks(restaurantId: number): Promise<void> {
+    await this.ensureProposalLinkStructures();
+
+    const { rows } = await query<{
+      id: number;
+      proposal_id: number;
+    }>(
+      `
+      SELECT id, proposal_id
+      FROM proposal_schedule_links
+      WHERE proposal_type = 'restaurant'
+        AND scheduled_table = 'restaurants'
+        AND scheduled_id = $1
+      `,
+      [restaurantId],
+    );
+
+    if (rows.length === 0) {
+      return;
+    }
+
+    const linkIds = rows.map((row) => row.id);
+    const proposalIds = Array.from(new Set(rows.map((row) => row.proposal_id)));
+
+    await query(`DELETE FROM proposal_schedule_links WHERE id = ANY($1::int[])`, [linkIds]);
+
+    if (proposalIds.length === 0) {
+      return;
+    }
+
+    await query(`DELETE FROM restaurant_rankings WHERE proposal_id = ANY($1::int[])`, [proposalIds]);
+    await query(`DELETE FROM restaurant_proposals WHERE id = ANY($1::int[])`, [proposalIds]);
   }
 
   async getTripRestaurants(
@@ -8674,6 +9005,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to update restaurant");
     }
 
+    await this.syncRestaurantProposalFromRestaurantRow(updatedRow);
+
     return mapRestaurant(updatedRow);
   }
 
@@ -8698,6 +9031,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (existing.user_id !== userId) {
       throw new Error("Only the creator can delete this restaurant");
     }
+
+    await this.removeRestaurantProposalLinks(restaurantId);
 
     await query(
       `
@@ -11310,6 +11645,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     tripId: number,
     currentUserId: string,
   ): Promise<RestaurantProposalWithDetails[]> {
+    await this.ensureManualRestaurantsHaveProposals(tripId);
     await this.ensureUniqueRestaurantRankingsForTrip(tripId);
     return this.fetchRestaurantProposals({ tripId, currentUserId });
   }
