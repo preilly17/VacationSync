@@ -74,6 +74,7 @@ interface WishListIdeasResponse {
     submitters: { id: string; name: string }[];
     sort: "newest" | "oldest" | "most_saved";
     isAdmin: boolean;
+    isMember: boolean;
   };
 }
 
@@ -952,6 +953,14 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
 
   const handleSubmitIdea = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canSubmitIdeas) {
+      toast({
+        title: "You can’t add ideas yet",
+        description: "Ask the trip organizer to add you as a member.",
+        variant: "destructive",
+      });
+      return;
+    }
     const trimmedTitle = title.trim();
     if (!trimmedTitle) {
       toast({
@@ -1002,6 +1011,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
 
   const ideas = data?.ideas ?? [];
   const meta = data?.meta;
+  const canSubmitIdeas = meta?.isMember ?? true;
 
   const availableTagOptions = useMemo(() => {
     const options = new Set<string>(PRESET_TAGS);
@@ -1018,6 +1028,24 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
 
   const submitterOptions = meta?.submitters ?? [];
 
+  useEffect(() => {
+    if (!canSubmitIdeas && isAddModalOpen) {
+      setIsAddModalOpen(false);
+    }
+  }, [canSubmitIdeas, isAddModalOpen]);
+
+  const handleOpenAddModal = () => {
+    if (!canSubmitIdeas) {
+      toast({
+        title: "Join the trip to add ideas",
+        description: "Only trip members can contribute to the wish list.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsAddModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <Card className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
@@ -1031,10 +1059,16 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
               Drop inspiration links and notes here. Promote favorites into full proposals when the group is ready.
             </p>
           </div>
-          <Button onClick={() => setIsAddModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add idea
-          </Button>
+          {canSubmitIdeas ? (
+            <Button onClick={handleOpenAddModal}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add idea
+            </Button>
+          ) : (
+            <div className="rounded-full border border-neutral-200 bg-neutral-100 px-4 py-2 text-sm text-neutral-600">
+              Only trip members can add ideas
+            </div>
+          )}
         </div>
 
         <div className="mt-6 space-y-4">
@@ -1128,6 +1162,13 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         </div>
       </Card>
 
+      {meta && !canSubmitIdeas && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          You can browse the group&rsquo;s wish list, but only trip members can add new ideas. Ask the organizer to
+          invite you to the trip if you&rsquo;d like to contribute.
+        </div>
+      )}
+
       {isLoading ? (
         <div className="flex justify-center py-12">
           <TravelLoading
@@ -1147,10 +1188,16 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
               Drop links to restaurants, TikToks, blogs, maps, or jot quick notes. We'll keep it separate from the official plan.
             </p>
           </div>
-          <Button onClick={() => setIsAddModalOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add your first idea
-          </Button>
+          {canSubmitIdeas ? (
+            <Button onClick={handleOpenAddModal}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add your first idea
+            </Button>
+          ) : (
+            <p className="text-sm text-neutral-500">
+              Invite members to join the trip so they can start filling this board with inspiration.
+            </p>
+          )}
         </Card>
       ) : (
         <div className="space-y-4">
@@ -1172,7 +1219,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         </div>
       )}
 
-      <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+      <Dialog open={canSubmitIdeas && isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Add a wish list idea</DialogTitle>

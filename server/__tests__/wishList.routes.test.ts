@@ -269,3 +269,115 @@ describe("POST /api/trips/:tripId/wish-list", () => {
     isTripAdminMock.mockRestore();
   });
 });
+
+describe("GET /api/trips/:tripId/wish-list", () => {
+  let app: express.Express;
+  let httpServer: import("http").Server;
+  let handler: RouteHandler;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    httpServer = setupRoutes(app);
+    handler = findRouteHandler(app, "/api/trips/:tripId/wish-list", "get");
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => resolve());
+    });
+  });
+
+  it("includes membership metadata in the response", async () => {
+    const createdAt = createDate("2024-04-01T10:00:00Z");
+    const updatedAt = createDate("2024-04-02T10:00:00Z");
+
+    const isTripMemberMock = jest
+      .spyOn(storageModule.storage, "isTripMember")
+      .mockResolvedValue(false);
+    const isTripAdminMock = jest
+      .spyOn(storageModule.storage, "isTripAdmin")
+      .mockResolvedValue(false);
+    const getIdeasMock = jest
+      .spyOn(storageModule.storage, "getTripWishListIdeas")
+      .mockResolvedValue([
+        {
+          id: 7,
+          tripId: 42,
+          title: "Hidden speakeasy",
+          url: null,
+          notes: null,
+          tags: ["Nightlife"],
+          thumbnailUrl: null,
+          imageUrl: null,
+          metadata: null,
+          createdBy: "user-1",
+          promotedDraftId: null,
+          createdAt,
+          updatedAt,
+          creator: {
+            id: "user-1",
+            email: "user@example.com",
+            username: "user1",
+            firstName: "User",
+            lastName: "Example",
+            phoneNumber: null,
+            passwordHash: null,
+            profileImageUrl: null,
+            cashAppUsername: null,
+            cashAppUsernameLegacy: null,
+            cashAppPhone: null,
+            cashAppPhoneLegacy: null,
+            venmoUsername: null,
+            venmoPhone: null,
+            timezone: null,
+            defaultLocation: null,
+            defaultLocationCode: null,
+            defaultCity: null,
+            defaultCountry: null,
+            authProvider: null,
+            notificationPreferences: null,
+            hasSeenHomeOnboarding: false,
+            hasSeenTripOnboarding: false,
+            createdAt: null,
+            updatedAt: null,
+          },
+          saveCount: 0,
+          commentCount: 0,
+          currentUserSaved: false,
+        },
+      ]);
+
+    const req: any = {
+      params: { tripId: "42" },
+      query: {},
+      session: { userId: "user-123" },
+    };
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(isTripMemberMock).toHaveBeenCalledWith(42, "user-123");
+    expect(isTripAdminMock).not.toHaveBeenCalled();
+    expect(getIdeasMock).toHaveBeenCalledWith(42, "user-123", {
+      sort: "newest",
+      tag: null,
+      submittedBy: null,
+      search: null,
+    });
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          isAdmin: false,
+          isMember: false,
+          sort: "newest",
+        }),
+      }),
+    );
+
+    isTripMemberMock.mockRestore();
+    isTripAdminMock.mockRestore();
+    getIdeasMock.mockRestore();
+  });
+});
