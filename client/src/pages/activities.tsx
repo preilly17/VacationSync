@@ -87,6 +87,14 @@ export default function Activities() {
   const [activityComposerDate, setActivityComposerDate] = useState<Date | null>(null);
   const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
   const parsedTripId = useMemo(() => (tripId ? Number.parseInt(tripId, 10) || 0 : 0), [tripId]);
+  const activitiesQueryKey = useMemo(
+    () => [`/api/trips/${tripId ?? ""}/activities`],
+    [tripId],
+  );
+  const activityProposalsQueryKey = useMemo(
+    () => [`/api/trips/${tripId ?? ""}/proposals/activities`],
+    [tripId],
+  );
   const [shouldAutoSearch, setShouldAutoSearch] = useState(false);
   useEffect(() => {
     if (isSearchPanelOpen || typeof window === "undefined") {
@@ -174,7 +182,7 @@ export default function Activities() {
 
   // Get group activities (already proposed to the trip)
   const { data: groupActivities = [] } = useQuery<ActivityWithDetails[]>({
-    queryKey: [`/api/trips/${tripId}/activities`],
+    queryKey: activitiesQueryKey,
     enabled: !!tripId && isAuthenticated,
     retry: false,
   });
@@ -1028,6 +1036,9 @@ export default function Activities() {
         tripStartDate={trip?.startDate ?? null}
         tripEndDate={trip?.endDate ?? null}
         tripTimezone={activityTimezone}
+        scheduledActivitiesQueryKey={activitiesQueryKey}
+        proposalActivitiesQueryKey={activityProposalsQueryKey}
+        calendarActivitiesQueryKey={activitiesQueryKey}
       />
 
       {/* Booking Confirmation Modal */}

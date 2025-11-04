@@ -95,6 +95,12 @@ export default function MemberSchedule() {
     return Number.isFinite(parsed) ? parsed : 0;
   }, [tripId]);
 
+  const activitiesQueryKey = useMemo(() => ["/api/trips", tripId, "activities"], [tripId]);
+  const activityProposalsQueryKey = useMemo(
+    () => ["/api/trips", tripId, "proposals", "activities"],
+    [tripId],
+  );
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -117,7 +123,7 @@ export default function MemberSchedule() {
   });
 
   const { data: activities, isLoading: activitiesLoading } = useQuery<ActivityWithDetails[]>({
-    queryKey: ["/api/trips", tripId, "activities"],
+    queryKey: activitiesQueryKey,
     enabled: !!tripId && isAuthenticated,
     retry: false,
   });
@@ -545,6 +551,9 @@ export default function MemberSchedule() {
         tripStartDate={trip.startDate}
         tripEndDate={trip.endDate}
         tripTimezone={activityTimezone}
+        scheduledActivitiesQueryKey={activitiesQueryKey}
+        proposalActivitiesQueryKey={activityProposalsQueryKey}
+        calendarActivitiesQueryKey={activitiesQueryKey}
       />
     </>
   );

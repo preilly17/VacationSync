@@ -3,6 +3,7 @@ import { format, isValid, parseISO } from "date-fns";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import type { QueryKey } from "@tanstack/react-query";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -279,6 +280,9 @@ interface AddActivityModalProps {
   tripStartDate?: string | Date | null;
   tripEndDate?: string | Date | null;
   tripTimezone?: string | null;
+  scheduledActivitiesQueryKey?: QueryKey;
+  proposalActivitiesQueryKey?: QueryKey;
+  calendarActivitiesQueryKey?: QueryKey;
 }
 
 const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: boolean) => {
@@ -420,12 +424,35 @@ export function AddActivityModal({
   tripStartDate,
   tripEndDate,
   tripTimezone,
+  scheduledActivitiesQueryKey: scheduledActivitiesQueryKeyProp,
+  proposalActivitiesQueryKey: proposalActivitiesQueryKeyProp,
+  calendarActivitiesQueryKey: calendarActivitiesQueryKeyProp,
 }: AddActivityModalProps) {
   const { toast } = useToast();
 
-  const scheduledActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/activities`], [tripId]);
-  const proposalActivitiesQueryKey = useMemo(() => [`/api/trips/${tripId}/proposals/activities`], [tripId]);
-  const calendarActivitiesQueryKey = scheduledActivitiesQueryKey;
+  const fallbackScheduledActivitiesQueryKey = useMemo(
+    () => [`/api/trips/${tripId}/activities`],
+    [tripId],
+  );
+  const fallbackProposalActivitiesQueryKey = useMemo(
+    () => [`/api/trips/${tripId}/proposals/activities`],
+    [tripId],
+  );
+
+  const scheduledActivitiesQueryKey = useMemo(
+    () => scheduledActivitiesQueryKeyProp ?? fallbackScheduledActivitiesQueryKey,
+    [scheduledActivitiesQueryKeyProp, fallbackScheduledActivitiesQueryKey],
+  );
+
+  const proposalActivitiesQueryKey = useMemo(
+    () => proposalActivitiesQueryKeyProp ?? fallbackProposalActivitiesQueryKey,
+    [proposalActivitiesQueryKeyProp, fallbackProposalActivitiesQueryKey],
+  );
+
+  const calendarActivitiesQueryKey = useMemo(
+    () => calendarActivitiesQueryKeyProp ?? scheduledActivitiesQueryKey,
+    [calendarActivitiesQueryKeyProp, scheduledActivitiesQueryKey],
+  );
   const resolvedTimezone = useMemo(
     () => resolveTripTimezone({ tripTimezone }),
     [tripTimezone],
