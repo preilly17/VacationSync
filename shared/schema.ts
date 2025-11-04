@@ -1243,8 +1243,11 @@ const wishListUrlSchema = z
       return null;
     }
 
+    const hasProtocol = /^https?:\/\//i.test(trimmed);
+    const candidate = hasProtocol ? trimmed : `https://${trimmed}`;
+
     try {
-      const parsed = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+      const parsed = new URL(candidate);
       if (parsed.protocol === "http:" || parsed.protocol === "https:") {
         return parsed.toString();
       }
