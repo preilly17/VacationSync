@@ -42,6 +42,18 @@ describe("wish list tag normalization", () => {
   });
 });
 
+describe("wish list URL normalization", () => {
+  it("preserves valid links with uppercase protocols", () => {
+    const result = insertWishListIdeaSchema.parse({
+      tripId: 4,
+      title: "Late-night ramen",
+      url: "HTTPS://Example.com/Spots",
+    });
+
+    expect(result.url).toBe("https://example.com/Spots");
+  });
+});
+
 describe("wish list proposal draft tag normalization", () => {
   it("shares the same coercion logic", () => {
     const draft = insertWishListProposalDraftSchema.parse({
