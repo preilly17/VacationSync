@@ -6018,7 +6018,7 @@ function getAirlineName(code: string): string {
 // Allow travelers to resend saved stays even after they've been booked or
 // otherwise finalized. Only proposals that have been explicitly voided should
 // block sharing from the trip dashboard.
-const SHARE_BLOCKING_STATUSES = new Set(["archived", "void", "voided"]);
+const SHARE_BLOCKING_STATUSES = new Set(["void", "voided"]);
 
 function canShareHotelWithGroup(hotel: HotelWithDetails): boolean {
   if (!hotel.proposalId) {
