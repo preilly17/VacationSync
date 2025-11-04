@@ -1397,8 +1397,30 @@ export default function Trip() {
   });
 
   // Activities data
+  const activityQueryKeySuffix = useMemo(() => {
+    if (typeof id === "string" && id.trim().length > 0) {
+      return id.trim();
+    }
+
+    if (numericTripIdFromRoute > 0) {
+      return String(numericTripIdFromRoute);
+    }
+
+    return "pending";
+  }, [id, numericTripIdFromRoute]);
+
+  const activitiesQueryKey = useMemo(
+    () => [`/api/trips/${activityQueryKeySuffix}/activities`],
+    [activityQueryKeySuffix],
+  );
+
+  const activityProposalsQueryKey = useMemo(
+    () => [`/api/trips/${activityQueryKeySuffix}/proposals/activities`],
+    [activityQueryKeySuffix],
+  );
+
   const { data: activities = [], isLoading: activitiesLoading } = useQuery<ActivityWithDetails[]>({
-    queryKey: [`/api/trips/${id}/activities`],
+    queryKey: activitiesQueryKey,
     enabled: !!id && isAuthenticated,
     refetchInterval: 30000,
     refetchOnWindowFocus: true,
@@ -3723,6 +3745,9 @@ export default function Trip() {
           tripEndDate={trip?.endDate ?? null}
           tripTimezone={activityTimezone}
           prefill={addActivityPrefill}
+          scheduledActivitiesQueryKey={activitiesQueryKey}
+          proposalActivitiesQueryKey={activityProposalsQueryKey}
+          calendarActivitiesQueryKey={activitiesQueryKey}
         />
 
         {trip && (
