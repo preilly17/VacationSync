@@ -128,6 +128,7 @@ import {
   formatDistanceToNow,
   differenceInCalendarDays,
   roundToNearestMinutes,
+  set,
 } from "date-fns";
 import { Form } from "@/components/ui/form";
 import { resolveTripTimezone, formatDateInTimezone, formatTimeInTimezone } from "@/lib/timezone";
@@ -313,6 +314,26 @@ const hasTimeComponent = (date: Date) => {
     || date.getSeconds() !== 0
     || date.getMilliseconds() !== 0
   );
+};
+
+const DEFAULT_CALENDAR_ACTIVITY_START_HOUR = 9;
+const DEFAULT_CALENDAR_ACTIVITY_START_MINUTE = 0;
+
+const buildCalendarActivityStartTime = (date: Date | null): Date | null => {
+  if (!date) {
+    return null;
+  }
+
+  if (hasTimeComponent(date)) {
+    return date;
+  }
+
+  return set(date, {
+    hours: DEFAULT_CALENDAR_ACTIVITY_START_HOUR,
+    minutes: DEFAULT_CALENDAR_ACTIVITY_START_MINUTE,
+    seconds: 0,
+    milliseconds: 0,
+  });
 };
 
 type ActivityWithSchedulingDetails = Omit<ActivityWithDetails, "startTime" | "endTime"> & {
@@ -2225,7 +2246,14 @@ export default function Trip() {
         ? currentCalendarDay ?? tripStartDate
         : selectedDate ?? currentCalendarDay ?? tripStartDate;
 
-    openAddActivityModal({ date: baseDate, mode: "SCHEDULED", allowModeToggle: true });
+    const defaultStartTime = buildCalendarActivityStartTime(baseDate ?? null);
+
+    openAddActivityModal({
+      ...(baseDate ? { date: baseDate } : {}),
+      ...(defaultStartTime ? { startTime: defaultStartTime } : {}),
+      mode: "SCHEDULED",
+      allowModeToggle: true,
+    });
   };
 
   const totalMembers = trip?.members?.length ?? 0;
