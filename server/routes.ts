@@ -80,9 +80,11 @@ const CORRELATION_HEADER_CANDIDATES = ["x-correlation-id", "x-request-id", "x-id
 
 const ACTIVITIES_V2_HEADER_KEY = "x-activities-version";
 const isActivitiesV2Enabled = () => process.env.FEATURE_ACTIVITIES_V2 === "true";
+const isActivitiesV2WriteEnabled = () =>
+  process.env.FEATURE_ACTIVITIES_V2_WRITES === "true";
 
 const requestUsesActivitiesV2 = (req: { headers?: Record<string, unknown> }): boolean => {
-  if (!isActivitiesV2Enabled()) {
+  if (!isActivitiesV2Enabled() || !isActivitiesV2WriteEnabled()) {
     return false;
   }
 

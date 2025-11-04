@@ -543,7 +543,9 @@ describe("POST /api/trips/:id/activities", () => {
 
     const res = createMockResponse();
     const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
+    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
     process.env.FEATURE_ACTIVITIES_V2 = "true";
+    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
 
     try {
       jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
@@ -627,12 +629,15 @@ describe("POST /api/trips/:id/activities", () => {
       expect(res.json).toHaveBeenCalledWith(v2Response);
     } finally {
       process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
+      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
     }
   });
 
   it("returns a trip date range message when the v2 payload is outside the window", async () => {
     const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
+    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
     process.env.FEATURE_ACTIVITIES_V2 = "true";
+    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
 
     const trip = {
       id: 555,
@@ -679,6 +684,7 @@ describe("POST /api/trips/:id/activities", () => {
       );
     } finally {
       process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
+      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
     }
   });
 
@@ -715,7 +721,9 @@ describe("POST /api/trips/:id/activities", () => {
 
     const res = createMockResponse();
     const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
+    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
     process.env.FEATURE_ACTIVITIES_V2 = "true";
+    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
 
     try {
       jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
@@ -805,6 +813,7 @@ describe("POST /api/trips/:id/activities", () => {
       expect(res.json).toHaveBeenCalledWith(v2Response);
     } finally {
       process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
+      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
     }
   });
 
