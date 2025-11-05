@@ -31,8 +31,14 @@ import {
   Calculator,
   ArrowUpDown,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
+import {
+  buildHotelProposalPayload,
+  HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+  type ProposableHotel,
+} from "@/lib/hotel-proposals";
 import { type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TravelLoading } from "@/components/LoadingSpinners";
@@ -63,6 +69,7 @@ export default function HotelsPage() {
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
   const [hasSearchResults, setHasSearchResults] = useState(false);
   const searchPanelRef = useRef<HotelSearchPanelRef>(null);
+  const [proposingHotelId, setProposingHotelId] = useState<number | null>(null);
 
   // Currency conversion state
   const [currencyAmount, setCurrencyAmount] = useState('100');
@@ -166,7 +173,7 @@ export default function HotelsPage() {
   };
 
   // Share hotel with group as a proposal
-  const shareHotelWithGroup = async (hotel: HotelSearchResult) => {
+  const shareHotelWithGroup = async (hotel: ProposableHotel) => {
     if (!hasValidTripId) {
       toast({
         title: "Trip required",
@@ -175,33 +182,40 @@ export default function HotelsPage() {
       });
       return;
     }
+
+    const manualHotelId = typeof hotel.id === "number" ? hotel.id : null;
+    if (manualHotelId != null) {
+      setProposingHotelId(manualHotelId);
+    }
+
     try {
+      const payload = buildHotelProposalPayload(hotel);
+
       await apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
         method: "POST",
         body: JSON.stringify({
-          hotelName: hotel.name,
-          location: hotel.location,
-          price: hotel.price,
-          pricePerNight: hotel.pricePerNight || hotel.price,
-          rating: hotel.rating || 4,
-          amenities: hotel.amenities || "WiFi, Breakfast",
-          platform: hotel.platform,
-          bookingUrl: hotel.bookingUrl
+          hotelName: payload.hotelName,
+          location: payload.location,
+          price: payload.price,
+          pricePerNight: payload.pricePerNight,
+          rating: payload.rating ?? 4,
+          amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+          platform: payload.platform,
+          bookingUrl: payload.bookingUrl,
         }),
       });
-      
+
       toast({
         title: "Added to Group Hotels!",
-        description: `${hotel.name} is now ready for everyone to review and rank.`,
+        description: `${payload.displayName} is now ready for everyone to review and rank.`,
       });
-      
+
       // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
       queryClient.invalidateQueries({
         queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
       });
-      
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
       if (isUnauthorizedError(errorObj)) {
@@ -220,6 +234,10 @@ export default function HotelsPage() {
         description: "Failed to propose hotel. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      if (manualHotelId != null) {
+        setProposingHotelId(null);
+      }
     }
   };
 
@@ -1016,16 +1034,39 @@ export default function HotelsPage() {
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
-                  {hotel.bookingUrl && (
+                  <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => hotel.bookingUrl && window.open(hotel.bookingUrl, '_blank')}
+                      onClick={() => {
+                        void shareHotelWithGroup(hotel);
+                      }}
+                      data-testid={`button-propose-saved-hotel-${hotel.id}`}
+                      disabled={proposingHotelId === hotel.id}
                     >
-                      <ExternalLink className="h-3 w-3 mr-1" />
-                      View Booking
+                      {proposingHotelId === hotel.id ? (
+                        <>
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          Proposing...
+                        </>
+                      ) : (
+                        <>
+                          <Users className="h-3 w-3 mr-1" />
+                          Propose
+                        </>
+                      )}
                     </Button>
-                  )}
+                    {hotel.bookingUrl && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => hotel.bookingUrl && window.open(hotel.bookingUrl, '_blank')}
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        View Booking
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
