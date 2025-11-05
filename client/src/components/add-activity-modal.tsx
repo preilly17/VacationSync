@@ -283,6 +283,7 @@ interface AddActivityModalProps {
   scheduledActivitiesQueryKey?: QueryKey;
   proposalActivitiesQueryKey?: QueryKey;
   calendarActivitiesQueryKey?: QueryKey;
+  onActivityCreated?: (activity: ActivityWithDetails) => void;
 }
 
 const getMemberDisplayName = (member: User | null | undefined, isCurrentUser: boolean) => {
@@ -427,6 +428,7 @@ export function AddActivityModal({
   scheduledActivitiesQueryKey: scheduledActivitiesQueryKeyProp,
   proposalActivitiesQueryKey: proposalActivitiesQueryKeyProp,
   calendarActivitiesQueryKey: calendarActivitiesQueryKeyProp,
+  onActivityCreated,
 }: AddActivityModalProps) {
   const { toast } = useToast();
 
@@ -708,7 +710,9 @@ export function AddActivityModal({
   );
 
   const handleSuccess = useCallback(
-    (_activity: ActivityWithDetails, values: ActivityCreateFormValues) => {
+    (activity: ActivityWithDetails, values: ActivityCreateFormValues) => {
+      onActivityCreated?.(activity);
+
       toast({
         title: values.type === "PROPOSE" ? "Proposal posted" : "Scheduled and invites sent",
         description:
@@ -722,7 +726,7 @@ export function AddActivityModal({
       setMode(resetMode);
       onOpenChange(false);
     },
-    [computeDefaults, form, onOpenChange, toast],
+    [computeDefaults, form, onActivityCreated, onOpenChange, toast],
   );
 
   const createActivity = useCreateActivity({

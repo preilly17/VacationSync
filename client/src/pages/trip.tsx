@@ -1180,6 +1180,7 @@ export default function Trip() {
   const [addActivityPrefill, setAddActivityPrefill] = useState<ActivityComposerPrefill | null>(null);
   const [addActivityMode, setAddActivityMode] = useState<ActivityType>("SCHEDULED");
   const [isAddActivityModeToggleEnabled, setIsAddActivityModeToggleEnabled] = useState(true);
+  const [shouldResetSelectedDateOnModalClose, setShouldResetSelectedDateOnModalClose] = useState(true);
   const [showEditTrip, setShowEditTrip] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
@@ -2237,6 +2238,7 @@ export default function Trip() {
 
     setAddActivityMode(mode);
     setIsAddActivityModeToggleEnabled(allowModeToggle);
+    setShouldResetSelectedDateOnModalClose(true);
     setShowAddActivity(true);
   };
 
@@ -2255,6 +2257,30 @@ export default function Trip() {
       allowModeToggle: true,
     });
   };
+
+  const handleCalendarActivityCreated = useCallback(
+    (activity: ActivityWithDetails) => {
+      setShouldResetSelectedDateOnModalClose(false);
+
+      const activityWithScheduling = activity as ActivityWithSchedulingDetails;
+      const primaryDate = getActivityPrimaryDate(activityWithScheduling);
+      if (!primaryDate) {
+        return;
+      }
+
+      const normalized = clampDateToTrip(primaryDate);
+      setSelectedDate(normalized);
+      setCalendarViewDate(normalized);
+
+      if (calendarView === "month") {
+        const normalizedMonth = startOfMonth(normalized);
+        if (!isSameMonth(normalizedMonth, currentMonth)) {
+          setCurrentMonth(normalized);
+        }
+      }
+    },
+    [calendarView, clampDateToTrip, currentMonth],
+  );
 
   const totalMembers = trip?.members?.length ?? 0;
   const tripDurationDays = trip?.startDate && trip?.endDate
@@ -3759,8 +3785,13 @@ export default function Trip() {
           onOpenChange={(open) => {
             setShowAddActivity(open);
             if (!open) {
-              setSelectedDate(null);
+              if (shouldResetSelectedDateOnModalClose) {
+                setSelectedDate(null);
+              }
               setAddActivityPrefill(null);
+              setShouldResetSelectedDateOnModalClose(true);
+            } else {
+              setShouldResetSelectedDateOnModalClose(true);
             }
           }}
           tripId={numericTripId}
@@ -3776,6 +3807,7 @@ export default function Trip() {
           scheduledActivitiesQueryKey={activitiesQueryKey}
           proposalActivitiesQueryKey={activityProposalsQueryKey}
           calendarActivitiesQueryKey={activitiesQueryKey}
+          onActivityCreated={handleCalendarActivityCreated}
         />
 
         {trip && (
