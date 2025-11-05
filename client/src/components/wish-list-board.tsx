@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
 import { Card } from "@/components/ui/card";
@@ -269,13 +269,20 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     return trimmed.length > 0 ? trimmed : null;
   }, [shareCode]);
 
-  const shareCodeHeaders = useMemo(
-    () =>
-      normalizedShareCode
-        ? { "X-Trip-Share-Code": normalizedShareCode }
-        : undefined,
-    [normalizedShareCode],
-  );
+  const shareCodeRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    shareCodeRef.current = normalizedShareCode;
+  }, [normalizedShareCode]);
+
+  const getShareCodeHeaders = useCallback(() => {
+    const currentShareCode = shareCodeRef.current;
+    if (!currentShareCode) {
+      return undefined;
+    }
+
+    return { "X-Trip-Share-Code": currentShareCode } satisfies Record<string, string>;
+  }, []);
 
   const {
     data,
@@ -640,9 +647,10 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     { ideaId: number }
   >({
     mutationFn: async ({ ideaId }) => {
+      const headers = getShareCodeHeaders();
       const res = await apiRequest(`/api/wish-list/${ideaId}/save`, {
         method: "POST",
-        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
+        ...(headers ? { headers } : {}),
       });
       return (await res.json()) as { saved: boolean; saveCount: number };
     },
@@ -673,9 +681,10 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     { ideaId: number; title: string }
   >({
     mutationFn: async ({ ideaId }) => {
+      const headers = getShareCodeHeaders();
       const res = await apiRequest(`/api/wish-list/${ideaId}`, {
         method: "DELETE",
-        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
+        ...(headers ? { headers } : {}),
       });
       if (res.status === 204) {
         return { success: true };
@@ -710,9 +719,10 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     { ideaId: number }
   >({
     mutationFn: async ({ ideaId }) => {
+      const headers = getShareCodeHeaders();
       const res = await apiRequest(`/api/wish-list/${ideaId}/promote`, {
         method: "POST",
-        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
+        ...(headers ? { headers } : {}),
       });
       return (await res.json()) as {
         draft: unknown;
@@ -752,10 +762,11 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     { ideaId: number; comment: string }
   >({
     mutationFn: async ({ ideaId, comment }) => {
+      const headers = getShareCodeHeaders();
       const res = await apiRequest(`/api/wish-list/${ideaId}/comments`, {
         method: "POST",
         body: { comment },
-        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
+        ...(headers ? { headers } : {}),
       });
       return (await res.json()) as {
         comment: WishListCommentWithUser;
@@ -802,10 +813,11 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     CreateIdeaPayload
   >({
     mutationFn: async (payload) => {
+      const headers = getShareCodeHeaders();
       const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
         method: "POST",
         body: payload,
-        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
+        ...(headers ? { headers } : {}),
       });
       return (await res.json()) as { idea: WishListIdeaWithDetails };
     },
