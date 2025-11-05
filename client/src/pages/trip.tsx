@@ -319,13 +319,136 @@ const hasTimeComponent = (date: Date) => {
 const DEFAULT_CALENDAR_ACTIVITY_START_HOUR = 9;
 const DEFAULT_CALENDAR_ACTIVITY_START_MINUTE = 0;
 
-const buildCalendarActivityStartTime = (date: Date | null): Date | null => {
+type ZonedDateTimeParts = {
+  year?: string;
+  month?: string;
+  day?: string;
+  hour?: string;
+  minute?: string;
+  second?: string;
+};
+
+const buildDateWithTimeInTimezone = ({
+  baseDate,
+  timeZone,
+  hours,
+  minutes,
+}: {
+  baseDate: Date;
+  timeZone: string | null | undefined;
+  hours: number;
+  minutes: number;
+}): Date | null => {
+  const trimmedTimezone = typeof timeZone === "string" ? timeZone.trim() : "";
+  if (!trimmedTimezone || typeof Intl === "undefined" || typeof Intl.DateTimeFormat !== "function") {
+    return null;
+  }
+
+  const getDateTimePartsInTimezone = (value: Date): ZonedDateTimeParts => {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: trimmedTimezone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    const parts = formatter.formatToParts(value);
+    return parts.reduce<ZonedDateTimeParts>((accumulator, part) => {
+      if (part.type !== "literal") {
+        accumulator[part.type as keyof ZonedDateTimeParts] = part.value;
+      }
+      return accumulator;
+    }, {});
+  };
+
+  const getTimezoneOffsetInMilliseconds = (value: Date): number => {
+    const { year, month, day, hour, minute, second } = getDateTimePartsInTimezone(value);
+
+    if (!year || !month || !day || !hour || !minute || !second) {
+      return 0;
+    }
+
+    const normalizedUtc = Date.UTC(
+      Number.parseInt(year, 10),
+      Number.parseInt(month, 10) - 1,
+      Number.parseInt(day, 10),
+      Number.parseInt(hour, 10),
+      Number.parseInt(minute, 10),
+      Number.parseInt(second, 10),
+    );
+
+    return normalizedUtc - value.getTime();
+  };
+
+  try {
+    const formattedDate = formatDateInTimezone(baseDate, trimmedTimezone);
+    const [yearString, monthString, dayString] = formattedDate.split("-");
+
+    const year = Number.parseInt(yearString ?? "", 10);
+    const month = Number.parseInt(monthString ?? "", 10);
+    const day = Number.parseInt(dayString ?? "", 10);
+
+    if ([year, month, day].some((component) => Number.isNaN(component))) {
+      return null;
+    }
+
+    const initialUtc = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0, 0));
+    let zoned = new Date(initialUtc.getTime() - getTimezoneOffsetInMilliseconds(initialUtc));
+
+    let iteration = 0;
+    while (iteration < 3) {
+      const { hour: currentHour, minute: currentMinute } = getDateTimePartsInTimezone(zoned);
+
+      const parsedHour = Number.parseInt(currentHour ?? "", 10);
+      const parsedMinute = Number.parseInt(currentMinute ?? "", 10);
+
+      if (Number.isNaN(parsedHour) || Number.isNaN(parsedMinute)) {
+        break;
+      }
+
+      const targetTotalMinutes = hours * 60 + minutes;
+      const currentTotalMinutes = parsedHour * 60 + parsedMinute;
+      const deltaMinutes = currentTotalMinutes - targetTotalMinutes;
+
+      if (deltaMinutes === 0) {
+        break;
+      }
+
+      zoned = new Date(zoned.getTime() - deltaMinutes * 60_000);
+      iteration += 1;
+    }
+
+    return zoned;
+  } catch (error) {
+    return null;
+  }
+};
+
+const buildCalendarActivityStartTime = (
+  date: Date | null,
+  timeZone: string | null | undefined,
+): Date | null => {
   if (!date) {
     return null;
   }
 
   if (hasTimeComponent(date)) {
     return date;
+  }
+
+  const zoned = buildDateWithTimeInTimezone({
+    baseDate: date,
+    timeZone,
+    hours: DEFAULT_CALENDAR_ACTIVITY_START_HOUR,
+    minutes: DEFAULT_CALENDAR_ACTIVITY_START_MINUTE,
+  });
+
+  if (zoned) {
+    return zoned;
   }
 
   return set(date, {
@@ -2246,7 +2369,7 @@ export default function Trip() {
         ? currentCalendarDay ?? tripStartDate
         : selectedDate ?? currentCalendarDay ?? tripStartDate;
 
-    const defaultStartTime = buildCalendarActivityStartTime(baseDate ?? null);
+    const defaultStartTime = buildCalendarActivityStartTime(baseDate ?? null, activityTimezone);
 
     openAddActivityModal({
       ...(baseDate ? { date: baseDate } : {}),
