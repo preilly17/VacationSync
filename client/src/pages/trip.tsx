@@ -6072,45 +6072,12 @@ function HotelBooking({
   const [isManualHotelFormOpen, setIsManualHotelFormOpen] = useState(false);
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
   const manualHotels = useMemo(() => hotels, [hotels]);
-  const [proposingHotelId, setProposingHotelId] = useState<number | null>(null);
+  const [proposingHotelId, setProposingHotelId] = useState<number | string | null>(null);
   const proposeHotelMutation = useMutation({
-    mutationFn: async (hotel: HotelWithDetails) => {
-      const payload: InsertHotel = {
-        tripId: hotel.tripId,
-        hotelName: hotel.hotelName,
-        address: hotel.address,
-        city: hotel.city,
-        country: hotel.country,
-        checkInDate: hotel.checkInDate,
-        checkOutDate: hotel.checkOutDate,
-        guestCount: hotel.guestCount ?? null,
-        roomCount: hotel.roomCount ?? null,
-        roomType: hotel.roomType ?? null,
-        hotelChain: hotel.hotelChain ?? null,
-        hotelRating: hotel.hotelRating ?? null,
-        bookingReference: hotel.bookingReference ?? null,
-        totalPrice: hotel.totalPrice ?? null,
-        pricePerNight: hotel.pricePerNight ?? null,
-        currency: hotel.currency ?? "USD",
-        status: hotel.status ?? "confirmed",
-        bookingSource: hotel.bookingSource ?? null,
-        purchaseUrl: hotel.purchaseUrl ?? null,
-        amenities: hotel.amenities ?? null,
-        images: hotel.images ?? null,
-        policies: hotel.policies ?? null,
-        contactInfo: hotel.contactInfo ?? null,
-        bookingPlatform: hotel.bookingPlatform ?? null,
-        bookingUrl: hotel.bookingUrl ?? null,
-        cancellationPolicy: hotel.cancellationPolicy ?? null,
-        notes: hotel.notes ?? null,
-        latitude: hotel.latitude ?? null,
-        longitude: hotel.longitude ?? null,
-        zipCode: hotel.zipCode ?? null,
-      };
-
+    mutationFn: async ({ hotelId }: { hotelId: number }) => {
       return apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
-        body: { ...payload, id: hotel.id },
+        body: { hotelId },
       });
     },
     onSuccess: async () => {
@@ -6123,9 +6090,30 @@ function HotelBooking({
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
       ]);
     },
-    onError: () => {
+    onError: (error) => {
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          toast({
+            title: "Sign in required",
+            description: "You need to be logged in to share stays with your group.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (error.status === 404) {
+          toast({
+            title: "Hotel not found",
+            description: "We couldn’t find this stay in your trip. Save it again and try once more.",
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       toast({
         title: "Failed to propose hotel.",
+        description: "Please try again in a few moments.",
         variant: "destructive",
       });
     },
@@ -6141,12 +6129,23 @@ function HotelBooking({
         return;
       }
 
+      const parsedHotelId = Number.parseInt(String(hotel.id), 10);
+      if (!Number.isFinite(parsedHotelId)) {
+        toast({
+          title: "Unable to share stay",
+          description: "We couldn’t determine which stay to share. Try saving it again and then propose it to the group.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       setProposingHotelId(hotel.id);
-      proposeHotelMutation.mutate(hotel, {
+      proposeHotelMutation.mutate(
+        { hotelId: parsedHotelId },
         onSettled: () => {
           setProposingHotelId(null);
         },
-      });
+      );
     },
     [proposeHotelMutation, toast],
   );
