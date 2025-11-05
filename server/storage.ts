@@ -2350,8 +2350,59 @@ export class DatabaseStorage implements IStorage {
         )
       `);
 
+      const { rows: duplicateLinkRows } = await query<{
+        proposal_id: number;
+      }>(
+        `
+        WITH ranked_links AS (
+          SELECT
+            id,
+            proposal_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY scheduled_table, scheduled_id
+              ORDER BY id
+            ) AS row_number
+          FROM proposal_schedule_links
+          WHERE proposal_type = 'restaurant'
+            AND scheduled_table = 'restaurants'
+        ),
+        duplicates AS (
+          SELECT id, proposal_id
+          FROM ranked_links
+          WHERE row_number > 1
+        )
+        DELETE FROM proposal_schedule_links psl
+        USING duplicates d
+        WHERE psl.id = d.id
+        RETURNING psl.proposal_id
+        `,
+      );
+
+      const duplicateProposalIds = Array.from(
+        new Set(duplicateLinkRows.map((row) => row.proposal_id)),
+      );
+
+      if (duplicateProposalIds.length > 0) {
+        await query(
+          `DELETE FROM restaurant_rankings WHERE proposal_id = ANY($1::int[])`,
+          [duplicateProposalIds],
+        );
+        await query(
+          `DELETE FROM restaurant_proposals WHERE id = ANY($1::int[])`,
+          [duplicateProposalIds],
+        );
+      }
+
       await query(
         `CREATE INDEX IF NOT EXISTS idx_proposal_schedule_links_lookup ON proposal_schedule_links (proposal_type, proposal_id)`,
+      );
+
+      await query(
+        `
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_proposal_schedule_links_restaurant_unique
+          ON proposal_schedule_links (scheduled_table, scheduled_id)
+          WHERE scheduled_table = 'restaurants'
+        `,
       );
 
       this.proposalLinksInitialized = true;
@@ -8678,7 +8729,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
       restaurant.user_id,
     );
 
-    await query(
+    const { rows: insertedLinks } = await query<{
+      proposal_id: number;
+    }>(
       `
       INSERT INTO proposal_schedule_links (
         proposal_type,
@@ -8688,12 +8741,29 @@ ${selectUserColumns("participant_user", "participant_user_")}
         trip_id
       )
       VALUES ('restaurant', $1, 'restaurants', $2, $3)
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (scheduled_table, scheduled_id)
+        WHERE scheduled_table = 'restaurants'
+        DO NOTHING
+      RETURNING proposal_id
       `,
       [created.id, restaurant.id, restaurant.trip_id],
     );
 
-    return created.id;
+    if (insertedLinks.length > 0) {
+      return created.id;
+    }
+
+    await query(`DELETE FROM restaurant_proposals WHERE id = $1`, [created.id]);
+
+    const existingProposalId = await this.syncRestaurantProposalFromRestaurantRow(restaurant, {
+      allowCreate: false,
+    });
+
+    if (existingProposalId == null) {
+      throw new Error("Failed to find existing restaurant proposal link after conflict");
+    }
+
+    return existingProposalId;
   }
 
   private async ensureManualRestaurantsHaveProposals(tripId: number): Promise<void> {
