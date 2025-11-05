@@ -269,6 +269,14 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     return trimmed.length > 0 ? trimmed : null;
   }, [shareCode]);
 
+  const shareCodeHeaders = useMemo(
+    () =>
+      normalizedShareCode
+        ? { "X-Trip-Share-Code": normalizedShareCode }
+        : undefined,
+    [normalizedShareCode],
+  );
+
   const {
     data,
     isLoading,
@@ -604,6 +612,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
             a.localeCompare(b),
           ),
           submitters: updatedSubmitters,
+          isMember: cached.meta.isMember || normalizedShareCode !== null,
         },
       });
     }
@@ -633,6 +642,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     mutationFn: async ({ ideaId }) => {
       const res = await apiRequest(`/api/wish-list/${ideaId}/save`, {
         method: "POST",
+        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
       });
       return (await res.json()) as { saved: boolean; saveCount: number };
     },
@@ -665,6 +675,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     mutationFn: async ({ ideaId }) => {
       const res = await apiRequest(`/api/wish-list/${ideaId}`, {
         method: "DELETE",
+        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
       });
       if (res.status === 204) {
         return { success: true };
@@ -701,6 +712,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     mutationFn: async ({ ideaId }) => {
       const res = await apiRequest(`/api/wish-list/${ideaId}/promote`, {
         method: "POST",
+        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
       });
       return (await res.json()) as {
         draft: unknown;
@@ -743,6 +755,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       const res = await apiRequest(`/api/wish-list/${ideaId}/comments`, {
         method: "POST",
         body: { comment },
+        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
       });
       return (await res.json()) as {
         comment: WishListCommentWithUser;
@@ -792,10 +805,11 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
         method: "POST",
         body: payload,
+        ...(shareCodeHeaders ? { headers: shareCodeHeaders } : {}),
       });
       return (await res.json()) as { idea: WishListIdeaWithDetails };
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       if (data.idea) {
         addIdeaToCache(data.idea);
       }
@@ -804,97 +818,47 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         description: "Your inspiration was added to the wish list.",
       });
       setIsAddModalOpen(false);
-      queryClient.invalidateQueries({ queryKey: ["wish-list", tripId] });
+      const invalidations = [
+        queryClient.invalidateQueries({ queryKey: ["wish-list", tripId] }),
+      ];
+      if (normalizedShareCode) {
+        invalidations.push(
+          queryClient.invalidateQueries({ queryKey: ["/api/trips"] }),
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] }),
+        );
+      }
+      await Promise.all(invalidations);
     },
   });
 
   const attemptCreateIdea = useCallback(
     async (payload: CreateIdeaPayload) => {
-      let joinAttempted = false;
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          await createIdeaMutation.mutateAsync(payload);
-          return;
-        } catch (error) {
-          if (error instanceof ApiError) {
-            if (error.status === 401) {
-              handleUnauthorized();
-              return;
-            }
-
-            if (error.status === 403 && normalizedShareCode && !joinAttempted) {
-              joinAttempted = true;
-              try {
-                await apiRequest(`/api/trips/join/${normalizedShareCode}`, {
-                  method: "POST",
-                  body: {},
-                });
-
-                await Promise.all([
-                  queryClient.invalidateQueries({ queryKey: ["/api/trips"] }),
-                  queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] }),
-                ]);
-
-                toast({
-                  title: "You’re now part of the trip",
-                  description: "We added you to the trip so your idea can be shared.",
-                });
-
-                continue;
-              } catch (joinError) {
-                if (joinError instanceof ApiError) {
-                  if (joinError.status === 401) {
-                    handleUnauthorized();
-                    return;
-                  }
-
-                  toast({
-                    title: "Failed to join trip",
-                    description: joinError.message || "Please try again.",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-
-                toast({
-                  title: "Failed to join trip",
-                  description:
-                    joinError instanceof Error
-                      ? joinError.message
-                      : "Please try again.",
-                  variant: "destructive",
-                });
-                return;
-              }
-            }
-
-            toast({
-              title: "Failed to add idea",
-              description: error.message || "Please try again.",
-              variant: "destructive",
-            });
+      try {
+        await createIdeaMutation.mutateAsync(payload);
+      } catch (error) {
+        if (error instanceof ApiError) {
+          if (error.status === 401) {
+            handleUnauthorized();
             return;
           }
 
           toast({
             title: "Failed to add idea",
-            description:
-              error instanceof Error ? error.message : "Please try again.",
+            description: error.message || "Please try again.",
             variant: "destructive",
           });
           return;
         }
+
+        toast({
+          title: "Failed to add idea",
+          description:
+            error instanceof Error ? error.message : "Please try again.",
+          variant: "destructive",
+        });
       }
     },
-    [
-      createIdeaMutation,
-      handleUnauthorized,
-      normalizedShareCode,
-      queryClient,
-      toast,
-      tripId,
-    ],
+    [createIdeaMutation, handleUnauthorized, toast],
   );
 
   const handleToggleSave = async (ideaId: number) => {
@@ -1011,7 +975,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
 
   const ideas = data?.ideas ?? [];
   const meta = data?.meta;
-  const canSubmitIdeas = meta?.isMember ?? true;
+  const canSubmitIdeas = (meta?.isMember ?? false) || normalizedShareCode !== null;
 
   const availableTagOptions = useMemo(() => {
     const options = new Set<string>(PRESET_TAGS);
@@ -1214,6 +1178,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
               promotePendingId={promotePendingId}
               addCommentPendingId={addCommentPendingId}
               onUnauthorized={handleUnauthorized}
+              shareCode={normalizedShareCode}
             />
           ))}
         </div>
@@ -1411,6 +1376,7 @@ interface WishListIdeaCardProps {
   promotePendingId: number | null;
   addCommentPendingId: number | null;
   onUnauthorized: () => void;
+  shareCode: string | null;
 }
 
 function WishListIdeaCard({
@@ -1424,6 +1390,7 @@ function WishListIdeaCard({
   promotePendingId,
   addCommentPendingId,
   onUnauthorized,
+  shareCode,
 }: WishListIdeaCardProps) {
   const { toast } = useToast();
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -1444,7 +1411,12 @@ function WishListIdeaCard({
     queryKey: ["wish-list", idea.id, "comments"],
     enabled: commentsOpen,
     queryFn: async () => {
-      const res = await apiRequest(`/api/wish-list/${idea.id}/comments`);
+      const res = await apiRequest(`/api/wish-list/${idea.id}/comments`, {
+        method: "GET",
+        ...(shareCode
+          ? { headers: { "X-Trip-Share-Code": shareCode } }
+          : {}),
+      });
       return (await res.json()) as WishListCommentWithUser[];
     },
     retry: (failureCount, error) => {

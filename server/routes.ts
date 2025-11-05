@@ -5419,11 +5419,11 @@ export function setupRoutes(app: Express) {
   app.patch("/api/notifications/mark-all-read", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getRequestUserId(req);
-      
+
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
-      
+
       await storage.markAllNotificationsAsRead(userId);
       res.json({ success: true });
     } catch (error: unknown) {
@@ -5431,6 +5431,67 @@ export function setupRoutes(app: Express) {
       res.status(500).json({ message: "Failed to mark all notifications as read" });
     }
   });
+
+  const getShareCodeFromRequest = (req: any): string | null => {
+    const rawHeader = req.headers?.["x-trip-share-code"];
+    if (typeof rawHeader === "string") {
+      const trimmed = rawHeader.trim();
+      return trimmed.length > 0 ? trimmed.toUpperCase() : null;
+    }
+
+    if (Array.isArray(rawHeader)) {
+      for (const value of rawHeader) {
+        if (typeof value === "string" && value.trim().length > 0) {
+          return value.trim().toUpperCase();
+        }
+      }
+    }
+
+    return null;
+  };
+
+  const ensureTripMembership = async (
+    req: any,
+    tripId: number,
+    userId: string,
+  ): Promise<{ isMember: boolean; message?: string }> => {
+    const alreadyMember = await storage.isTripMember(tripId, userId);
+    if (alreadyMember) {
+      return { isMember: true };
+    }
+
+    const shareCode = getShareCodeFromRequest(req);
+    if (!shareCode) {
+      return { isMember: false };
+    }
+
+    try {
+      const sharedTrip = await storage.getTripByShareCode(shareCode);
+      if (!sharedTrip || sharedTrip.id !== tripId) {
+        return {
+          isMember: false,
+          message: "This invite link doesn’t match the trip you’re trying to view.",
+        };
+      }
+
+      await storage.joinTrip(shareCode, userId);
+      return { isMember: true };
+    } catch (error: unknown) {
+      console.error("Failed to join trip via share code:", error);
+      if (error instanceof Error) {
+        if (error.message === "Trip not found") {
+          return {
+            isMember: false,
+            message: "This invite link is no longer valid for the trip.",
+          };
+        }
+
+        return { isMember: false, message: error.message };
+      }
+
+      return { isMember: false, message: "Failed to join trip" };
+    }
+  };
 
   // Wish List / Ideas board routes
   app.get("/api/trips/:tripId/wish-list", async (req: any, res) => {
@@ -5537,9 +5598,9 @@ export function setupRoutes(app: Express) {
         return res.status(400).json({ message: "Invalid trip ID" });
       }
 
-      const isMember = await storage.isTripMember(tripId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
+      const membership = await ensureTripMembership(req, tripId, userId);
+      if (!membership.isMember) {
+        return res.status(403).json({ message: membership.message ?? "Access denied" });
       }
 
       const validatedData = insertWishListIdeaSchema.parse({
@@ -5608,9 +5669,9 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Idea not found" });
       }
 
-      const isMember = await storage.isTripMember(idea.tripId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
+      const membership = await ensureTripMembership(req, idea.tripId, userId);
+      if (!membership.isMember) {
+        return res.status(403).json({ message: membership.message ?? "Access denied" });
       }
 
       const result = await storage.toggleWishListSave(ideaId, userId);
@@ -5643,9 +5704,9 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Idea not found" });
       }
 
-      const isMember = await storage.isTripMember(idea.tripId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
+      const membership = await ensureTripMembership(req, idea.tripId, userId);
+      if (!membership.isMember) {
+        return res.status(403).json({ message: membership.message ?? "Access denied" });
       }
 
       const comments = await storage.getWishListComments(ideaId);
@@ -5678,9 +5739,9 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Idea not found" });
       }
 
-      const isMember = await storage.isTripMember(idea.tripId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
+      const membership = await ensureTripMembership(req, idea.tripId, userId);
+      if (!membership.isMember) {
+        return res.status(403).json({ message: membership.message ?? "Access denied" });
       }
 
       const { comment } = insertWishListCommentSchema.parse(req.body ?? {});
@@ -5727,9 +5788,9 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Idea not found" });
       }
 
-      const isMember = await storage.isTripMember(idea.tripId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
+      const membership = await ensureTripMembership(req, idea.tripId, userId);
+      if (!membership.isMember) {
+        return res.status(403).json({ message: membership.message ?? "Access denied" });
       }
 
       const isAdmin = await storage.isTripAdmin(idea.tripId, userId);
@@ -5767,9 +5828,9 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Idea not found" });
       }
 
-      const isMember = await storage.isTripMember(idea.tripId, userId);
-      if (!isMember) {
-        return res.status(403).json({ message: "Access denied" });
+      const membership = await ensureTripMembership(req, idea.tripId, userId);
+      if (!membership.isMember) {
+        return res.status(403).json({ message: membership.message ?? "Access denied" });
       }
 
       const draft = await storage.promoteWishListIdea(ideaId, userId);
