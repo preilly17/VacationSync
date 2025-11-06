@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError, apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
 import { filterActiveProposals, isCanceledStatus } from "./proposalStatusFilters";
@@ -1367,8 +1368,9 @@ function ProposalsPage({
     const endTime = proposal.endTime ? new Date(proposal.endTime) : null;
     const createdAt = proposal.createdAt ? new Date(proposal.createdAt) : null;
     const isCanceled = isCanceledStatus(proposal.status);
+    const isProposalActivity = proposal.type === "PROPOSE";
     const canCancel = isMyProposal(proposal) && !isCanceled;
-    const canConvert = isMyProposal(proposal) && !isCanceled && proposal.type === "PROPOSE";
+    const canConvert = isMyProposal(proposal) && !isCanceled && isProposalActivity;
     const hasStartTime = Boolean(proposal.startTime);
     const isConverting =
       convertActivityProposalMutation.isPending
@@ -1427,6 +1429,9 @@ function ProposalsPage({
       respondToInviteMutation.variables?.activityId === proposal.id;
 
     const viewerCanRespond = !isMyProposal(proposal);
+    const isAcceptedVote = derivedStatus === "accepted";
+    const isDeclinedVote = derivedStatus === "declined";
+    const responseHeading = isProposalActivity ? "Your vote" : "Your RSVP";
 
     const submitAction = (action: ActivityRsvpAction) => {
       const targetStatus = actionToStatusMap[action];
@@ -1435,6 +1440,22 @@ function ProposalsPage({
       }
 
       respondToInviteMutation.mutate({ activityId: proposal.id, action });
+    };
+
+    const handleThumbsUp = () => {
+      if (isAcceptedVote) {
+        submitAction("MAYBE");
+        return;
+      }
+      submitAction("ACCEPT");
+    };
+
+    const handleThumbsDown = () => {
+      if (isDeclinedVote) {
+        submitAction("MAYBE");
+        return;
+      }
+      submitAction("DECLINE");
     };
 
     return (
@@ -1476,7 +1497,7 @@ function ProposalsPage({
                     title={!hasStartTime ? "Add a date and time before scheduling this activity." : undefined}
                     data-testid={`button-convert-activity-proposal-${proposal.id}`}
                   >
-                    {isConverting ? "Scheduling..." : "Book now"}
+                    {isConverting ? "Scheduling..." : "Convert to scheduled"}
                   </Button>
                   {!hasStartTime ? (
                     <span className="text-xs text-neutral-500 text-right max-w-[12rem]">
@@ -1555,39 +1576,80 @@ function ProposalsPage({
                 >
                   {statusLabel}
                 </Badge>
-                <span>Your response</span>
+                <span>{responseHeading}</span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  onClick={() => submitAction("ACCEPT")}
-                  disabled={isResponding}
-                  data-testid={`button-accept-activity-proposal-${proposal.id}`}
-                >
-                  {isResponding && respondToInviteMutation.variables?.action === "ACCEPT"
-                    ? "Updating..."
-                    : "Accept"}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => submitAction("DECLINE")}
-                  disabled={isResponding}
-                  data-testid={`button-decline-activity-proposal-${proposal.id}`}
-                >
-                  {isResponding && respondToInviteMutation.variables?.action === "DECLINE"
-                    ? "Updating..."
-                    : "Decline"}
-                </Button>
-                {isResponding ? (
-                  <div
-                    className="basis-full text-xs text-neutral-500"
-                    data-testid={`text-activity-rsvp-updating-${proposal.id}`}
+              {isProposalActivity ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleThumbsUp}
+                    disabled={isResponding}
+                    aria-label={isAcceptedVote ? "Remove thumbs up" : "Give thumbs up"}
+                    aria-pressed={isAcceptedVote}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+                      isAcceptedVote
+                        ? "border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90"
+                        : "border-neutral-300 hover:border-emerald-500 hover:text-emerald-600",
+                    )}
+                    data-testid={`button-thumbs-up-activity-proposal-${proposal.id}`}
                   >
-                    Updating response…
-                  </div>
-                ) : null}
-              </div>
+                    <ThumbsUp className="h-4 w-4" aria-hidden="true" />
+                    <span className="sr-only">Thumbs up</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleThumbsDown}
+                    disabled={isResponding}
+                    aria-label={isDeclinedVote ? "Remove thumbs down" : "Give thumbs down"}
+                    aria-pressed={isDeclinedVote}
+                    className={cn(
+                      "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+                      isDeclinedVote
+                        ? "border-transparent bg-red-600 text-white hover:bg-red-600/90"
+                        : "border-neutral-300 hover:border-red-500 hover:text-red-600",
+                    )}
+                    data-testid={`button-thumbs-down-activity-proposal-${proposal.id}`}
+                  >
+                    <ThumbsDown className="h-4 w-4" aria-hidden="true" />
+                    <span className="sr-only">Thumbs down</span>
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => submitAction("ACCEPT")}
+                    disabled={isResponding}
+                    data-testid={`button-accept-activity-proposal-${proposal.id}`}
+                  >
+                    {isResponding && respondToInviteMutation.variables?.action === "ACCEPT"
+                      ? "Updating..."
+                      : "Accept"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => submitAction("DECLINE")}
+                    disabled={isResponding}
+                    data-testid={`button-decline-activity-proposal-${proposal.id}`}
+                  >
+                    {isResponding && respondToInviteMutation.variables?.action === "DECLINE"
+                      ? "Updating..."
+                      : "Decline"}
+                  </Button>
+                </div>
+              )}
+              {isResponding ? (
+                <div
+                  className="text-xs text-neutral-500"
+                  data-testid={`text-activity-rsvp-updating-${proposal.id}`}
+                >
+                  Updating response…
+                </div>
+              ) : null}
             </div>
           ) : null}
         </CardContent>
@@ -2263,31 +2325,42 @@ function ProposalsPage({
     </div>
   );
 
-  const activityProposals = useMemo<NormalizedActivityProposal[]>(
-    () =>
-      rawActivityProposals
-        .filter((activity) => activity.type === "PROPOSE")
-        .map((activity) => {
-          const isCanceled = isCanceledStatus(activity.status);
+  const activityProposals = useMemo<NormalizedActivityProposal[]>(() => {
+    const viewerId = user?.id ?? null;
 
-          return {
-            ...activity,
-            tripId: activity.tripCalendarId,
-            proposedBy: activity.postedBy,
-            proposer: activity.poster,
-            status: isCanceled
-              ? activity.status ?? "canceled"
-              : getActivityProposalStatus(activity),
-            activityName: activity.name,
-            rankings: [],
-            averageRanking: null,
-            permissions: {
-              canCancel: Boolean(user?.id && activity.postedBy === user.id),
-            },
-          };
-        }),
-    [getActivityProposalStatus, rawActivityProposals, user?.id],
-  );
+    return rawActivityProposals
+      .filter((activity) => {
+        if (!viewerId) {
+          return false;
+        }
+
+        const proposerId = activity.postedBy ?? activity.poster?.id ?? null;
+        if (proposerId === viewerId) {
+          return true;
+        }
+
+        return (activity.invites ?? []).some((invite) => invite.userId === viewerId);
+      })
+      .map((activity) => {
+        const isCanceled = isCanceledStatus(activity.status);
+
+        return {
+          ...activity,
+          tripId: activity.tripCalendarId,
+          proposedBy: activity.postedBy,
+          proposer: activity.poster,
+          status: isCanceled
+            ? activity.status ?? "canceled"
+            : getActivityProposalStatus(activity),
+          activityName: activity.name,
+          rankings: [],
+          averageRanking: null,
+          permissions: {
+            canCancel: Boolean(viewerId && activity.postedBy === viewerId),
+          },
+        };
+      });
+  }, [getActivityProposalStatus, rawActivityProposals, user?.id]);
 
   const hotelProposalsForCategories = useMemo(
     () =>
