@@ -6142,8 +6142,10 @@ function HotelBooking({
       setProposingHotelId(hotel.id);
       proposeHotelMutation.mutate(
         { hotelId: parsedHotelId },
-        onSettled: () => {
-          setProposingHotelId(null);
+        {
+          onSettled: () => {
+            setProposingHotelId(null);
+          },
         },
       );
     },
