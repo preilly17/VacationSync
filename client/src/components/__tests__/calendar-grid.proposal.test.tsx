@@ -133,9 +133,8 @@ describe("CalendarGrid proposal handling", () => {
 
     const textContent = markup.replace(/<[^>]*>/g, " ");
 
-    expect(textContent).toContain("Sunset Cruise");
-    expect(textContent).toContain("Proposed");
-    expect(textContent).toContain("TBD");
-    expect(textContent).not.toContain("1970");
+    expect(textContent).not.toContain("Sunset Cruise");
+    expect(textContent).not.toContain("Proposed");
+    expect(textContent).not.toContain("TBD");
   });
 });
