@@ -3,7 +3,16 @@
 import { randomUUID } from "crypto";
 
 import { pool, query } from "./db";
-import type { TripWithDetails } from "@shared/schema";
+import type {
+  ActivityAcceptance as LegacyActivityAcceptance,
+  ActivityInvite as LegacyActivityInvite,
+  ActivityInviteStatus,
+  ActivityType as LegacyActivityType,
+  ActivityWithDetails as LegacyActivityWithDetails,
+  ActivityComment as LegacyActivityComment,
+  TripWithDetails,
+  User as LegacyUser,
+} from "@shared/schema";
 import {
   createActivityRequestSchema,
   type ActivityInvitee,
@@ -155,6 +164,151 @@ const normalizeUserProvidedTime = (value: string): string => {
   }
 
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+};
+
+const stringHashToNumber = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+
+  const normalized = Math.abs(hash);
+  const offset = 1_000_000_000;
+  return offset + normalized;
+};
+
+const getTimeZoneOffsetInMilliseconds = (instant: Date, timeZone: string): number => {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+
+    const parts = formatter.formatToParts(instant);
+    const lookup: Record<string, number> = {};
+
+    for (const part of parts) {
+      if (part.type === "literal") {
+        continue;
+      }
+      const parsed = Number.parseInt(part.value, 10);
+      if (!Number.isNaN(parsed)) {
+        lookup[part.type] = parsed;
+      }
+    }
+
+    const year = lookup.year ?? instant.getUTCFullYear();
+    const month = (lookup.month ?? instant.getUTCMonth() + 1) - 1;
+    const day = lookup.day ?? instant.getUTCDate();
+    const hour = lookup.hour ?? instant.getUTCHours();
+    const minute = lookup.minute ?? instant.getUTCMinutes();
+    const second = lookup.second ?? instant.getUTCSeconds();
+
+    const asUtc = Date.UTC(year, month, day, hour, minute, second);
+    return asUtc - instant.getTime();
+  } catch (error) {
+    console.warn("Failed to determine timezone offset", { error, timeZone });
+    return 0;
+  }
+};
+
+const combineDateAndTimeInUtc = (
+  date: string | null | undefined,
+  time: string | null | undefined,
+  timeZone: string,
+): string | null => {
+  if (!date || !time) {
+    return null;
+  }
+
+  const [yearStr, monthStr, dayStr] = date.split("-");
+  const [hourStr = "0", minuteStr = "0"] = time.split(":");
+
+  const year = Number.parseInt(yearStr ?? "", 10);
+  const month = Number.parseInt(monthStr ?? "", 10);
+  const day = Number.parseInt(dayStr ?? "", 10);
+  const hour = Number.parseInt(hourStr ?? "", 10);
+  const minute = Number.parseInt(minuteStr ?? "", 10);
+
+  if (
+    Number.isNaN(year)
+    || Number.isNaN(month)
+    || Number.isNaN(day)
+    || Number.isNaN(hour)
+    || Number.isNaN(minute)
+  ) {
+    return null;
+  }
+
+  try {
+    const provisional = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+    const offset = getTimeZoneOffsetInMilliseconds(provisional, timeZone);
+    return new Date(provisional.getTime() - offset).toISOString();
+  } catch (error) {
+    console.warn("Failed to convert activity time to UTC", {
+      error,
+      date,
+      time,
+      timeZone,
+    });
+    return `${date}T${time}:00.000Z`;
+  }
+};
+
+const mapV2UserToLegacy = (user: LegacyUser | null | undefined, fallbackId: string): LegacyUser => ({
+  id: user?.id ?? fallbackId,
+  email: user?.email ?? "",
+  username: user?.username ?? null,
+  firstName: user?.firstName ?? null,
+  lastName: user?.lastName ?? null,
+  phoneNumber: user?.phoneNumber ?? null,
+  passwordHash: null,
+  profileImageUrl: user?.profileImageUrl ?? null,
+  cashAppUsername: user?.cashAppUsername ?? null,
+  cashAppUsernameLegacy: user?.cashAppUsernameLegacy ?? null,
+  cashAppPhone: user?.cashAppPhone ?? null,
+  cashAppPhoneLegacy: user?.cashAppPhoneLegacy ?? null,
+  venmoUsername: user?.venmoUsername ?? null,
+  venmoPhone: user?.venmoPhone ?? null,
+  timezone: user?.timezone ?? null,
+  defaultLocation: user?.defaultLocation ?? null,
+  defaultLocationCode: user?.defaultLocationCode ?? null,
+  defaultCity: user?.defaultCity ?? null,
+  defaultCountry: user?.defaultCountry ?? null,
+  authProvider: user?.authProvider ?? null,
+  notificationPreferences: user?.notificationPreferences ?? null,
+  hasSeenHomeOnboarding: user?.hasSeenHomeOnboarding ?? false,
+  hasSeenTripOnboarding: user?.hasSeenTripOnboarding ?? false,
+  createdAt: user?.createdAt ?? null,
+  updatedAt: user?.updatedAt ?? null,
+});
+
+const mapRsvpResponseToInviteStatus = (
+  response: ActivityRsvpResponse | null | undefined,
+): ActivityInviteStatus => {
+  switch (response) {
+    case "yes":
+      return "accepted";
+    case "no":
+      return "declined";
+    case "maybe":
+    case "pending":
+    default:
+      return "pending";
+  }
+};
+
+const mapActivityStatusToLegacyType = (status: ActivityWithDetails["status"]): LegacyActivityType => {
+  if (status === "proposed") {
+    return "PROPOSE";
+  }
+  return "SCHEDULED";
 };
 
 const formatTripDateLabel = (value: string): string => {
@@ -445,6 +599,219 @@ const fetchActivityWithRelations = async (activityId: string): Promise<ActivityW
 
   const base = mapActivityRow(baseRow as Record<string, unknown>);
   return attachRelations(base, invitees.rows, votes.rows, rsvps.rows);
+};
+
+export interface ListTripActivitiesOptions {
+  tripId: number | string;
+  currentUserId?: string | null;
+}
+
+export const listActivitiesForTripV2 = async ({
+  tripId,
+  currentUserId,
+}: ListTripActivitiesOptions): Promise<ActivityWithDetails[]> => {
+  await ensureActivitiesTablePromise;
+
+  const { rows } = await query(
+    `
+    SELECT a.*, u.email AS creator_email, u.username AS creator_username, u.first_name AS creator_first_name,
+           u.last_name AS creator_last_name, u.phone_number AS creator_phone_number, u.profile_image_url AS creator_profile_image_url,
+           u.timezone AS creator_timezone
+    FROM activities_v2 a
+    LEFT JOIN users u ON u.id = a.creator_id
+    WHERE a.trip_id = $1
+      AND LOWER(a.status) <> 'cancelled'
+    ORDER BY a.date ASC, a.start_time ASC NULLS FIRST, a.created_at ASC
+  `,
+    [String(tripId)],
+  );
+
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const activityIds = rows.map((row) => row.id);
+
+  const [invitees, votes, rsvps] = await Promise.all([
+    query(
+      `
+      SELECT ai.*, u.email AS user_email, u.username AS user_username, u.first_name AS user_first_name,
+             u.last_name AS user_last_name, u.phone_number AS user_phone_number, u.profile_image_url AS user_profile_image_url,
+             u.timezone AS user_timezone
+      FROM activity_invitees_v2 ai
+      LEFT JOIN users u ON u.id = ai.user_id
+      WHERE ai.activity_id = ANY($1::uuid[])
+    `,
+      [activityIds],
+    ),
+    query(
+      `
+      SELECT av.*, u.email AS vote_user_email, u.username AS vote_user_username, u.first_name AS vote_user_first_name,
+             u.last_name AS vote_user_last_name, u.phone_number AS vote_user_phone_number, u.profile_image_url AS vote_user_profile_image_url,
+             u.timezone AS vote_user_timezone
+      FROM activity_votes_v2 av
+      LEFT JOIN users u ON u.id = av.user_id
+      WHERE av.activity_id = ANY($1::uuid[])
+    `,
+      [activityIds],
+    ),
+    query(
+      `
+      SELECT ar.*, u.email AS rsvp_user_email, u.username AS rsvp_user_username, u.first_name AS rsvp_user_first_name,
+             u.last_name AS rsvp_user_last_name, u.phone_number AS rsvp_user_phone_number, u.profile_image_url AS rsvp_user_profile_image_url,
+             u.timezone AS rsvp_user_timezone
+      FROM activity_rsvps_v2 ar
+      LEFT JOIN users u ON u.id = ar.user_id
+      WHERE ar.activity_id = ANY($1::uuid[])
+    `,
+      [activityIds],
+    ),
+  ]);
+
+  const inviteMap = new Map<string, any[]>();
+  for (const row of invitees.rows) {
+    const key = String(row.activity_id);
+    const list = inviteMap.get(key) ?? [];
+    list.push(row);
+    inviteMap.set(key, list);
+  }
+
+  const voteMap = new Map<string, any[]>();
+  for (const row of votes.rows) {
+    const key = String(row.activity_id);
+    const list = voteMap.get(key) ?? [];
+    list.push(row);
+    voteMap.set(key, list);
+  }
+
+  const rsvpMap = new Map<string, any[]>();
+  for (const row of rsvps.rows) {
+    const key = String(row.activity_id);
+    const list = rsvpMap.get(key) ?? [];
+    list.push(row);
+    rsvpMap.set(key, list);
+  }
+
+  const normalizedCurrentUser = currentUserId ? String(currentUserId) : null;
+
+  return rows.map((row) => {
+    const base = mapActivityRow(row as Record<string, unknown>);
+    const activity = attachRelations(
+      base,
+      inviteMap.get(String(row.id)) ?? [],
+      voteMap.get(String(row.id)) ?? [],
+      rsvpMap.get(String(row.id)) ?? [],
+    );
+
+    if (normalizedCurrentUser) {
+      activity.currentUserVote = activity.votes.find((vote) => vote.userId === normalizedCurrentUser) ?? null;
+      activity.currentUserRsvp = activity.rsvps.find((rsvp) => rsvp.userId === normalizedCurrentUser) ?? null;
+    }
+
+    return activity;
+  });
+};
+
+export const convertActivitiesV2ToLegacy = (
+  activities: ActivityWithDetails[],
+  { currentUserId }: { currentUserId?: string | null } = {},
+): LegacyActivityWithDetails[] => {
+  const normalizedViewer = currentUserId ? String(currentUserId) : null;
+
+  return activities.map((activity) => {
+    const legacyId = stringHashToNumber(activity.id);
+    const legacyTripId = Number.parseInt(String(activity.tripId), 10);
+
+    const startTimeIso = combineDateAndTimeInUtc(activity.date, activity.startTime, activity.timezone);
+    const endTimeIso = combineDateAndTimeInUtc(activity.date, activity.endTime, activity.timezone);
+
+    const invites: (LegacyActivityInvite & { user: LegacyUser })[] = [];
+    const acceptances: (LegacyActivityAcceptance & { user: LegacyUser })[] = [];
+
+    let inviteCounter = 1;
+    let acceptanceCounter = 1;
+
+    for (const invitee of activity.invitees) {
+      if (invitee.role !== "participant") {
+        continue;
+      }
+
+      const inviteStatus = mapRsvpResponseToInviteStatus(
+        activity.rsvps.find((entry) => entry.userId === invitee.userId)?.response ?? null,
+      );
+
+      const user = mapV2UserToLegacy(invitee.user ?? null, invitee.userId);
+
+      const invite: LegacyActivityInvite & { user: LegacyUser } = {
+        id: legacyId * 1000 + inviteCounter,
+        activityId: legacyId,
+        userId: invitee.userId,
+        status: inviteStatus,
+        respondedAt:
+          activity.rsvps.find((entry) => entry.userId === invitee.userId)?.respondedAt ?? null,
+        createdAt: invitee.createdAt,
+        updatedAt: invitee.updatedAt,
+        user,
+      };
+
+      invites.push(invite);
+      inviteCounter += 1;
+
+      if (inviteStatus === "accepted") {
+        const acceptance: LegacyActivityAcceptance & { user: LegacyUser } = {
+          id: legacyId * 1000 + acceptanceCounter,
+          activityId: legacyId,
+          userId: invitee.userId,
+          acceptedAt:
+            activity.rsvps.find((entry) => entry.userId === invitee.userId)?.respondedAt ?? null,
+          user,
+        };
+        acceptances.push(acceptance);
+        acceptanceCounter += 1;
+      }
+    }
+
+    const poster = mapV2UserToLegacy(activity.creator ?? null, activity.creatorId);
+
+    const currentUserInvite = normalizedViewer
+      ? invites.find((invite) => invite.userId === normalizedViewer)
+      : undefined;
+
+    const isAccepted = currentUserInvite?.status === "accepted" ? true : undefined;
+    const hasResponded = currentUserInvite && currentUserInvite.status !== "pending" ? true : undefined;
+
+    return {
+      id: legacyId,
+      tripCalendarId: Number.isNaN(legacyTripId) ? legacyId : legacyTripId,
+      postedBy: activity.creatorId,
+      name: activity.title,
+      description: activity.description,
+      startTime: startTimeIso,
+      endTime: endTimeIso,
+      location: activity.location,
+      cost: activity.costPerPerson,
+      maxCapacity: activity.maxParticipants,
+      category: activity.category ?? "other",
+      status: activity.status === "cancelled" ? "canceled" : "active",
+      type: mapActivityStatusToLegacyType(activity.status),
+      createdAt: activity.createdAt,
+      updatedAt: activity.updatedAt,
+      poster,
+      invites,
+      acceptances,
+      comments: [] as (LegacyActivityComment & { user: LegacyUser })[],
+      acceptedCount: acceptances.length,
+      pendingCount: invites.filter((invite) => invite.status === "pending").length,
+      declinedCount: invites.filter((invite) => invite.status === "declined").length,
+      waitlistedCount: 0,
+      currentUserInvite,
+      isAccepted,
+      hasResponded,
+      permissions: {
+        canCancel: normalizedViewer ? normalizedViewer === activity.creatorId : false,
+      },
+    } satisfies LegacyActivityWithDetails;
+  });
 };
 
 const buildInitialState = (
