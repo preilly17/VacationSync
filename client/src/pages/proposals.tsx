@@ -60,6 +60,7 @@ import type {
   ProposalPermissions,
   User,
 } from "@shared/schema";
+import { sortActivitiesByStartTime } from "@/lib/activities/activityCreation";
 
 type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
 
@@ -819,6 +820,25 @@ function ProposalsPage({
       queryClient.setQueryData<ActivityWithDetails[] | undefined>(
         [`/api/trips/${tripId}/proposals/activities`],
         (previous) => previous?.filter((proposal) => proposal.id !== activity.id),
+      );
+
+      const updateActivitiesList = (existing: ActivityWithDetails[] | undefined) => {
+        const base = existing ?? [];
+        const filtered = base.filter((item) => item.id !== activity.id);
+        return sortActivitiesByStartTime([...filtered, activity]);
+      };
+
+      const activitiesKey = [`/api/trips/${tripId}/activities`];
+      const legacyActivitiesKey = ["/api/trips", tripId, "activities"] as const;
+
+      queryClient.setQueryData<ActivityWithDetails[] | undefined>(
+        activitiesKey,
+        (previous) => updateActivitiesList(previous),
+      );
+
+      queryClient.setQueryData<ActivityWithDetails[] | undefined>(
+        legacyActivitiesKey,
+        (previous) => updateActivitiesList(previous),
       );
 
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });

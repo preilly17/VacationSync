@@ -286,20 +286,18 @@ export function CalendarGrid({
     ? eachDayOfInterval({ start: effectiveWeekStart, end: effectiveWeekEnd })
     : eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-  const proposalFallbackDate = parseDateValue(trip.startDate) ?? parseDateValue(trip.endDate);
-
   const getActivitiesForDay = (day: Date) => {
     return activities
       .filter(activity => {
+        const activityType = (activity.type ?? "").toString().toUpperCase();
+        if (activityType !== "SCHEDULED") {
+          return false;
+        }
+
         const candidates = getActivityDateCandidates(activity);
         if (candidates.some(candidate => isSameDay(candidate, day))) {
           return true;
         }
-
-        if (activity.type === "PROPOSE" && proposalFallbackDate) {
-          return isSameDay(proposalFallbackDate, day);
-        }
-
         return false;
       })
       .sort((a, b) => {
