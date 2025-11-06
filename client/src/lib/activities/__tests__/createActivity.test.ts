@@ -21,6 +21,7 @@ import {
   prepareActivitySubmission,
   mapApiErrorToValidation,
 } from "../activityCreation";
+import { normalizeActivityFromServer } from "../createActivity";
 import { mapClientErrorToValidation } from "../clientValidation";
 
 describe("mapClientErrorToValidation", () => {
@@ -88,6 +89,117 @@ describe("prepareActivitySubmission", () => {
         values: { ...baseValues, startTime: "" },
       }),
     ).toThrow(ActivitySubmissionError);
+  });
+});
+
+describe("normalizeActivityFromServer", () => {
+  const baseUser = {
+    id: "organizer",
+    email: "organizer@example.com",
+    username: null,
+    firstName: "Trip",
+    lastName: "Lead",
+    phoneNumber: null,
+    passwordHash: null,
+    profileImageUrl: null,
+    cashAppUsername: null,
+    cashAppUsernameLegacy: null,
+    cashAppPhone: null,
+    cashAppPhoneLegacy: null,
+    venmoUsername: null,
+    venmoPhone: null,
+    timezone: "America/New_York",
+    defaultLocation: null,
+    defaultLocationCode: null,
+    defaultCity: null,
+    defaultCountry: null,
+    authProvider: null,
+    notificationPreferences: null,
+    hasSeenHomeOnboarding: false,
+    hasSeenTripOnboarding: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  } as const;
+
+  it("maps activities v2 payloads to legacy format", () => {
+    const now = new Date().toISOString();
+    const normalized = normalizeActivityFromServer({
+      id: 1,
+      tripCalendarId: 123,
+      postedBy: "organizer",
+      name: "",
+      description: "Morning jog along the river",
+      startTime: "07:15",
+      endTime: "09:00",
+      location: "Riverwalk",
+      cost: null,
+      maxCapacity: null,
+      category: "outdoor",
+      status: "scheduled",
+      type: "SCHEDULED",
+      createdAt: now,
+      updatedAt: now,
+      poster: baseUser,
+      invites: [],
+      acceptances: [],
+      comments: [],
+      acceptedCount: 0,
+      pendingCount: 0,
+      declinedCount: 0,
+      waitlistedCount: 0,
+      rsvpCloseTime: null,
+      currentUserInvite: undefined,
+      isAccepted: undefined,
+      hasResponded: undefined,
+      permissions: undefined,
+      title: "Sunrise Run",
+      date: "2024-07-04",
+      timezone: "America/New_York",
+    } as any);
+
+    expect(normalized.name).toBe("Sunrise Run");
+    expect(normalized.type).toBe("SCHEDULED");
+    expect(normalized.status).toBe("active");
+    expect(new Date(String(normalized.startTime)).toISOString()).toBe("2024-07-04T11:15:00.000Z");
+    expect(new Date(String(normalized.endTime)).toISOString()).toBe("2024-07-04T13:00:00.000Z");
+  });
+
+  it("preserves ISO timestamps when already provided", () => {
+    const now = new Date().toISOString();
+    const activity = {
+      id: 2,
+      tripCalendarId: 123,
+      postedBy: "organizer",
+      name: "Dinner",
+      description: null,
+      startTime: "2024-08-01T17:00:00.000Z",
+      endTime: null,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: "food",
+      status: "active",
+      type: "SCHEDULED" as const,
+      createdAt: now,
+      updatedAt: now,
+      poster: baseUser,
+      invites: [],
+      acceptances: [],
+      comments: [],
+      acceptedCount: 0,
+      pendingCount: 0,
+      declinedCount: 0,
+      waitlistedCount: 0,
+      rsvpCloseTime: null,
+      currentUserInvite: undefined,
+      isAccepted: undefined,
+      hasResponded: undefined,
+      permissions: undefined,
+    } as const;
+
+    const normalized = normalizeActivityFromServer(activity as any);
+    expect(normalized.startTime).toBe(activity.startTime);
+    expect(normalized.endTime).toBeNull();
   });
 });
 
