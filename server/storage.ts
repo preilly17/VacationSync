@@ -7620,7 +7620,18 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Hotel not found");
     }
 
-    if (hotel.trip_id !== tripId) {
+    const normalizedHotelTripId =
+      typeof hotel.trip_id === "number"
+        ? hotel.trip_id
+        : typeof hotel.trip_id === "string"
+          ? Number.parseInt(hotel.trip_id, 10)
+          : Number.NaN;
+
+    if (!Number.isFinite(normalizedHotelTripId)) {
+      throw new Error("Hotel record has an invalid trip id");
+    }
+
+    if (normalizedHotelTripId !== tripId) {
       throw new Error("Hotel does not belong to this trip");
     }
 
