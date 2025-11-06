@@ -289,8 +289,8 @@ export function CalendarGrid({
   const getActivitiesForDay = (day: Date) => {
     return activities
       .filter(activity => {
-        const activityType = (activity.type ?? "").toString().toUpperCase();
-        if (activityType !== "SCHEDULED") {
+        const activityType = (activity.type ?? "").toString().trim().toUpperCase();
+        if (activityType.length > 0 && !["SCHEDULED", "PROPOSE"].includes(activityType)) {
           return false;
         }
 
