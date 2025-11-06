@@ -166,6 +166,8 @@ const normalizeUserProvidedTime = (value: string): string => {
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
 };
 
+const legacyActivityIdMap = new Map<number, { activityId: string; tripId: string }>();
+
 const stringHashToNumber = (value: string): number => {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -175,6 +177,42 @@ const stringHashToNumber = (value: string): number => {
   const normalized = Math.abs(hash);
   const offset = 1_000_000_000;
   return offset + normalized;
+};
+
+const rememberLegacyActivityMapping = (activity: ActivityWithDetails) => {
+  const legacyId = stringHashToNumber(activity.id);
+  legacyActivityIdMap.set(legacyId, { activityId: activity.id, tripId: activity.tripId });
+  return legacyId;
+};
+
+const resolveLegacyActivityIdentifier = async (
+  legacyId: number,
+): Promise<{ activityId: string; tripId: string } | null> => {
+  await ensureActivitiesTablePromise;
+
+  const cached = legacyActivityIdMap.get(legacyId);
+  if (cached) {
+    return cached;
+  }
+
+  const { rows } = await query<{
+    id: string;
+    trip_id: string;
+  }>(
+    `
+    SELECT id, trip_id
+    FROM activities_v2
+  `,
+  );
+
+  for (const row of rows) {
+    const normalizedId = String(row.id);
+    const mappedLegacyId = stringHashToNumber(normalizedId);
+    const tripId = String(row.trip_id);
+    legacyActivityIdMap.set(mappedLegacyId, { activityId: normalizedId, tripId });
+  }
+
+  return legacyActivityIdMap.get(legacyId) ?? null;
 };
 
 const getTimeZoneOffsetInMilliseconds = (instant: Date, timeZone: string): number => {
@@ -298,6 +336,23 @@ const mapRsvpResponseToInviteStatus = (
     case "no":
       return "declined";
     case "maybe":
+      return "waitlisted";
+    case "pending":
+    default:
+      return "pending";
+  }
+};
+
+const mapInviteStatusToRsvpResponse = (
+  status: ActivityInviteStatus,
+): ActivityRsvpResponse => {
+  switch (status) {
+    case "accepted":
+      return "yes";
+    case "declined":
+      return "no";
+    case "waitlisted":
+      return "maybe";
     case "pending":
     default:
       return "pending";
@@ -712,6 +767,135 @@ export const listActivitiesForTripV2 = async ({
   });
 };
 
+export const getActivityByLegacyId = async (
+  legacyActivityId: number,
+): Promise<ActivityWithDetails | null> => {
+  const identifier = await resolveLegacyActivityIdentifier(legacyActivityId);
+  if (!identifier) {
+    return null;
+  }
+
+  const activity = await fetchActivityWithRelations(identifier.activityId);
+  if (!activity) {
+    legacyActivityIdMap.delete(legacyActivityId);
+    return null;
+  }
+
+  rememberLegacyActivityMapping(activity);
+  return activity;
+};
+
+export interface LegacyActivityInviteUpdateResult {
+  legacyActivity: LegacyActivityWithDetails;
+  legacyInvite: (LegacyActivityInvite & { user: LegacyUser }) | undefined;
+}
+
+export const updateActivityInviteStatusForLegacyActivity = async ({
+  legacyActivityId,
+  userId,
+  status,
+  viewerId,
+}: {
+  legacyActivityId: number;
+  userId: string;
+  status: ActivityInviteStatus;
+  viewerId?: string | null;
+}): Promise<LegacyActivityInviteUpdateResult | null> => {
+  const identifier = await resolveLegacyActivityIdentifier(legacyActivityId);
+  if (!identifier) {
+    return null;
+  }
+
+  await query(
+    `
+    INSERT INTO activity_invitees_v2 (activity_id, user_id, role)
+    VALUES ($1, $2, 'participant')
+    ON CONFLICT (activity_id, user_id) DO NOTHING
+  `,
+    [identifier.activityId, userId],
+  );
+
+  const response = mapInviteStatusToRsvpResponse(status);
+
+  await query(
+    `
+    INSERT INTO activity_rsvps_v2 (activity_id, user_id, response, responded_at)
+    VALUES ($1, $2, $3, CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END)
+    ON CONFLICT (activity_id, user_id) DO UPDATE
+      SET response = EXCLUDED.response,
+          responded_at = CASE
+            WHEN EXCLUDED.response = 'pending' THEN NULL
+            ELSE NOW()
+          END
+  `,
+    [identifier.activityId, userId, response],
+  );
+
+  const updated = await fetchActivityWithRelations(identifier.activityId);
+  if (!updated) {
+    legacyActivityIdMap.delete(legacyActivityId);
+    return null;
+  }
+
+  const [legacyActivity] = convertActivitiesV2ToLegacy([updated], { currentUserId: viewerId });
+  const legacyInvite = legacyActivity.invites.find((invite) => invite.userId === userId);
+
+  return { legacyActivity, legacyInvite };
+};
+
+export type CancelActivityByLegacyIdResult =
+  | null
+  | { tripId: number }
+  | { error: { status: number; message: string } };
+
+export const cancelActivityByLegacyId = async (
+  legacyActivityId: number,
+  userId: string,
+): Promise<CancelActivityByLegacyIdResult> => {
+  const identifier = await resolveLegacyActivityIdentifier(legacyActivityId);
+  if (!identifier) {
+    return null;
+  }
+
+  const activity = await fetchActivityWithRelations(identifier.activityId);
+  if (!activity) {
+    legacyActivityIdMap.delete(legacyActivityId);
+    return { error: { status: 404, message: "Activity not found" } };
+  }
+
+  rememberLegacyActivityMapping(activity);
+
+  if (activity.creatorId !== userId) {
+    return {
+      error: {
+        status: 403,
+        message: "You can only cancel activities you created",
+      },
+    };
+  }
+
+  const tripId = Number.parseInt(String(activity.tripId), 10);
+  if (!Number.isFinite(tripId)) {
+    return {
+      error: {
+        status: 500,
+        message: "Invalid activity trip",
+      },
+    };
+  }
+
+  await query(
+    `
+    UPDATE activities_v2
+    SET status = 'cancelled', updated_at = NOW()
+    WHERE id = $1
+  `,
+    [identifier.activityId],
+  );
+
+  return { tripId };
+};
+
 export const convertActivitiesV2ToLegacy = (
   activities: ActivityWithDetails[],
   { currentUserId }: { currentUserId?: string | null } = {},
@@ -719,7 +903,7 @@ export const convertActivitiesV2ToLegacy = (
   const normalizedViewer = currentUserId ? String(currentUserId) : null;
 
   return activities.map((activity) => {
-    const legacyId = stringHashToNumber(activity.id);
+    const legacyId = rememberLegacyActivityMapping(activity);
     const legacyTripId = Number.parseInt(String(activity.tripId), 10);
 
     const startTimeIso = combineDateAndTimeInUtc(activity.date, activity.startTime, activity.timezone);
@@ -803,7 +987,7 @@ export const convertActivitiesV2ToLegacy = (
       acceptedCount: acceptances.length,
       pendingCount: invites.filter((invite) => invite.status === "pending").length,
       declinedCount: invites.filter((invite) => invite.status === "declined").length,
-      waitlistedCount: 0,
+      waitlistedCount: invites.filter((invite) => invite.status === "waitlisted").length,
       currentUserInvite,
       isAccepted,
       hasResponded,
