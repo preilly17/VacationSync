@@ -62,4 +62,25 @@ describe("buildSessionOptions", () => {
 
     warnSpy.mockRestore();
   });
+
+  it("relaxes SameSite=None to lax in development when secure cookies are unavailable", async () => {
+    process.env.NODE_ENV = "development";
+    process.env.SESSION_COOKIE_SECURE = "auto";
+    process.env.SESSION_COOKIE_SAMESITE = "none";
+
+    const warnSpy = jest
+      .spyOn(console, "warn")
+      .mockImplementation(() => undefined);
+
+    const { __testables__ } = await import("../sessionAuth");
+    const options = __testables__.buildSessionOptions();
+
+    expect(options.cookie?.sameSite).toBe("lax");
+    expect(options.cookie?.secure).toBe("auto");
+    expect(warnSpy).toHaveBeenCalledWith(
+      "⚠️ SameSite=None cookies require the Secure attribute; falling back to SameSite=\"lax\" for local development where secure cookies are unavailable.",
+    );
+
+    warnSpy.mockRestore();
+  });
 });
