@@ -169,6 +169,39 @@ export const normalizeCategoryInput = (
   return { value: null, error: ACTIVITY_CATEGORY_MESSAGE };
 };
 
+const normalizeActivityTypeCandidate = (value: string): ActivityType | null => {
+  const normalized = value.trim().toUpperCase();
+
+  if (normalized === "PROPOSE" || normalized === "PROPOSED" || normalized === "PROPOSAL") {
+    return "PROPOSE";
+  }
+
+  if (
+    normalized === "SCHEDULED"
+    || normalized === "SCHEDULE"
+    || normalized === "SCHED"
+    || normalized === "SCHEDULES"
+  ) {
+    return "SCHEDULED";
+  }
+
+  return null;
+};
+
+export const normalizeActivityTypeInput = (
+  value: unknown,
+  fallback: ActivityType = "SCHEDULED",
+): ActivityType => {
+  if (typeof value === "string" && value.trim().length > 0) {
+    const normalized = normalizeActivityTypeCandidate(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return fallback;
+};
+
 const normalizeDateTimeInput = (
   value: unknown,
   fieldLabel: string,
