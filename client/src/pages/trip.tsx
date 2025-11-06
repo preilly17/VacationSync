@@ -94,6 +94,7 @@ import ActivitySearch from "@/components/activity-search";
 import { WishListBoard } from "@/components/wish-list-board";
 import Proposals from "@/pages/proposals";
 import { ActivityDetailsDialog } from "@/components/activity-details-dialog";
+import { normalizeActivityTypeInput } from "@shared/activityValidation";
 import type {
   TripWithDetails,
   ActivityWithDetails,
@@ -2235,7 +2236,7 @@ export default function Trip() {
       setCalendarViewDate(highlightDate);
     }
 
-    setAddActivityMode(mode);
+    setAddActivityMode(normalizeActivityTypeInput(mode, "SCHEDULED"));
     setIsAddActivityModeToggleEnabled(allowModeToggle);
     setShouldResetSelectedDateOnModalClose(true);
     setShowAddActivity(true);

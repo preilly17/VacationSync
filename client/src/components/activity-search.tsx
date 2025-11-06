@@ -33,6 +33,7 @@ import { formatCurrency } from "@/lib/utils";
 import { markExternalRedirect, ACTIVITY_REDIRECT_STORAGE_KEY } from "@/lib/externalRedirects";
 import { format } from "date-fns";
 import type { ActivityWithDetails, ActivityType, TripMember, TripWithDetails, User } from "@shared/schema";
+import { normalizeActivityTypeInput } from "@shared/activityValidation";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
 
@@ -539,6 +540,8 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       return;
     }
 
+    const manualType = normalizeActivityTypeInput(manualMode, "SCHEDULED");
+
     const manualValues: ActivityCreateFormValues = {
       name: trimmedName,
       description: `Manual entry · Status: ${MANUAL_STATUS_LABELS[manualFormData.status]} · Currency: ${manualFormData.currency}`,
@@ -550,7 +553,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       maxCapacity: undefined,
       attendeeIds: manualAttendeeIds,
       category: MANUAL_ACTIVITY_CATEGORY,
-      type: manualMode,
+      type: manualType,
     };
 
     manualCreateActivity.submit(manualValues);
@@ -894,7 +897,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                 value={manualMode}
                 onValueChange={(value) => {
                   if (value) {
-                    setManualMode(value as ActivityType);
+                    setManualMode(normalizeActivityTypeInput(value, "SCHEDULED"));
                   }
                 }}
                 className="flex"
