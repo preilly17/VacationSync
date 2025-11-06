@@ -69,6 +69,13 @@ function buildSessionOptions(): SessionOptions {
     sameSite = "lax";
   }
 
+  if (sameSite === "none" && secure !== true) {
+    console.warn(
+      "⚠️ SameSite=None cookies require the Secure attribute; forcing secure cookies to keep authentication working on modern browsers.",
+    );
+    secure = true;
+  }
+
   const cookie: CookieOptions = {
     httpOnly: true,
     secure,
@@ -151,3 +158,5 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   return next();
 };
+
+export const __testables__ = { buildSessionOptions };
