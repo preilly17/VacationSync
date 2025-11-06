@@ -254,15 +254,21 @@ export default function MemberSchedule() {
     }
 
     return activities
-      .filter((activity) =>
-        activity.invites.some(
+      .filter((activity) => {
+        const isScheduled = (activity.type ?? "").toString().toUpperCase() === "SCHEDULED";
+        if (!isScheduled) {
+          return false;
+        }
+
+        return activity.invites.some(
           (invite) => invite.userId === selectedMemberId && invite.status === "accepted",
-        ),
-      )
-      .sort(
-        (a, b) =>
-          new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-      );
+        );
+      })
+        .sort((a, b) => {
+          const aTime = a.startTime ? new Date(a.startTime).getTime() : Number.POSITIVE_INFINITY;
+          const bTime = b.startTime ? new Date(b.startTime).getTime() : Number.POSITIVE_INFINITY;
+          return aTime - bTime;
+        });
   }, [activities, selectedMemberId]);
 
   return (
