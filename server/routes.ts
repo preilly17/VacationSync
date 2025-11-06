@@ -30,7 +30,14 @@ import {
   type ActivityType,
   type ActivityWithDetails,
 } from "@shared/schema";
-import { createActivityV2, convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
+import {
+  cancelActivityByLegacyId,
+  createActivityV2,
+  convertActivitiesV2ToLegacy,
+  getActivityByLegacyId,
+  listActivitiesForTripV2,
+  updateActivityInviteStatusForLegacyActivity,
+} from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
 import { validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
@@ -388,12 +395,135 @@ const applyActivityResponse = async (
   userId: string,
   status: ActivityInviteStatus,
 ) => {
-  const activity = await storage.getActivityById(activityId);
-  if (!activity) {
+  const legacyActivity = await storage.getActivityById(activityId);
+  if (legacyActivity) {
+    const trip = await storage.getTripById(legacyActivity.tripCalendarId);
+    if (!trip) {
+      return { error: { status: 404, message: "Trip not found" } } as const;
+    }
+
+    const isMember = trip.members.some((member) => member.userId === userId);
+    if (!isMember) {
+      return {
+        error: {
+          status: 403,
+          message: "You are no longer a member of this trip",
+        },
+      } as const;
+    }
+
+    const updatedInvite = await storage.setActivityInviteStatus(
+      activityId,
+      userId,
+      status,
+    );
+
+    if (
+      legacyActivity.postedBy !== userId
+      && (status === "accepted" || status === "declined")
+    ) {
+      const responderMember = trip.members.find((member) => member.userId === userId);
+      const responderName = responderMember
+        ? getUserDisplayName(responderMember.user)
+        : "A trip member";
+
+      const message =
+        status === "accepted"
+          ? `${responderName} accepted ${legacyActivity.name}.`
+          : `${responderName} declined ${legacyActivity.name}.`;
+
+      try {
+        await storage.createNotification({
+          userId: legacyActivity.postedBy,
+          type: "activity_rsvp",
+          title: "RSVP update",
+          message,
+          tripId: legacyActivity.tripCalendarId,
+          activityId: legacyActivity.id,
+        });
+      } catch (notificationError) {
+        console.error("Failed to persist RSVP notification:", notificationError);
+      }
+    }
+
+    broadcastToTrip(legacyActivity.tripCalendarId, {
+      type: "activity_invite_updated",
+      activityId,
+      userId,
+      status,
+    });
+
+    const activitiesForUser = await storage.getTripActivities(
+      legacyActivity.tripCalendarId,
+      userId,
+    );
+    let updatedActivity =
+      activitiesForUser.find((item) => item.id === activityId) ?? null;
+
+    let promotedUserId: string | null = null;
+    if (updatedActivity) {
+      promotedUserId = await promoteWaitlistedInviteIfNeeded(updatedActivity);
+
+      if (promotedUserId) {
+        const promotedMember = trip.members.find(
+          (member) => member.userId === promotedUserId,
+        );
+
+        if (promotedMember) {
+          try {
+            await storage.createNotification({
+              userId: promotedUserId,
+              type: "activity_waitlist",
+              title: "You're in!",
+              message: `A spot opened up for ${legacyActivity.name}.`,
+              tripId: legacyActivity.tripCalendarId,
+              activityId: legacyActivity.id,
+            });
+          } catch (notificationError) {
+            console.error(
+              "Failed to persist waitlist promotion notification:",
+              notificationError,
+            );
+          }
+        }
+
+        broadcastToTrip(legacyActivity.tripCalendarId, {
+          type: "activity_invite_updated",
+          activityId,
+          userId: promotedUserId,
+          status: "accepted",
+        });
+
+        const refreshedActivities = await storage.getTripActivities(
+          legacyActivity.tripCalendarId,
+          userId,
+        );
+
+        updatedActivity =
+          refreshedActivities.find((item) => item.id === activityId) ?? updatedActivity;
+      }
+    }
+
+    return {
+      activity: legacyActivity,
+      trip,
+      updatedInvite,
+      updatedActivity,
+      promotedUserId,
+    } as const;
+  }
+
+  const v2Activity = await getActivityByLegacyId(activityId);
+  if (!v2Activity) {
     return { error: { status: 404, message: "Activity not found" } } as const;
   }
 
-  const trip = await storage.getTripById(activity.tripCalendarId);
+  const numericTripId = Number.parseInt(String(v2Activity.tripId), 10);
+  if (!Number.isFinite(numericTripId)) {
+    return { error: { status: 500, message: "Invalid activity" } } as const;
+  }
+
+  const trip = await storage.getTripById(numericTripId);
   if (!trip) {
     return { error: { status: 404, message: "Trip not found" } } as const;
   }
@@ -408,13 +538,28 @@ const applyActivityResponse = async (
     } as const;
   }
 
-  const updatedInvite = await storage.setActivityInviteStatus(
-    activityId,
-    userId,
-    status,
+  const [legacyActivityBeforeUpdate] = convertActivitiesV2ToLegacy(
+    [v2Activity],
+    { currentUserId: userId },
   );
 
-  if (activity.postedBy !== userId && (status === "accepted" || status === "declined")) {
+  const updateResult = await updateActivityInviteStatusForLegacyActivity({
+    legacyActivityId: activityId,
+    userId,
+    status,
+    viewerId: userId,
+  });
+
+  if (!updateResult) {
+    return {
+      error: {
+        status: 500,
+        message: "Failed to update activity invite",
+      },
+    } as const;
+  }
+
+  if (v2Activity.creatorId !== userId && (status === "accepted" || status === "declined")) {
     const responderMember = trip.members.find((member) => member.userId === userId);
     const responderName = responderMember
       ? getUserDisplayName(responderMember.user)
@@ -422,87 +567,36 @@ const applyActivityResponse = async (
 
     const message =
       status === "accepted"
-        ? `${responderName} accepted ${activity.name}.`
-        : `${responderName} declined ${activity.name}.`;
+        ? `${responderName} accepted ${v2Activity.title}.`
+        : `${responderName} declined ${v2Activity.title}.`;
 
     try {
       await storage.createNotification({
-        userId: activity.postedBy,
+        userId: v2Activity.creatorId,
         type: "activity_rsvp",
         title: "RSVP update",
         message,
-        tripId: activity.tripCalendarId,
-        activityId: activity.id,
+        tripId: numericTripId,
+        activityId,
       });
     } catch (notificationError) {
       console.error("Failed to persist RSVP notification:", notificationError);
     }
   }
 
-  broadcastToTrip(activity.tripCalendarId, {
+  broadcastToTrip(numericTripId, {
     type: "activity_invite_updated",
     activityId,
     userId,
     status,
   });
 
-  const activitiesForUser = await storage.getTripActivities(
-    activity.tripCalendarId,
-    userId,
-  );
-  let updatedActivity =
-    activitiesForUser.find((item) => item.id === activityId) ?? null;
-
-  let promotedUserId: string | null = null;
-  if (updatedActivity) {
-    promotedUserId = await promoteWaitlistedInviteIfNeeded(updatedActivity);
-
-    if (promotedUserId) {
-      const promotedMember = trip.members.find(
-        (member) => member.userId === promotedUserId,
-      );
-
-      if (promotedMember) {
-        try {
-          await storage.createNotification({
-            userId: promotedUserId,
-            type: "activity_waitlist",
-            title: "You're in!",
-            message: `A spot opened up for ${activity.name}.`,
-            tripId: activity.tripCalendarId,
-            activityId: activity.id,
-          });
-        } catch (notificationError) {
-          console.error(
-            "Failed to persist waitlist promotion notification:",
-            notificationError,
-          );
-        }
-      }
-
-      broadcastToTrip(activity.tripCalendarId, {
-        type: "activity_invite_updated",
-        activityId,
-        userId: promotedUserId,
-        status: "accepted",
-      });
-
-      const refreshedActivities = await storage.getTripActivities(
-        activity.tripCalendarId,
-        userId,
-      );
-
-      updatedActivity =
-        refreshedActivities.find((item) => item.id === activityId) ?? updatedActivity;
-    }
-  }
-
   return {
-    activity,
+    activity: legacyActivityBeforeUpdate,
     trip,
-    updatedInvite,
-    updatedActivity,
-    promotedUserId,
+    updatedInvite: updateResult.legacyInvite ?? null,
+    updatedActivity: updateResult.legacyActivity,
+    promotedUserId: null,
   } as const;
 };
 
@@ -3318,6 +3412,44 @@ export function setupRoutes(app: Express) {
 
       if (!userId) {
         return res.status(401).json({ message: 'User ID not found' });
+      }
+
+      const v2Activity = await getActivityByLegacyId(activityId);
+      if (v2Activity) {
+        const numericTripId = Number.parseInt(String(v2Activity.tripId), 10);
+        if (!Number.isFinite(numericTripId)) {
+          return res.status(500).json({ message: 'Invalid activity' });
+        }
+
+        const trip = await storage.getTripById(numericTripId);
+        if (!trip) {
+          return res.status(404).json({ message: 'Trip not found' });
+        }
+
+        const isMember = trip.members.some((member) => member.userId === userId);
+        if (!isMember) {
+          return res.status(403).json({ message: 'You are no longer a member of this trip' });
+        }
+
+        if (v2Activity.creatorId !== userId) {
+          return res.status(403).json({ message: 'You can only cancel activities you created' });
+        }
+
+        const cancelResult = await cancelActivityByLegacyId(activityId, userId);
+        if (cancelResult && 'error' in cancelResult) {
+          return res.status(cancelResult.error.status).json({ message: cancelResult.error.message });
+        }
+
+        if (!cancelResult) {
+          return res.status(404).json({ message: 'Activity not found' });
+        }
+
+        broadcastToTrip(numericTripId, {
+          type: 'activity_canceled',
+          activityId,
+        });
+
+        return res.json({ success: true, activityId });
       }
 
       const activity = await storage.cancelActivity(activityId, userId);
