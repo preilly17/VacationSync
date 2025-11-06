@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,14 @@ import {
   HOTEL_PROPOSAL_AMENITIES_FALLBACK,
   type ProposableHotel,
 } from "@/lib/hotel-proposals";
-import { type InsertHotel, type HotelWithDetails, type TripWithDates, type HotelSearchResult, type HotelProposalWithDetails } from "@shared/schema";
+import {
+  type InsertHotel,
+  type HotelWithDetails,
+  type TripWithDates,
+  type TripWithDetails,
+  type HotelSearchResult,
+  type HotelProposalWithDetails,
+} from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import { BookingConfirmationModal } from "@/components/booking-confirmation-modal";
@@ -58,10 +65,22 @@ import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/
 
 export default function HotelsPage() {
   const params = useParams();
+  const [, setLocation] = useLocation();
   const tripIdParam = (params.tripId ?? (params as { id?: string }).id) ?? "";
   const parsedTripId = tripIdParam ? Number.parseInt(tripIdParam, 10) : Number.NaN;
-  const hasValidTripId = Number.isFinite(parsedTripId) && parsedTripId > 0;
-  const tripId = hasValidTripId ? parsedTripId : 0;
+  const hasValidRouteTripId = Number.isFinite(parsedTripId) && parsedTripId > 0;
+  const [selectedTripId, setSelectedTripId] = useState<number | null>(
+    hasValidRouteTripId ? parsedTripId : null,
+  );
+  const normalizedSelectedTripId = selectedTripId ?? 0;
+  const hasSelectedTrip = Number.isFinite(normalizedSelectedTripId) && normalizedSelectedTripId > 0;
+  const tripId = hasSelectedTrip ? normalizedSelectedTripId : 0;
+  useEffect(() => {
+    if (hasValidRouteTripId && parsedTripId !== selectedTripId) {
+      setSelectedTripId(parsedTripId);
+    }
+  }, [hasValidRouteTripId, parsedTripId, selectedTripId]);
+
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -70,6 +89,14 @@ export default function HotelsPage() {
   const [hasSearchResults, setHasSearchResults] = useState(false);
   const searchPanelRef = useRef<HotelSearchPanelRef>(null);
   const [proposingHotelId, setProposingHotelId] = useState<number | null>(null);
+
+  const {
+    data: availableTrips = [],
+    isLoading: tripsLoading,
+  } = useQuery<TripWithDetails[]>({
+    queryKey: ["/api/trips"],
+    enabled: !hasSelectedTrip,
+  });
 
   // Currency conversion state
   const [currencyAmount, setCurrencyAmount] = useState('100');
@@ -83,18 +110,18 @@ export default function HotelsPage() {
 
   const { data: trip } = useQuery<TripWithDates>({
     queryKey: [`/api/trips/${tripId}`],
-    enabled: hasValidTripId,
+    enabled: hasSelectedTrip,
   });
 
-  const { data: hotels = [], isLoading } = useQuery<HotelWithDetails[]>({
+  const { data: hotels = [], isLoading: hotelsLoading } = useQuery<HotelWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotels`],
-    enabled: hasValidTripId,
+    enabled: hasSelectedTrip,
   });
 
   // Hotel proposals for group voting
   const { data: hotelProposals = [], isLoading: proposalsLoading } = useQuery<HotelProposalWithDetails[]>({
     queryKey: [`/api/trips/${tripId}/hotel-proposals`],
-    enabled: hasValidTripId,
+    enabled: hasSelectedTrip,
   });
 
   const focusSearchPanel = useCallback(() => {
@@ -174,7 +201,7 @@ export default function HotelsPage() {
 
   // Share hotel with group as a proposal
   const shareHotelWithGroup = async (hotel: ProposableHotel) => {
-    if (!hasValidTripId) {
+    if (!hasSelectedTrip) {
       toast({
         title: "Trip required",
         description: "Select a trip before sharing hotel proposals.",
@@ -296,7 +323,7 @@ export default function HotelsPage() {
   }, [form, formDefaults]);
 
   const openCreateDialog = useCallback(() => {
-    if (!hasValidTripId) {
+    if (!hasSelectedTrip) {
       toast({
         title: "Choose a trip to save hotels",
         description: "Open a specific trip to add manual hotel bookings.",
@@ -307,7 +334,7 @@ export default function HotelsPage() {
     setEditingHotel(null);
     form.reset(formDefaults());
     setIsDialogOpen(true);
-  }, [form, formDefaults, hasValidTripId, toast]);
+  }, [form, formDefaults, hasSelectedTrip, toast]);
 
   useEffect(() => {
     if (!isDialogOpen && !editingHotel) {
@@ -475,7 +502,7 @@ export default function HotelsPage() {
   };
 
   const onSubmit = (values: HotelFormValues) => {
-    if (!hasValidTripId) {
+    if (!hasSelectedTrip) {
       toast({
         title: "Trip required",
         description: "Select a trip before saving hotel details.",
@@ -510,17 +537,71 @@ export default function HotelsPage() {
     return `${format(checkInDate, "MMM d")} - ${format(checkOutDate, "MMM d")} (${nights} nights)`;
   };
 
-  if (!hasValidTripId) {
+  if (!hasSelectedTrip) {
     return (
       <div className="mx-auto flex max-w-3xl flex-col gap-6 py-10">
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Select a trip to manage hotels</AlertTitle>
-          <AlertDescription>
-            Manual hotel saves need to be associated with a trip. Open a trip from your dashboard and revisit the Hotels tab to
-            add bookings.
-          </AlertDescription>
-        </Alert>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Select a trip to manage hotels</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Choose one of your trips so we know where to save proposed stays and manual reservations.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {tripsLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-3/4" />
+              </div>
+            ) : availableTrips.length > 0 ? (
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="trip-picker">Trip</Label>
+                  <Select
+                    value={selectedTripId ? String(selectedTripId) : ""}
+                    onValueChange={(value) => {
+                      const numericValue = Number.parseInt(value, 10);
+                      if (Number.isFinite(numericValue)) {
+                        setSelectedTripId(numericValue);
+                        setLocation(`/trip/${numericValue}/hotels`);
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="trip-picker" className="w-full">
+                      <SelectValue placeholder="Select a trip" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableTrips.map((tripOption) => {
+                        const startLabel = format(new Date(tripOption.startDate), "MMM d");
+                        const endLabel = format(new Date(tripOption.endDate), "MMM d");
+                        const displayName = tripOption.name?.trim().length
+                          ? tripOption.name
+                          : tripOption.destination;
+                        return (
+                          <SelectItem key={tripOption.id} value={String(tripOption.id)}>
+                            {`${displayName} (${startLabel} – ${endLabel})`}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll load the hotel search experience once you pick a trip.
+                </p>
+              </div>
+            ) : (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>No trips available</AlertTitle>
+                <AlertDescription>
+                  Manual hotel saves need to be associated with a trip. Create a trip from your dashboard to start planning.
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="flex flex-wrap gap-3">
           <Link href="/">
             <Button variant="outline">View all trips</Button>
@@ -533,7 +614,7 @@ export default function HotelsPage() {
     );
   }
 
-  if (isLoading) {
+  if (hotelsLoading) {
     return (
       <div className="space-y-4 min-h-screen flex items-center justify-center">
         <TravelLoading variant="luggage" size="lg" text="Loading your hotel coordination..." />
