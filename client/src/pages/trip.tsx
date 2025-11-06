@@ -210,7 +210,7 @@ const CALENDAR_EVENT_TYPE_META: Record<CalendarEventType, { label: string; icon:
 type CalendarFilterState = {
   people: string[];
   types: Record<CalendarEventType, boolean>;
-  statuses: { proposed: boolean; scheduled: boolean };
+  statuses: { scheduled: boolean };
 };
 
 const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
@@ -223,7 +223,6 @@ const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
     personal: true,
   },
   statuses: {
-    proposed: false,
     scheduled: true,
   },
 };
@@ -1482,8 +1481,10 @@ export default function Trip() {
           ...(parsed.types ?? {}),
         },
         statuses: {
-          ...DEFAULT_CALENDAR_FILTER_STATE.statuses,
-          ...(parsed.statuses ?? {}),
+          scheduled:
+            typeof parsed.statuses?.scheduled === "boolean"
+              ? parsed.statuses.scheduled
+              : DEFAULT_CALENDAR_FILTER_STATE.statuses.scheduled,
         },
       };
 
@@ -1981,13 +1982,9 @@ export default function Trip() {
 
     return activities.filter((activity) => {
       const activityType = (activity.type ?? "").toString().toUpperCase();
-      const isProposal = activityType === "PROPOSE";
+      const isScheduled = activityType === "SCHEDULED";
 
-      if (isProposal) {
-        if (!statuses.proposed) {
-          return false;
-        }
-      } else if (!statuses.scheduled) {
+      if (!isScheduled || !statuses.scheduled) {
         return false;
       }
 
@@ -2899,17 +2896,10 @@ export default function Trip() {
                             <div className="flex items-center gap-4">
                               <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]">
                                 <Checkbox
-                                  checked={calendarFilters.statuses.proposed}
-                                  onCheckedChange={(checked) => toggleStatusFilter("proposed", checked === true)}
-                                />
-                                <span>Proposed</span>
-                              </label>
-                              <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]">
-                                <Checkbox
                                   checked={calendarFilters.statuses.scheduled}
                                   onCheckedChange={(checked) => toggleStatusFilter("scheduled", checked === true)}
                                 />
-                                <span>Scheduled</span>
+                                <span>Show scheduled</span>
                               </label>
                             </div>
                           </div>
