@@ -10761,6 +10761,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       tag?: string | null;
       submittedBy?: string | null;
       search?: string | null;
+      minLikes?: number | null;
     } = {},
   ): Promise<WishListIdeaWithDetails[]> {
     await this.ensureWishListStructures();
@@ -10816,6 +10817,16 @@ ${selectUserColumns("participant_user", "participant_user_")}
         )`,
       );
       values.push(searchValue);
+      paramIndex += 1;
+    }
+
+    if (typeof options.minLikes === "number" && options.minLikes > 0) {
+      conditions.push(`(
+        SELECT COUNT(*)
+        FROM trip_wish_list_saves s
+        WHERE s.item_id = i.id
+      ) >= $${paramIndex}`);
+      values.push(options.minLikes);
       paramIndex += 1;
     }
 

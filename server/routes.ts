@@ -5532,11 +5532,23 @@ export function setupRoutes(app: Express) {
           ? req.query.search.trim()
           : null;
 
+      const rawMinLikes = Array.isArray(req.query.minLikes)
+        ? req.query.minLikes[0]
+        : req.query.minLikes;
+      const minLikes = (() => {
+        if (typeof rawMinLikes !== "string") {
+          return null;
+        }
+        const parsed = Number.parseInt(rawMinLikes, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      })();
+
       const ideas = await storage.getTripWishListIdeas(tripId, userId ?? null, {
         sort,
         tag,
         submittedBy,
         search,
+        minLikes,
       });
 
       const enrichedIdeas = ideas.map((idea) => ({
@@ -5573,6 +5585,7 @@ export function setupRoutes(app: Express) {
           sort,
           isAdmin,
           isMember,
+          minLikes,
         },
       });
     } catch (error: unknown) {
@@ -5628,6 +5641,13 @@ export function setupRoutes(app: Express) {
 
       const isAdmin = await storage.isTripAdmin(tripId, userId);
 
+      broadcastToTrip(tripId, {
+        type: "wish_list_idea_created",
+        tripId,
+        ideaId: detailedIdea.id,
+        triggeredBy: userId,
+      });
+
       res.status(201).json({
         idea: {
           ...detailedIdea,
@@ -5675,6 +5695,13 @@ export function setupRoutes(app: Express) {
       }
 
       const result = await storage.toggleWishListSave(ideaId, userId);
+      broadcastToTrip(idea.tripId, {
+        type: "wish_list_idea_updated",
+        tripId: idea.tripId,
+        ideaId,
+        triggeredBy: userId,
+        reason: "save_toggled",
+      });
       res.json(result);
     } catch (error: unknown) {
       console.error("Error toggling wish list save:", error);
@@ -5799,6 +5826,12 @@ export function setupRoutes(app: Express) {
       }
 
       await storage.deleteWishListIdea(ideaId);
+      broadcastToTrip(idea.tripId, {
+        type: "wish_list_idea_deleted",
+        tripId: idea.tripId,
+        ideaId,
+        triggeredBy: userId,
+      });
       res.json({ success: true });
     } catch (error: unknown) {
       console.error("Error deleting wish list idea:", error);
