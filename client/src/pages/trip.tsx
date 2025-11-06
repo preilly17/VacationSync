@@ -211,7 +211,7 @@ const CALENDAR_EVENT_TYPE_META: Record<CalendarEventType, { label: string; icon:
 type CalendarFilterState = {
   people: string[];
   types: Record<CalendarEventType, boolean>;
-  statuses: { scheduled: boolean };
+  statuses: { scheduled: boolean; proposed: boolean };
 };
 
 const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
@@ -225,6 +225,7 @@ const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
   },
   statuses: {
     scheduled: true,
+    proposed: true,
   },
 };
 
@@ -1486,6 +1487,10 @@ export default function Trip() {
             typeof parsed.statuses?.scheduled === "boolean"
               ? parsed.statuses.scheduled
               : DEFAULT_CALENDAR_FILTER_STATE.statuses.scheduled,
+          proposed:
+            typeof parsed.statuses?.proposed === "boolean"
+              ? parsed.statuses.proposed
+              : DEFAULT_CALENDAR_FILTER_STATE.statuses.proposed,
         },
       };
 
@@ -1984,8 +1989,17 @@ export default function Trip() {
     return activities.filter((activity) => {
       const activityType = (activity.type ?? "").toString().toUpperCase();
       const isScheduled = activityType === "SCHEDULED";
+      const isProposed = activityType === "PROPOSE";
 
-      if (!isScheduled || !statuses.scheduled) {
+      if (isScheduled) {
+        if (!statuses.scheduled) {
+          return false;
+        }
+      } else if (isProposed) {
+        if (!statuses.proposed) {
+          return false;
+        }
+      } else {
         return false;
       }
 
@@ -2901,6 +2915,13 @@ export default function Trip() {
                                   onCheckedChange={(checked) => toggleStatusFilter("scheduled", checked === true)}
                                 />
                                 <span>Show scheduled</span>
+                              </label>
+                              <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]">
+                                <Checkbox
+                                  checked={calendarFilters.statuses.proposed}
+                                  onCheckedChange={(checked) => toggleStatusFilter("proposed", checked === true)}
+                                />
+                                <span>Show proposals</span>
                               </label>
                             </div>
                           </div>
