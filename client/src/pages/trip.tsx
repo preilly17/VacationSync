@@ -6052,6 +6052,45 @@ function getAirlineName(code: string): string {
 // block sharing from the trip dashboard.
 const SHARE_BLOCKING_STATUSES = new Set(["void", "voided"]);
 
+const HOTEL_PROPOSAL_REQUIRED_FIELDS = [
+  { key: "hotelName", label: "hotel name" },
+  { key: "address", label: "street address" },
+  { key: "city", label: "city" },
+  { key: "country", label: "country" },
+] as const satisfies ReadonlyArray<{ key: keyof HotelWithDetails; label: string }>;
+
+function hasTextValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return value.trim().length > 0;
+  }
+
+  return value != null;
+}
+
+function getMissingHotelProposalFields(hotel: HotelWithDetails): string[] {
+  return HOTEL_PROPOSAL_REQUIRED_FIELDS.filter(({ key }) => !hasTextValue(hotel[key])).map(
+    ({ label }) => label,
+  );
+}
+
+function formatList(items: string[]): string {
+  if (items.length === 0) {
+    return "";
+  }
+
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} and ${items[1]}`;
+  }
+
+  const allButLast = items.slice(0, -1);
+  const lastItem = items[items.length - 1];
+  return `${allButLast.join(", ")}, and ${lastItem}`;
+}
+
 function canShareHotelWithGroup(hotel: HotelWithDetails): boolean {
   if (!hotel.proposalId) {
     return true;
@@ -6153,6 +6192,17 @@ function HotelBooking({
 
   const handleProposeHotel = useCallback(
     (hotel: HotelWithDetails) => {
+      const missingFields = getMissingHotelProposalFields(hotel);
+      if (missingFields.length > 0) {
+        const fieldList = formatList(missingFields);
+        toast({
+          title: "Add stay details before sharing",
+          description: `Add the ${fieldList} to this stay before proposing it to your group.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
       if (!canShareHotelWithGroup(hotel)) {
         toast({
           title: "Already shared with your group",
@@ -6554,6 +6604,7 @@ function HotelBooking({
           ) : (
             <Accordion type="multiple" className="space-y-3">
               {manualHotels.map((hotel) => {
+                const missingFields = getMissingHotelProposalFields(hotel);
                 const addressLine = [hotel.address, hotel.city, hotel.country]
                   .filter(Boolean)
                   .join(", ");
@@ -6579,6 +6630,10 @@ function HotelBooking({
                 const canShareWithGroup = canShareHotelWithGroup(hotel);
                 const proposalStatusLabel = hotel.proposalStatus
                   ? hotel.proposalStatus.charAt(0).toUpperCase() + hotel.proposalStatus.slice(1)
+                  : null;
+                const cannotShareUntilDetailsProvided = missingFields.length > 0;
+                const missingFieldsMessage = cannotShareUntilDetailsProvided
+                  ? `Add the ${formatList(missingFields)} to share this stay with your group.`
                   : null;
 
                 return (
@@ -6627,8 +6682,10 @@ function HotelBooking({
                           onClick={() => handleProposeHotel(hotel)}
                           disabled={
                             !canShareWithGroup ||
+                            cannotShareUntilDetailsProvided ||
                             (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
                           }
+                          title={missingFieldsMessage ?? undefined}
                         >
                           {proposeHotelMutation.isPending && proposingHotelId === hotel.id ? (
                             <>
@@ -6641,6 +6698,11 @@ function HotelBooking({
                             "Shared with Group"
                           )}
                         </Button>
+                        {cannotShareUntilDetailsProvided ? (
+                          <p className="text-xs text-muted-foreground">
+                            {missingFieldsMessage}
+                          </p>
+                        ) : null}
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <Button
