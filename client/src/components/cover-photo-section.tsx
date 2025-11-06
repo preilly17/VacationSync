@@ -51,6 +51,8 @@ interface CoverPhotoSectionProps {
   defaultAltText: string;
   onPendingFileChange: (file: File | null, previewUrl: string | null) => void;
   isBusy?: boolean;
+  label?: string;
+  uploadButtonLabel?: string;
 }
 
 type SelectedFileInfo = {
@@ -97,6 +99,8 @@ export function CoverPhotoSection({
   defaultAltText,
   onPendingFileChange,
   isBusy = false,
+  label,
+  uploadButtonLabel,
 }: CoverPhotoSectionProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputId = useId();
@@ -346,7 +350,7 @@ export function CoverPhotoSection({
       />
 
       <div className="space-y-2">
-        <Label htmlFor={fileInputId}>Cover photo</Label>
+        <Label htmlFor={fileInputId}>{label ?? "Cover photo"}</Label>
         <p className="text-sm text-slate-500">
           We’ll fit your photo automatically. Images under {COVER_PHOTO_MIN_WIDTH}×{COVER_PHOTO_MIN_HEIGHT} may look soft on large screens.
         </p>
@@ -359,7 +363,7 @@ export function CoverPhotoSection({
             onClick={openFilePicker}
             disabled={isBusy || isFetchingRemote}
           >
-            Upload photo (JPG/PNG/WebP, ≤{COVER_PHOTO_MAX_FILE_SIZE_MB}MB)
+            {uploadButtonLabel ?? `Upload photo (JPG/PNG/WebP, ≤${COVER_PHOTO_MAX_FILE_SIZE_MB}MB)`}
           </Button>
           {hasImage ? (
             <Button
