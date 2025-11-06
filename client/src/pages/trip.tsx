@@ -1180,7 +1180,7 @@ export default function Trip() {
   const [addActivityPrefill, setAddActivityPrefill] = useState<ActivityComposerPrefill | null>(null);
   const [addActivityMode, setAddActivityMode] = useState<ActivityType>("SCHEDULED");
   const [isAddActivityModeToggleEnabled, setIsAddActivityModeToggleEnabled] = useState(true);
-  const [shouldResetSelectedDateOnModalClose, setShouldResetSelectedDateOnModalClose] = useState(true);
+  const shouldResetSelectedDateOnModalCloseRef = useRef(true);
   const [showEditTrip, setShowEditTrip] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
@@ -2238,7 +2238,7 @@ export default function Trip() {
 
     setAddActivityMode(mode);
     setIsAddActivityModeToggleEnabled(allowModeToggle);
-    setShouldResetSelectedDateOnModalClose(true);
+    shouldResetSelectedDateOnModalCloseRef.current = true;
     setShowAddActivity(true);
   };
 
@@ -2260,7 +2260,7 @@ export default function Trip() {
 
   const handleCalendarActivityCreated = useCallback(
     (activity: ActivityWithDetails) => {
-      setShouldResetSelectedDateOnModalClose(false);
+      shouldResetSelectedDateOnModalCloseRef.current = false;
 
       const activityWithScheduling = activity as ActivityWithSchedulingDetails;
       const primaryDate = getActivityPrimaryDate(activityWithScheduling);
@@ -3785,13 +3785,13 @@ export default function Trip() {
           onOpenChange={(open) => {
             setShowAddActivity(open);
             if (!open) {
-              if (shouldResetSelectedDateOnModalClose) {
+              if (shouldResetSelectedDateOnModalCloseRef.current) {
                 setSelectedDate(null);
               }
               setAddActivityPrefill(null);
-              setShouldResetSelectedDateOnModalClose(true);
+              shouldResetSelectedDateOnModalCloseRef.current = true;
             } else {
-              setShouldResetSelectedDateOnModalClose(true);
+              shouldResetSelectedDateOnModalCloseRef.current = true;
             }
           }}
           tripId={numericTripId}
