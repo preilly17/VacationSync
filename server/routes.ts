@@ -30,7 +30,7 @@ import {
   type ActivityType,
   type ActivityWithDetails,
 } from "@shared/schema";
-import { createActivityV2 } from "./activitiesV2";
+import { createActivityV2, convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
 import { validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
@@ -2275,8 +2275,37 @@ export function setupRoutes(app: Express) {
         return res.status(403).json({ message: "You are no longer a member of this trip" });
       }
 
-      const activities = await storage.getTripActivities(tripId, userId);
-      res.json(activities);
+      const shouldLoadActivitiesV2 = isActivitiesV2Enabled() && isActivitiesV2WriteEnabled();
+
+      const [legacyActivities, v2Activities] = await Promise.all([
+        storage.getTripActivities(tripId, userId),
+        shouldLoadActivitiesV2
+          ? listActivitiesForTripV2({ tripId, currentUserId: userId })
+          : Promise.resolve([]),
+      ]);
+
+      const bridgedActivities = shouldLoadActivitiesV2
+        ? convertActivitiesV2ToLegacy(v2Activities, { currentUserId: userId })
+        : [];
+
+      const combinedActivities = [...legacyActivities, ...bridgedActivities].sort((a, b) => {
+        const toTimestamp = (value: unknown): number => {
+          if (!value) return Number.POSITIVE_INFINITY;
+          const date = new Date(value as string);
+          return Number.isNaN(date.getTime()) ? Number.POSITIVE_INFINITY : date.getTime();
+        };
+
+        const aTime = toTimestamp(a.startTime);
+        const bTime = toTimestamp(b.startTime);
+
+        if (aTime !== bTime) {
+          return aTime - bTime;
+        }
+
+        return a.id - b.id;
+      });
+
+      res.json(combinedActivities);
     } catch (error: unknown) {
       console.error("Error fetching activities:", error);
       res.status(500).json({ message: "Failed to fetch activities" });
