@@ -14,6 +14,7 @@ import {
   type ActivityValidationError,
 } from "./activityCreation";
 import { CLIENT_VALIDATION_FALLBACK_MESSAGE } from "./clientValidation";
+import { normalizeActivityTypeInput } from "@shared/activityValidation";
 import type { ActivityType, ActivityWithDetails, TripMember, User } from "@shared/schema";
 
 const mapStatusToLegacyType = (status: unknown): ActivityType => {
@@ -336,11 +337,17 @@ export function useCreateActivity({
         return;
       }
 
+      const normalizedType = normalizeActivityTypeInput(values.type, "SCHEDULED");
+      const normalizedValues: ActivityCreateFormValues = {
+        ...values,
+        type: normalizedType,
+      };
+
       const optimisticId = generateOptimisticId();
 
       let submission;
       try {
-        submission = prepareActivitySubmission({ tripId, values });
+        submission = prepareActivitySubmission({ tripId, values: normalizedValues });
       } catch (error) {
         console.error("Failed to prepare activity submission:", error);
 
@@ -357,7 +364,7 @@ export function useCreateActivity({
 
           trackEvent("activity_create_failure", {
             trip_id: tripId,
-            submission_type: values.type,
+            submission_type: normalizedType,
             error_message: error.message,
           });
         } else {
@@ -369,7 +376,7 @@ export function useCreateActivity({
 
           trackEvent("activity_create_failure", {
             trip_id: tripId,
-            submission_type: values.type,
+            submission_type: normalizedType,
             error_message: CLIENT_VALIDATION_FALLBACK_MESSAGE,
           });
         }
@@ -379,6 +386,7 @@ export function useCreateActivity({
 
       mutation.mutate({
         ...submission.sanitizedValues,
+        type: normalizedType,
         __meta: {
           payload: submission.payload,
           optimisticId,
