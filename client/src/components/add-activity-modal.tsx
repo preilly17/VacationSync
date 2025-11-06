@@ -32,6 +32,7 @@ import {
   MAX_ACTIVITY_LOCATION_LENGTH,
   MAX_ACTIVITY_NAME_LENGTH,
   START_TIME_REQUIRED_FOR_END_MESSAGE,
+  normalizeActivityTypeInput,
   normalizeAttendeeIds,
   normalizeCostInput,
   normalizeMaxCapacityInput,
@@ -502,6 +503,10 @@ export function AddActivityModal({
   }, [members, currentUserId]);
 
   const defaultAttendeeIds = useMemo(() => memberOptions.map((member) => member.id), [memberOptions]);
+  const normalizedDefaultMode = useMemo(
+    () => normalizeActivityTypeInput(defaultMode, "SCHEDULED"),
+    [defaultMode],
+  );
   const creatorMemberId = useMemo(
     () => memberOptions.find((member) => member.isCurrentUser)?.id ?? null,
     [memberOptions],
@@ -554,12 +559,12 @@ export function AddActivityModal({
       })(),
     } satisfies FormValues;
 
-    const initialMode = prefill?.type ?? defaultMode;
+    const initialMode = normalizeActivityTypeInput(prefill?.type, normalizedDefaultMode);
 
     return { values, mode: initialMode };
   }, [
     defaultAttendeeIds,
-    defaultMode,
+    normalizedDefaultMode,
     determineInitialStartDate,
     prefill,
   ]);
@@ -592,9 +597,9 @@ export function AddActivityModal({
 
   useEffect(() => {
     if (!allowModeToggle) {
-      setMode(defaultMode);
+      setMode(normalizedDefaultMode);
     }
-  }, [allowModeToggle, defaultMode]);
+  }, [allowModeToggle, normalizedDefaultMode]);
 
   useEffect(() => {
     if (!open) {
@@ -713,10 +718,12 @@ export function AddActivityModal({
     (activity: ActivityWithDetails, values: ActivityCreateFormValues) => {
       onActivityCreated?.(activity);
 
+      const submissionType = normalizeActivityTypeInput(values.type, normalizedDefaultMode);
+
       toast({
-        title: values.type === "PROPOSE" ? "Proposal posted" : "Scheduled and invites sent",
+        title: submissionType === "PROPOSE" ? "Proposal posted" : "Scheduled and invites sent",
         description:
-          values.type === "PROPOSE"
+          submissionType === "PROPOSE"
             ? "We shared this idea with your group for feedback."
             : "RSVPs are on the way to everyone selected.",
       });
@@ -726,7 +733,7 @@ export function AddActivityModal({
       setMode(resetMode);
       onOpenChange(false);
     },
-    [computeDefaults, form, onActivityCreated, onOpenChange, toast],
+    [computeDefaults, form, normalizedDefaultMode, onActivityCreated, onOpenChange, toast],
   );
 
   const createActivity = useCreateActivity({
@@ -794,7 +801,9 @@ export function AddActivityModal({
   const submitForm = form.handleSubmit((values) => {
     const normalizedStart =
       typeof values.startTime === "string" ? values.startTime.trim() : "";
-    if (mode === "SCHEDULED" && normalizedStart.length === 0) {
+    const submissionMode = normalizeActivityTypeInput(mode, normalizedDefaultMode);
+
+    if (submissionMode === "SCHEDULED" && normalizedStart.length === 0) {
       form.setError("startTime", {
         type: "manual",
         message: START_TIME_REQUIRED_MESSAGE,
@@ -812,7 +821,8 @@ export function AddActivityModal({
     const fallbackAttendees = normalizeAttendeeIds(values.attendeeIds).value;
     const attendeeBase = trackedAttendees.length > 0 ? trackedAttendees : fallbackAttendees;
     const attendeeSelectionSet = new Set(attendeeBase);
-    if (mode === "SCHEDULED" && creatorMemberId) {
+
+    if (submissionMode === "SCHEDULED" && creatorMemberId) {
       attendeeSelectionSet.add(creatorMemberId);
     }
     const attendeeSelection = Array.from(attendeeSelectionSet);
@@ -828,7 +838,7 @@ export function AddActivityModal({
       maxCapacity: values.maxCapacity?.trim() ? values.maxCapacity : undefined,
       attendeeIds: attendeeSelection,
       category: values.category,
-      type: mode,
+      type: submissionMode,
     };
 
     createActivity.submit(sanitized);
@@ -868,7 +878,7 @@ export function AddActivityModal({
                 value={mode}
                 onValueChange={(value) => {
                   if (value) {
-                    setMode(value as ActivityType);
+                    setMode(normalizeActivityTypeInput(value, normalizedDefaultMode));
                   }
                 }}
                 className="mt-2 flex"
