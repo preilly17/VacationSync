@@ -26,7 +26,7 @@ import { ApiError, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
-import { filterActiveProposals, isCanceledStatus } from "./proposalStatusFilters";
+import { filterActiveProposals, isCanceledStatus, normalizeProposalStatus } from "./proposalStatusFilters";
 import {
   ArrowLeft,
   Hotel,
@@ -1014,6 +1014,21 @@ function ProposalsPage({
   };
 
   const getActivityProposalStatus = useCallback((activity: ActivityWithDetails) => {
+    const normalizedStatus = normalizeProposalStatus(activity.status);
+
+    if (normalizedStatus && normalizedStatus !== "active") {
+      return normalizedStatus;
+    }
+
+    const normalizedType = typeof activity.type === "string" ? activity.type.toUpperCase() : "";
+    if (normalizedType === "PROPOSE") {
+      return "proposed";
+    }
+
+    if (normalizedType === "SCHEDULED") {
+      return "scheduled";
+    }
+
     const now = new Date();
     const startTime = activity.startTime ? new Date(activity.startTime) : null;
     const endTime = activity.endTime ? new Date(activity.endTime) : null;
@@ -1353,7 +1368,7 @@ function ProposalsPage({
     }
 
     if (normalizedStatus === "proposed") {
-      return <Badge className="bg-blue-100 text-blue-800"><Vote className="w-3 h-3 mr-1" />Proposed</Badge>;
+      return <Badge className="bg-purple-100 text-purple-700"><Vote className="w-3 h-3 mr-1" />Proposed</Badge>;
     }
 
     if (typeof averageRanking === "number" && averageRanking <= 1.5) {
