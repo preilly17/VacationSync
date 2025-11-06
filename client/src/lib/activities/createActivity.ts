@@ -16,6 +16,33 @@ import {
 import { CLIENT_VALIDATION_FALLBACK_MESSAGE } from "./clientValidation";
 import type { ActivityType, ActivityWithDetails, TripMember, User } from "@shared/schema";
 
+const mapStatusToLegacyType = (status: unknown): ActivityType => {
+  if (typeof status === "string" && status.trim().toLowerCase() === "proposed") {
+    return "PROPOSE";
+  }
+
+  return "SCHEDULED";
+};
+
+const ensureLegacyActivityType = (activity: ActivityWithDetails): ActivityWithDetails => {
+  const rawType = activity?.type;
+
+  if (typeof rawType === "string" && rawType.trim().length > 0) {
+    return activity;
+  }
+
+  const derivedType = mapStatusToLegacyType((activity as { status?: unknown }).status);
+
+  if (rawType === derivedType) {
+    return activity;
+  }
+
+  return {
+    ...activity,
+    type: derivedType,
+  } satisfies ActivityWithDetails;
+};
+
 export type { ActivityCreateFormValues, ActivityValidationError } from "./activityCreation";
 
 export interface UseCreateActivityOptions {
@@ -108,7 +135,9 @@ export function useCreateActivity({
         payload: variables.__meta.payload,
       });
 
-      return { activity } satisfies MutationResult;
+      const normalizedActivity = useActivitiesV2 ? ensureLegacyActivityType(activity) : activity;
+
+      return { activity: normalizedActivity } satisfies MutationResult;
     },
     onMutate: async (variables) => {
       if (!enabled) {
