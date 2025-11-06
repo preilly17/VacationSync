@@ -25,7 +25,7 @@ import {
 import {
   Sparkles,
   Plus,
-  ThumbsUp,
+  Heart,
   MessageCircle,
   ArrowUpRight,
   Trash2,
@@ -36,6 +36,8 @@ import {
   Tag,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
+import { buildWebSocketUrl } from "@/lib/api";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { TravelLoading } from "@/components/LoadingSpinners";
@@ -62,6 +64,13 @@ const SORT_LABELS: Record<"newest" | "oldest" | "most_saved", string> = {
   most_saved: "Most saved",
 };
 
+const LIKE_FILTER_OPTIONS: Array<{ value: number | null; label: string }> = [
+  { value: null, label: "Any likes" },
+  { value: 1, label: "1+ likes" },
+  { value: 3, label: "3+ likes" },
+  { value: 5, label: "5+ likes" },
+];
+
 interface WishListBoardProps {
   tripId: number;
   shareCode?: string | null;
@@ -75,6 +84,7 @@ interface WishListIdeasResponse {
     sort: "newest" | "oldest" | "most_saved";
     isAdmin: boolean;
     isMember: boolean;
+    minLikes: number | null;
   };
 }
 
@@ -83,6 +93,7 @@ interface WishListQueryFilters {
   tag: string | null;
   submittedBy: string | null;
   search: string | null;
+  minLikes: number | null;
 }
 
 interface LinkPreviewMetadata {
@@ -92,6 +103,15 @@ interface LinkPreviewMetadata {
   image?: string;
   siteName?: string;
 }
+
+type WishListRealtimeMessage = {
+  type?: string;
+  tripId?: number;
+  ideaId?: number;
+  triggeredBy?: string | null;
+  reason?: string;
+  [key: string]: unknown;
+};
 
 const parseIdeaMetadata = (raw: unknown): LinkPreviewMetadata | null => {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -208,11 +228,13 @@ const getFullDate = (input?: string | Date | null) => {
 export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [sort, setSort] = useState<"newest" | "oldest" | "most_saved">("newest");
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedSubmitter, setSelectedSubmitter] = useState<string | null>(null);
+  const [minLikes, setMinLikes] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState<string | null>(null);
 
@@ -251,8 +273,9 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       tag: selectedTag,
       submittedBy: selectedSubmitter,
       search: debouncedSearch,
+      minLikes,
     }),
-    [sort, selectedTag, selectedSubmitter, debouncedSearch],
+    [sort, selectedTag, selectedSubmitter, debouncedSearch, minLikes],
   );
 
   const wishListQueryKey = useMemo(
@@ -311,6 +334,9 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       }
       if (filterValues.search) {
         params.set("search", filterValues.search);
+      }
+      if (typeof filterValues.minLikes === "number" && filterValues.minLikes > 0) {
+        params.set("minLikes", String(filterValues.minLikes));
       }
 
       const queryString = params.toString();
@@ -429,11 +455,26 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       if (!cached) {
         continue;
       }
+
+      const [, keyTripId, keyFilters] = key as [
+        string,
+        number,
+        WishListQueryFilters | undefined,
+      ];
+
+      if (keyTripId !== tripId) {
+        continue;
+      }
+
+      const updatedIdeas = cached.ideas
+        .map((idea) => (idea.id === ideaId ? updater(idea) : idea))
+        .filter((idea) => ideaMatchesFilters(idea, keyFilters));
+
+      const sort = keyFilters?.sort ?? cached.meta.sort ?? "newest";
+
       queryClient.setQueryData(key, {
         ...cached,
-        ideas: cached.ideas.map((idea) =>
-          idea.id === ideaId ? updater(idea) : idea,
-        ),
+        ideas: sortIdeasForDisplay(updatedIdeas, sort),
       });
     }
   };
@@ -458,6 +499,12 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
 
     if (filters.submittedBy && idea.creator.id !== filters.submittedBy) {
       return false;
+    }
+
+    if (typeof filters.minLikes === "number" && filters.minLikes > 0) {
+      if ((idea.saveCount ?? 0) < filters.minLikes) {
+        return false;
+      }
     }
 
     if (filters.search) {
@@ -491,77 +538,82 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     return Number.isNaN(timestamp) ? null : timestamp;
   };
 
+  const compareNewest = (
+    a: WishListIdeaWithDetails,
+    b: WishListIdeaWithDetails,
+  ) => {
+    const aTime = getCreatedAtValue(a.createdAt);
+    const bTime = getCreatedAtValue(b.createdAt);
+
+    if (aTime !== null && bTime !== null && aTime !== bTime) {
+      return bTime - aTime;
+    }
+
+    if (aTime === null && bTime !== null) {
+      return 1;
+    }
+
+    if (aTime !== null && bTime === null) {
+      return -1;
+    }
+
+    return b.id - a.id;
+  };
+
+  const compareOldest = (
+    a: WishListIdeaWithDetails,
+    b: WishListIdeaWithDetails,
+  ) => {
+    const aTime = getCreatedAtValue(a.createdAt);
+    const bTime = getCreatedAtValue(b.createdAt);
+
+    if (aTime !== null && bTime !== null && aTime !== bTime) {
+      return aTime - bTime;
+    }
+
+    if (aTime === null && bTime !== null) {
+      return 1;
+    }
+
+    if (aTime !== null && bTime === null) {
+      return -1;
+    }
+
+    return a.id - b.id;
+  };
+
+  const compareMostSaved = (
+    a: WishListIdeaWithDetails,
+    b: WishListIdeaWithDetails,
+  ) => {
+    if (a.saveCount !== b.saveCount) {
+      return b.saveCount - a.saveCount;
+    }
+
+    return compareNewest(a, b);
+  };
+
+  const sortIdeasForDisplay = (
+    ideas: WishListIdeaWithDetails[],
+    sort: "newest" | "oldest" | "most_saved",
+  ) => {
+    if (sort === "oldest") {
+      return [...ideas].sort(compareOldest);
+    }
+
+    if (sort === "most_saved") {
+      return [...ideas].sort(compareMostSaved);
+    }
+
+    return [...ideas].sort(compareNewest);
+  };
+
   const sortIdeasWithNewEntry = (
     ideas: WishListIdeaWithDetails[],
     idea: WishListIdeaWithDetails,
     sort: "newest" | "oldest" | "most_saved",
   ): WishListIdeaWithDetails[] => {
-    const newIdeas = [...ideas, idea];
-
-    const compareNewest = (
-      a: WishListIdeaWithDetails,
-      b: WishListIdeaWithDetails,
-    ) => {
-      const aTime = getCreatedAtValue(a.createdAt);
-      const bTime = getCreatedAtValue(b.createdAt);
-
-      if (aTime !== null && bTime !== null && aTime !== bTime) {
-        return bTime - aTime;
-      }
-
-      if (aTime === null && bTime !== null) {
-        return 1;
-      }
-
-      if (aTime !== null && bTime === null) {
-        return -1;
-      }
-
-      return b.id - a.id;
-    };
-
-    const compareOldest = (
-      a: WishListIdeaWithDetails,
-      b: WishListIdeaWithDetails,
-    ) => {
-      const aTime = getCreatedAtValue(a.createdAt);
-      const bTime = getCreatedAtValue(b.createdAt);
-
-      if (aTime !== null && bTime !== null && aTime !== bTime) {
-        return aTime - bTime;
-      }
-
-      if (aTime === null && bTime !== null) {
-        return 1;
-      }
-
-      if (aTime !== null && bTime === null) {
-        return -1;
-      }
-
-      return a.id - b.id;
-    };
-
-    const compareMostSaved = (
-      a: WishListIdeaWithDetails,
-      b: WishListIdeaWithDetails,
-    ) => {
-      if (a.saveCount !== b.saveCount) {
-        return b.saveCount - a.saveCount;
-      }
-
-      return compareNewest(a, b);
-    };
-
-    if (sort === "oldest") {
-      return newIdeas.sort(compareOldest);
-    }
-
-    if (sort === "most_saved") {
-      return newIdeas.sort(compareMostSaved);
-    }
-
-    return newIdeas.sort(compareNewest);
+    return sortIdeasForDisplay([...ideas, idea], sort);
   };
 
   const addIdeaToCache = (idea: WishListIdeaWithDetails) => {
@@ -620,26 +672,178 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
           ),
           submitters: updatedSubmitters,
           isMember: cached.meta.isMember || normalizedShareCode !== null,
+          minLikes: keyFilters?.minLikes ?? cached.meta.minLikes ?? null,
         },
       });
     }
   };
 
-  const removeIdeaFromCache = (ideaId: number) => {
-    const queries = queryClient.getQueriesData<WishListIdeasResponse>({
-      queryKey: ["wish-list", tripId],
-    });
-
-    for (const [key, cached] of queries) {
-      if (!cached) {
-        continue;
-      }
-      queryClient.setQueryData(key, {
-        ...cached,
-        ideas: cached.ideas.filter((idea) => idea.id !== ideaId),
+  const removeIdeaFromCache = useCallback(
+    (ideaId: number) => {
+      const queries = queryClient.getQueriesData<WishListIdeasResponse>({
+        queryKey: ["wish-list", tripId],
       });
+
+      for (const [key, cached] of queries) {
+        if (!cached) {
+          continue;
+        }
+        queryClient.setQueryData(key, {
+          ...cached,
+          ideas: cached.ideas.filter((idea) => idea.id !== ideaId),
+        });
+      }
+    },
+    [queryClient, tripId],
+  );
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const wsReconnectAttemptRef = useRef(0);
+  const wsReconnectTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
     }
-  };
+
+    if (!Number.isFinite(tripId) || tripId <= 0) {
+      return undefined;
+    }
+
+    let isActive = true;
+
+    const invalidateWishListQueries = () => {
+      queryClient.invalidateQueries({
+        queryKey: ["wish-list", tripId],
+        refetchType: "active",
+        exact: false,
+      });
+    };
+
+    const scheduleReconnect = () => {
+      if (!isActive) {
+        return;
+      }
+      const attempt = wsReconnectAttemptRef.current;
+      const delay = Math.min(1000 * 2 ** attempt, 10000);
+      wsReconnectAttemptRef.current = attempt + 1;
+      if (wsReconnectTimeoutRef.current !== null) {
+        window.clearTimeout(wsReconnectTimeoutRef.current);
+      }
+      wsReconnectTimeoutRef.current = window.setTimeout(connect, delay);
+    };
+
+    const handleMessage = (event: MessageEvent) => {
+      if (!isActive) {
+        return;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+
+      if (!parsed || typeof parsed !== "object") {
+        return;
+      }
+
+      const message = parsed as WishListRealtimeMessage;
+
+      if (typeof message.tripId === "number" && message.tripId !== tripId) {
+        return;
+      }
+
+      if (
+        message.type === "wish_list_idea_created" ||
+        message.type === "wish_list_idea_updated" ||
+        message.type === "wish_list_idea_deleted"
+      ) {
+        if (
+          message.triggeredBy &&
+          user?.id &&
+          message.triggeredBy === user.id
+        ) {
+          return;
+        }
+
+        if (message.type === "wish_list_idea_deleted" && typeof message.ideaId === "number") {
+          removeIdeaFromCache(message.ideaId);
+        }
+
+        invalidateWishListQueries();
+      }
+    };
+
+    function connect() {
+      if (!isActive) {
+        return;
+      }
+
+      try {
+        const socket = new WebSocket(buildWebSocketUrl("/ws"));
+        wsRef.current = socket;
+
+        const cleanupReconnectTimeout = () => {
+          if (wsReconnectTimeoutRef.current !== null) {
+            window.clearTimeout(wsReconnectTimeoutRef.current);
+            wsReconnectTimeoutRef.current = null;
+          }
+        };
+
+        socket.addEventListener("open", () => {
+          wsReconnectAttemptRef.current = 0;
+          cleanupReconnectTimeout();
+
+          const payload: Record<string, unknown> = {
+            type: "join_trip",
+            tripId,
+          };
+          if (user?.id) {
+            payload.userId = user.id;
+          }
+          socket.send(JSON.stringify(payload));
+        });
+
+        socket.addEventListener("message", handleMessage);
+
+        const handleCloseOrError = () => {
+          if (socket === wsRef.current) {
+            wsRef.current = null;
+          }
+          scheduleReconnect();
+        };
+
+        socket.addEventListener("close", handleCloseOrError);
+        socket.addEventListener("error", handleCloseOrError);
+      } catch (error) {
+        console.warn("Wish list WebSocket connection failed", error);
+        scheduleReconnect();
+      }
+    }
+
+    connect();
+
+    return () => {
+      isActive = false;
+      if (wsReconnectTimeoutRef.current !== null) {
+        window.clearTimeout(wsReconnectTimeoutRef.current);
+        wsReconnectTimeoutRef.current = null;
+      }
+      wsReconnectAttemptRef.current = 0;
+      const socket = wsRef.current;
+      wsRef.current = null;
+      if (socket) {
+        socket.removeEventListener("message", handleMessage);
+        try {
+          socket.close();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [tripId, user?.id, queryClient, removeIdeaFromCache]);
 
   const toggleSaveMutation = useMutation<
     { saved: boolean; saveCount: number },
@@ -1048,7 +1252,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         </div>
 
         <div className="mt-6 space-y-4">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
               <Input
@@ -1094,6 +1298,26 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
                 ))}
               </SelectContent>
             </Select>
+            <Select
+              value={minLikes !== null ? String(minLikes) : "all"}
+              onValueChange={(value) =>
+                setMinLikes(value === "all" ? null : Number(value))
+              }
+            >
+              <SelectTrigger className="md:w-40">
+                <SelectValue placeholder="Any likes" />
+              </SelectTrigger>
+              <SelectContent>
+                {LIKE_FILTER_OPTIONS.map((option) => (
+                  <SelectItem
+                    key={option.value === null ? "all" : String(option.value)}
+                    value={option.value === null ? "all" : String(option.value)}
+                  >
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
@@ -1106,6 +1330,11 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
               {selectedSubmitter && (
                 <Badge variant="outline" className="flex items-center gap-1">
                   Submitted by {submitterOptions.find((s) => s.id === selectedSubmitter)?.name ?? "Member"}
+                </Badge>
+              )}
+              {typeof minLikes === "number" && (
+                <Badge variant="outline" className="flex items-center gap-1">
+                  {`At least ${minLikes} like${minLikes === 1 ? "" : "s"}`}
                 </Badge>
               )}
               {isFetching && (
@@ -1158,10 +1387,10 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
           <Sparkles className="h-10 w-10 text-primary" />
           <div>
             <h3 className="text-lg font-semibold text-neutral-900">
-              Start your wish list ✨
+              No ideas yet — add one!
             </h3>
             <p className="mt-1 text-sm text-neutral-600">
-              Drop links to restaurants, TikToks, blogs, maps, or jot quick notes. We'll keep it separate from the official plan.
+              Share your first inspiration, whether it&rsquo;s a link, video, or quick note, to get the group brainstorming.
             </p>
           </div>
           {canSubmitIdeas ? (
@@ -1520,14 +1749,21 @@ function WishListIdeaCard({
                   size="sm"
                   onClick={() => onToggleSave(idea.id)}
                   disabled={toggleSavePendingId === idea.id}
+                  aria-pressed={idea.currentUserSaved}
                 >
                   {toggleSavePendingId === idea.id ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    <ThumbsUp className="mr-2 h-4 w-4" />
+                    <Heart
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        idea.currentUserSaved ? "text-primary" : undefined,
+                      )}
+                      fill={idea.currentUserSaved ? "currentColor" : "none"}
+                    />
                   )}
                   {idea.saveCount}
-                  <span className="ml-1 hidden sm:inline">Save{idea.saveCount === 1 ? "" : "s"}</span>
+                  <span className="ml-1 hidden sm:inline">Like{idea.saveCount === 1 ? "" : "s"}</span>
                 </Button>
                 <Button
                   variant="outline"

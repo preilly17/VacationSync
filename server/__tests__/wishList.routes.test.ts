@@ -365,6 +365,7 @@ describe("GET /api/trips/:tripId/wish-list", () => {
       tag: null,
       submittedBy: null,
       search: null,
+      minLikes: null,
     });
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -372,6 +373,7 @@ describe("GET /api/trips/:tripId/wish-list", () => {
           isAdmin: false,
           isMember: false,
           sort: "newest",
+          minLikes: null,
         }),
       }),
     );

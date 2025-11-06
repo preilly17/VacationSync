@@ -47,6 +47,60 @@ export function buildApiUrl(path: string) {
   return `${API_BASE_URL}/${normalisedPath}`;
 }
 
+export function buildWebSocketUrl(path: string) {
+  const explicitWsUrl = import.meta.env.VITE_WS_URL;
+
+  const normalisePath = (target: string) =>
+    target.startsWith("/") ? target : `/${target}`;
+
+  const adjustLoopbackHost = (url: URL) => {
+    try {
+      const currentHostname = window.location.hostname;
+      const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "::1"]);
+      const isLoopback = (host: string) => LOOPBACK_HOSTNAMES.has(host);
+
+      if (isLoopback(url.hostname) && isLoopback(currentHostname) && url.hostname !== currentHostname) {
+        url.hostname = currentHostname;
+      }
+    } catch {
+      // ignore
+    }
+    return url;
+  };
+
+  if (explicitWsUrl && typeof explicitWsUrl === "string") {
+    try {
+      const url = new URL(explicitWsUrl.replace(/\/+$/, ""));
+      if (typeof window !== "undefined") {
+        adjustLoopbackHost(url);
+      }
+      url.pathname = normalisePath(path);
+      return url.toString();
+    } catch {
+      // fall through to relative handling
+    }
+  }
+
+  if (API_BASE_URL) {
+    try {
+      const url = new URL(API_BASE_URL);
+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+      url.pathname = normalisePath(path);
+      return url.toString();
+    } catch {
+      // ignore invalid base url – fall back to window origin if available
+    }
+  }
+
+  if (typeof window !== "undefined" && window.location) {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = window.location.host;
+    return `${protocol}//${host}${normalisePath(path)}`;
+  }
+
+  return normalisePath(path);
+}
+
 export function apiFetch(path: string, init?: RequestInit) {
   return fetch(buildApiUrl(path), init);
 }
