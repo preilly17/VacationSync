@@ -80,16 +80,16 @@ describe("activityMatchesPeopleFilter", () => {
     expect(activityMatchesPeopleFilter(activity, "member-1")).toBe(true);
   });
 
-  it("matches pending invites for the selected member", () => {
-    const invite = buildInvite("member-2", "pending");
-    const activity = buildActivity({}, [invite]);
-    expect(activityMatchesPeopleFilter(activity, "member-2")).toBe(true);
-  });
-
   it("matches accepted invites for the selected member", () => {
     const invite = buildInvite("member-3", "accepted");
     const activity = buildActivity({}, [invite]);
     expect(activityMatchesPeopleFilter(activity, "member-3")).toBe(true);
+  });
+
+  it("does not match pending invites", () => {
+    const invite = buildInvite("member-2", "pending");
+    const activity = buildActivity({}, [invite]);
+    expect(activityMatchesPeopleFilter(activity, "member-2")).toBe(false);
   });
 
   it("does not match declined invites", () => {
@@ -99,6 +99,6 @@ describe("activityMatchesPeopleFilter", () => {
   });
 
   it("exposes the allowed statuses for external validation", () => {
-    expect(peopleFilterAllowedStatuses).toEqual(["accepted", "pending", "waitlisted"]);
+    expect(peopleFilterAllowedStatuses).toEqual(["accepted"]);
   });
 });

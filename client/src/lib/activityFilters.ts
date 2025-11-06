@@ -2,8 +2,6 @@ import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
 
 const PEOPLE_FILTER_ALLOWED_STATUSES: ActivityInviteStatus[] = [
   "accepted",
-  "pending",
-  "waitlisted",
 ];
 
 const normalizeId = (value: unknown): string | null => {

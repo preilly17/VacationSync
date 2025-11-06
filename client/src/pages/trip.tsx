@@ -1982,10 +1982,10 @@ export default function Trip() {
     return activities.filter((activity) => {
       const activityType = (activity.type ?? "").toString().toUpperCase();
       if (activityType === "PROPOSE") {
-        if (!statuses.proposed) {
-          return false;
-        }
-      } else if (!statuses.scheduled) {
+        return false;
+      }
+
+      if (!statuses.scheduled) {
         return false;
       }
 
@@ -2929,7 +2929,7 @@ export default function Trip() {
                               viewMode="month"
                               selectedActivityId={expandedActivityId}
                             />
-                            {filteredActivities.length === 0 && (
+                            {filteredActivities.length === 0 && activities.length === 0 && (
                               <div className="trip-calendar-panel relative mt-6 overflow-hidden rounded-[24px] border border-[color:var(--calendar-line)]/60 py-12 text-center shadow-[0_22px_60px_-28px_rgba(16,24,40,0.35)]">
                                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),transparent_62%)] dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.26),transparent_62%)]" />
                                 <div className="relative z-10 mx-auto flex max-w-xl flex-col items-center gap-5 px-6">
