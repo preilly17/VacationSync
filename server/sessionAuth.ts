@@ -70,10 +70,17 @@ function buildSessionOptions(): SessionOptions {
   }
 
   if (sameSite === "none" && secure !== true) {
-    console.warn(
-      "⚠️ SameSite=None cookies require the Secure attribute; forcing secure cookies to keep authentication working on modern browsers.",
-    );
-    secure = true;
+    if (isProduction) {
+      console.warn(
+        "⚠️ SameSite=None cookies require the Secure attribute; forcing secure cookies to keep authentication working on modern browsers.",
+      );
+      secure = true;
+    } else {
+      console.warn(
+        "⚠️ SameSite=None cookies require the Secure attribute; falling back to SameSite=\"lax\" for local development where secure cookies are unavailable.",
+      );
+      sameSite = "lax";
+    }
   }
 
   const cookie: CookieOptions = {
