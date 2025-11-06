@@ -223,7 +223,7 @@ const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
     personal: true,
   },
   statuses: {
-    proposed: true,
+    proposed: false,
     scheduled: true,
   },
 };
@@ -1981,11 +1981,13 @@ export default function Trip() {
 
     return activities.filter((activity) => {
       const activityType = (activity.type ?? "").toString().toUpperCase();
-      if (activityType === "PROPOSE") {
-        return false;
-      }
+      const isProposal = activityType === "PROPOSE";
 
-      if (!statuses.scheduled) {
+      if (isProposal) {
+        if (!statuses.proposed) {
+          return false;
+        }
+      } else if (!statuses.scheduled) {
         return false;
       }
 
