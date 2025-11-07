@@ -843,6 +843,98 @@ export const updateActivityInviteStatusForLegacyActivity = async ({
   return { legacyActivity, legacyInvite };
 };
 
+const getWaitlistOrderingTimestampFromLegacyInvite = (
+  invite: LegacyActivityWithDetails["invites"][number],
+) => {
+  if (invite.respondedAt) {
+    return new Date(invite.respondedAt).getTime();
+  }
+
+  if (invite.createdAt) {
+    return new Date(invite.createdAt).getTime();
+  }
+
+  return invite.id ?? Number.MAX_SAFE_INTEGER;
+};
+
+export const promoteWaitlistedInviteForLegacyActivity = async ({
+  legacyActivityId,
+  viewerId,
+}: {
+  legacyActivityId: number;
+  viewerId?: string | null;
+}): Promise<{
+  promotedUserId: string | null;
+  legacyActivity: LegacyActivityWithDetails | null;
+}> => {
+  const identifier = await resolveLegacyActivityIdentifier(legacyActivityId);
+  if (!identifier) {
+    return { promotedUserId: null, legacyActivity: null };
+  }
+
+  const activity = await fetchActivityWithRelations(identifier.activityId);
+  if (!activity) {
+    legacyActivityIdMap.delete(legacyActivityId);
+    return { promotedUserId: null, legacyActivity: null };
+  }
+
+  const [legacyActivity] = convertActivitiesV2ToLegacy([activity], {
+    currentUserId: viewerId,
+  });
+
+  const maxCapacity = legacyActivity.maxCapacity;
+  if (!maxCapacity) {
+    return { promotedUserId: null, legacyActivity };
+  }
+
+  const acceptedInvites = legacyActivity.invites.filter(
+    (invite) => invite.status === "accepted",
+  );
+
+  if (acceptedInvites.length >= maxCapacity) {
+    return { promotedUserId: null, legacyActivity };
+  }
+
+  const waitlistedInvites = legacyActivity.invites
+    .filter((invite) => invite.status === "waitlisted")
+    .sort(
+      (a, b) =>
+        getWaitlistOrderingTimestampFromLegacyInvite(a) -
+        getWaitlistOrderingTimestampFromLegacyInvite(b),
+    );
+
+  const nextInvite = waitlistedInvites[0];
+  if (!nextInvite) {
+    return { promotedUserId: null, legacyActivity };
+  }
+
+  await query(
+    `
+    INSERT INTO activity_rsvps_v2 (activity_id, user_id, response, responded_at)
+    VALUES ($1, $2, 'yes', NOW())
+    ON CONFLICT (activity_id, user_id) DO UPDATE
+      SET response = 'yes',
+          responded_at = NOW()
+  `,
+    [identifier.activityId, nextInvite.userId],
+  );
+
+  const refreshed = await fetchActivityWithRelations(identifier.activityId);
+  if (!refreshed) {
+    legacyActivityIdMap.delete(legacyActivityId);
+    return { promotedUserId: nextInvite.userId, legacyActivity: null };
+  }
+
+  const [refreshedLegacyActivity] = convertActivitiesV2ToLegacy([refreshed], {
+    currentUserId: viewerId,
+  });
+
+  return {
+    promotedUserId: nextInvite.userId,
+    legacyActivity: refreshedLegacyActivity,
+  };
+};
+
 export type CancelActivityByLegacyIdResult =
   | null
   | { tripId: number }

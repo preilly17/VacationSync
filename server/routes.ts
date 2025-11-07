@@ -36,6 +36,7 @@ import {
   convertActivitiesV2ToLegacy,
   getActivityByLegacyId,
   listActivitiesForTripV2,
+  promoteWaitlistedInviteForLegacyActivity,
   updateActivityInviteStatusForLegacyActivity,
 } from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
@@ -591,12 +592,56 @@ const applyActivityResponse = async (
     status,
   });
 
+  const promotionResult = await promoteWaitlistedInviteForLegacyActivity({
+    legacyActivityId: activityId,
+    viewerId: userId,
+  });
+
+  let promotedUserId: string | null = null;
+  let updatedActivity = updateResult.legacyActivity;
+
+  if (promotionResult) {
+    promotedUserId = promotionResult.promotedUserId;
+    updatedActivity = promotionResult.legacyActivity ?? updatedActivity;
+  }
+
+  if (promotedUserId) {
+    const promotedMember = trip.members.find(
+      (member) => member.userId === promotedUserId,
+    );
+
+    if (promotedMember) {
+      try {
+        await storage.createNotification({
+          userId: promotedUserId,
+          type: "activity_waitlist",
+          title: "You're in!",
+          message: `A spot opened up for ${v2Activity.title}.`,
+          tripId: numericTripId,
+          activityId,
+        });
+      } catch (notificationError) {
+        console.error(
+          "Failed to persist waitlist promotion notification:",
+          notificationError,
+        );
+      }
+    }
+
+    broadcastToTrip(numericTripId, {
+      type: "activity_invite_updated",
+      activityId,
+      userId: promotedUserId,
+      status: "accepted",
+    });
+  }
+
   return {
     activity: legacyActivityBeforeUpdate,
     trip,
     updatedInvite: updateResult.legacyInvite ?? null,
-    updatedActivity: updateResult.legacyActivity,
-    promotedUserId: null,
+    updatedActivity,
+    promotedUserId,
   } as const;
 };
 

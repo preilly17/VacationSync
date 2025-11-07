@@ -10,6 +10,7 @@ import {
 
 let applyActivityResponse: any;
 let storage: any;
+let activitiesV2: any;
 
 beforeAll(async () => {
   process.env.DATABASE_URL =
@@ -30,6 +31,8 @@ beforeAll(async () => {
 
   const storageModule: any = await import("../storage");
   storage = storageModule.storage;
+
+  activitiesV2 = await import("../activitiesV2");
 });
 
 describe("applyActivityResponse", () => {
@@ -206,6 +209,91 @@ describe("applyActivityResponse", () => {
     expect(console.error).toHaveBeenCalledWith(
       "Failed to persist waitlist promotion notification:",
       expect.any(Error),
+    );
+  });
+
+  it("promotes waitlisted invitees for Activities V2 when capacity frees up", async () => {
+    const legacyActivityId = 42;
+    const responderId = "responder";
+
+    const trip = {
+      id: 5,
+      members: [
+        { userId: "creator", user: { firstName: "Host" } },
+        { userId: responderId, user: { firstName: "Responder" } },
+        { userId: "waitlisted-user", user: { firstName: "Waitlisted" } },
+      ],
+    } as any;
+
+    const v2Activity = {
+      id: "activity-v2-id",
+      tripId: "5",
+      creatorId: "creator",
+      title: "New Activity",
+    } as any;
+
+    const legacyActivityBeforeUpdate = {
+      id: legacyActivityId,
+      invites: [],
+    } as any;
+
+    const updatedInvite = { id: 1, userId: responderId, status: "declined" };
+    const updatedLegacyActivity = {
+      id: legacyActivityId,
+      invites: [updatedInvite],
+    } as any;
+
+    const promotedLegacyActivity = {
+      id: legacyActivityId,
+      invites: [updatedInvite, { id: 2, userId: "waitlisted-user", status: "accepted" }],
+    } as any;
+
+    jest.spyOn(storage, "getActivityById").mockResolvedValue(null);
+    jest.spyOn(storage, "getTripById").mockResolvedValue(trip);
+    jest.spyOn(activitiesV2, "getActivityByLegacyId").mockResolvedValue(v2Activity);
+    jest
+      .spyOn(activitiesV2, "convertActivitiesV2ToLegacy")
+      .mockReturnValueOnce([legacyActivityBeforeUpdate])
+      .mockReturnValue([promotedLegacyActivity]);
+    jest
+      .spyOn(activitiesV2, "updateActivityInviteStatusForLegacyActivity")
+      .mockResolvedValue({ legacyActivity: updatedLegacyActivity, legacyInvite: updatedInvite });
+    jest
+      .spyOn(activitiesV2, "promoteWaitlistedInviteForLegacyActivity")
+      .mockResolvedValue({
+        promotedUserId: "waitlisted-user",
+        legacyActivity: promotedLegacyActivity,
+      });
+
+    const createNotificationSpy = jest
+      .spyOn(storage, "createNotification")
+      .mockResolvedValue(undefined);
+
+    const result = await applyActivityResponse(legacyActivityId, responderId, "declined");
+
+    expect(activitiesV2.promoteWaitlistedInviteForLegacyActivity).toHaveBeenCalledWith({
+      legacyActivityId,
+      viewerId: responderId,
+    });
+
+    expect(createNotificationSpy).toHaveBeenCalledTimes(2);
+    expect(createNotificationSpy).toHaveBeenLastCalledWith({
+      userId: "waitlisted-user",
+      type: "activity_waitlist",
+      title: "You're in!",
+      message: "A spot opened up for New Activity.",
+      tripId: trip.id,
+      activityId: legacyActivityId,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        activity: legacyActivityBeforeUpdate,
+        trip,
+        updatedInvite,
+        updatedActivity: promotedLegacyActivity,
+        promotedUserId: "waitlisted-user",
+      }),
     );
   });
 });
