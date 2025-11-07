@@ -4291,20 +4291,27 @@ export class DatabaseStorage implements IStorage {
         const hasResponded =
           currentUserInvite && currentUserInvite.status !== "pending" ? true : undefined;
 
-        const legacyActivity = {
-          ...mapActivityWithDetails(row),
+        const legacyActivityDetails = mapActivityWithDetails({
+          ...row,
           poster,
           invites,
           acceptances,
           comments,
-          acceptedCount: invites.filter((invite) => invite.status === "accepted").length,
-          pendingCount: invites.filter((invite) => invite.status === "pending").length,
-          declinedCount: invites.filter((invite) => invite.status === "declined").length,
-          waitlistedCount: invites.filter((invite) => invite.status === "waitlisted").length,
-          currentUserInvite: currentUserInvite ?? null,
+          currentUserInvite: currentUserInvite ?? undefined,
           isAccepted,
           hasResponded,
+          currentUserId: userId,
+        });
+
+        const legacyActivity = {
+          ...legacyActivityDetails,
+          poster,
+          invites,
+          acceptances,
+          comments,
+          currentUserInvite: currentUserInvite ?? null,
           permissions: {
+            ...legacyActivityDetails.permissions,
             canCancel: row.posted_by === userId,
           },
         } satisfies ActivityWithDetails & {
