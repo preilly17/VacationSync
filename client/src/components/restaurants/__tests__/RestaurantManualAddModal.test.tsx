@@ -84,4 +84,38 @@ describe("RestaurantManualAddModal", () => {
     expect(onSuccess).toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+
+  it("disables submission while trip context is unavailable", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = jest.fn();
+    const prefill: RestaurantManualAddPrefill = {
+      platform: "open_table",
+      url: "https://www.opentable.com/s?dateTime=2025-10-28T19:00:00",
+      date: "2025-10-28",
+      time: "19:00",
+      partySize: 4,
+      city: "Atlanta",
+      country: "USA",
+    };
+
+    renderWithClient(
+      <RestaurantManualAddModal
+        tripId={0}
+        open
+        onOpenChange={onOpenChange}
+        prefill={prefill}
+      />,
+    );
+
+    await user.type(screen.getByLabelText(/Restaurant name/i), "Staplehouse");
+    await user.type(screen.getByLabelText(/Address/i), "541 Edgewood Ave");
+
+    const saveButton = screen.getByRole("button", { name: /save restaurant/i }) as HTMLButtonElement;
+
+    await waitFor(() => {
+      expect(saveButton.disabled).toBe(true);
+    });
+
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
 });
