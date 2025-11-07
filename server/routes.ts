@@ -2276,7 +2276,7 @@ export function setupRoutes(app: Express) {
         return res.status(403).json({ message: "You are no longer a member of this trip" });
       }
 
-      const shouldLoadActivitiesV2 = isActivitiesV2Enabled() && isActivitiesV2WriteEnabled();
+      const shouldLoadActivitiesV2 = isActivitiesV2Enabled();
 
       const [legacyActivities, v2Activities] = await Promise.all([
         storage.getTripActivities(tripId, userId),
@@ -4377,11 +4377,41 @@ export function setupRoutes(app: Express) {
           return res.status(403).json({ message: "You are no longer a member of this trip" });
         }
 
-        const activities = await storage.getTripActivities(tripId, userId);
+        const shouldLoadActivitiesV2 = isActivitiesV2Enabled();
+        const [legacyActivities, v2Activities] = await Promise.all([
+          storage.getTripActivities(tripId, userId),
+          shouldLoadActivitiesV2
+            ? listActivitiesForTripV2({ tripId, currentUserId: userId })
+            : Promise.resolve([]),
+        ]);
+
+        const bridgedActivities = shouldLoadActivitiesV2
+          ? convertActivitiesV2ToLegacy(v2Activities, { currentUserId: userId })
+          : [];
+
+        const combinedActivities = [...legacyActivities, ...bridgedActivities]
+          .filter((activity) => activity.type === "PROPOSE")
+          .sort((a, b) => {
+            const toTimestamp = (value: unknown): number => {
+              if (!value) return Number.POSITIVE_INFINITY;
+              const date = new Date(value as string);
+              return Number.isNaN(date.getTime()) ? Number.POSITIVE_INFINITY : date.getTime();
+            };
+
+            const aTime = toTimestamp(a.startTime);
+            const bTime = toTimestamp(b.startTime);
+
+            if (aTime !== bTime) {
+              return aTime - bTime;
+            }
+
+            return a.id - b.id;
+          });
+
         const mineOnly = parseBooleanQueryParam(req.query?.mineOnly);
 
         if (mineOnly) {
-          const filtered = activities.filter((activity) => {
+          const filtered = combinedActivities.filter((activity) => {
             const proposerId = activity.postedBy ?? activity.poster?.id ?? null;
             return proposerId === userId;
           });
@@ -4389,7 +4419,7 @@ export function setupRoutes(app: Express) {
           return;
         }
 
-        res.json(activities);
+        res.json(combinedActivities);
       } catch (error: unknown) {
         console.error('Error fetching activity proposals:', error);
         res.status(500).json({ message: 'Failed to fetch activity proposals' });
