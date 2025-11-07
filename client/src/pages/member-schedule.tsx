@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useTripRealtime } from "@/hooks/use-trip-realtime";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { CalendarGrid } from "@/components/calendar-grid";
 import { AddActivityModal, type ActivityComposerPrefill } from "@/components/add-activity-modal";
@@ -94,6 +95,11 @@ export default function MemberSchedule() {
     const parsed = Number(tripId);
     return Number.isFinite(parsed) ? parsed : 0;
   }, [tripId]);
+
+  useTripRealtime(numericTripId, {
+    enabled: numericTripId > 0 && isAuthenticated,
+    userId: currentUser?.id ?? null,
+  });
 
   const activitiesQueryKey = useMemo(() => ["/api/trips", tripId, "activities"], [tripId]);
   const activityProposalsQueryKey = useMemo(

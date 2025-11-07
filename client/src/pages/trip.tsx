@@ -48,6 +48,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useToast } from "@/hooks/use-toast";
+import { useTripRealtime } from "@/hooks/use-trip-realtime";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -95,6 +96,7 @@ import { WishListBoard } from "@/components/wish-list-board";
 import Proposals from "@/pages/proposals";
 import { ActivityDetailsDialog } from "@/components/activity-details-dialog";
 import { normalizeActivityTypeInput } from "@shared/activityValidation";
+import { updateActivityInviteStatus } from "@/lib/activities/updateInviteStatus";
 import type {
   TripWithDetails,
   ActivityWithDetails,
@@ -225,7 +227,7 @@ const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
   },
   statuses: {
     scheduled: true,
-    proposed: true,
+    proposed: false,
   },
 };
 
@@ -284,6 +286,13 @@ const statusToActionMap: Record<ActivityInviteStatus, ActivityRsvpAction> = {
   pending: "MAYBE",
   declined: "DECLINE",
   waitlisted: "WAITLIST",
+};
+
+const actionToStatusMap: Record<ActivityRsvpAction, ActivityInviteStatus | null> = {
+  ACCEPT: "accepted",
+  DECLINE: "declined",
+  WAITLIST: "waitlisted",
+  MAYBE: "pending",
 };
 
 type DayDetailsState = {
@@ -1532,6 +1541,11 @@ export default function Trip() {
     return numericTripIdFromRoute;
   }, [trip?.id, numericTripIdFromRoute]);
 
+  useTripRealtime(numericTripId, {
+    enabled: numericTripId > 0 && isAuthenticated,
+    userId: user?.id ?? null,
+  });
+
   const selectedActivity = useMemo(() => {
     if (!selectedActivityId) {
       return null;
@@ -1564,9 +1578,66 @@ export default function Trip() {
         promotedUserId?: string | null;
       };
     },
+    onMutate: async ({ activityId, action }) => {
+      const nextStatus = actionToStatusMap[action];
+      if (!nextStatus) {
+        return {};
+      }
+
+      const legacyActivitiesKey = numericTripId > 0 ? (["/api/trips", numericTripId, "activities"] as const) : null;
+
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: activitiesQueryKey }),
+        queryClient.cancelQueries({ queryKey: activityProposalsQueryKey }),
+        legacyActivitiesKey ? queryClient.cancelQueries({ queryKey: legacyActivitiesKey }) : Promise.resolve(),
+      ]);
+
+      const previousCalendarActivities = queryClient.getQueryData<ActivityWithDetails[]>(activitiesQueryKey) ?? null;
+      const previousProposals = queryClient.getQueryData<ActivityWithDetails[]>(activityProposalsQueryKey) ?? null;
+      const previousLegacyActivities = legacyActivitiesKey
+        ? queryClient.getQueryData<ActivityWithDetails[]>(legacyActivitiesKey) ?? null
+        : null;
+
+      const applyUpdate = (list: ActivityWithDetails[] | null) =>
+        list?.map((activity) =>
+          activity.id === activityId
+            ? updateActivityInviteStatus(activity, {
+                nextStatus,
+                user: user ?? null,
+                targetUserId: user?.id ?? activity.currentUserInvite?.userId ?? null,
+              })
+            : activity,
+        ) ?? null;
+
+      const updatedCalendar = applyUpdate(previousCalendarActivities);
+      if (updatedCalendar) {
+        queryClient.setQueryData(activitiesQueryKey, updatedCalendar);
+      }
+
+      const updatedProposals = applyUpdate(previousProposals);
+      if (updatedProposals) {
+        queryClient.setQueryData(activityProposalsQueryKey, updatedProposals);
+      }
+
+      if (legacyActivitiesKey) {
+        const updatedLegacy = applyUpdate(previousLegacyActivities);
+        if (updatedLegacy) {
+          queryClient.setQueryData(legacyActivitiesKey, updatedLegacy);
+        }
+      }
+
+      return {
+        previousCalendarActivities,
+        previousProposals,
+        previousLegacyActivities,
+        legacyActivitiesKey,
+      } as const;
+    },
     onSuccess: (_data, variables) => {
-      if (id) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/activities`] });
+      queryClient.invalidateQueries({ queryKey: activitiesQueryKey });
+      queryClient.invalidateQueries({ queryKey: activityProposalsQueryKey });
+      if (numericTripId > 0) {
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", numericTripId, "activities"] });
       }
 
       const action = variables.action;
@@ -1589,7 +1660,17 @@ export default function Trip() {
 
       toast({ title, description });
     },
-    onError: (error) => {
+    onError: (error, _variables, context) => {
+      if (context?.previousCalendarActivities) {
+        queryClient.setQueryData(activitiesQueryKey, context.previousCalendarActivities);
+      }
+      if (context?.previousProposals) {
+        queryClient.setQueryData(activityProposalsQueryKey, context.previousProposals);
+      }
+      if (context?.legacyActivitiesKey && context.previousLegacyActivities) {
+        queryClient.setQueryData(context.legacyActivitiesKey, context.previousLegacyActivities);
+      }
+
       if (isUnauthorizedError(error)) {
         window.location.href = "/login";
         return;
@@ -1989,17 +2070,12 @@ export default function Trip() {
     return activities.filter((activity) => {
       const activityType = (activity.type ?? "").toString().toUpperCase();
       const isScheduled = activityType === "SCHEDULED";
-      const isProposed = activityType === "PROPOSE";
 
-      if (isScheduled) {
-        if (!statuses.scheduled) {
-          return false;
-        }
-      } else if (isProposed) {
-        if (!statuses.proposed) {
-          return false;
-        }
-      } else {
+      if (!isScheduled) {
+        return false;
+      }
+
+      if (!statuses.scheduled) {
         return false;
       }
 
@@ -2915,13 +2991,6 @@ export default function Trip() {
                                   onCheckedChange={(checked) => toggleStatusFilter("scheduled", checked === true)}
                                 />
                                 <span>Show scheduled</span>
-                              </label>
-                              <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]">
-                                <Checkbox
-                                  checked={calendarFilters.statuses.proposed}
-                                  onCheckedChange={(checked) => toggleStatusFilter("proposed", checked === true)}
-                                />
-                                <span>Show proposals</span>
                               </label>
                             </div>
                           </div>
