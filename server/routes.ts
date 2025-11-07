@@ -29,6 +29,7 @@ import {
   type ActivityInviteStatus,
   type ActivityType,
   type ActivityWithDetails,
+  type InsertHotel,
 } from "@shared/schema";
 import { createActivityV2, convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
@@ -4425,7 +4426,8 @@ export function setupRoutes(app: Express) {
             .json({ message: "Invalid hotel proposal request", errors: parsedRequest.error.issues });
         }
 
-        const rawHotelId = parsedRequest.data.hotelId ?? parsedRequest.data.id;
+        const parsedData = parsedRequest.data as Record<string, unknown>;
+        const rawHotelId = parsedData.hotelId ?? parsedData.id;
         let hotelId =
           typeof rawHotelId === 'number'
             ? rawHotelId
@@ -4433,23 +4435,73 @@ export function setupRoutes(app: Express) {
             ? Number.parseInt(String(rawHotelId), 10)
             : NaN;
 
-        if (!Number.isFinite(hotelId)) {
-          const { hotelId: _ignoredHotelId, id: _ignoredId, ...maybeHotel } = parsedRequest.data;
-          const parsedHotelPayload = insertHotelSchema.safeParse({
-            ...maybeHotel,
-            tripId,
+        const { hotelId: _ignoredHotelId, id: _ignoredId, ...rest } = parsedData;
+        const { tripId: rawTripId, ...hotelDetails } = rest as {
+          tripId?: number | string;
+          [key: string]: unknown;
+        };
+
+        const hasAdditionalHotelDetails = Object.keys(hotelDetails).length > 0;
+        const requiresHotelDetails =
+          !Number.isFinite(hotelId) || hasAdditionalHotelDetails || rawTripId !== undefined;
+
+        let parsedHotelPayload: InsertHotel | null = null;
+        let hotelPayloadIssues: z.ZodIssue[] | null = null;
+
+        if (requiresHotelDetails) {
+          const normalizedTripIdFromPayload =
+            typeof rawTripId === 'number'
+              ? rawTripId
+              : typeof rawTripId === 'string'
+                ? Number.parseInt(rawTripId, 10)
+                : undefined;
+
+          if (
+            normalizedTripIdFromPayload !== undefined &&
+            !Number.isFinite(normalizedTripIdFromPayload)
+          ) {
+            return res
+              .status(400)
+              .json({ message: "Trip ID mismatch between path and payload" });
+          }
+
+          const parseResult = insertHotelSchema.safeParse({
+            ...(hotelDetails as Record<string, unknown>),
+            tripId: normalizedTripIdFromPayload ?? tripId,
           });
 
-          if (!parsedHotelPayload.success) {
+          if (!parseResult.success) {
+            hotelPayloadIssues = parseResult.error.issues;
+          } else {
+            parsedHotelPayload = parseResult.data;
+          }
+        }
+
+        if (hotelPayloadIssues) {
+          return res.status(400).json({
+            message:
+              "Provide either an existing hotelId or the required hotel details to share with the group.",
+            errors: hotelPayloadIssues,
+          });
+        }
+
+        if (parsedHotelPayload && parsedHotelPayload.tripId !== tripId) {
+          return res
+            .status(400)
+            .json({ message: "Trip ID mismatch between path and payload" });
+        }
+
+        if (!Number.isFinite(hotelId)) {
+          if (!parsedHotelPayload) {
             return res.status(400).json({
               message:
                 "Provide either an existing hotelId or the required hotel details to share with the group.",
-              errors: parsedHotelPayload.error.issues,
+              errors: hotelPayloadIssues ?? [],
             });
           }
 
           try {
-            const createdHotel = await storage.createHotel(parsedHotelPayload.data, userId);
+            const createdHotel = await storage.createHotel(parsedHotelPayload, userId);
             hotelId = createdHotel.id;
           } catch (creationError: unknown) {
             console.error("Error creating hotel before proposing:", creationError);

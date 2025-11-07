@@ -6071,6 +6071,8 @@ const HOTEL_PROPOSAL_REQUIRED_FIELDS = [
   { key: "address", label: "street address" },
   { key: "city", label: "city" },
   { key: "country", label: "country" },
+  { key: "checkInDate", label: "check-in date" },
+  { key: "checkOutDate", label: "check-out date" },
 ] as const satisfies ReadonlyArray<{ key: keyof HotelWithDetails; label: string }>;
 
 function hasTextValue(value: unknown): boolean {
@@ -6085,6 +6087,75 @@ function getMissingHotelProposalFields(hotel: HotelWithDetails): string[] {
   return HOTEL_PROPOSAL_REQUIRED_FIELDS.filter(({ key }) => !hasTextValue(hotel[key])).map(
     ({ label }) => label,
   );
+}
+
+function buildInsertHotelPayloadFromHotel(hotel: HotelWithDetails): InsertHotel {
+  const toNullableNumber = (value: unknown): number | null => {
+    if (value == null) {
+      return null;
+    }
+
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : null;
+    }
+
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const toDateInput = (value: unknown): string | Date => {
+    if (value instanceof Date) {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      return value;
+    }
+
+    if (value == null) {
+      throw new Error("Missing hotel date value");
+    }
+
+    const parsedDate = new Date(value as string | number);
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new Error("Invalid hotel date value");
+    }
+
+    return parsedDate.toISOString();
+  };
+
+  return {
+    tripId: hotel.tripId,
+    hotelName: hotel.hotelName ?? hotel.name ?? "",
+    address: hotel.address ?? "",
+    city: hotel.city ?? "",
+    country: hotel.country ?? "",
+    checkInDate: toDateInput(hotel.checkInDate),
+    checkOutDate: toDateInput(hotel.checkOutDate),
+    guestCount: toNullableNumber(hotel.guestCount),
+    roomCount: toNullableNumber(hotel.roomCount),
+    roomType: hotel.roomType ?? null,
+    hotelChain: hotel.hotelChain ?? null,
+    hotelRating: toNullableNumber(hotel.hotelRating),
+    bookingReference: hotel.bookingReference ?? null,
+    totalPrice: toNullableNumber(hotel.totalPrice),
+    pricePerNight: toNullableNumber(hotel.pricePerNight),
+    currency: hotel.currency ?? "USD",
+    status: hotel.status ?? "confirmed",
+    bookingSource: hotel.bookingSource ?? null,
+    purchaseUrl: hotel.purchaseUrl ?? null,
+    amenities: hotel.amenities ?? null,
+    images: hotel.images ?? null,
+    policies: hotel.policies ?? null,
+    contactInfo: hotel.contactInfo ?? null,
+    bookingPlatform: hotel.bookingPlatform ?? null,
+    bookingUrl: hotel.bookingUrl ?? null,
+    cancellationPolicy: hotel.cancellationPolicy ?? null,
+    notes: hotel.notes ?? null,
+    latitude: toNullableNumber(hotel.latitude),
+    longitude: toNullableNumber(hotel.longitude),
+    zipCode: hotel.zipCode ?? null,
+  };
 }
 
 function formatList(items: string[]): string {
@@ -6159,10 +6230,16 @@ function HotelBooking({
   const manualHotels = useMemo(() => hotels, [hotels]);
   const [proposingHotelId, setProposingHotelId] = useState<number | string | null>(null);
   const proposeHotelMutation = useMutation({
-    mutationFn: async ({ hotelId }: { hotelId: number }) => {
+    mutationFn: async (hotel: HotelWithDetails) => {
+      const parsedHotelId = Number.parseInt(String(hotel.id), 10);
+      if (!Number.isFinite(parsedHotelId)) {
+        throw new Error("Invalid hotel ID");
+      }
+
+      const payload = buildInsertHotelPayloadFromHotel(hotel);
       return apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
-        body: { hotelId },
+        body: { ...payload, id: parsedHotelId, hotelId: parsedHotelId },
       });
     },
     onSuccess: async () => {
@@ -6225,8 +6302,7 @@ function HotelBooking({
         return;
       }
 
-      const parsedHotelId = Number.parseInt(String(hotel.id), 10);
-      if (!Number.isFinite(parsedHotelId)) {
+      if (!Number.isFinite(Number.parseInt(String(hotel.id), 10))) {
         toast({
           title: "Unable to share stay",
           description: "We couldn’t determine which stay to share. Try saving it again and then propose it to the group.",
@@ -6236,14 +6312,11 @@ function HotelBooking({
       }
 
       setProposingHotelId(hotel.id);
-      proposeHotelMutation.mutate(
-        { hotelId: parsedHotelId },
-        {
-          onSettled: () => {
-            setProposingHotelId(null);
-          },
+      proposeHotelMutation.mutate(hotel, {
+        onSettled: () => {
+          setProposingHotelId(null);
         },
-      );
+      });
     },
     [proposeHotelMutation, toast],
   );
