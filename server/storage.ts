@@ -1,5 +1,6 @@
 import { pool, query } from "./db";
 import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoShared";
+import { convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
 import {
   computeSplits,
   minorUnitsToAmount,
@@ -4175,138 +4176,206 @@ export class DatabaseStorage implements IStorage {
       [tripId],
     );
 
-    if (activityRows.length === 0) {
-      return [];
+    const legacyActivities: ActivityWithDetails[] = [];
+
+    if (activityRows.length > 0) {
+      const activityIds = activityRows.map((row) => row.id);
+
+      await this.ensureActivityInviteStructures();
+
+      const { rows: inviteRows } = await query<ActivityInviteWithUserRow>(
+        `
+        SELECT
+          ai.id,
+          ai.activity_id,
+          ai.user_id,
+          ai.status,
+          ai.responded_at,
+          ai.created_at,
+          ai.updated_at,
+          ${selectUserColumns("u", "user_")}
+        FROM activity_invites ai
+        JOIN users u ON u.id = ai.user_id
+        WHERE ai.activity_id = ANY($1::int[])
+        ORDER BY
+          CASE ai.status
+            WHEN 'accepted' THEN 0
+            WHEN 'pending' THEN 1
+            ELSE 2
+          END,
+          ai.responded_at ASC NULLS LAST,
+          ai.created_at ASC,
+          ai.id ASC
+        `,
+        [activityIds],
+      );
+
+      const { rows: commentRows } = await query<ActivityCommentWithUserRow>(
+        `
+        SELECT
+          ac.id,
+          ac.activity_id,
+          ac.user_id AS comment_user_id,
+          ac.comment,
+          ac.created_at,
+          u.id AS user_id,
+          u.email AS user_email,
+          u.username AS user_username,
+          u.first_name AS user_first_name,
+          u.last_name AS user_last_name,
+          u.phone_number AS user_phone_number,
+          u.password_hash AS user_password_hash,
+          u.profile_image_url AS user_profile_image_url,
+          u.cashapp_username AS user_cashapp_username,
+          u.cash_app_username AS user_cash_app_username,
+          u.cashapp_phone AS user_cashapp_phone,
+          u.cash_app_phone AS user_cash_app_phone,
+          u.venmo_username AS user_venmo_username,
+          u.venmo_phone AS user_venmo_phone,
+          u.timezone AS user_timezone,
+          u.default_location AS user_default_location,
+          u.default_location_code AS user_default_location_code,
+          u.default_city AS user_default_city,
+          u.default_country AS user_default_country,
+          u.auth_provider AS user_auth_provider,
+          u.notification_preferences AS user_notification_preferences,
+          u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
+          u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
+          u.created_at AS user_created_at,
+          u.updated_at AS user_updated_at
+        FROM activity_comments ac
+        JOIN users u ON u.id = ac.user_id
+        WHERE ac.activity_id = ANY($1::int[])
+        ORDER BY ac.created_at ASC, ac.id ASC
+        `,
+        [activityIds],
+      );
+
+      const inviteMap = new Map<number, (ActivityInvite & { user: User })[]>();
+      for (const row of inviteRows) {
+        const invite: ActivityInvite & { user: User } = {
+          ...mapActivityInvite(row),
+          user: mapUserFromPrefix(row, "user_"),
+        };
+        const list = inviteMap.get(row.activity_id) ?? [];
+        list.push(invite);
+        inviteMap.set(row.activity_id, list);
+      }
+
+      const commentMap = new Map<number, (ActivityComment & { user: User })[]>();
+      for (const row of commentRows) {
+        const comment: ActivityComment & { user: User } = {
+          ...mapComment(row),
+          user: mapUserFromPrefix(row, "user_"),
+        };
+        const list = commentMap.get(row.activity_id) ?? [];
+        list.push(comment);
+        commentMap.set(row.activity_id, list);
+      }
+
+      for (const row of activityRows) {
+        const poster = mapUserFromPrefix(row, "poster_");
+        const invites = inviteMap.get(row.id) ?? [];
+        const acceptances = invites
+          .filter((invite) => invite.status === "accepted")
+          .map((invite, index) => ({
+            id: invite.id * 1000 + index + 1,
+            activityId: invite.activityId,
+            userId: invite.userId,
+            acceptedAt: invite.respondedAt,
+            user: invite.user,
+          }));
+        const comments = commentMap.get(row.id) ?? [];
+        const currentUserInvite = invites.find((invite) => invite.userId === userId);
+        const isAccepted = currentUserInvite?.status === "accepted" ? true : undefined;
+        const hasResponded =
+          currentUserInvite && currentUserInvite.status !== "pending" ? true : undefined;
+
+        const legacyActivity = {
+          ...mapActivityWithDetails(row),
+          poster,
+          invites,
+          acceptances,
+          comments,
+          acceptedCount: invites.filter((invite) => invite.status === "accepted").length,
+          pendingCount: invites.filter((invite) => invite.status === "pending").length,
+          declinedCount: invites.filter((invite) => invite.status === "declined").length,
+          waitlistedCount: invites.filter((invite) => invite.status === "waitlisted").length,
+          currentUserInvite: currentUserInvite ?? null,
+          isAccepted,
+          hasResponded,
+          permissions: {
+            canCancel: row.posted_by === userId,
+          },
+        } satisfies ActivityWithDetails & {
+          poster: User;
+          invites: (ActivityInvite & { user: User })[];
+          acceptances: (ActivityAcceptance & { user: User })[];
+          comments: (ActivityComment & { user: User })[];
+          currentUserInvite: (ActivityInvite & { user: User }) | null;
+          permissions: { canCancel: boolean };
+        };
+
+        legacyActivities.push(legacyActivity);
+      }
     }
 
-    const activityIds = activityRows.map((row) => row.id);
+    const shouldIncludeV2 = process.env.FEATURE_ACTIVITIES_V2 === "true";
+    const combined = [...legacyActivities];
 
-    await this.ensureActivityInviteStructures();
+    if (shouldIncludeV2) {
+      try {
+        const v2Activities = await listActivitiesForTripV2({
+          tripId,
+          currentUserId: userId,
+        });
 
-    const { rows: inviteRows } = await query<ActivityInviteWithUserRow>(
-      `
-      SELECT
-        ai.id,
-        ai.activity_id,
-        ai.user_id,
-        ai.status,
-        ai.responded_at,
-        ai.created_at,
-        ai.updated_at,
-        ${selectUserColumns("u", "user_")}
-      FROM activity_invites ai
-      JOIN users u ON u.id = ai.user_id
-      WHERE ai.activity_id = ANY($1::int[])
-      ORDER BY
-        CASE ai.status
-          WHEN 'accepted' THEN 0
-          WHEN 'pending' THEN 1
-          ELSE 2
-        END,
-        ai.responded_at ASC NULLS LAST,
-        ai.created_at ASC,
-        ai.id ASC
-      `,
-      [activityIds],
-    );
-
-    const { rows: commentRows } = await query<ActivityCommentWithUserRow>(
-      `
-      SELECT
-        ac.id,
-        ac.activity_id,
-        ac.user_id AS comment_user_id,
-        ac.comment,
-        ac.created_at,
-        u.id AS user_id,
-        u.email AS user_email,
-        u.username AS user_username,
-        u.first_name AS user_first_name,
-        u.last_name AS user_last_name,
-        u.phone_number AS user_phone_number,
-        u.password_hash AS user_password_hash,
-        u.profile_image_url AS user_profile_image_url,
-        u.cashapp_username AS user_cashapp_username,
-        u.cash_app_username AS user_cash_app_username,
-        u.cashapp_phone AS user_cashapp_phone,
-        u.cash_app_phone AS user_cash_app_phone,
-        u.venmo_username AS user_venmo_username,
-        u.venmo_phone AS user_venmo_phone,
-        u.timezone AS user_timezone,
-        u.default_location AS user_default_location,
-        u.default_location_code AS user_default_location_code,
-        u.default_city AS user_default_city,
-        u.default_country AS user_default_country,
-        u.auth_provider AS user_auth_provider,
-        u.notification_preferences AS user_notification_preferences,
-        u.has_seen_home_onboarding AS user_has_seen_home_onboarding,
-        u.has_seen_trip_onboarding AS user_has_seen_trip_onboarding,
-        u.created_at AS user_created_at,
-        u.updated_at AS user_updated_at
-      FROM activity_comments ac
-      JOIN users u ON u.id = ac.user_id
-      WHERE ac.activity_id = ANY($1::int[])
-      ORDER BY ac.created_at ASC, ac.id ASC
-      `,
-      [activityIds],
-    );
-
-    const inviteMap = new Map<number, (ActivityInvite & { user: User })[]>();
-    for (const row of inviteRows) {
-      const invite: ActivityInvite & { user: User } = {
-        ...mapActivityInvite(row),
-        user: mapUserFromPrefix(row, "user_"),
-      };
-      const list = inviteMap.get(row.activity_id) ?? [];
-      list.push(invite);
-      inviteMap.set(row.activity_id, list);
+        if (v2Activities.length > 0) {
+          const converted = convertActivitiesV2ToLegacy(v2Activities, {
+            currentUserId: userId,
+          });
+          const existingIds = new Set(combined.map((activity) => activity.id));
+          for (const activity of converted) {
+            if (existingIds.has(activity.id)) {
+              continue;
+            }
+            combined.push(activity);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load Activities V2 records", {
+          tripId,
+          error,
+        });
+      }
     }
 
-    const commentMap = new Map<number, (ActivityComment & { user: User })[]>();
-    for (const row of commentRows) {
-      const comment: ActivityComment & { user: User } = {
-        ...mapComment(row),
-        user: mapUserFromPrefix(row, "user_"),
-      };
-      const list = commentMap.get(row.activity_id) ?? [];
-      list.push(comment);
-      commentMap.set(row.activity_id, list);
+    if (combined.length <= 1) {
+      return combined;
     }
 
-    return activityRows.map((row) => {
-      const poster = mapUserFromPrefix(row, "poster_");
-      const invites = inviteMap.get(row.id) ?? [];
-      const acceptances = invites
-        .filter((invite) => invite.status === "accepted")
-        .map((invite) => ({
-          id: invite.id,
-          activityId: invite.activityId,
-          userId: invite.userId,
-          acceptedAt: invite.respondedAt,
-          user: invite.user,
-        }));
-      const comments = commentMap.get(row.id) ?? [];
-      const currentUserInvite = invites.find((invite) => invite.userId === userId);
-      const isAccepted =
-        currentUserInvite?.status === "accepted" ? true : undefined;
-      const hasResponded =
-        currentUserInvite && currentUserInvite.status !== "pending"
-          ? true
-          : undefined;
+    const getSortValue = (activity: ActivityWithDetails): number => {
+      const startTime = activity.startTime ? Date.parse(activity.startTime) : Number.NaN;
+      if (!Number.isNaN(startTime)) {
+        return startTime;
+      }
+      const created = activity.createdAt ? Date.parse(activity.createdAt) : Number.NaN;
+      if (!Number.isNaN(created)) {
+        return created;
+      }
+      return Number.MAX_SAFE_INTEGER;
+    };
 
-      return mapActivityWithDetails({
-        ...row,
-        poster,
-        invites,
-        acceptances,
-        comments,
-        currentUserInvite,
-        isAccepted,
-        hasResponded,
-        currentUserId: userId,
-      });
+    return combined.sort((a, b) => {
+      const aValue = getSortValue(a);
+      const bValue = getSortValue(b);
+      if (aValue !== bValue) {
+        return aValue - bValue;
+      }
+      return a.id - b.id;
     });
   }
+
 
   async cancelActivity(activityId: number, currentUserId: string): Promise<Activity> {
     const activity = await this.getActivityById(activityId);
