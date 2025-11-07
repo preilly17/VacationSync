@@ -9,6 +9,8 @@ const ORIGINAL_ENV = process.env.NODE_ENV;
 
 const createTripFixture = () => {
   const now = new Date();
+  const tripStart = new Date("2024-03-01T00:00:00.000Z");
+  const tripEnd = new Date("2024-05-01T00:00:00.000Z");
 
   const creatorUser: TripWithDetails["creator"] = {
     id: "organizer",
@@ -70,8 +72,8 @@ const createTripFixture = () => {
     id: 123,
     name: "Spring Adventure",
     destination: "Paris",
-    startDate: now.toISOString(),
-    endDate: now.toISOString(),
+    startDate: tripStart.toISOString(),
+    endDate: tripEnd.toISOString(),
     shareCode: "share-code",
     createdBy: creatorUser.id,
     createdAt: now.toISOString(),
