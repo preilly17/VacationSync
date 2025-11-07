@@ -44,10 +44,17 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
   const normalizedTripId = useMemo(() => {
     if (typeof tripId === "string") {
       const parsed = Number.parseInt(tripId, 10);
-      return Number.isNaN(parsed) ? undefined : parsed;
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+      return undefined;
     }
 
-    return tripId ?? undefined;
+    if (typeof tripId === "number" && Number.isFinite(tripId) && tripId > 0) {
+      return tripId;
+    }
+
+    return undefined;
   }, [tripId]);
 
   const defaultValues = useMemo<RestaurantManualAddFormValues>(() => {
@@ -78,8 +85,8 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
 
   const mutation = useMutation({
     mutationFn: async (values: RestaurantManualAddFormValues) => {
-      if (!normalizedTripId) {
-        throw new Error("Unable to save without a trip");
+      if (normalizedTripId == null) {
+        throw new Error("Trip details are still loading. Please try again in a moment.");
       }
 
       const sanitizedUrl = prefill?.url?.trim() ? prefill.url.trim() : null;
@@ -109,7 +116,7 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
       });
     },
     onSuccess: async () => {
-      if (normalizedTripId) {
+      if (normalizedTripId != null) {
         queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurants"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", String(normalizedTripId), "restaurants"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurant-proposals"] });
@@ -282,7 +289,10 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
               <Button type="button" variant="outline" onClick={() => handleClose(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={!form.formState.isValid || mutation.isPending}>
+              <Button
+                type="submit"
+                disabled={!form.formState.isValid || mutation.isPending || normalizedTripId == null}
+              >
                 {mutation.isPending ? "Saving..." : "Save restaurant"}
               </Button>
             </DialogFooter>
