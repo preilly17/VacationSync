@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useTripRealtime } from "@/hooks/use-trip-realtime";
 import { ApiError, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -61,6 +62,7 @@ import type {
   User,
 } from "@shared/schema";
 import { sortActivitiesByStartTime } from "@/lib/activities/activityCreation";
+import { updateActivityInviteStatus } from "@/lib/activities/updateInviteStatus";
 
 type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
 
@@ -315,6 +317,8 @@ function ProposalsPage({
   const [responseFilter, setResponseFilter] = useState<"needs-response" | "accepted">(
     "needs-response",
   );
+
+  useTripRealtime(tripId, { enabled: !!tripId && isAuthenticated, userId: user?.id ?? null });
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -919,18 +923,48 @@ function ProposalsPage({
         return {};
       }
 
-      const queryKey = [`/api/trips/${tripId}/proposals/activities`] as const;
-      await queryClient.cancelQueries({ queryKey });
+      const proposalKey = [`/api/trips/${tripId}/proposals/activities`] as const;
+      const activitiesKey = [`/api/trips/${tripId}/activities`] as const;
+      const legacyActivitiesKey = ["/api/trips", tripId, "activities"] as const;
 
-      const previousActivities = queryClient.getQueryData<ActivityWithDetails[]>(queryKey) ?? null;
-      if (previousActivities) {
-        const updatedActivities = previousActivities.map((activity) =>
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: proposalKey }),
+        queryClient.cancelQueries({ queryKey: activitiesKey }),
+        queryClient.cancelQueries({ queryKey: legacyActivitiesKey }),
+      ]);
+
+      const previousProposals = queryClient.getQueryData<ActivityWithDetails[]>(proposalKey) ?? null;
+      const previousCalendarActivities = queryClient.getQueryData<ActivityWithDetails[]>(activitiesKey) ?? null;
+      const previousLegacyActivities = queryClient.getQueryData<ActivityWithDetails[]>(legacyActivitiesKey) ?? null;
+
+      const applyUpdate = (list: ActivityWithDetails[] | null) =>
+        list?.map((activity) =>
           activity.id === activityId ? applyOptimisticActivityInviteUpdate(activity, nextStatus) : activity,
-        );
-        queryClient.setQueryData(queryKey, updatedActivities);
+        ) ?? null;
+
+      const updatedProposals = applyUpdate(previousProposals);
+      if (updatedProposals) {
+        queryClient.setQueryData(proposalKey, updatedProposals);
       }
 
-      return { previousActivities, queryKey } as const;
+      const updatedCalendarActivities = applyUpdate(previousCalendarActivities);
+      if (updatedCalendarActivities) {
+        queryClient.setQueryData(activitiesKey, updatedCalendarActivities);
+      }
+
+      const updatedLegacyActivities = applyUpdate(previousLegacyActivities);
+      if (updatedLegacyActivities) {
+        queryClient.setQueryData(legacyActivitiesKey, updatedLegacyActivities);
+      }
+
+      return {
+        proposalKey,
+        activitiesKey,
+        legacyActivitiesKey,
+        previousProposals,
+        previousCalendarActivities,
+        previousLegacyActivities,
+      } as const;
     },
     onError: (error, _variables, context) => {
       if (isUnauthorizedError(error)) {
@@ -938,8 +972,16 @@ function ProposalsPage({
         return;
       }
 
-      if (context?.previousActivities && context.queryKey) {
-        queryClient.setQueryData(context.queryKey, context.previousActivities);
+      if (context) {
+        if (context.previousProposals && context.proposalKey) {
+          queryClient.setQueryData(context.proposalKey, context.previousProposals);
+        }
+        if (context.previousCalendarActivities && context.activitiesKey) {
+          queryClient.setQueryData(context.activitiesKey, context.previousCalendarActivities);
+        }
+        if (context.previousLegacyActivities && context.legacyActivitiesKey) {
+          queryClient.setQueryData(context.legacyActivitiesKey, context.previousLegacyActivities);
+        }
       }
 
       const parsedError = parseApiError(error);
@@ -957,6 +999,8 @@ function ProposalsPage({
     onSuccess: () => {
       if (tripId) {
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
       }
     },
   });
@@ -1116,91 +1160,13 @@ function ProposalsPage({
     [user?.id],
   );
 
-  type ActivityInviteWithUser = ActivityWithDetails["invites"][number];
-  type ActivityAcceptanceWithUser = ActivityWithDetails["acceptances"][number];
-
   const applyOptimisticActivityInviteUpdate = useCallback(
-    (activity: ActivityWithDetails, nextStatus: ActivityInviteStatus): ActivityWithDetails => {
-      const nowIso = new Date().toISOString();
-      const invites: ActivityInviteWithUser[] = activity.invites
-        ? activity.invites.map((invite) => ({ ...invite }))
-        : [];
-
-      const targetUserId = user?.id ?? activity.currentUserInvite?.userId ?? null;
-      if (!targetUserId) {
-        return activity;
-      }
-
-      const existingIndex = invites.findIndex((invite) => invite.userId === targetUserId);
-      let updatedInvite: ActivityInviteWithUser | null = null;
-
-      if (existingIndex >= 0) {
-        const baseInvite = invites[existingIndex];
-        updatedInvite = {
-          ...baseInvite,
-          status: nextStatus,
-          respondedAt: nextStatus === "pending" ? null : nowIso,
-          updatedAt: nowIso,
-          user: baseInvite.user ?? user ?? baseInvite.user,
-        };
-        invites[existingIndex] = updatedInvite;
-      } else if (user && user.id === targetUserId) {
-        updatedInvite = {
-          id: -Math.abs(Date.now()),
-          activityId: activity.id,
-          userId: targetUserId,
-          status: nextStatus,
-          respondedAt: nextStatus === "pending" ? null : nowIso,
-          createdAt: nowIso,
-          updatedAt: nowIso,
-          user,
-        } as ActivityInviteWithUser;
-        invites.push(updatedInvite);
-      }
-
-      if (!updatedInvite) {
-        return activity;
-      }
-
-      const counts = invites.reduce(
-        (acc, invite) => {
-          if (invite.status === "accepted") {
-            acc.accepted += 1;
-          } else if (invite.status === "declined") {
-            acc.declined += 1;
-          } else if (invite.status === "waitlisted") {
-            acc.waitlisted += 1;
-          } else {
-            acc.pending += 1;
-          }
-          return acc;
-        },
-        { accepted: 0, pending: 0, declined: 0, waitlisted: 0 },
-      );
-
-      const acceptances: ActivityAcceptanceWithUser[] = invites
-        .filter((invite) => invite.status === "accepted")
-        .map((invite) => ({
-          id: invite.id,
-          activityId: activity.id,
-          userId: invite.userId,
-          acceptedAt: invite.respondedAt,
-          user: invite.user,
-        }));
-
-      return {
-        ...activity,
-        invites,
-        currentUserInvite: updatedInvite,
-        acceptedCount: counts.accepted,
-        pendingCount: counts.pending,
-        declinedCount: counts.declined,
-        waitlistedCount: counts.waitlisted,
-        acceptances,
-        isAccepted: nextStatus === "accepted" ? true : undefined,
-        hasResponded: nextStatus === "pending" ? undefined : true,
-      };
-    },
+    (activity: ActivityWithDetails, nextStatus: ActivityInviteStatus): ActivityWithDetails =>
+      updateActivityInviteStatus(activity, {
+        nextStatus,
+        user: user ?? null,
+        targetUserId: user?.id ?? activity.currentUserInvite?.userId ?? null,
+      }),
     [user],
   );
 
