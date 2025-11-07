@@ -280,12 +280,34 @@ const actionToStatusMap: Record<ActivityRsvpAction, ActivityInviteStatus | null>
   MAYBE: "pending",
 };
 
+const normalizeTripId = (value?: string | number | null): number | undefined => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) && value > 0 ? value : undefined;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+
+  return undefined;
+};
+
 function ProposalsPage({
-  tripId,
+  tripId: initialTripId,
   embedded = false,
   includeUserProposalsInCategories = false,
   formatFlightDateTime,
 }: ProposalsPageProps = {}) {
+  const { tripId: routeTripId } = useParams<{ tripId?: string }>();
+  const tripId = useMemo(() => {
+    if (initialTripId !== undefined && initialTripId !== null) {
+      return normalizeTripId(initialTripId);
+    }
+
+    return normalizeTripId(routeTripId ?? null);
+  }, [initialTripId, routeTripId]);
+
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -2910,8 +2932,8 @@ function ProposalsPage({
 
 // Route wrapper component for standalone routes
 function ProposalsRoute() {
-  const { tripId } = useParams<{ tripId: string }>();
-  return <ProposalsPage tripId={parseInt(tripId || "0")} />;
+  const { tripId } = useParams<{ tripId?: string }>();
+  return <ProposalsPage tripId={normalizeTripId(tripId ?? null)} />;
 }
 
 // Export both components
