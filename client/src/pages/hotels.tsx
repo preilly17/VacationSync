@@ -218,9 +218,11 @@ export default function HotelsPage() {
     try {
       const payload = buildHotelProposalPayload(hotel);
 
-      await apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
+      await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
         body: JSON.stringify({
+          tripId,
+          ...(manualHotelId != null ? { hotelId: manualHotelId } : {}),
           hotelName: payload.hotelName,
           location: payload.location,
           price: payload.price,
