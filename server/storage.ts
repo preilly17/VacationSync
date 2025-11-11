@@ -1,7 +1,6 @@
 import { pool, query } from "./db";
 import type { PoolClient } from "pg";
 import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoShared";
-import { convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
 import {
   computeSplits,
   minorUnitsToAmount,
@@ -4426,35 +4425,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const shouldIncludeV2 = process.env.FEATURE_ACTIVITIES_V2 === "true";
     const combined = [...legacyActivities];
-
-    if (shouldIncludeV2) {
-      try {
-        const v2Activities = await listActivitiesForTripV2({
-          tripId,
-          currentUserId: userId,
-        });
-
-        if (v2Activities.length > 0) {
-          const converted = convertActivitiesV2ToLegacy(v2Activities, {
-            currentUserId: userId,
-          });
-          const existingIds = new Set(combined.map((activity) => activity.id));
-          for (const activity of converted) {
-            if (existingIds.has(activity.id)) {
-              continue;
-            }
-            combined.push(activity);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to load Activities V2 records", {
-          tripId,
-          error,
-        });
-      }
-    }
 
     if (combined.length <= 1) {
       return combined;

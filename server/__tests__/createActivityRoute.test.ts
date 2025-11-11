@@ -15,7 +15,6 @@ let setupRoutes: (app: express.Express) => import("http").Server;
 let storageModule: any;
 let storage: any;
 let observabilityModule: any;
-let activitiesV2Module: any;
 let activityValidationModule: any;
 let logActivityCreationFailure: jest.SpyInstance;
 let trackActivityCreationMetric: jest.SpyInstance;
@@ -74,11 +73,6 @@ beforeAll(async () => {
     registerCoverPhotoUploadRoutes: jest.fn(),
   }));
 
-  await jest.unstable_mockModule("../activitiesV2", () => ({
-    __esModule: true,
-    createActivityV2: jest.fn(),
-  }));
-
   await jest.unstable_mockModule("ws", () => ({
     __esModule: true,
     WebSocketServer: jest.fn(() => ({
@@ -95,7 +89,6 @@ beforeAll(async () => {
   storage = storageModule.storage;
 
   observabilityModule = await import("../observability");
-  activitiesV2Module = await import("../activitiesV2");
   activityValidationModule = await import("@shared/activityValidation");
 });
 
@@ -616,70 +609,53 @@ describe("POST /api/trips/:id/activities", () => {
     };
 
     const res = createMockResponse();
-    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
-    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
-    process.env.FEATURE_ACTIVITIES_V2 = "true";
-    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
 
-    try {
-      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
-      const createdActivity = {
-        id: 42,
+    const createdActivity = {
+      id: 42,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      description: requestBody.description,
+      startTime: requestBody.startTime,
+      endTime: requestBody.endTime,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: requestBody.category,
+      status: "active",
+      type: "SCHEDULED",
+    };
+
+    const legacyCreateSpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    const getActivitiesSpy = jest
+      .spyOn(storage, "getTripActivities")
+      .mockResolvedValueOnce([createdActivity] as any);
+
+    const createNotificationSpy = jest
+      .spyOn(storage, "createNotification")
+      .mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(legacyCreateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
         tripCalendarId: trip.id,
         name: requestBody.name,
-        description: requestBody.description,
-        startTime: requestBody.startTime,
-        endTime: requestBody.endTime,
-        location: null,
-        cost: null,
-        maxCapacity: null,
-        category: requestBody.category,
-        status: "active",
-        type: "SCHEDULED",
-      };
-
-      const legacyCreateSpy = jest
-        .spyOn(storage, "createActivityWithInvites")
-        .mockResolvedValueOnce(createdActivity as any);
-
-      const getActivitiesSpy = jest
-        .spyOn(storage, "getTripActivities")
-        .mockResolvedValueOnce([createdActivity] as any);
-
-      const createNotificationSpy = jest
-        .spyOn(storage, "createNotification")
-        .mockResolvedValue(undefined as any);
-
-      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
-
-      await handler(req, res);
-
-      expect(createActivityV2Spy).not.toHaveBeenCalled();
-      expect(legacyCreateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tripCalendarId: trip.id,
-          name: requestBody.name,
-        }),
-        "organizer",
-        ["friend"],
-      );
-      expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
-      expect(createNotificationSpy).toHaveBeenCalledTimes(1);
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
-    } finally {
-      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
-      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
-    }
+      }),
+      "organizer",
+      ["friend"],
+    );
+    expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
+    expect(createNotificationSpy).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
   });
 
   it("returns a trip date range message when a v2-style payload is outside the window", async () => {
-    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
-    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
-    process.env.FEATURE_ACTIVITIES_V2 = "true";
-    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
-
     const trip = {
       id: 555,
       members: [{ userId: "organizer", user: { firstName: "Org", email: "org@example.com" } }],
@@ -709,27 +685,19 @@ describe("POST /api/trips/:id/activities", () => {
 
     const res = createMockResponse();
 
-    try {
-      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
-      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
+    await handler(req, res);
 
-      await handler(req, res);
-
-      expect(createActivityV2Spy).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-      const payload = res.json.mock.calls[0][0];
-      expect(payload.message).toBe("Activity name is required.");
-      expect(payload.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "name" }),
-          expect.objectContaining({ field: "startDate" }),
-        ]),
-      );
-    } finally {
-      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
-      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
-    }
+    expect(res.status).toHaveBeenCalledWith(400);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.message).toBe("Activity name is required.");
+    expect(payload.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ field: "name" }),
+        expect.objectContaining({ field: "startDate" }),
+      ]),
+    );
   });
 
   it("allows activity proposals without a start time via the legacy pipeline", async () => {
@@ -762,70 +730,58 @@ describe("POST /api/trips/:id/activities", () => {
 
     const proposalHandler = findRouteHandler(app, "/api/trips/:tripId/proposals/activities", "post");
     const res = createMockResponse();
-    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
-    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
-    process.env.FEATURE_ACTIVITIES_V2 = "true";
-    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
 
-    try {
-      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
-      const createdActivity = {
-        id: 55,
+    const createdActivity = {
+      id: 55,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      description: requestBody.description,
+      startTime: null,
+      endTime: null,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: requestBody.category,
+      status: "pending",
+      type: "PROPOSE",
+    };
+
+    const createActivitySpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    const getActivitiesSpy = jest
+      .spyOn(storage, "getTripActivities")
+      .mockResolvedValueOnce([createdActivity] as any);
+
+    const createNotificationSpy = jest
+      .spyOn(storage, "createNotification")
+      .mockResolvedValue(undefined as any);
+
+    await proposalHandler(req, res);
+
+    expect(createActivitySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
         tripCalendarId: trip.id,
         name: requestBody.name,
-        description: requestBody.description,
-        startTime: null,
-        endTime: null,
-        location: null,
-        cost: null,
-        maxCapacity: null,
-        category: requestBody.category,
-        status: "pending",
         type: "PROPOSE",
-      };
-
-      const createActivitySpy = jest
-        .spyOn(storage, "createActivityWithInvites")
-        .mockResolvedValueOnce(createdActivity as any);
-
-      const getActivitiesSpy = jest
-        .spyOn(storage, "getTripActivities")
-        .mockResolvedValueOnce([createdActivity] as any);
-
-      const createNotificationSpy = jest
-        .spyOn(storage, "createNotification")
-        .mockResolvedValue(undefined as any);
-
-      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
-
-      await proposalHandler(req, res);
-
-      expect(createActivityV2Spy).not.toHaveBeenCalled();
-      expect(createActivitySpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tripCalendarId: trip.id,
-          name: requestBody.name,
-          type: "PROPOSE",
-        }),
-        "organizer",
-        ["friend"],
-      );
-      expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
-      expect(createNotificationSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: "friend",
-          type: "activity_proposal",
-          tripId: trip.id,
-          activityId: createdActivity.id,
-        }),
-      );
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
-    } finally {
-      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
-      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
-    }
+      }),
+      "organizer",
+      ["friend"],
+    );
+    expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
+    expect(createNotificationSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "friend",
+        type: "activity_proposal",
+        tripId: trip.id,
+        activityId: createdActivity.id,
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
   });
 
   it("ensures the demo user exists before creating an activity in development", async () => {
