@@ -24,9 +24,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useTripRealtime } from "@/hooks/use-trip-realtime";
 import { ApiError, apiRequest } from "@/lib/queryClient";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { differenceInMinutes, format, formatDistanceToNow } from "date-fns";
+import { differenceInCalendarDays, differenceInMinutes, format, formatDistanceToNow } from "date-fns";
 import { filterActiveProposals, isCanceledStatus, normalizeProposalStatus } from "./proposalStatusFilters";
 import {
   ArrowLeft,
@@ -1868,7 +1868,68 @@ function ProposalsPage({
       getUserRanking(proposal.rankings || [], user?.id || "");
     const groupSize = trip?.members?.length || 0;
     const budgetBreakdown = calculateGroupBudget(proposal.price, groupSize);
-    
+
+    const checkInDate = proposal.checkInDate ? new Date(proposal.checkInDate) : null;
+    const checkOutDate = proposal.checkOutDate ? new Date(proposal.checkOutDate) : null;
+
+    const stayDateLabel = (() => {
+      if (!checkInDate || !checkOutDate) {
+        return null;
+      }
+
+      if (Number.isNaN(checkInDate.getTime()) || Number.isNaN(checkOutDate.getTime())) {
+        return null;
+      }
+
+      try {
+        const checkInLabel = format(checkInDate, "MMM d, yyyy");
+        const checkOutLabel = format(checkOutDate, "MMM d, yyyy");
+        return `${checkInLabel} → ${checkOutLabel}`;
+      } catch {
+        return null;
+      }
+    })();
+
+    const stayNights = (() => {
+      if (!checkInDate || !checkOutDate) {
+        return null;
+      }
+
+      const diff = differenceInCalendarDays(checkOutDate, checkInDate);
+      if (!Number.isFinite(diff) || diff <= 0) {
+        return null;
+      }
+
+      return diff;
+    })();
+
+    const addressLine = proposal.address?.trim().length ? proposal.address : proposal.location;
+
+    const normalizePriceString = (value: string | null | undefined) => {
+      if (!value) {
+        return null;
+      }
+
+      const numeric = Number.parseFloat(value.replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+
+    const totalPriceNumber = normalizePriceString(proposal.price ?? null);
+    const totalPriceDisplay = totalPriceNumber !== null
+      ? formatCurrency(totalPriceNumber, {
+          currency: proposal.currency ?? "USD",
+          fallback: proposal.price ?? "Price TBD",
+        })
+      : proposal.price ?? "Price TBD";
+
+    const nightlyPriceNumber = normalizePriceString(proposal.pricePerNight ?? null);
+    const nightlyPriceDisplay = nightlyPriceNumber !== null
+      ? formatCurrency(nightlyPriceNumber, {
+          currency: proposal.currency ?? "USD",
+          fallback: proposal.pricePerNight ?? undefined,
+        })
+      : proposal.pricePerNight;
+
     const isCanceled = isCanceledStatus(proposal.status);
     const canCancel = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
@@ -1908,11 +1969,26 @@ function ProposalsPage({
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center gap-2 text-sm text-neutral-600">
+              <Calendar className="w-4 h-4 text-blue-600" />
+              <span data-testid={`text-hotel-dates-${proposal.id}`}>
+                {stayDateLabel ?? "Dates TBD"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-neutral-600">
+              <MapPin className="w-4 h-4 text-orange-600" />
+              <span data-testid={`text-hotel-address-${proposal.id}`} className="truncate">
+                {addressLine ?? "Address TBD"}
+              </span>
+            </div>
+          </div>
+
           <div className="mb-4">
             {renderRankingPreview(proposal.rankings ?? [])}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div className="flex items-center gap-2">
               <Star className="w-4 h-4 text-yellow-500" />
               <span className="font-medium" data-testid={`text-hotel-rating-${proposal.id}`}>
@@ -1922,10 +1998,20 @@ function ProposalsPage({
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-green-600" />
               <span className="font-medium" data-testid={`text-hotel-price-${proposal.id}`}>
-                ${proposal.price}
-                {proposal.pricePerNight && <span className="text-sm text-neutral-600">/night</span>}
+                {totalPriceDisplay}
+                {stayNights ? (
+                  <span className="ml-1 text-xs text-neutral-600">for {stayNights} night{stayNights > 1 ? "s" : ""}</span>
+                ) : null}
               </span>
             </div>
+            {nightlyPriceDisplay ? (
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-emerald-600" />
+                <span className="font-medium" data-testid={`text-hotel-nightly-${proposal.id}`}>
+                  {nightlyPriceDisplay} / night
+                </span>
+              </div>
+            ) : null}
           </div>
 
           {/* Group Budget Section */}
