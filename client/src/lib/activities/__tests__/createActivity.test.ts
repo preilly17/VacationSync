@@ -203,6 +203,39 @@ describe("normalizeActivityFromServer", () => {
     expect(normalized.endTime).toBeNull();
   });
 
+  it("fills in empty arrays when the server omits related collections", () => {
+    const now = new Date().toISOString();
+    const normalized = normalizeActivityFromServer({
+      id: 7,
+      tripCalendarId: 555,
+      postedBy: "organizer",
+      name: "Gallery visit",
+      description: null,
+      startTime: now,
+      endTime: null,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: "culture",
+      status: "active",
+      type: "SCHEDULED",
+      createdAt: now,
+      updatedAt: now,
+      poster: baseUser,
+    } as any);
+
+    expect(normalized.invites).toEqual([]);
+    expect(normalized.acceptances).toEqual([]);
+    expect(normalized.comments).toEqual([]);
+    expect(normalized.acceptedCount).toBe(0);
+    expect(normalized.pendingCount).toBe(0);
+    expect(normalized.declinedCount).toBe(0);
+    expect(normalized.waitlistedCount).toBe(0);
+    expect(normalized.currentUserInvite).toBeNull();
+    expect(normalized.isAccepted).toBeUndefined();
+    expect(normalized.hasResponded).toBeUndefined();
+  });
+
   it("converts activities v2 responses with invites and RSVPs", () => {
     const now = new Date().toISOString();
     const organizerUser: User = { ...baseUser, createdAt: now, updatedAt: now };

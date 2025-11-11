@@ -21,13 +21,12 @@
 - `client/src/components/__tests__/calendar-grid.proposal.test.tsx` – Unit coverage for proposal rendering inside the calendar grid.
 
 ### Client hooks & libraries
-- `client/src/lib/activities/createActivity.ts` – React Query mutation hook orchestrating submissions, optimistic updates, and version flag.
+- `client/src/lib/activities/createActivity.ts` – React Query mutation hook orchestrating submissions, optimistic updates, and query syncing.
 - `client/src/lib/activities/activityCreation.ts` – Client-side submission prep, optimistic builders, and API helpers.
 - `client/src/lib/activitySubmission.ts` – Shared payload normalizer for both legacy and "v2" endpoints.
 - `client/src/lib/activities/clientValidation.ts` – Additional form validation helpers.
 - `client/src/lib/api.ts` – Generic fetch helpers including `/search/activities` discovery endpoint.
 - `client/src/lib/__tests__/activitySubmission.test.ts`, `client/src/lib/activities/__tests__/createActivity.test.ts` – Unit tests for submission building and hook logic.
-- `client/src/hooks/use-new-activity-create.ts` – LocalStorage-gated flag selecting legacy vs "v2" create path.
 - `client/src/hooks/useBookingConfirmation.ts` – Notification flows that include activities.
 - `client/src/lib/externalRedirects.ts`, `client/src/components/ApiDebug.tsx` – Utility functions referencing external activity booking/search URLs.
 
@@ -59,7 +58,7 @@
 | Area | Canonical file(s) to keep | Duplicate/legacy artifacts to retire | Notes |
 | --- | --- | --- | --- |
 | UI Form | `client/src/components/add-activity-modal.tsx` | n/a | Single modal drives both schedule & propose; no competing form component found.
-| Client API layer | `client/src/lib/activities/createActivity.ts`, `client/src/lib/activities/activityCreation.ts`, `client/src/lib/activitySubmission.ts` | Remove the `activitiesVersion`/feature-flag plumbing and `client/src/hooks/use-new-activity-create.ts` once legacy path is gone. | Hook + helpers already support optimistic updates and validations; need to unify on one backend contract.
+| Client API layer | `client/src/lib/activities/createActivity.ts`, `client/src/lib/activities/activityCreation.ts`, `client/src/lib/activitySubmission.ts` | n/a | Hook + helpers handle optimistic updates and validations against the unified legacy endpoint.
 | Server API | `server/routes.ts` paired with `server/storage.ts` | `server/activitiesV2.ts` and its tests | Routes currently branch between legacy storage and V2 service via header; plan is to fold logic into the primary stack and drop V2 module.
 | Data schema | `shared/schema.ts` + `shared/activityValidation.ts` | `shared/activitiesV2.ts` | We'll extend the existing shared schema to match canonical fields and run migrations to collapse duplicate tables.
 | Calendar rendering | `client/src/components/calendar-grid.tsx` (+ `activity-card.tsx`, `activity-details-dialog.tsx`) | n/a | Single implementation for both month/day views; future work will refine layout but no duplicate component exists.
@@ -68,7 +67,7 @@
 | Notifications | `server/routes.ts` notification dispatch + `server/storage.ts` notification persistence + `client/src/components/notifications-section.tsx` | n/a | Ensure notifications remain single-sourced while cleaning up duplicate activity versions.
 
 ## Observations
-- Feature flag `use-new-activity-create` defaults to V2 but still allows falling back to legacy; deleting the V2 module will require simplifying this logic.
+- Activity creation now always targets the legacy endpoint; the previous `use-new-activity-create` flag has been removed.
 - Activities exist in two schemas/tables (`activities` via `storage.ts` and `activities_v2` via `activitiesV2.ts`). Storage-based queries back the majority of UI state, so V2 data never surfaces outside creation tests.
 - Calendar, proposals, and RSVP code each assume the legacy `ActivityWithDetails` shape from `shared/schema.ts`; adopting the canonical field list will require coordinated updates across these areas.
 

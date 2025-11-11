@@ -366,6 +366,43 @@ const normalizeLegacyActivity = (activity: ActivityWithDetails): ActivityWithDet
   const normalizedType =
     typeof rawType === "string" && rawType.trim().length > 0 ? (rawType as ActivityType) : derivedType;
 
+  const invites: ActivityWithDetails["invites"] = Array.isArray(activity.invites)
+    ? activity.invites
+    : [];
+  const acceptances: ActivityWithDetails["acceptances"] = Array.isArray(activity.acceptances)
+    ? activity.acceptances
+    : [];
+  const comments: ActivityWithDetails["comments"] = Array.isArray(activity.comments)
+    ? activity.comments
+    : [];
+
+  const acceptedCount = typeof activity.acceptedCount === "number"
+    ? activity.acceptedCount
+    : invites.filter((invite) => invite.status === "accepted").length;
+  const pendingCount = typeof activity.pendingCount === "number"
+    ? activity.pendingCount
+    : invites.filter((invite) => invite.status === "pending").length;
+  const declinedCount = typeof activity.declinedCount === "number"
+    ? activity.declinedCount
+    : invites.filter((invite) => invite.status === "declined").length;
+  const waitlistedCount = typeof activity.waitlistedCount === "number"
+    ? activity.waitlistedCount
+    : invites.filter((invite) => invite.status === "waitlisted").length;
+
+  const currentUserInvite = (activity as { currentUserInvite?: ActivityWithDetails["currentUserInvite"] }).currentUserInvite
+    ?? null;
+  const normalizedCurrentUserInvite = currentUserInvite ?? null;
+  const derivedIsAccepted = typeof activity.isAccepted === "boolean"
+    ? (activity.isAccepted ? true : undefined)
+    : normalizedCurrentUserInvite && normalizedCurrentUserInvite.status === "accepted"
+      ? true
+      : undefined;
+  const derivedHasResponded = typeof activity.hasResponded === "boolean"
+    ? (activity.hasResponded ? true : undefined)
+    : normalizedCurrentUserInvite && normalizedCurrentUserInvite.status !== "pending"
+      ? true
+      : undefined;
+
   const maybeV2 = activity as ActivityWithDetails & {
     title?: string | null;
     date?: string | null;
@@ -420,6 +457,16 @@ const normalizeLegacyActivity = (activity: ActivityWithDetails): ActivityWithDet
     startTime: resolvedStartTime ?? null,
     endTime: resolvedEndTime ?? null,
     status: normalizedStatus,
+    invites,
+    acceptances,
+    comments,
+    acceptedCount,
+    pendingCount,
+    declinedCount,
+    waitlistedCount,
+    currentUserInvite: normalizedCurrentUserInvite,
+    isAccepted: derivedIsAccepted,
+    hasResponded: derivedHasResponded,
   } satisfies ActivityWithDetails;
 };
 
@@ -445,7 +492,6 @@ export interface UseCreateActivityOptions {
   onSuccess?: (activity: ActivityWithDetails, values: ActivityCreateFormValues) => void;
   onValidationError?: (error: ActivityValidationError) => void;
   enabled?: boolean;
-  activitiesVersion?: "legacy" | "v2";
 }
 
 type InternalActivityCreateVariables = ActivityCreateFormValues & {
@@ -504,12 +550,10 @@ export function useCreateActivity({
   onSuccess,
   onValidationError,
   enabled = true,
-  activitiesVersion = "legacy",
 }: UseCreateActivityOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const trackEvent = useMemo(createAnalyticsTracker, []);
-  const useActivitiesV2 = activitiesVersion === "v2";
 
   const mutation = useMutation<
     MutationResult,
@@ -517,15 +561,14 @@ export function useCreateActivity({
     InternalActivityCreateVariables,
     OptimisticContext
   >({
-    mutationKey: ["create-activity", tripId, useActivitiesV2 ? "v2" : "legacy"],
+    mutationKey: ["create-activity", tripId],
     mutationFn: async (variables) => {
       const activity = await submitActivityRequest<ActivityWithDetails>({
         tripId,
-        version: useActivitiesV2 ? "v2" : "legacy",
         payload: variables.__meta.payload,
       });
 
-      const normalizedActivity = useActivitiesV2 ? normalizeActivityFromServer(activity) : activity;
+      const normalizedActivity = normalizeActivityFromServer(activity);
 
       return { activity: normalizedActivity } satisfies MutationResult;
     },
