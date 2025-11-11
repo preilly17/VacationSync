@@ -512,7 +512,7 @@ describe("POST /api/trips/:id/activities", () => {
     );
   });
 
-  it("uses the activities v2 pipeline only when the client opts in", async () => {
+  it("ignores the activities v2 header and uses the legacy pipeline", async () => {
     const trip = {
       id: 987,
       createdBy: "organizer",
@@ -526,11 +526,10 @@ describe("POST /api/trips/:id/activities", () => {
       name: "Morning Run",
       description: "Shake off the jet lag",
       category: "outdoor",
-      date: "2024-06-01",
-      start_time: "07:30",
+      startTime: new Date("2024-06-01T07:30:00Z").toISOString(),
+      endTime: null,
       timezone: "America/New_York",
       attendeeIds: ["friend"],
-      idempotency_key: "test-key-123",
     };
 
     const req: any = {
@@ -550,90 +549,57 @@ describe("POST /api/trips/:id/activities", () => {
     try {
       jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
+      const createdActivity = {
+        id: 42,
+        tripCalendarId: trip.id,
+        name: requestBody.name,
+        description: requestBody.description,
+        startTime: requestBody.startTime,
+        endTime: requestBody.endTime,
+        location: null,
+        cost: null,
+        maxCapacity: null,
+        category: requestBody.category,
+        status: "active",
+        type: "SCHEDULED",
+      };
+
       const legacyCreateSpy = jest
         .spyOn(storage, "createActivityWithInvites")
-        .mockResolvedValueOnce(null as any);
+        .mockResolvedValueOnce(createdActivity as any);
 
-      jest
+      const getActivitiesSpy = jest
+        .spyOn(storage, "getTripActivities")
+        .mockResolvedValueOnce([createdActivity] as any);
+
+      const createNotificationSpy = jest
         .spyOn(storage, "createNotification")
         .mockResolvedValue(undefined as any);
 
-      const now = new Date().toISOString();
-      const activityId = "activity-v2-id";
-      const v2Response = {
-        id: activityId,
-        tripId: String(trip.id),
-        creatorId: "organizer",
-        title: requestBody.name,
-        description: requestBody.description,
-        category: requestBody.category,
-        date: requestBody.date,
-        startTime: requestBody.start_time,
-        endTime: null,
-        timezone: requestBody.timezone,
-        location: null,
-        costPerPerson: null,
-        maxParticipants: null,
-        status: "scheduled",
-        visibility: "trip",
-        createdAt: now,
-        updatedAt: now,
-        version: 1,
-        invitees: [
-          {
-            activityId,
-            userId: "organizer",
-            role: "participant",
-            createdAt: now,
-            updatedAt: now,
-            user: trip.members[0]?.user ?? null,
-          },
-          {
-            activityId,
-            userId: "friend",
-            role: "participant",
-            createdAt: now,
-            updatedAt: now,
-            user: trip.members[1]?.user ?? null,
-          },
-        ],
-        votes: [],
-        rsvps: [],
-        creator: trip.members[0]?.user ?? null,
-        initialVoteOrRsvpState: { organizer: "yes", friend: "pending" },
-        wasDeduplicated: false,
-      };
-
-      const createActivityV2Spy = jest
-        .spyOn(activitiesV2Module, "createActivityV2")
-        .mockResolvedValueOnce(v2Response as any);
+      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
 
       await handler(req, res);
 
-      expect(createActivityV2Spy).toHaveBeenCalledWith(
+      expect(createActivityV2Spy).not.toHaveBeenCalled();
+      expect(legacyCreateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          trip,
-          creatorId: "organizer",
-          body: expect.objectContaining({
-            title: requestBody.name,
-            start_time: requestBody.start_time,
-            timezone: requestBody.timezone,
-            invitee_ids: ["friend"],
-            idempotency_key: requestBody.idempotency_key,
-          }),
+          tripCalendarId: trip.id,
+          name: requestBody.name,
         }),
+        "organizer",
+        ["friend"],
       );
-
-      expect(legacyCreateSpy).not.toHaveBeenCalled();
+      expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
+      expect(createNotificationSpy).toHaveBeenCalledTimes(1);
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(v2Response);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
     } finally {
       process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
       process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
     }
   });
 
-  it("returns a trip date range message when the v2 payload is outside the window", async () => {
+  it("returns a trip date range message when a v2-style payload is outside the window", async () => {
     const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
     const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
     process.env.FEATURE_ACTIVITIES_V2 = "true";
@@ -676,11 +642,14 @@ describe("POST /api/trips/:id/activities", () => {
       await handler(req, res);
 
       expect(createActivityV2Spy).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(422);
+      expect(res.status).toHaveBeenCalledWith(400);
       const payload = res.json.mock.calls[0][0];
-      expect(payload.message).toBe("Pick a date between Jan 1, 2024 and Jan 10, 2024.");
+      expect(payload.message).toBe("Activity name is required.");
       expect(payload.errors).toEqual(
-        expect.arrayContaining([expect.objectContaining({ field: "date" })]),
+        expect.arrayContaining([
+          expect.objectContaining({ field: "name" }),
+          expect.objectContaining({ field: "startDate" }),
+        ]),
       );
     } finally {
       process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
@@ -688,7 +657,7 @@ describe("POST /api/trips/:id/activities", () => {
     }
   });
 
-  it("allows activity proposals without a start time when using the v2 pipeline", async () => {
+  it("allows activity proposals without a start time via the legacy pipeline", async () => {
     const trip = {
       id: 321,
       createdBy: "organizer",
@@ -703,22 +672,20 @@ describe("POST /api/trips/:id/activities", () => {
       name: "Sunset Stroll",
       description: "Relaxed walk along the beach",
       category: "outdoor",
-      date: "2025-08-15",
-      start_time: null,
-      timezone: "",
-      mode: "proposed",
-      invitee_ids: ["friend"],
-      idempotency_key: "proposal-123",
+      startTime: null,
+      endTime: null,
+      attendeeIds: ["friend"],
     };
 
     const req: any = {
-      params: { id: String(trip.id) },
+      params: { tripId: String(trip.id) },
       body: requestBody,
       session: { userId: "organizer" },
       headers: { "x-activities-version": "2" },
       isAuthenticated: jest.fn(() => true),
     };
 
+    const proposalHandler = findRouteHandler(app, "/api/trips/:tripId/proposals/activities", "post");
     const res = createMockResponse();
     const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
     const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
@@ -728,89 +695,58 @@ describe("POST /api/trips/:id/activities", () => {
     try {
       jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
-      jest.spyOn(storage, "createActivityWithInvites").mockResolvedValueOnce(null as any);
+      const createdActivity = {
+        id: 55,
+        tripCalendarId: trip.id,
+        name: requestBody.name,
+        description: requestBody.description,
+        startTime: null,
+        endTime: null,
+        location: null,
+        cost: null,
+        maxCapacity: null,
+        category: requestBody.category,
+        status: "pending",
+        type: "PROPOSE",
+      };
+
+      const createActivitySpy = jest
+        .spyOn(storage, "createActivityWithInvites")
+        .mockResolvedValueOnce(createdActivity as any);
+
+      const getActivitiesSpy = jest
+        .spyOn(storage, "getTripActivities")
+        .mockResolvedValueOnce([createdActivity] as any);
 
       const createNotificationSpy = jest
         .spyOn(storage, "createNotification")
         .mockResolvedValue(undefined as any);
 
-      const now = new Date().toISOString();
-      const activityId = "proposal-activity";
-      const v2Response = {
-        id: activityId,
-        tripId: String(trip.id),
-        creatorId: "organizer",
-        title: requestBody.name,
-        description: requestBody.description,
-        category: requestBody.category,
-        date: requestBody.date,
-        startTime: null,
-        endTime: null,
-        timezone: "UTC",
-        location: null,
-        costPerPerson: null,
-        maxParticipants: null,
-        status: "proposed",
-        visibility: "trip",
-        createdAt: now,
-        updatedAt: now,
-        version: 1,
-        invitees: [
-          {
-            activityId,
-            userId: "organizer",
-            role: "participant",
-            createdAt: now,
-            updatedAt: now,
-            user: trip.members[0]?.user ?? null,
-          },
-          {
-            activityId,
-            userId: "friend",
-            role: "participant",
-            createdAt: now,
-            updatedAt: now,
-            user: trip.members[1]?.user ?? null,
-          },
-        ],
-        votes: [],
-        rsvps: [],
-        creator: trip.members[0]?.user ?? null,
-        initialVoteOrRsvpState: { organizer: "pending", friend: "pending" },
-        wasDeduplicated: false,
-      };
+      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
 
-      const createActivityV2Spy = jest
-        .spyOn(activitiesV2Module, "createActivityV2")
-        .mockResolvedValueOnce(v2Response as any);
+      await proposalHandler(req, res);
 
-      await handler(req, res);
-
-      expect(createActivityV2Spy).toHaveBeenCalledWith(
+      expect(createActivityV2Spy).not.toHaveBeenCalled();
+      expect(createActivitySpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          trip,
-          creatorId: "organizer",
-          body: expect.objectContaining({
-            mode: "proposed",
-            start_time: "",
-            timezone: "UTC",
-            invitee_ids: ["friend"],
-            idempotency_key: requestBody.idempotency_key,
-          }),
+          tripCalendarId: trip.id,
+          name: requestBody.name,
+          type: "PROPOSE",
         }),
+        "organizer",
+        ["friend"],
       );
-
+      expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
       expect(createNotificationSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           userId: "friend",
           type: "activity_proposal",
           tripId: trip.id,
-          activityId,
+          activityId: createdActivity.id,
         }),
       );
-
       expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(v2Response);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
     } finally {
       process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
       process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
