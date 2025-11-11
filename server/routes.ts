@@ -84,35 +84,7 @@ const isActivitiesV2Enabled = () => process.env.FEATURE_ACTIVITIES_V2 === "true"
 const isActivitiesV2WriteEnabled = () =>
   process.env.FEATURE_ACTIVITIES_V2_WRITES === "true";
 
-const requestUsesActivitiesV2 = (req: { headers?: Record<string, unknown> }): boolean => {
-  if (!isActivitiesV2Enabled() || !isActivitiesV2WriteEnabled()) {
-    return false;
-  }
-
-  const rawValue = req?.headers?.[ACTIVITIES_V2_HEADER_KEY];
-
-  const normalize = (value: unknown): string | null => {
-    if (typeof value !== "string") {
-      return null;
-    }
-
-    const trimmed = value.trim().toLowerCase();
-    if (!trimmed) {
-      return null;
-    }
-
-    return trimmed;
-  };
-
-  if (Array.isArray(rawValue)) {
-    return rawValue
-      .map((value) => normalize(value))
-      .some((value) => value === "2" || value === "v2" || value === "true");
-  }
-
-  const normalized = normalize(rawValue);
-  return normalized === "2" || normalized === "v2" || normalized === "true";
-};
+const requestUsesActivitiesV2 = (_req: { headers?: Record<string, unknown> }): boolean => false;
 
 const ACTIVITY_LOG_DATE_KEYS = new Set([
   "startTime",
