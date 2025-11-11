@@ -156,12 +156,35 @@ const normalizeUserId = (value: unknown): string | null => {
     return null;
   }
 
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
+  const toCandidateString = (): string => {
+    if (typeof value === "string") {
+      return value.trim();
+    }
+
+    return String(value).trim();
+  };
+
+  let candidate = toCandidateString();
+  if (candidate.length === 0) {
+    return null;
   }
 
-  return String(value).trim() || null;
+  if (
+    (candidate.startsWith("\"") && candidate.endsWith("\"")) ||
+    (candidate.startsWith("'") && candidate.endsWith("'"))
+  ) {
+    candidate = candidate.slice(1, -1).trim();
+  }
+
+  if (candidate.length === 0) {
+    return null;
+  }
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+    return candidate.toLowerCase();
+  }
+
+  return candidate;
 };
 
 const toOptionalString = (value: unknown): string | null => {
