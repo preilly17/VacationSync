@@ -192,8 +192,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       zip_code: "97201",
       latitude: null,
       longitude: null,
-      check_in_date: null,
-      check_out_date: null,
+      check_in_date: now,
+      check_out_date: now,
       room_type: null,
       room_count: null,
       guest_count: null,
@@ -291,8 +291,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
             created_at: now,
             updated_at: now,
             linked_hotel_id: 55,
-            linked_check_in_date: null,
-            linked_check_out_date: null,
+            linked_check_in_date: now,
+            linked_check_out_date: now,
             linked_address: "500 River Rd",
             linked_city: "Portland",
             linked_country: "USA",
@@ -346,6 +346,81 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
         }),
       }),
     );
+  });
+
+  it("throws a descriptive error when the stay is missing required details", async () => {
+    const now = new Date("2024-06-03T12:00:00Z");
+
+    const hotelRow = {
+      id: 77,
+      trip_id: 10,
+      user_id: "user-123",
+      hotel_name: "",
+      hotel_chain: null,
+      hotel_rating: null,
+      address: "   ",
+      city: "",
+      country: "USA",
+      zip_code: null,
+      latitude: null,
+      longitude: null,
+      check_in_date: null,
+      check_out_date: now,
+      room_type: null,
+      room_count: null,
+      guest_count: null,
+      booking_reference: null,
+      total_price: null,
+      price_per_night: null,
+      currency: "USD",
+      status: "confirmed",
+      booking_source: null,
+      purchase_url: null,
+      amenities: null,
+      images: null,
+      policies: null,
+      contact_info: null,
+      booking_platform: null,
+      booking_url: null,
+      cancellation_policy: null,
+      notes: null,
+      created_at: now,
+      updated_at: now,
+      trip_created_by: "owner@example.com",
+      trip_name: "City Trip",
+      trip_start_date: now,
+      trip_end_date: now,
+    };
+
+    clientQueryMock.mockImplementation((sql: string) => {
+      if (sql === "BEGIN") {
+        return Promise.resolve({ rows: [] });
+      }
+      if (sql.includes("FROM hotels")) {
+        return Promise.resolve({ rows: [hotelRow] });
+      }
+      if (sql.includes("FROM trip_members")) {
+        return Promise.resolve({ rows: [{ role: "member" }] });
+      }
+      if (sql === "ROLLBACK") {
+        return Promise.resolve({ rows: [] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    queryMock.mockResolvedValue({ rows: [] });
+
+    await expect(
+      storage.ensureHotelProposalForSavedHotel({
+        hotelId: 77,
+        tripId: 10,
+        currentUserId: "user-123",
+      }),
+    ).rejects.toThrow(
+      "Saved stay is missing required details: hotel name, address, city, check-in date. Add them before sharing with the group.",
+    );
+
+    expect(clientQueryMock).toHaveBeenCalledWith("ROLLBACK");
   });
 });
 

@@ -208,4 +208,38 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
       }),
     );
   });
+
+  it("returns a 400 with details when the saved stay is missing required data", async () => {
+    ensureHotelProposalMock.mockRejectedValueOnce(
+      new Error(
+        "Saved stay is missing required details: hotel name, address, city, check-in date. Add them before sharing with the group.",
+      ),
+    );
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: { hotelId: 77 },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(ensureHotelProposalMock).toHaveBeenCalledWith({
+      hotelId: 77,
+      tripId: 10,
+      currentUserId: "test-user",
+    });
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      message:
+        "Saved stay is missing required details: hotel name, address, city, check-in date. Add them before sharing with the group.",
+    });
+  });
 });
