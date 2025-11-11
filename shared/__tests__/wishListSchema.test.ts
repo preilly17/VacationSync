@@ -52,6 +52,42 @@ describe("wish list URL normalization", () => {
 
     expect(result.url).toBe("https://example.com/Spots");
   });
+
+  it("treats empty or null links as missing", () => {
+    const empty = insertWishListIdeaSchema.parse({
+      tripId: 5,
+      title: "Dessert crawl",
+      url: "   ",
+    });
+
+    expect(empty.url).toBeNull();
+
+    const withNull = insertWishListIdeaSchema.parse({
+      tripId: 5,
+      title: "Dessert crawl",
+      url: null,
+    });
+
+    expect(withNull.url).toBeNull();
+  });
+
+  it("normalizes social links without a protocol", () => {
+    const instagram = insertWishListIdeaSchema.parse({
+      tripId: 6,
+      title: "Brunch inspo",
+      url: "instagram.com/spots/123",
+    });
+
+    expect(instagram.url).toBe("https://instagram.com/spots/123");
+
+    const tiktok = insertWishListIdeaSchema.parse({
+      tripId: 6,
+      title: "Hidden bars",
+      url: "www.tiktok.com/@citysecrets",
+    });
+
+    expect(tiktok.url).toBe("https://www.tiktok.com/@citysecrets");
+  });
 });
 
 describe("wish list proposal draft tag normalization", () => {

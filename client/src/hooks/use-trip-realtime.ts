@@ -80,6 +80,10 @@ export function useTripRealtime(
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
     };
 
+    const invalidateWishList = () => {
+      queryClient.invalidateQueries({ queryKey: ["wish-list", tripId] });
+    };
+
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data as string);
@@ -110,6 +114,13 @@ export function useTripRealtime(
           case "flight_proposal_ranked":
             if (!isSelfEvent) {
               invalidateFlightProposals();
+            }
+            break;
+          case "wish_list_idea_created":
+          case "wish_list_idea_updated":
+          case "wish_list_idea_deleted":
+            if (!isSelfEvent) {
+              invalidateWishList();
             }
             break;
           default:

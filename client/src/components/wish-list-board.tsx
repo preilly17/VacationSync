@@ -1,13 +1,16 @@
 import { type FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { Heart, Loader2, Sparkles, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, apiRequest } from "@/lib/queryClient";
+import { cn } from "@/lib/utils";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { WishListIdeaWithDetails } from "@shared/schema";
 
@@ -37,6 +40,67 @@ interface CreateIdeaPayload {
   imageUrl: null;
   metadata: null;
 }
+
+const getCreatorDisplayName = (
+  creator: WishListIdeaWithDetails["creator"] | null | undefined,
+): string => {
+  if (!creator) {
+    return "Member";
+  }
+
+  const parts = [creator.firstName, creator.lastName]
+    .map((part) => (typeof part === "string" ? part.trim() : ""))
+    .filter((part) => part.length > 0);
+
+  if (parts.length > 0) {
+    return parts.join(" ");
+  }
+
+  if (typeof creator.username === "string" && creator.username.trim().length > 0) {
+    return creator.username.trim();
+  }
+
+  if (typeof creator.email === "string" && creator.email.trim().length > 0) {
+    return creator.email.trim();
+  }
+
+  return "Member";
+};
+
+const getCreatorInitials = (
+  creator: WishListIdeaWithDetails["creator"] | null | undefined,
+): string => {
+  const displayName = getCreatorDisplayName(creator);
+  const initials = displayName
+    .split(/\s+/)
+    .filter((segment) => segment.length > 0)
+    .slice(0, 2)
+    .map((segment) => segment.charAt(0).toUpperCase())
+    .join("");
+
+  if (initials.length > 0) {
+    return initials;
+  }
+
+  return "M";
+};
+
+const getCreatedAtLabel = (createdAt: string | null | undefined): string => {
+  if (!createdAt) {
+    return "Added just now";
+  }
+
+  try {
+    const parsed = new Date(createdAt);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Added just now";
+    }
+
+    return `Added ${formatDistanceToNow(parsed, { addSuffix: true })}`;
+  } catch {
+    return "Added just now";
+  }
+};
 
 export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   const { toast } = useToast();
@@ -128,10 +192,61 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         queryClient.setQueryData<WishListIdeasResponse | undefined>(
           wishListQueryKey,
           (previous) => {
+            const nextMeta = (() => {
+              if (!previous?.meta) {
+                return {
+                  availableTags: Array.from(new Set(payload.idea.tags ?? [])).sort((a, b) =>
+                    a.localeCompare(b),
+                  ),
+                  submitters: [
+                    {
+                      id: payload.idea.creator.id,
+                      name: getCreatorDisplayName(payload.idea.creator),
+                    },
+                  ],
+                  sort: previous?.meta?.sort,
+                  isAdmin: previous?.meta?.isAdmin,
+                  isMember: previous?.meta?.isMember,
+                  minLikes: previous?.meta?.minLikes ?? null,
+                };
+              }
+
+              const existingTags = new Set(previous.meta.availableTags ?? []);
+              for (const tag of payload.idea.tags ?? []) {
+                if (tag) {
+                  existingTags.add(tag);
+                }
+              }
+
+              const submitters = [...(previous.meta.submitters ?? [])];
+              const hasSubmitter = submitters.some(
+                (submitter) => submitter.id === payload.idea.creator.id,
+              );
+              if (!hasSubmitter) {
+                submitters.push({
+                  id: payload.idea.creator.id,
+                  name: getCreatorDisplayName(payload.idea.creator),
+                });
+              }
+
+              submitters.sort((a, b) => a.name.localeCompare(b.name));
+
+              return {
+                ...previous.meta,
+                availableTags: Array.from(existingTags).sort((a, b) => a.localeCompare(b)),
+                submitters,
+              };
+            })();
+
             if (!previous) {
-              return { ideas: [payload.idea] };
+              return { ideas: [payload.idea], meta: nextMeta };
             }
-            return { ...previous, ideas: [payload.idea, ...previous.ideas] };
+
+            return {
+              ...previous,
+              ideas: [payload.idea, ...previous.ideas],
+              meta: nextMeta,
+            };
           },
         );
       } else {
@@ -169,6 +284,178 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
           requestError instanceof Error ? requestError.message : "Please try again.",
         variant: "destructive",
       });
+    },
+  });
+
+  const toggleSaveMutation = useMutation<
+    { saved: boolean; saveCount: number },
+    Error,
+    number,
+    { previousData?: WishListIdeasResponse | undefined }
+  >({
+    mutationFn: async (ideaId) => {
+      const headers = getShareCodeHeaders();
+      const res = await apiRequest(`/api/wish-list/${ideaId}/save`, {
+        method: "POST",
+        ...(headers ? { headers } : {}),
+      });
+      return (await res.json()) as { saved: boolean; saveCount: number };
+    },
+    onMutate: async (ideaId) => {
+      await queryClient.cancelQueries({ queryKey: wishListQueryKey });
+      const previousData = queryClient.getQueryData<WishListIdeasResponse | undefined>(
+        wishListQueryKey,
+      );
+
+      queryClient.setQueryData<WishListIdeasResponse | undefined>(
+        wishListQueryKey,
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            ideas: current.ideas.map((idea) => {
+              if (idea.id !== ideaId) {
+                return idea;
+              }
+
+              const nextSaved = !idea.currentUserSaved;
+              const delta = nextSaved ? 1 : -1;
+              const nextCount = Math.max(0, (idea.saveCount ?? 0) + delta);
+
+              return {
+                ...idea,
+                currentUserSaved: nextSaved,
+                saveCount: nextCount,
+              };
+            }),
+          };
+        },
+      );
+
+      return { previousData };
+    },
+    onError: (requestError, _ideaId, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(wishListQueryKey, context.previousData);
+      }
+
+      if (isUnauthorizedError(requestError)) {
+        handleUnauthorized();
+        return;
+      }
+
+      if (requestError instanceof ApiError) {
+        toast({
+          title: "Unable to update interest",
+          description: requestError.message || "Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Unable to update interest",
+        description:
+          requestError instanceof Error ? requestError.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
+    onSuccess: (result, ideaId) => {
+      queryClient.setQueryData<WishListIdeasResponse | undefined>(
+        wishListQueryKey,
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            ideas: current.ideas.map((idea) =>
+              idea.id === ideaId
+                ? {
+                    ...idea,
+                    currentUserSaved: result.saved,
+                    saveCount: result.saveCount,
+                  }
+                : idea,
+            ),
+          };
+        },
+      );
+    },
+  });
+
+  const deleteIdeaMutation = useMutation<
+    { success: boolean },
+    Error,
+    number,
+    { previousData?: WishListIdeasResponse | undefined }
+  >({
+    mutationFn: async (ideaId) => {
+      const headers = getShareCodeHeaders();
+      const res = await apiRequest(`/api/wish-list/${ideaId}`, {
+        method: "DELETE",
+        ...(headers ? { headers } : {}),
+      });
+      return (await res.json()) as { success: boolean };
+    },
+    onMutate: async (ideaId) => {
+      await queryClient.cancelQueries({ queryKey: wishListQueryKey });
+      const previousData = queryClient.getQueryData<WishListIdeasResponse | undefined>(
+        wishListQueryKey,
+      );
+
+      queryClient.setQueryData<WishListIdeasResponse | undefined>(
+        wishListQueryKey,
+        (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            ideas: current.ideas.filter((idea) => idea.id !== ideaId),
+          };
+        },
+      );
+
+      return { previousData };
+    },
+    onError: (requestError, _ideaId, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(wishListQueryKey, context.previousData);
+      }
+
+      if (isUnauthorizedError(requestError)) {
+        handleUnauthorized();
+        return;
+      }
+
+      if (requestError instanceof ApiError) {
+        toast({
+          title: "Unable to remove idea",
+          description: requestError.message || "Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Unable to remove idea",
+        description:
+          requestError instanceof Error ? requestError.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Idea removed",
+        description: "The idea was removed from the wish list.",
+      });
+      queryClient.invalidateQueries({ queryKey: wishListQueryKey });
     },
   });
 
@@ -225,6 +512,21 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         variant: "destructive",
       });
     }
+  };
+
+  const handleToggleSave = (ideaId: number) => {
+    toggleSaveMutation.mutate(ideaId);
+  };
+
+  const handleDeleteIdea = (ideaId: number) => {
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Remove this idea from the wish list?");
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    deleteIdeaMutation.mutate(ideaId);
   };
 
   return (
@@ -319,46 +621,118 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         </Card>
       ) : (
         <div className="space-y-4">
-          {ideas.map((idea) => (
-            <Card key={idea.id} className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-lg font-semibold text-neutral-900">{idea.title}</h3>
-                  {idea.url ? (
-                    <a
-                      href={idea.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-sm font-medium text-primary hover:underline"
-                    >
-                      Open link
-                    </a>
-                  ) : null}
-                </div>
+          {ideas.map((idea) => {
+            const displayName = getCreatorDisplayName(idea.creator);
+            const createdAtLabel = getCreatedAtLabel(idea.createdAt);
+            const isToggling = toggleSaveMutation.isPending && toggleSaveMutation.variables === idea.id;
+            const isDeleting = deleteIdeaMutation.isPending && deleteIdeaMutation.variables === idea.id;
 
-                {idea.notes ? (
-                  <p className="text-sm text-neutral-600 whitespace-pre-wrap">{idea.notes}</p>
-                ) : null}
+            return (
+              <Card
+                key={idea.id}
+                className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm"
+              >
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <h3 className="text-lg font-semibold text-neutral-900">{idea.title}</h3>
+                      {idea.url ? (
+                        <a
+                          href={idea.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          Open link
+                        </a>
+                      ) : null}
+                    </div>
 
-                {idea.tags && idea.tags.length > 0 ? (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {idea.tags.map((tag) => (
-                      <span
-                        key={`${idea.id}-${tag}`}
-                        className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600"
-                      >
-                        {tag}
-                      </span>
-                    ))}
+                    {idea.notes ? (
+                      <p className="whitespace-pre-wrap text-sm text-neutral-600">{idea.notes}</p>
+                    ) : null}
+
+                    {idea.tags && idea.tags.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {idea.tags.map((tag) => (
+                          <span
+                            key={`${idea.id}-${tag}`}
+                            className="rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-600"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
 
-                <p className="text-xs text-neutral-400">
-                  Added by {idea.creator ? idea.creator.firstName ?? idea.creator.username ?? "Member" : "Member"}
-                </p>
-              </div>
-            </Card>
-          ))}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 pt-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-9 w-9">
+                        <AvatarImage
+                          src={idea.creator?.profileImageUrl ?? undefined}
+                          alt={displayName}
+                        />
+                        <AvatarFallback className="bg-neutral-100 text-sm font-semibold text-neutral-600">
+                          {getCreatorInitials(idea.creator)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col leading-tight">
+                        <span className="text-sm font-medium text-neutral-700">{displayName}</span>
+                        <span className="text-xs text-neutral-500">{createdAtLabel}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleToggleSave(idea.id)}
+                        disabled={isToggling}
+                        aria-pressed={idea.currentUserSaved}
+                        className={cn(
+                          "rounded-full border-neutral-200 bg-white px-3 py-1 text-neutral-600 hover:bg-neutral-100",
+                          idea.currentUserSaved &&
+                            "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20",
+                        )}
+                      >
+                        {isToggling ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Heart
+                            className={cn(
+                              "h-4 w-4",
+                              idea.currentUserSaved ? "fill-current" : undefined,
+                            )}
+                          />
+                        )}
+                        <span className="text-sm font-medium">Interested</span>
+                        <span className="text-sm font-semibold">{idea.saveCount}</span>
+                      </Button>
+                      {idea.canDelete ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteIdea(idea.id)}
+                          disabled={isDeleting}
+                          className="text-neutral-500 hover:text-destructive"
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                          <span className="sr-only sm:not-sr-only sm:ml-2 sm:text-sm">Remove</span>
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
