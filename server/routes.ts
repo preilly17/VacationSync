@@ -2479,7 +2479,7 @@ export function setupRoutes(app: Express) {
           mode: requestMode,
           title: typeof titleFromBody === "string" ? titleFromBody : "",
           description: typeof rawBody.description === "string" ? rawBody.description : rawBody.description ?? null,
-          category: typeof rawBody.category === "string" ? rawBody.category : rawBody.category ?? null,
+          category: typeof rawBody.category === "string" ? rawBody.category : "",
           date: dateFromBody,
           start_time: trimmedStartTime,
           end_time:

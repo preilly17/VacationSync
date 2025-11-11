@@ -3,6 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 import type { CreateActivityRequest } from "@shared/activitiesV2";
+import {
+  ACTIVITY_CATEGORY_MESSAGE,
+  ATTENDEE_REQUIRED_MESSAGE,
+  INVITEE_NOT_MEMBER_MESSAGE,
+} from "@shared/activityValidation";
 import type { TripWithDetails } from "@shared/schema";
 
 const ORIGINAL_ENV = process.env.NODE_ENV;
@@ -362,7 +367,7 @@ describe("createActivityV2", () => {
       mode: "scheduled",
       title: "Morning Run",
       description: null,
-      category: null,
+      category: "manual",
       date: "2024-03-02",
       start_time: "9:5",
       end_time: " 10:45 ",
@@ -456,7 +461,7 @@ describe("createActivityV2", () => {
       mode: "scheduled",
       title: "Lunch Meetup",
       description: null,
-      category: null,
+      category: "other",
       date: "2024-03-03",
       start_time: "12:00",
       end_time: null,
@@ -494,6 +499,108 @@ describe("createActivityV2", () => {
     const insertCall = clientQueryMock.mock.calls.find(([sql]) => typeof sql === "string" && sql.includes("INSERT INTO activities_v2"));
     expect(insertCall?.[1]?.[14]).toBe(capturedIdempotency);
     expect(capturedIdempotency).toBeDefined();
+  });
+
+  it("rejects activities without selecting a category", async () => {
+    const { now, creatorUser, friendUser, trip } = createTripFixture();
+
+    const activityRequest: CreateActivityRequest = {
+      mode: "scheduled",
+      title: "Group Dinner",
+      description: null,
+      category: "",
+      date: "2024-03-05",
+      start_time: "18:00",
+      end_time: null,
+      timezone: "UTC",
+      location: null,
+      cost_per_person: null,
+      max_participants: null,
+      invitee_ids: [friendUser.id],
+      idempotency_key: "missing-category",
+    };
+
+    const { connectMock } = setupDbMocks({ now, creatorUser, friendUser, trip });
+    const { createActivityV2 } = await import("../activitiesV2");
+
+    await expect(
+      createActivityV2({ trip, creatorId: creatorUser.id, body: activityRequest }),
+    ).rejects.toMatchObject({
+      code: "VALIDATION",
+      details: expect.arrayContaining([
+        expect.objectContaining({ field: "category", message: ACTIVITY_CATEGORY_MESSAGE }),
+      ]),
+    });
+
+    expect(connectMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects activities without invitees", async () => {
+    const { now, creatorUser, friendUser, trip } = createTripFixture();
+
+    const activityRequest: CreateActivityRequest = {
+      mode: "scheduled",
+      title: "Morning Coffee",
+      description: null,
+      category: "food",
+      date: "2024-03-06",
+      start_time: "08:00",
+      end_time: null,
+      timezone: "UTC",
+      location: null,
+      cost_per_person: null,
+      max_participants: null,
+      invitee_ids: [],
+      idempotency_key: "missing-invitees",
+    };
+
+    const { connectMock } = setupDbMocks({ now, creatorUser, friendUser, trip });
+    const { createActivityV2 } = await import("../activitiesV2");
+
+    await expect(
+      createActivityV2({ trip, creatorId: creatorUser.id, body: activityRequest }),
+    ).rejects.toMatchObject({
+      code: "VALIDATION",
+      details: expect.arrayContaining([
+        expect.objectContaining({ field: "invitee_ids", message: ATTENDEE_REQUIRED_MESSAGE }),
+      ]),
+    });
+
+    expect(connectMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects invitees who are not members of the trip", async () => {
+    const { now, creatorUser, friendUser, trip } = createTripFixture();
+
+    const activityRequest: CreateActivityRequest = {
+      mode: "scheduled",
+      title: "City Walk",
+      description: null,
+      category: "outdoor",
+      date: "2024-03-07",
+      start_time: "10:00",
+      end_time: null,
+      timezone: "UTC",
+      location: null,
+      cost_per_person: null,
+      max_participants: null,
+      invitee_ids: ["stranger"],
+      idempotency_key: "invalid-invitee",
+    };
+
+    const { connectMock } = setupDbMocks({ now, creatorUser, friendUser, trip });
+    const { createActivityV2 } = await import("../activitiesV2");
+
+    await expect(
+      createActivityV2({ trip, creatorId: creatorUser.id, body: activityRequest }),
+    ).rejects.toMatchObject({
+      code: "VALIDATION",
+      details: expect.arrayContaining([
+        expect.objectContaining({ field: "invitee_ids", message: INVITEE_NOT_MEMBER_MESSAGE }),
+      ]),
+    });
+
+    expect(connectMock).not.toHaveBeenCalled();
   });
 });
 

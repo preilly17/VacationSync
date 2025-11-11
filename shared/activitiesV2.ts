@@ -2,6 +2,12 @@
 // into the canonical shared/schema.ts definitions.
 import { z } from "zod";
 
+import {
+  ACTIVITY_CATEGORY_MESSAGE,
+  ACTIVITY_CATEGORY_VALUES,
+  ATTENDEE_REQUIRED_MESSAGE,
+} from "./activityValidation";
+
 import type { User } from "./schema";
 
 export type ActivityStatus = "proposed" | "scheduled" | "cancelled";
@@ -78,7 +84,17 @@ export const createActivityRequestSchema = z
     mode: z.enum(["proposed", "scheduled"]),
     title: z.string().min(1).max(120),
     description: z.string().max(5000).optional().nullable(),
-    category: z.string().max(120).optional().nullable(),
+    category: z
+      .string({
+        required_error: ACTIVITY_CATEGORY_MESSAGE,
+        invalid_type_error: ACTIVITY_CATEGORY_MESSAGE,
+      })
+      .transform((value) => value.trim().toLowerCase())
+      .refine((value) => value.length > 0, { message: ACTIVITY_CATEGORY_MESSAGE })
+      .refine(
+        (value) => ACTIVITY_CATEGORY_VALUES.includes(value as (typeof ACTIVITY_CATEGORY_VALUES)[number]),
+        { message: ACTIVITY_CATEGORY_MESSAGE },
+      ),
     date: z.string().min(1),
     start_time: z.string().optional().nullable(),
     end_time: z.string().optional().nullable(),
@@ -106,7 +122,12 @@ export const createActivityRequestSchema = z
         const parsed = typeof value === "number" ? value : Number(value);
         return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
       }),
-    invitee_ids: z.array(z.string().min(1)).default([]),
+    invitee_ids: z
+      .array(z.string().min(1), {
+        required_error: ATTENDEE_REQUIRED_MESSAGE,
+        invalid_type_error: ATTENDEE_REQUIRED_MESSAGE,
+      })
+      .nonempty({ message: ATTENDEE_REQUIRED_MESSAGE }),
     idempotency_key: z.string().min(1),
   })
   .superRefine((data, ctx) => {
