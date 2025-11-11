@@ -1373,34 +1373,44 @@ export const convertProposalToScheduledV2 = async ({
       attendeeIds.add(userId);
     }
 
+    const inviteesByUserId = new Map<string, ActivityInvitee["role"]>();
+    for (const invitee of activity.invitees) {
+      inviteesByUserId.set(invitee.userId, invitee.role);
+    }
+    for (const attendeeId of attendeeIds) {
+      inviteesByUserId.set(attendeeId, "participant");
+    }
+
+    const inviteeIds = Array.from(inviteesByUserId.keys());
+
     await runQuery(
       client,
       `DELETE FROM activity_invitees_v2 WHERE activity_id = $1 AND user_id <> ALL($2::text[])`,
-      [activity.id, Array.from(attendeeIds)],
+      [activity.id, inviteeIds],
     );
 
-    for (const attendeeId of attendeeIds) {
+    for (const [inviteeId, role] of inviteesByUserId) {
       await runQuery(
         client,
         `
         INSERT INTO activity_invitees_v2 (activity_id, user_id, role, created_at, updated_at)
-        VALUES ($1, $2, 'participant', NOW(), NOW())
+        VALUES ($1, $2, $3, NOW(), NOW())
         ON CONFLICT (activity_id, user_id) DO UPDATE
-          SET role = 'participant',
+          SET role = EXCLUDED.role,
               updated_at = NOW()
         `,
-        [activity.id, attendeeId],
+        [activity.id, inviteeId, role ?? "participant"],
       );
     }
 
     await runQuery(
       client,
       `DELETE FROM activity_rsvps_v2 WHERE activity_id = $1 AND user_id <> ALL($2::text[])`,
-      [activity.id, Array.from(attendeeIds)],
+      [activity.id, inviteeIds],
     );
 
-    for (const attendeeId of attendeeIds) {
-      const response = attendeeId === userId || yesVoters.has(attendeeId) ? "yes" : "pending";
+    for (const inviteeId of inviteeIds) {
+      const response = attendeeIds.has(inviteeId) ? "yes" : "pending";
       await runQuery(
         client,
         `
@@ -1410,7 +1420,7 @@ export const convertProposalToScheduledV2 = async ({
           SET response = EXCLUDED.response,
               responded_at = CASE WHEN EXCLUDED.response = 'pending' THEN NULL ELSE NOW() END
         `,
-        [activity.id, attendeeId, response],
+        [activity.id, inviteeId, response],
       );
     }
 
