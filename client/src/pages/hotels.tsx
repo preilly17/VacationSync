@@ -238,11 +238,12 @@ export default function HotelsPage() {
       });
 
       // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
-      queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
+        }),
+      ]);
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
       if (isUnauthorizedError(errorObj)) {
