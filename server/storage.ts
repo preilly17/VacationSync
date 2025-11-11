@@ -7878,6 +7878,46 @@ ${selectUserColumns("participant_user", "participant_user_")}
         throw new Error("Only the stay creator or a trip editor can propose this stay");
       }
 
+      const hasNonEmptyString = (value: unknown): boolean =>
+        typeof value === "string" && value.trim().length > 0;
+
+      const ensureValidDate = (value: unknown): boolean => {
+        if (!value) {
+          return false;
+        }
+
+        const date = value instanceof Date ? value : new Date(value as string | number);
+        return date instanceof Date && !Number.isNaN(date.getTime());
+      };
+
+      const missingDetails: string[] = [];
+
+      if (!hasNonEmptyString(hotel.hotel_name)) {
+        missingDetails.push("hotel name");
+      }
+      if (!hasNonEmptyString(hotel.address)) {
+        missingDetails.push("address");
+      }
+      if (!hasNonEmptyString(hotel.city)) {
+        missingDetails.push("city");
+      }
+      if (!hasNonEmptyString(hotel.country)) {
+        missingDetails.push("country");
+      }
+      if (!ensureValidDate(hotel.check_in_date)) {
+        missingDetails.push("check-in date");
+      }
+      if (!ensureValidDate(hotel.check_out_date)) {
+        missingDetails.push("check-out date");
+      }
+
+      if (missingDetails.length > 0) {
+        const detailList = missingDetails.join(", ");
+        throw new Error(
+          `Saved stay is missing required details: ${detailList}. Add them before sharing with the group.`,
+        );
+      }
+
       const syncResult = await this.syncHotelProposalFromHotelRow(hotel, {
         client,
       });

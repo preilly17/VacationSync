@@ -4518,6 +4518,9 @@ export function setupRoutes(app: Express) {
         if (error.message.includes('Only the stay creator') || error.message.includes('must be a member of this trip')) {
           return res.status(403).json({ message: error.message });
         }
+        if (error.message.includes('Saved stay is missing required details')) {
+          return res.status(400).json({ message: error.message });
+        }
       }
 
       res.status(500).json({ message: "Failed to propose hotel" });
