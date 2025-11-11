@@ -1416,8 +1416,17 @@ export default function Trip() {
   }, [authLoading, isAuthenticated, toast]);
 
   // Trip data
+  const routeIdWithoutQuery = useMemo(() => {
+    if (typeof id !== "string") {
+      return "";
+    }
+
+    const [base] = id.split("?");
+    return base.trim();
+  }, [id]);
+
   const { data: trip, isLoading: tripLoading, error: tripError } = useQuery<TripWithDetails>({
-    queryKey: [`/api/trips/${id}`],
+    queryKey: [`/api/trips/${routeIdWithoutQuery || id}`],
     enabled: !!id && isAuthenticated,
     retry: (failureCount, error) => {
       if (isUnauthorizedError(error)) {
@@ -1430,16 +1439,16 @@ export default function Trip() {
 
   // Activities data
   const activityQueryKeySuffix = useMemo(() => {
-    if (typeof id === "string" && id.trim().length > 0) {
-      return id.trim();
-    }
-
     if (numericTripIdFromRoute > 0) {
       return String(numericTripIdFromRoute);
     }
 
+    if (routeIdWithoutQuery.length > 0) {
+      return routeIdWithoutQuery;
+    }
+
     return "pending";
-  }, [id, numericTripIdFromRoute]);
+  }, [numericTripIdFromRoute, routeIdWithoutQuery]);
 
   const activitiesQueryKey = useMemo(
     () => [`/api/trips/${activityQueryKeySuffix}/activities`],
@@ -1453,7 +1462,7 @@ export default function Trip() {
 
   const { data: activities = [], isLoading: activitiesLoading } = useQuery<ActivityWithDetails[]>({
     queryKey: activitiesQueryKey,
-    enabled: !!id && isAuthenticated,
+    enabled: activityQueryKeySuffix !== "pending" && isAuthenticated,
     refetchInterval: 30000,
     refetchOnWindowFocus: true,
   });
