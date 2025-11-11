@@ -1245,12 +1245,9 @@ export interface WishListIdea {
 }
 
 const wishListUrlSchema = z
-  .string()
-  .trim()
-  .optional()
-  .nullable()
+  .union([z.string(), z.null(), z.undefined()])
   .transform((value) => {
-    if (!value) {
+    if (typeof value !== "string") {
       return null;
     }
 
