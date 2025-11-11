@@ -6282,7 +6282,7 @@ function HotelBooking({
   });
 
   const { data: hotelProposals = [] } = useQuery<HotelProposalWithDetails[]>({
-    queryKey: [`/api/trips/${tripId}/proposals/hotels`],
+    queryKey: [`/api/trips/${tripId}/hotel-proposals`],
     enabled: !!tripId,
   });
 
@@ -6306,7 +6306,7 @@ function HotelBooking({
       }
 
       const payload = buildInsertHotelPayloadFromHotel(hotel);
-      return apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
+      return apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
         method: "POST",
         body: { ...payload, id: parsedHotelId, hotelId: parsedHotelId },
       });
@@ -6314,9 +6314,9 @@ function HotelBooking({
     onSuccess: async () => {
       toast({ title: "Hotel proposed to group." });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
         }),
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
       ]);
@@ -6417,9 +6417,9 @@ function HotelBooking({
         });
 
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
           queryClient.invalidateQueries({
-            queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+            queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
           }),
         ]);
       } catch (error) {
@@ -6487,9 +6487,9 @@ function HotelBooking({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
         }),
       ]);
       toast({
@@ -6528,9 +6528,9 @@ function HotelBooking({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
         }),
       ]);
       toast({
@@ -6579,9 +6579,9 @@ function HotelBooking({
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
         }),
       ]);
       toast({
@@ -6966,9 +6966,9 @@ function HotelBooking({
         tripId={tripId}
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
           queryClient.invalidateQueries({
-            queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+            queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
           });
         }}
       />

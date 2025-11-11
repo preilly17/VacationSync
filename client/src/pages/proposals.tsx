@@ -358,7 +358,7 @@ function ProposalsPage({
     error: hotelProposalsError,
     refetch: refetchHotelProposals,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/proposals/hotels`],
+    queryKey: [`/api/trips/${tripId}/hotel-proposals`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -367,7 +367,7 @@ function ProposalsPage({
     isLoading: myHotelProposalsLoading,
     error: myHotelProposalsError,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+    queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -519,8 +519,8 @@ function ProposalsPage({
 
       const now = new Date().toISOString();
       const queryKeys: Array<readonly unknown[]> = [
-        [`/api/trips/${tripId}/proposals/hotels`],
-        [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        [`/api/trips/${tripId}/hotel-proposals`],
+        [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
       ];
 
       context.previousData = queryKeys.map((key) => ({
@@ -547,9 +547,9 @@ function ProposalsPage({
         return;
       }
       // PROPOSALS FEATURE: refresh hotel proposals so saved-hotel votes appear immediately.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+        queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
       });
       toast({
         title: "Vote Recorded",
@@ -755,16 +755,16 @@ function ProposalsPage({
 
       if (type === "hotel") {
         queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/proposals/hotels`],
+          [`/api/trips/${tripId}/hotel-proposals`],
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
         queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/hotels`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/hotels?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
         });
       } else if (type === "flight") {
         queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
