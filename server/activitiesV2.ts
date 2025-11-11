@@ -24,6 +24,7 @@ import {
   type CreateActivityRequest,
   type CreateActivityResponse,
 } from "@shared/activitiesV2";
+import { ATTENDEE_REQUIRED_MESSAGE, INVITEE_NOT_MEMBER_MESSAGE } from "@shared/activityValidation";
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -932,6 +933,13 @@ export async function createActivityV2({
     (data.invitee_ids ?? []).map((id) => String(id).trim()).filter((id) => id.length > 0),
   );
 
+  if (inviteeSet.size === 0) {
+    const error = new Error("missing_invitees");
+    (error as any).code = "VALIDATION";
+    (error as any).details = [{ field: "invitee_ids", message: ATTENDEE_REQUIRED_MESSAGE }];
+    throw error;
+  }
+
   const tripMemberIds = new Set(
     trip.members.map((member) => String(member.userId)).filter((id) => id.trim().length > 0),
   );
@@ -940,12 +948,7 @@ export async function createActivityV2({
   if (invalidInvitees.length > 0) {
     const error = new Error("invalid_invitees");
     (error as any).code = "VALIDATION";
-    (error as any).details = [
-      {
-        field: "invitee_ids",
-        message: "All invitees must be members of this trip.",
-      },
-    ];
+    (error as any).details = [{ field: "invitee_ids", message: INVITEE_NOT_MEMBER_MESSAGE }];
     throw error;
   }
 
