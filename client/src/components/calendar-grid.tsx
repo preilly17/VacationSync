@@ -71,6 +71,30 @@ interface LayoutState {
   hiddenCount: number;
 }
 
+const isScheduledForCalendar = (activity: ActivityWithDetails): boolean => {
+  const rawType = (activity.type ?? "").toString().trim().toUpperCase();
+  if (rawType === "PROPOSE") {
+    return false;
+  }
+
+  if (rawType === "SCHEDULED") {
+    return true;
+  }
+
+  const rawStatus = (activity as { status?: string | null }).status;
+  const normalizedStatus = typeof rawStatus === "string" ? rawStatus.trim().toLowerCase() : "";
+
+  if (["proposed", "pending", "idea", "draft"].includes(normalizedStatus)) {
+    return false;
+  }
+
+  if (["active", "scheduled", "in-progress", "completed"].includes(normalizedStatus)) {
+    return true;
+  }
+
+  return rawType.length === 0 && normalizedStatus.length === 0;
+};
+
 const MODE_CONFIG: Record<DisplayMode, { gap: number }> = {
   normal: { gap: 6 },
   compact: { gap: 4 },
@@ -289,8 +313,7 @@ export function CalendarGrid({
   const getActivitiesForDay = (day: Date) => {
     return activities
       .filter(activity => {
-        const activityType = (activity.type ?? "").toString().trim().toUpperCase();
-        if (activityType.length > 0 && !["SCHEDULED", "PROPOSE"].includes(activityType)) {
+        if (!isScheduledForCalendar(activity)) {
           return false;
         }
 

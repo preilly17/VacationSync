@@ -2499,11 +2499,17 @@ export function setupRoutes(app: Express) {
         };
 
         attemptedInviteeIds = normalizedInvitees;
+        const invitees = Array.isArray(createPayload.invitee_ids)
+          ? createPayload.invitee_ids
+          : Array.isArray((createPayload as { attendeeIds?: string[] }).attendeeIds)
+            ? (createPayload as { attendeeIds: string[] }).attendeeIds
+            : [];
+
         payloadSummary = {
           name: createPayload.title,
           startTime: trimmedStartTime.length > 0 ? trimmedStartTime : null,
           type: requestMode,
-          attendeeCount: createPayload.invitee_ids.length,
+          attendeeCount: invitees.length,
         };
 
         const metricMode = requestMode === "proposed" ? "PROPOSE" : "SCHEDULED";
