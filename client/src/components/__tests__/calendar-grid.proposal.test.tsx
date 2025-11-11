@@ -17,7 +17,7 @@ afterAll(() => {
 });
 
 describe("CalendarGrid proposal handling", () => {
-  it("renders proposals without a start time as Time TBD without epoch dates", () => {
+  it("omits proposal-only activities from the calendar grid", () => {
     const user: User = {
       id: "user-1",
       email: "user@example.com",
@@ -131,9 +131,9 @@ describe("CalendarGrid proposal handling", () => {
       </TooltipProvider>,
     );
 
-    const textContent = markup.replace(/<[^>]*>/g, " ");
+    const textContent = markup.replace(/<[^>]*>/g, " ").trim();
 
-    expect(textContent).toContain("Sunset Cruise");
-    expect(textContent).toContain("Proposed");
+    expect(textContent).not.toContain("Sunset Cruise");
+    expect(textContent).not.toContain("Proposed");
   });
 });

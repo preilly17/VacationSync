@@ -897,7 +897,7 @@ export function AddActivityModal({
             )}
             <p className="mt-2 text-xs text-neutral-500">
               {mode === "PROPOSE"
-                ? "We’ll post this to Proposals and place it on the date/time in the group calendar."
+                ? "We’ll post this to Proposals so everyone can weigh in. It stays off the calendar until you schedule it."
                 : "We’ll send RSVPs and add this to calendars."}
             </p>
           </div>
