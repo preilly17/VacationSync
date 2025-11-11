@@ -1,4 +1,5 @@
 import { pool, query } from "./db";
+import type { PoolClient } from "pg";
 import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoShared";
 import { convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
 import {
@@ -871,7 +872,16 @@ type HotelProposalRow = {
   updated_at: Date | null;
 };
 
-type HotelProposalWithProposerRow = HotelProposalRow & PrefixedUserRow<"proposer_">;
+type HotelProposalWithProposerRow = HotelProposalRow &
+  PrefixedUserRow<"proposer_"> & {
+    linked_hotel_id: number | null;
+    linked_check_in_date: Date | null;
+    linked_check_out_date: Date | null;
+    linked_address: string | null;
+    linked_city: string | null;
+    linked_country: string | null;
+    linked_currency: string | null;
+  };
 
 type HotelRankingRow = {
   id: number;
@@ -1244,22 +1254,58 @@ const mapTripWithDetails = (
   memberCount: members.length,
 });
 
-const mapHotelProposal = (row: HotelProposalRow): HotelProposal => ({
-  id: row.id,
-  tripId: row.trip_id,
-  proposedBy: row.proposed_by,
-  hotelName: row.hotel_name,
-  location: row.location,
-  price: row.price,
-  pricePerNight: toOptionalString(row.price_per_night),
-  rating: safeNumberOrNull(row.rating),
-  amenities: row.amenities,
-  platform: row.platform,
-  bookingUrl: row.booking_url,
-  status: row.status,
-  averageRanking: parseAverageRanking(row.average_ranking),
-  createdAt: row.created_at,
-});
+const mapHotelProposal = (row: HotelProposalRow): HotelProposal => {
+  const linkedHotelId = (row as { linked_hotel_id?: number | null }).linked_hotel_id ?? null;
+  const linkedCheckInDate =
+    (row as { linked_check_in_date?: Date | null }).linked_check_in_date ?? null;
+  const linkedCheckOutDate =
+    (row as { linked_check_out_date?: Date | null }).linked_check_out_date ?? null;
+  const linkedAddress = toOptionalString(
+    (row as { linked_address?: string | null }).linked_address,
+  );
+  const linkedCity = toOptionalString((row as { linked_city?: string | null }).linked_city);
+  const linkedCountry = toOptionalString(
+    (row as { linked_country?: string | null }).linked_country,
+  );
+  const linkedCurrency = toOptionalString(
+    (row as { linked_currency?: string | null }).linked_currency,
+  );
+
+  const baseLocation = toOptionalString(row.location);
+  const fallbackLocationSegments = [linkedCity, linkedCountry].filter(
+    (segment): segment is string => Boolean(segment && segment.trim()),
+  );
+  const resolvedLocation =
+    baseLocation && baseLocation.trim().length > 0
+      ? baseLocation
+      : fallbackLocationSegments.length > 0
+        ? fallbackLocationSegments.join(", ")
+        : "Unknown location";
+
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    proposedBy: row.proposed_by,
+    hotelName: row.hotel_name,
+    location: resolvedLocation,
+    price: toOptionalString(row.price) ?? "0",
+    pricePerNight: toOptionalString(row.price_per_night),
+    rating: safeNumberOrNull(row.rating),
+    amenities: row.amenities,
+    platform: row.platform,
+    bookingUrl: row.booking_url,
+    status: row.status,
+    averageRanking: parseAverageRanking(row.average_ranking),
+    createdAt: row.created_at,
+    stayId: linkedHotelId,
+    checkInDate: linkedCheckInDate,
+    checkOutDate: linkedCheckOutDate,
+    address: linkedAddress,
+    city: linkedCity,
+    country: linkedCountry,
+    currency: linkedCurrency,
+  };
+};
 
 const mapHotelRankingWithUser = (
   row: HotelRankingWithUserRow,
@@ -1301,29 +1347,66 @@ const mapHotelProposalWithDetails = (
   };
 };
 
-const mapFlightProposal = (row: FlightProposalRow): FlightProposal => ({
-  id: row.id,
-  tripId: row.trip_id,
-  proposedBy: row.proposed_by,
-  airline: row.airline,
-  flightNumber: row.flight_number,
-  departureAirport: row.departure_airport,
-  departureTime: toIsoString(row.departure_time),
-  departureTerminal: row.departure_terminal,
-  arrivalAirport: row.arrival_airport,
-  arrivalTime: toIsoString(row.arrival_time),
-  arrivalTerminal: row.arrival_terminal,
-  duration: row.duration,
-  stops: typeof row.stops === "string" ? Number(row.stops) : Number(row.stops ?? 0),
-  aircraft: row.aircraft,
-  price: toOptionalString(row.price) ?? "",
-  currency: row.currency,
-  bookingUrl: row.booking_url,
-  platform: row.platform,
-  status: row.status,
-  averageRanking: parseAverageRanking(row.average_ranking),
-  createdAt: row.created_at,
-});
+const mapFlightProposal = (row: FlightProposalRow): FlightProposal => {
+  const linkedFlightId = (row as { linked_flight_id?: number | null }).linked_flight_id ?? null;
+  const linkedDepartureCode = toOptionalString(
+    (row as { linked_departure_code?: string | null }).linked_departure_code,
+  );
+  const linkedArrivalCode = toOptionalString(
+    (row as { linked_arrival_code?: string | null }).linked_arrival_code,
+  );
+  const linkedDepartureGate = toOptionalString(
+    (row as { linked_departure_gate?: string | null }).linked_departure_gate,
+  );
+  const linkedArrivalGate = toOptionalString(
+    (row as { linked_arrival_gate?: string | null }).linked_arrival_gate,
+  );
+  const linkedSeatClass = toOptionalString(
+    (row as { linked_seat_class?: string | null }).linked_seat_class,
+  );
+  const linkedSeatNumber = toOptionalString(
+    (row as { linked_seat_number?: string | null }).linked_seat_number,
+  );
+  const linkedBookingSource = toOptionalString(
+    (row as { linked_booking_source?: string | null }).linked_booking_source,
+  );
+  const linkedPurchaseUrl = toOptionalString(
+    (row as { linked_purchase_url?: string | null }).linked_purchase_url,
+  );
+
+  return {
+    id: row.id,
+    tripId: row.trip_id,
+    proposedBy: row.proposed_by,
+    airline: row.airline,
+    flightNumber: row.flight_number,
+    departureAirport: row.departure_airport,
+    departureCode: linkedDepartureCode ?? undefined,
+    departureTime: toIsoString(row.departure_time),
+    departureTerminal: row.departure_terminal,
+    departureGate: linkedDepartureGate ?? undefined,
+    arrivalAirport: row.arrival_airport,
+    arrivalCode: linkedArrivalCode ?? undefined,
+    arrivalTime: toIsoString(row.arrival_time),
+    arrivalTerminal: row.arrival_terminal,
+    arrivalGate: linkedArrivalGate ?? undefined,
+    duration: row.duration,
+    stops: typeof row.stops === "string" ? Number(row.stops) : Number(row.stops ?? 0),
+    aircraft: row.aircraft,
+    price: toOptionalString(row.price) ?? "",
+    currency: row.currency,
+    bookingUrl: row.booking_url,
+    platform: row.platform,
+    status: row.status,
+    averageRanking: parseAverageRanking(row.average_ranking),
+    createdAt: row.created_at,
+    flightId: linkedFlightId,
+    seatClass: linkedSeatClass ?? undefined,
+    seatNumber: linkedSeatNumber ?? undefined,
+    bookingSource: linkedBookingSource ?? undefined,
+    purchaseUrl: linkedPurchaseUrl ?? undefined,
+  };
+};
 
 const mapFlightRankingWithUser = (
   row: FlightRankingWithUserRow,
@@ -5834,8 +5917,12 @@ export class DatabaseStorage implements IStorage {
 
   async createNotification(
     notification: InsertNotification,
+    client?: PoolClient,
   ): Promise<Notification> {
-    const { rows } = await query<NotificationRow>(
+    const execute = <T>(sql: string, params: unknown[] = []) =>
+      client ? client.query<T>(sql, params) : query<T>(sql, params);
+
+    const { rows } = await execute<NotificationRow>(
       `
       INSERT INTO notifications (
         user_id,
@@ -7478,12 +7565,15 @@ ${selectUserColumns("participant_user", "participant_user_")}
   // PROPOSALS FEATURE: create or update a linked hotel proposal for a manually saved hotel.
   private async syncHotelProposalFromHotelRow(
     hotel: HotelRow,
-    options: { allowCreate?: boolean } = {},
-  ): Promise<number | null> {
-    const { allowCreate = true } = options;
+    options: { allowCreate?: boolean; client?: PoolClient } = {},
+  ): Promise<{ proposalId: number; wasCreated: boolean } | null> {
+    const { allowCreate = true, client } = options;
     await this.ensureProposalLinkStructures();
 
-    const { rows: existingLinks } = await query<{
+    const runQuery = <T>(sql: string, params: unknown[] = []) =>
+      client ? client.query<T>(sql, params) : query<T>(sql, params);
+
+    const { rows: existingLinks } = await runQuery<{
       id: number;
       proposal_id: number;
     }>(
@@ -7530,18 +7620,14 @@ ${selectUserColumns("participant_user", "participant_user_")}
     let proposalStatus = "proposed";
     if (normalizedHotelStatus.includes("cancel")) {
       proposalStatus = "canceled";
-    } else if (
-      ["selected", "booked", "scheduled", "active", "proposed"].includes(
-        normalizedHotelStatus,
-      )
-    ) {
+    } else if (["selected", "booked", "scheduled"].includes(normalizedHotelStatus)) {
       proposalStatus = normalizedHotelStatus;
     }
 
     if (existingLinks.length > 0) {
       const link = existingLinks[0];
       const proposalId = link.proposal_id;
-      await query(
+      await runQuery(
         `
         UPDATE hotel_proposals
         SET
@@ -7574,18 +7660,18 @@ ${selectUserColumns("participant_user", "participant_user_")}
           proposalId,
         ],
       );
-      await query(
+      await runQuery(
         `UPDATE proposal_schedule_links SET trip_id = $1 WHERE id = $2`,
         [hotel.trip_id, link.id],
       );
-      return proposalId;
+      return { proposalId, wasCreated: false };
     }
 
     if (!allowCreate) {
       return null;
     }
 
-    const { rows: proposalRows } = await query<HotelProposalRow>(
+    const { rows: proposalRows } = await runQuery<HotelProposalRow>(
       `
       INSERT INTO hotel_proposals (
         trip_id,
@@ -7600,8 +7686,23 @@ ${selectUserColumns("participant_user", "participant_user_")}
         booking_url,
         status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING id
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'proposed'))
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        hotel_name,
+        location,
+        price,
+        price_per_night,
+        rating,
+        amenities,
+        platform,
+        booking_url,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
       `,
       [
         hotel.trip_id,
@@ -7623,7 +7724,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to create hotel proposal");
     }
 
-    await query(
+    await runQuery(
       `
       INSERT INTO proposal_schedule_links (
         proposal_type,
@@ -7633,12 +7734,11 @@ ${selectUserColumns("participant_user", "participant_user_")}
         trip_id
       )
       VALUES ('hotel', $1, 'hotels', $2, $3)
-      ON CONFLICT DO NOTHING
       `,
       [insertedProposal.id, hotel.id, hotel.trip_id],
     );
 
-    return insertedProposal.id;
+    return { proposalId: insertedProposal.id, wasCreated: true };
   }
 
   // PROPOSALS FEATURE: backfill proposals for any saved hotels missing a proposal link.
@@ -7672,55 +7772,223 @@ ${selectUserColumns("participant_user", "participant_user_")}
     hotelId: number;
     tripId: number;
     currentUserId: string;
-  }): Promise<HotelProposalWithDetails> {
+  }): Promise<{ proposal: HotelProposalWithDetails; wasCreated: boolean; stayId: number }> {
     const { hotelId, tripId, currentUserId } = options;
 
-    const { rows } = await query<HotelRow>(
-      `
-      SELECT *
-      FROM hotels
-      WHERE id = $1
-      `,
-      [hotelId],
-    );
+    const client = await pool.connect();
+    let wasCreated = false;
+    try {
+      await client.query("BEGIN");
 
-    const hotel = rows[0];
-    if (!hotel) {
-      throw new Error("Hotel not found");
+      const { rows } = await client.query<HotelRow & {
+        trip_created_by: string | null;
+        trip_name: string | null;
+        trip_start_date: Date | null;
+        trip_end_date: Date | null;
+      }>(
+        `
+        SELECT
+          h.*,
+          tc.created_by AS trip_created_by,
+          tc.name AS trip_name,
+          tc.start_date AS trip_start_date,
+          tc.end_date AS trip_end_date
+        FROM hotels h
+        JOIN trip_calendars tc ON tc.id = h.trip_id
+        WHERE h.id = $1
+        FOR UPDATE
+        `,
+        [hotelId],
+      );
+
+      const hotel = rows[0];
+      if (!hotel) {
+        throw new Error("Hotel not found");
+      }
+
+      const normalizedHotelTripId =
+        typeof hotel.trip_id === "number"
+          ? hotel.trip_id
+          : typeof hotel.trip_id === "string"
+            ? Number.parseInt(hotel.trip_id, 10)
+            : Number.NaN;
+
+      if (!Number.isFinite(normalizedHotelTripId)) {
+        throw new Error("Hotel record has an invalid trip id");
+      }
+
+      if (normalizedHotelTripId !== tripId) {
+        throw new Error("Hotel does not belong to this trip");
+      }
+
+      const normalizedRequesterId = normalizeUserId(currentUserId);
+      const normalizedStayCreatorId = normalizeUserId(hotel.user_id);
+      const normalizedTripOwnerId = normalizeUserId(hotel.trip_created_by);
+
+      const { rows: membershipRows } = await client.query<{ role: string }>(
+        `
+        SELECT role
+        FROM trip_members
+        WHERE trip_calendar_id = $1
+          AND user_id = $2
+        `,
+        [tripId, currentUserId],
+      );
+
+      const isTripEditor = membershipRows.some((row) =>
+        typeof row.role === "string" && ["admin", "owner", "organizer"].includes(row.role.toLowerCase()),
+      );
+      const isTripMember = membershipRows.length > 0;
+      const isTripOwner = Boolean(
+        normalizedTripOwnerId && normalizedRequesterId && normalizedTripOwnerId === normalizedRequesterId,
+      );
+
+      if (!isTripMember && !isTripOwner && normalizedStayCreatorId !== normalizedRequesterId) {
+        throw new Error("You must be a member of this trip to share stays with the group");
+      }
+
+      if (
+        normalizedStayCreatorId !== normalizedRequesterId &&
+        !isTripOwner &&
+        !isTripEditor
+      ) {
+        throw new Error("Only the stay creator or a trip editor can propose this stay");
+      }
+
+      const syncResult = await this.syncHotelProposalFromHotelRow(hotel, {
+        client,
+      });
+
+      if (!syncResult) {
+        throw new Error("Failed to load hotel proposal");
+      }
+
+      wasCreated = syncResult.wasCreated;
+
+      if (wasCreated) {
+        const { rows: memberRows } = await client.query<{ user_id: string }>(
+          `
+          SELECT user_id
+          FROM trip_members
+          WHERE trip_calendar_id = $1
+          `,
+          [tripId],
+        );
+
+        const recipientIds = new Set<string>();
+        for (const row of memberRows) {
+          if (typeof row.user_id === "string" && row.user_id.trim().length > 0) {
+            recipientIds.add(row.user_id);
+          }
+        }
+        if (normalizedTripOwnerId) {
+          recipientIds.add(normalizedTripOwnerId);
+        }
+        if (normalizedRequesterId) {
+          recipientIds.delete(normalizedRequesterId);
+        }
+
+        if (recipientIds.size > 0) {
+          const { rows: proposerRows } = await client.query<{
+            first_name: string | null;
+            last_name: string | null;
+            username: string | null;
+            email: string | null;
+          }>(
+            `
+            SELECT first_name, last_name, username, email
+            FROM users
+            WHERE id = $1
+            `,
+            [currentUserId],
+          );
+
+          const proposerRow = proposerRows[0];
+          const proposerName = (() => {
+            const parts = [proposerRow?.first_name, proposerRow?.last_name]
+              .map((part) => (typeof part === "string" ? part.trim() : ""))
+              .filter((part): part is string => part.length > 0);
+            if (parts.length > 0) {
+              return parts.join(" ");
+            }
+            if (typeof proposerRow?.username === "string" && proposerRow.username.trim().length > 0) {
+              return proposerRow.username.trim();
+            }
+            if (typeof proposerRow?.email === "string" && proposerRow.email.trim().length > 0) {
+              return proposerRow.email.trim();
+            }
+            return "A trip member";
+          })();
+
+          const formatDateLabel = (value: Date | string | null | undefined): string | null => {
+            if (!value) {
+              return null;
+            }
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) {
+              return null;
+            }
+            try {
+              return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            } catch {
+              return null;
+            }
+          };
+
+          const stayLabel = hotel.hotel_name?.trim().length ? hotel.hotel_name.trim() : "this stay";
+          const checkInLabel = formatDateLabel(hotel.check_in_date);
+          const checkOutLabel = formatDateLabel(hotel.check_out_date);
+
+          const title = `${proposerName} proposed ${stayLabel}`;
+          const message =
+            checkInLabel && checkOutLabel
+              ? `${proposerName} shared ${stayLabel} (${checkInLabel} – ${checkOutLabel}).`
+              : `${proposerName} shared ${stayLabel}.`;
+
+          await Promise.all(
+            Array.from(recipientIds).map((userId) =>
+              this.createNotification(
+                {
+                  userId,
+                  type: "proposal-hotel-created",
+                  title,
+                  message,
+                  tripId,
+                },
+                client,
+              ),
+            ),
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+
+      const proposal = await this.getHotelProposalById(syncResult.proposalId, currentUserId);
+      if (!proposal) {
+        throw new Error("Failed to load hotel proposal");
+      }
+
+      return { proposal, wasCreated, stayId: hotelId };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const normalizedHotelTripId =
-      typeof hotel.trip_id === "number"
-        ? hotel.trip_id
-        : typeof hotel.trip_id === "string"
-          ? Number.parseInt(hotel.trip_id, 10)
-          : Number.NaN;
-
-    if (!Number.isFinite(normalizedHotelTripId)) {
-      throw new Error("Hotel record has an invalid trip id");
-    }
-
-    if (normalizedHotelTripId !== tripId) {
-      throw new Error("Hotel does not belong to this trip");
-    }
-
-    const proposalId = await this.syncHotelProposalFromHotelRow(hotel);
-    if (!proposalId) {
-      throw new Error("Failed to load hotel proposal");
-    }
-
-    const proposal = await this.getHotelProposalById(proposalId, currentUserId);
-    if (!proposal) {
-      throw new Error("Failed to load hotel proposal");
-    }
-
-    return proposal;
   }
 
-  private async syncFlightProposalFromFlightRow(flight: FlightRow): Promise<number> {
+  private async syncFlightProposalFromFlightRow(
+    flight: FlightRow,
+    options: { client?: PoolClient } = {},
+  ): Promise<{ proposalId: number; wasCreated: boolean }> {
+    const { client } = options;
     await this.ensureProposalLinkStructures();
 
-    const { rows: existingLinks } = await query<{
+    const runQuery = <T>(sql: string, params: unknown[] = []) =>
+      client ? client.query<T>(sql, params) : query<T>(sql, params);
+
+    const { rows: existingLinks } = await runQuery<{
       id: number;
       proposal_id: number;
     }>(
@@ -7819,7 +8087,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (existingLinks.length > 0) {
       const link = existingLinks[0];
       const proposalId = link.proposal_id;
-      await query(
+      await runQuery(
         `
         UPDATE flight_proposals
         SET
@@ -7866,37 +8134,91 @@ ${selectUserColumns("participant_user", "participant_user_")}
           proposalId,
         ],
       );
-      await query(
+      await runQuery(
         `UPDATE proposal_schedule_links SET trip_id = $1 WHERE id = $2`,
         [flight.trip_id, link.id],
       );
-      return proposalId;
+      return { proposalId, wasCreated: false };
     }
 
-    const created = await this.createFlightProposal(
-      {
-        tripId: flight.trip_id,
-        airline: flight.airline,
-        flightNumber: flight.flight_number,
-        departureAirport: departureLabel,
-        departureTime: departureIso,
-        arrivalAirport: arrivalLabel,
-        arrivalTime: arrivalIso,
-        duration: durationLabel,
-        stops: stopsCount,
-        aircraft: toOptionalString(flight.aircraft),
-        price: priceString,
+    const { rows: proposalRows } = await runQuery<FlightProposalRow>(
+      `
+      INSERT INTO flight_proposals (
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        departure_terminal,
+        arrival_airport,
+        arrival_time,
+        arrival_terminal,
+        duration,
+        stops,
+        aircraft,
+        price,
+        currency,
+        booking_url,
+        platform,
+        status
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'proposed')
+      )
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        airline,
+        flight_number,
+        departure_airport,
+        departure_time,
+        departure_terminal,
+        arrival_airport,
+        arrival_time,
+        arrival_terminal,
+        duration,
+        stops,
+        aircraft,
+        price,
+        currency,
+        booking_url,
+        platform,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [
+        flight.trip_id,
+        flight.user_id,
+        flight.airline,
+        flight.flight_number,
+        departureLabel,
+        departureIso,
+        toOptionalString(flight.departure_terminal),
+        arrivalLabel,
+        arrivalIso,
+        toOptionalString(flight.arrival_terminal),
+        durationLabel,
+        stopsCount,
+        toOptionalString(flight.aircraft),
+        priceString,
         currency,
         bookingUrl,
         platform,
-        status: proposalStatus,
-        departureTerminal: toOptionalString(flight.departure_terminal),
-        arrivalTerminal: toOptionalString(flight.arrival_terminal),
-      },
-      flight.user_id,
+        proposalStatus,
+      ],
     );
 
-    await query(
+    const insertedProposal = proposalRows[0];
+    if (!insertedProposal) {
+      throw new Error("Failed to create flight proposal");
+    }
+
+    await runQuery(
       `
       INSERT INTO proposal_schedule_links (
         proposal_type,
@@ -7908,44 +8230,218 @@ ${selectUserColumns("participant_user", "participant_user_")}
       VALUES ('flight', $1, 'flights', $2, $3)
       ON CONFLICT DO NOTHING
       `,
-      [created.id, flight.id, flight.trip_id],
+      [insertedProposal.id, flight.id, flight.trip_id],
     );
 
-    return created.id;
+    return { proposalId: insertedProposal.id, wasCreated: true };
   }
 
   async ensureFlightProposalForSavedFlight(options: {
     flightId: number;
     tripId: number;
     currentUserId: string;
-  }): Promise<FlightProposalWithDetails> {
+  }): Promise<{ proposal: FlightProposalWithDetails; wasCreated: boolean; flightId: number }> {
     const { flightId, tripId, currentUserId } = options;
 
-    const { rows } = await query<FlightRow>(
-      `
-      SELECT *
-      FROM flights
-      WHERE id = $1
-      `,
-      [flightId],
-    );
+    const client = await pool.connect();
+    let wasCreated = false;
+    let proposalId: number | null = null;
 
-    const flight = rows[0];
-    if (!flight) {
-      throw new Error("Flight not found");
+    try {
+      await client.query("BEGIN");
+
+      const { rows } = await client.query<
+        FlightRow & {
+          trip_created_by: string | null;
+          trip_name: string | null;
+        }
+      >(
+        `
+        SELECT
+          f.*,
+          tc.created_by AS trip_created_by,
+          tc.name AS trip_name
+        FROM flights f
+        JOIN trip_calendars tc ON tc.id = f.trip_id
+        WHERE f.id = $1
+        FOR UPDATE
+        `,
+        [flightId],
+      );
+
+      const flight = rows[0];
+      if (!flight) {
+        throw new Error("Flight not found");
+      }
+
+      if (flight.trip_id !== tripId) {
+        throw new Error("Flight does not belong to this trip");
+      }
+
+      const normalizedRequesterId = normalizeUserId(currentUserId);
+      const normalizedFlightCreatorId = normalizeUserId(flight.user_id);
+      const normalizedTripOwnerId = normalizeUserId(flight.trip_created_by);
+
+      const { rows: membershipRows } = await client.query<{ role: string }>(
+        `
+        SELECT role
+        FROM trip_members
+        WHERE trip_calendar_id = $1
+          AND user_id = $2
+        `,
+        [tripId, currentUserId],
+      );
+
+      const isTripEditor = membershipRows.some((row) =>
+        typeof row.role === 'string' && ['admin', 'owner', 'organizer'].includes(row.role.toLowerCase()),
+      );
+      const isTripMember = membershipRows.length > 0;
+      const isTripOwner = Boolean(
+        normalizedTripOwnerId && normalizedRequesterId && normalizedTripOwnerId === normalizedRequesterId,
+      );
+
+      if (!isTripMember && !isTripOwner && normalizedFlightCreatorId !== normalizedRequesterId) {
+        throw new Error("You must be a member of this trip to share flights with the group");
+      }
+
+      if (
+        normalizedFlightCreatorId !== normalizedRequesterId &&
+        !isTripOwner &&
+        !isTripEditor
+      ) {
+        throw new Error("Only the flight creator or a trip editor can propose this flight");
+      }
+
+      const syncResult = await this.syncFlightProposalFromFlightRow(flight, { client });
+      if (!syncResult) {
+        throw new Error("Failed to load flight proposal");
+      }
+
+      wasCreated = syncResult.wasCreated;
+      proposalId = syncResult.proposalId;
+
+      if (wasCreated) {
+        const { rows: memberRows } = await client.query<{ user_id: string }>(
+          `
+          SELECT user_id
+          FROM trip_members
+          WHERE trip_calendar_id = $1
+          `,
+          [tripId],
+        );
+
+        const recipientIds = new Set<string>();
+        for (const row of memberRows) {
+          if (typeof row.user_id === 'string' && row.user_id.trim().length > 0) {
+            recipientIds.add(row.user_id);
+          }
+        }
+
+        if (normalizedTripOwnerId) {
+          recipientIds.add(normalizedTripOwnerId);
+        }
+
+        if (normalizedRequesterId) {
+          recipientIds.delete(normalizedRequesterId);
+        }
+
+        if (recipientIds.size > 0) {
+          const { rows: proposerRows } = await client.query<{
+            first_name: string | null;
+            last_name: string | null;
+            username: string | null;
+            email: string | null;
+          }>(
+            `
+            SELECT first_name, last_name, username, email
+            FROM users
+            WHERE id = $1
+            `,
+            [currentUserId],
+          );
+
+          const proposerRow = proposerRows[0];
+          const proposerName = (() => {
+            const parts = [proposerRow?.first_name, proposerRow?.last_name]
+              .map((part) => (typeof part === 'string' ? part.trim() : ''))
+              .filter((part): part is string => part.length > 0);
+            if (parts.length > 0) {
+              return parts.join(' ');
+            }
+            if (typeof proposerRow?.username === 'string' && proposerRow.username.trim().length > 0) {
+              return proposerRow.username.trim();
+            }
+            if (typeof proposerRow?.email === 'string' && proposerRow.email.trim().length > 0) {
+              return proposerRow.email.trim();
+            }
+            return 'A trip member';
+          })();
+
+          const formatDateTimeLabel = (value: Date | string | null | undefined): string | null => {
+            if (!value) {
+              return null;
+            }
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) {
+              return null;
+            }
+            try {
+              return date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+              });
+            } catch {
+              return null;
+            }
+          };
+
+          const departureLabel = toOptionalString(flight.departure_airport) ?? 'Departure';
+          const arrivalLabel = toOptionalString(flight.arrival_airport) ?? 'Arrival';
+          const routeLabel = `${departureLabel} → ${arrivalLabel}`;
+          const departureTimeLabel = formatDateTimeLabel(flight.departure_time);
+
+          const title = `${proposerName} proposed a flight`;
+          const message = departureTimeLabel
+            ? `${proposerName} shared a flight (${routeLabel}) departing ${departureTimeLabel}.`
+            : `${proposerName} shared a flight (${routeLabel}).`;
+
+          await Promise.all(
+            Array.from(recipientIds).map((userId) =>
+              this.createNotification(
+                {
+                  userId,
+                  type: "proposal-flight-created",
+                  title,
+                  message,
+                  tripId,
+                },
+                client,
+              ),
+            ),
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
     }
 
-    if (flight.trip_id !== tripId) {
-      throw new Error("Flight does not belong to this trip");
+    if (proposalId == null) {
+      throw new Error("Failed to load flight proposal");
     }
 
-    const proposalId = await this.syncFlightProposalFromFlightRow(flight);
     const proposal = await this.getFlightProposalById(proposalId, currentUserId);
     if (!proposal) {
       throw new Error("Failed to load flight proposal");
     }
 
-    return proposal;
+    return { proposal, wasCreated, flightId };
   }
 
   private async removeFlightProposalLinksForFlight(
@@ -9317,8 +9813,20 @@ ${selectUserColumns("participant_user", "participant_user_")}
         hp.average_ranking,
         hp.created_at,
         hp.updated_at,
+        psl.scheduled_id AS linked_hotel_id,
+        h.check_in_date AS linked_check_in_date,
+        h.check_out_date AS linked_check_out_date,
+        h.address AS linked_address,
+        h.city AS linked_city,
+        h.country AS linked_country,
+        h.currency AS linked_currency,
         ${selectUserColumns("u", "proposer_")}
       FROM hotel_proposals hp
+      LEFT JOIN proposal_schedule_links psl
+        ON psl.proposal_type = 'hotel'
+       AND psl.proposal_id = hp.id
+       AND psl.scheduled_table = 'hotels'
+      LEFT JOIN hotels h ON h.id = psl.scheduled_id
       LEFT JOIN users u ON u.id = hp.proposed_by
       ${whereClause}
       ORDER BY hp.created_at DESC NULLS LAST, hp.id DESC
@@ -9498,8 +10006,22 @@ ${selectUserColumns("participant_user", "participant_user_")}
         fp.average_ranking,
         fp.created_at,
         fp.updated_at,
+        psl.scheduled_id AS linked_flight_id,
+        f.departure_code AS linked_departure_code,
+        f.arrival_code AS linked_arrival_code,
+        f.departure_gate AS linked_departure_gate,
+        f.arrival_gate AS linked_arrival_gate,
+        f.seat_class AS linked_seat_class,
+        f.seat_number AS linked_seat_number,
+        f.booking_source AS linked_booking_source,
+        f.purchase_url AS linked_purchase_url,
         ${selectUserColumns("u", "proposer_")}
       FROM flight_proposals fp
+      LEFT JOIN proposal_schedule_links psl
+        ON psl.proposal_type = 'flight'
+       AND psl.proposal_id = fp.id
+       AND psl.scheduled_table = 'flights'
+      LEFT JOIN flights f ON f.id = psl.scheduled_id
       JOIN users u ON u.id = fp.proposed_by
       ${whereClause}
       ORDER BY fp.created_at DESC NULLS LAST, fp.id DESC
@@ -9931,7 +10453,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async rankHotelProposal(
     ranking: InsertHotelRanking,
     userId: string,
-  ): Promise<void> {
+  ): Promise<{ tripId: number; affectedProposalIds: number[] }> {
     const client = await pool.connect();
     let tripId: number | null = null;
     const affectedProposalIds = new Set<number>();
@@ -10004,6 +10526,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
         this.updateHotelProposalAverageRanking(proposalId),
       ),
     );
+
+    if (tripId == null) {
+      throw new Error("Failed to determine trip id for hotel ranking");
+    }
+
+    return { tripId, affectedProposalIds: Array.from(affectedProposalIds) };
   }
 
   async updateProposalAverageRanking(): Promise<void> {
@@ -10488,9 +11016,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async rankFlightProposal(
     ranking: InsertFlightRanking,
     userId: string,
-  ): Promise<void> {
+  ): Promise<{ tripId: number; affectedProposalIds: number[] }> {
     const client = await pool.connect();
     const affectedProposalIds = new Set<number>();
+    let tripId: number | null = null;
 
     try {
       await client.query("BEGIN");
@@ -10504,6 +11033,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
       if (!proposalRow) {
         throw new Error("Flight proposal not found");
       }
+
+      tripId = proposalRow.trip_id;
 
       const { rows: conflictingRows } = await client.query<{ proposal_id: number }>(
         `
@@ -10558,6 +11089,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
         this.updateFlightProposalAverageRanking(proposalId),
       ),
     );
+
+    if (tripId == null) {
+      throw new Error("Failed to determine trip id for flight ranking");
+    }
+
+    return { tripId, affectedProposalIds: Array.from(affectedProposalIds) };
   }
 
   async updateFlightProposalAverageRanking(proposalId: number): Promise<void> {

@@ -147,9 +147,13 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     });
 
     ensureHotelProposalMock.mockResolvedValueOnce({
-      id: 991,
-      hotelId: 77,
-      tripId: 10,
+      proposal: {
+        id: 991,
+        tripId: 10,
+        hotelName: "Riverside Inn",
+      },
+      wasCreated: true,
+      stayId: 77,
     });
 
     const req: any = {
@@ -195,13 +199,12 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
       currentUserId: "test-user",
     });
 
-    expect(res.status).not.toHaveBeenCalledWith(400);
-    expect(res.status).not.toHaveBeenCalledWith(401);
+    expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 991,
-        hotelId: 77,
         tripId: 10,
+        hotelName: "Riverside Inn",
       }),
     );
   });

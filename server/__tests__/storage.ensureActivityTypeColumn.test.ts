@@ -26,10 +26,13 @@ describe("ensureActivityTypeColumn", () => {
   });
 
   it("sets enum defaults when the column uses a user-defined type", async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ data_type: "USER-DEFINED", udt_name: "activity_type" }] })
-      .mockResolvedValue({ rows: [] });
+    queryMock.mockImplementation(async (sql: unknown) => {
+      if (typeof sql === "string" && sql.includes("SELECT data_type, udt_name")) {
+        return { rows: [{ data_type: "USER-DEFINED", udt_name: "activity_type" }] };
+      }
+
+      return { rows: [] };
+    });
 
     const storage = new DatabaseStorage();
     await (storage as any).ensureActivityTypeColumn();
@@ -46,10 +49,13 @@ describe("ensureActivityTypeColumn", () => {
   });
 
   it("cleans blank string values for text columns", async () => {
-    queryMock
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ data_type: "text", udt_name: null }] })
-      .mockResolvedValue({ rows: [] });
+    queryMock.mockImplementation(async (sql: unknown) => {
+      if (typeof sql === "string" && sql.includes("SELECT data_type, udt_name")) {
+        return { rows: [{ data_type: "text", udt_name: null }] };
+      }
+
+      return { rows: [] };
+    });
 
     const storage = new DatabaseStorage();
     await (storage as any).ensureActivityTypeColumn();

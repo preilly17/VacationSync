@@ -6226,6 +6226,46 @@ function HotelBooking({
     enabled: !!tripId,
   });
 
+  const currentUserId = user?.id ?? null;
+  const membership = useMemo(() => {
+    if (!trip || !currentUserId) {
+      return null;
+    }
+
+    return trip.members?.find((member) => member.userId === currentUserId) ?? null;
+  }, [trip, currentUserId]);
+
+  const isTripOwner = useMemo(() => {
+    if (!trip?.createdBy || !currentUserId) {
+      return false;
+    }
+
+    return trip.createdBy === currentUserId;
+  }, [trip?.createdBy, currentUserId]);
+
+  const isTripEditor = useMemo(() => {
+    if (!membership?.role) {
+      return false;
+    }
+
+    return TRIP_ADMIN_ROLES.has(membership.role.toLowerCase());
+  }, [membership?.role]);
+
+  const canManageHotel = useCallback(
+    (hotel: HotelWithDetails) => {
+      if (!currentUserId) {
+        return false;
+      }
+
+      if (String(hotel.userId) === currentUserId) {
+        return true;
+      }
+
+      return isTripOwner || isTripEditor;
+    },
+    [currentUserId, isTripEditor, isTripOwner],
+  );
+
   const {
     showModal: showBookingModal,
     bookingData,
@@ -6238,20 +6278,80 @@ function HotelBooking({
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
   const manualHotels = useMemo(() => hotels, [hotels]);
   const [proposingHotelId, setProposingHotelId] = useState<number | string | null>(null);
-  const proposeHotelMutation = useMutation({
+  const proposeHotelMutation = useMutation<
+    HotelProposalWithDetails,
+    Error,
+    HotelWithDetails
+  >({
     mutationFn: async (hotel: HotelWithDetails) => {
       const parsedHotelId = Number.parseInt(String(hotel.id), 10);
       if (!Number.isFinite(parsedHotelId)) {
         throw new Error("Invalid hotel ID");
       }
 
-      return apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
+      const response = await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
         body: { hotelId: parsedHotelId, tripId },
       });
+
+      return (await response.json()) as HotelProposalWithDetails;
     },
-    onSuccess: async () => {
+    onSuccess: async (proposal, hotel) => {
       toast({ title: "Hotel proposed to group." });
+
+      const stayId = proposal.stayId ?? Number.parseInt(String(hotel.id), 10);
+
+      queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/hotel-proposals`],
+        (existing) => {
+          const proposals = Array.isArray(existing) ? [...existing] : [];
+          const index = proposals.findIndex((entry) => entry.id === proposal.id);
+          if (index >= 0) {
+            proposals[index] = proposal;
+          } else {
+            proposals.unshift(proposal);
+          }
+          return proposals;
+        },
+      );
+
+      if (proposal.proposedBy === currentUserId) {
+        queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
+          [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
+          (existing) => {
+            const proposals = Array.isArray(existing) ? [...existing] : [];
+            const index = proposals.findIndex((entry) => entry.id === proposal.id);
+            if (index >= 0) {
+              proposals[index] = proposal;
+            } else {
+              proposals.unshift(proposal);
+            }
+            return proposals;
+          },
+        );
+      }
+
+      queryClient.setQueryData<HotelWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/hotels`],
+        (existing) => {
+          if (!Array.isArray(existing)) {
+            return existing;
+          }
+
+          return existing.map((entry) => {
+            if (Number.parseInt(String(entry.id), 10) !== stayId) {
+              return entry;
+            }
+
+            return {
+              ...entry,
+              proposalId: proposal.id,
+              proposalStatus: proposal.status ?? "proposed",
+            };
+          });
+        },
+      );
+
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
         queryClient.invalidateQueries({
@@ -6279,6 +6379,23 @@ function HotelBooking({
           });
           return;
         }
+        if (error.status === 403) {
+          toast({
+            title: "Not allowed",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (typeof error.message === "string" && error.message.trim().length > 0) {
+          toast({
+            title: "Unable to propose stay",
+            description: error.message,
+            variant: "destructive",
+          });
+          return;
+        }
       }
 
       toast({
@@ -6297,6 +6414,15 @@ function HotelBooking({
         toast({
           title: "Add stay details before sharing",
           description: `Add the ${fieldList} to this stay before proposing it to your group.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!canManageHotel(hotel)) {
+        toast({
+          title: "Not allowed",
+          description: "Only the stay creator or a trip editor can propose this stay.",
           variant: "destructive",
         });
         return;
@@ -6326,7 +6452,7 @@ function HotelBooking({
         },
       });
     },
-    [proposeHotelMutation, toast],
+    [canManageHotel, proposeHotelMutation, toast],
   );
 
   const focusSearchPanel = useCallback(() => {
@@ -6724,6 +6850,7 @@ function HotelBooking({
                   ? hotel.status.charAt(0).toUpperCase() + hotel.status.slice(1)
                   : null;
                 const canShareWithGroup = canShareHotelWithGroup(hotel);
+                const userCanManage = canManageHotel(hotel);
                 const proposalStatusLabel = hotel.proposalStatus
                   ? hotel.proposalStatus.charAt(0).toUpperCase() + hotel.proposalStatus.slice(1)
                   : null;
@@ -6772,32 +6899,36 @@ function HotelBooking({
                         <Button variant="outline" size="sm" onClick={() => handleEditHotel(hotel)}>
                           Edit
                         </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleProposeHotel(hotel)}
-                          disabled={
-                            !canShareWithGroup ||
-                            cannotShareUntilDetailsProvided ||
-                            (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
-                          }
-                          title={missingFieldsMessage ?? undefined}
-                        >
-                          {proposeHotelMutation.isPending && proposingHotelId === hotel.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Proposing...
-                            </>
-                          ) : canShareWithGroup ? (
-                            hotel.proposalId ? "Send to Group" : "Propose to Group"
-                          ) : (
-                            "Shared with Group"
-                          )}
-                        </Button>
-                        {cannotShareUntilDetailsProvided ? (
-                          <p className="text-xs text-muted-foreground">
-                            {missingFieldsMessage}
-                          </p>
+                        {userCanManage ? (
+                          <>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleProposeHotel(hotel)}
+                              disabled={
+                                !canShareWithGroup ||
+                                cannotShareUntilDetailsProvided ||
+                                (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
+                              }
+                              title={missingFieldsMessage ?? undefined}
+                            >
+                              {proposeHotelMutation.isPending && proposingHotelId === hotel.id ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Proposing...
+                                </>
+                              ) : canShareWithGroup ? (
+                                hotel.proposalId ? "Send to Group" : "Propose to Group"
+                              ) : (
+                                "Shared with Group"
+                              )}
+                            </Button>
+                            {cannotShareUntilDetailsProvided ? (
+                              <p className="text-xs text-muted-foreground">
+                                {missingFieldsMessage}
+                              </p>
+                            ) : null}
+                          </>
                         ) : null}
                         <AlertDialog>
                           <AlertDialogTrigger asChild>

@@ -4245,13 +4245,23 @@ export function setupRoutes(app: Express) {
             .json({ message: "Flight ID is required to propose to the group" });
         }
 
-        const proposal = await storage.ensureFlightProposalForSavedFlight({
+        const result = await storage.ensureFlightProposalForSavedFlight({
           flightId,
           tripId,
           currentUserId: userId,
         });
 
-        res.json(proposal);
+        const statusCode = result.wasCreated ? 201 : 200;
+
+        res.status(statusCode).json(result.proposal);
+
+        broadcastToTrip(tripId, {
+          type: result.wasCreated ? "flight_proposal_created" : "flight_proposal_updated",
+          tripId,
+          proposalId: result.proposal.id,
+          flightId: result.flightId,
+          triggeredBy: userId,
+        });
       } catch (error: unknown) {
         console.error("Error proposing flight to group:", error);
         if (error instanceof z.ZodError) {
@@ -4263,6 +4273,9 @@ export function setupRoutes(app: Express) {
           }
           if (error.message.includes('does not belong to this trip')) {
             return res.status(400).json({ message: error.message });
+          }
+          if (error.message.includes('Only the flight creator') || error.message.includes('must be a member of this trip')) {
+            return res.status(403).json({ message: error.message });
           }
         }
 
@@ -4444,7 +4457,16 @@ export function setupRoutes(app: Express) {
           }
 
           const proposal = await storage.createHotelProposal(fallbackParseResult.data, userId);
-          return res.json(proposal);
+          res.status(201).json(proposal);
+
+          broadcastToTrip(tripId, {
+            type: "hotel_proposal_created",
+            tripId,
+            proposalId: proposal.id,
+            stayId: proposal.stayId ?? null,
+            triggeredBy: userId,
+          });
+          return;
         }
       }
 
@@ -4456,13 +4478,23 @@ export function setupRoutes(app: Express) {
         });
       }
 
-      const proposal = await storage.ensureHotelProposalForSavedHotel({
+      const result = await storage.ensureHotelProposalForSavedHotel({
         hotelId,
         tripId,
         currentUserId: userId,
       });
 
-      res.json(proposal);
+      const statusCode = result.wasCreated ? 201 : 200;
+
+      res.status(statusCode).json(result.proposal);
+
+      broadcastToTrip(tripId, {
+        type: result.wasCreated ? "hotel_proposal_created" : "hotel_proposal_updated",
+        tripId,
+        proposalId: result.proposal.id,
+        stayId: result.stayId,
+        triggeredBy: userId,
+      });
     } catch (error: unknown) {
       console.error("Error proposing hotel to group:", error);
       if (error instanceof z.ZodError) {
@@ -4476,6 +4508,9 @@ export function setupRoutes(app: Express) {
         }
         if (error.message.includes('does not belong to this trip')) {
           return res.status(400).json({ message: error.message });
+        }
+        if (error.message.includes('Only the stay creator') || error.message.includes('must be a member of this trip')) {
+          return res.status(403).json({ message: error.message });
         }
       }
 
@@ -4611,8 +4646,20 @@ export function setupRoutes(app: Express) {
         notes: req.body.notes ?? null,
       });
 
-      await storage.rankHotelProposal(validatedData, userId);
+      const { tripId: proposalTripId, affectedProposalIds } = await storage.rankHotelProposal(
+        validatedData,
+        userId,
+      );
       res.json({ success: true });
+
+      for (const proposalId of affectedProposalIds) {
+        broadcastToTrip(proposalTripId, {
+          type: "hotel_proposal_ranked",
+          tripId: proposalTripId,
+          proposalId,
+          triggeredBy: userId,
+        });
+      }
     } catch (error: unknown) {
       console.error("Error ranking hotel proposal:", error);
       if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
@@ -4637,6 +4684,14 @@ export function setupRoutes(app: Express) {
 
       const proposal = await storage.cancelHotelProposal(proposalId, userId);
       res.json(proposal);
+
+      broadcastToTrip(proposal.tripId, {
+        type: "hotel_proposal_canceled",
+        tripId: proposal.tripId,
+        proposalId: proposal.id,
+        stayId: proposal.stayId ?? null,
+        triggeredBy: userId,
+      });
     } catch (error: unknown) {
       console.error("Error canceling hotel proposal:", error);
       if (error instanceof Error) {
@@ -4706,7 +4761,15 @@ export function setupRoutes(app: Express) {
       };
 
       const proposal = await storage.createFlightProposal(proposalData, userId);
-      res.json(proposal);
+      res.status(201).json(proposal);
+
+      broadcastToTrip(tripId, {
+        type: "flight_proposal_created",
+        tripId,
+        proposalId: proposal.id,
+        flightId: proposal.flightId ?? null,
+        triggeredBy: userId,
+      });
     } catch (error: unknown) {
       console.error("Error creating flight proposal:", error);
       res.status(500).json({ message: "Failed to create flight proposal" });
@@ -4736,8 +4799,20 @@ export function setupRoutes(app: Express) {
         notes: req.body.notes ?? null,
       });
 
-      await storage.rankFlightProposal(validatedData, userId);
+      const { tripId: proposalTripId, affectedProposalIds } = await storage.rankFlightProposal(
+        validatedData,
+        userId,
+      );
       res.json({ success: true });
+
+      for (const proposalId of affectedProposalIds) {
+        broadcastToTrip(proposalTripId, {
+          type: "flight_proposal_ranked",
+          tripId: proposalTripId,
+          proposalId,
+          triggeredBy: userId,
+        });
+      }
     } catch (error: unknown) {
       console.error("Error ranking flight proposal:", error);
       if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
@@ -4762,6 +4837,14 @@ export function setupRoutes(app: Express) {
 
       const proposal = await storage.cancelFlightProposal(proposalId, userId);
       res.json(proposal);
+
+      broadcastToTrip(proposal.tripId, {
+        type: "flight_proposal_canceled",
+        tripId: proposal.tripId,
+        proposalId: proposal.id,
+        flightId: proposal.flightId ?? null,
+        triggeredBy: userId,
+      });
     } catch (error: unknown) {
       console.error("Error canceling flight proposal:", error);
       if (error instanceof Error) {

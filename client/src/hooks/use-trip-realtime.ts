@@ -64,6 +64,22 @@ export function useTripRealtime(
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
     };
 
+    const invalidateHotelProposals = () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+    };
+
+    const invalidateFlightProposals = () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+    };
+
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = JSON.parse(event.data as string);
@@ -73,6 +89,31 @@ export function useTripRealtime(
 
         if (ACTIVITY_EVENT_TYPES.has(data.type as ActivityEventType)) {
           invalidateActivityQueries();
+          return;
+        }
+
+        const triggeredBy = typeof data.triggeredBy === "string" ? data.triggeredBy : undefined;
+        const isSelfEvent = triggeredBy && triggeredBy === userId;
+
+        switch (data.type) {
+          case "hotel_proposal_created":
+          case "hotel_proposal_updated":
+          case "hotel_proposal_canceled":
+          case "hotel_proposal_ranked":
+            if (!isSelfEvent) {
+              invalidateHotelProposals();
+            }
+            break;
+          case "flight_proposal_created":
+          case "flight_proposal_updated":
+          case "flight_proposal_canceled":
+          case "flight_proposal_ranked":
+            if (!isSelfEvent) {
+              invalidateFlightProposals();
+            }
+            break;
+          default:
+            break;
         }
       } catch {
         // ignore malformed payloads

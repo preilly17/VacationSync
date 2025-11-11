@@ -1,6 +1,4 @@
-import path from "path";
-import { fileURLToPath } from "url";
-import { beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 import type {
   ActivityAcceptance,
@@ -16,20 +14,21 @@ process.env.DATABASE_URL =
 const queryMock = jest.fn();
 const poolConnectMock = jest.fn();
 
+let restoreQuery: jest.SpyInstance | null = null;
+let restorePoolConnect: jest.SpyInstance | null = null;
+
 let mapActivityWithDetails: (typeof import("../storage"))
   ["__testables"]["mapActivityWithDetails"];
 let storageInstance: (typeof import("../storage"))["storage"];
 
 beforeAll(async () => {
   jest.resetModules();
-  const dbModuleSpecifier = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "../db",
-  );
-  await jest.unstable_mockModule(dbModuleSpecifier, () => ({
-    query: queryMock,
-    pool: { connect: poolConnectMock },
-  }));
+  const dbModule: any = await import("../db");
+  restoreQuery = jest.spyOn(dbModule, "query").mockImplementation(queryMock as any);
+  restorePoolConnect = jest
+    .spyOn(dbModule.pool, "connect")
+    .mockImplementation(poolConnectMock as any);
+
   const storageModule: any = await import("../storage");
   mapActivityWithDetails = storageModule.__testables.mapActivityWithDetails;
   storageInstance = storageModule.storage;
@@ -38,6 +37,11 @@ beforeAll(async () => {
 beforeEach(() => {
   queryMock.mockReset();
   poolConnectMock.mockReset();
+});
+
+afterAll(() => {
+  restoreQuery?.mockRestore();
+  restorePoolConnect?.mockRestore();
 });
 
 describe("mapActivityWithDetails", () => {

@@ -769,6 +769,13 @@ export interface HotelProposal {
   status: string;
   averageRanking: number | null;
   createdAt: IsoDate | null;
+  stayId?: number | null;
+  checkInDate?: IsoDate | null;
+  checkOutDate?: IsoDate | null;
+  address?: string | null;
+  city?: string | null;
+  country?: string | null;
+  currency?: string | null;
 }
 
 export const insertHotelProposalSchema = z.object({
@@ -822,11 +829,15 @@ export interface FlightProposal {
   airline: string;
   flightNumber: string;
   departureAirport: string;
+  departureCode?: string | null;
   departureTime: string;
   departureTerminal: string | null;
+  departureGate?: string | null;
   arrivalAirport: string;
+  arrivalCode?: string | null;
   arrivalTime: string;
   arrivalTerminal: string | null;
+  arrivalGate?: string | null;
   duration: string;
   stops: number;
   aircraft: string | null;
@@ -837,6 +848,11 @@ export interface FlightProposal {
   status: string;
   averageRanking: number | null;
   createdAt: IsoDate | null;
+  flightId?: number | null;
+  seatClass?: string | null;
+  seatNumber?: string | null;
+  bookingSource?: string | null;
+  purchaseUrl?: string | null;
 }
 
 export const insertFlightProposalSchema = z.object({

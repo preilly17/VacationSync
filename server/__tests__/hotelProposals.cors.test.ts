@@ -90,9 +90,13 @@ beforeAll(async () => {
   });
 
   storageSpies.ensureHotelProposalForSavedHotel = jest.fn().mockResolvedValue({
-    id: 42,
-    hotelId: 123,
-    tripId: 10,
+    proposal: {
+      id: 42,
+      tripId: 10,
+      hotelName: "Test Hotel",
+    },
+    wasCreated: true,
+    stayId: 123,
   });
 
   storageSpies.getTripHotelProposals = jest.fn().mockResolvedValue([]);
@@ -120,9 +124,13 @@ describe("Hotel proposal CORS", () => {
     httpServer = result.server;
 
     storageModule.storage.ensureHotelProposalForSavedHotel.mockResolvedValue({
-      id: 101,
-      hotelId: 55,
-      tripId: 10,
+      proposal: {
+        id: 101,
+        tripId: 10,
+        hotelName: "Mock Stay",
+      },
+      wasCreated: true,
+      stayId: 55,
     });
   });
 
