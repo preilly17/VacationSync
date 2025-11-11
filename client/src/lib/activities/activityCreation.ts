@@ -226,7 +226,6 @@ export const mapApiErrorToValidation = (error: ApiError): ActivityValidationErro
 
 export interface SubmitActivityOptions {
   tripId: number;
-  version?: "legacy" | "v2";
   payload: ReturnType<typeof buildActivitySubmission>["payload"];
 }
 
@@ -270,7 +269,6 @@ const redactDates = (value: unknown): unknown => {
 
 export const submitActivityRequest = async <T extends ActivityWithDetails>({
   tripId,
-  version = "legacy",
   payload,
 }: SubmitActivityOptions): Promise<T> => {
   const endpoint =
@@ -278,15 +276,10 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
       ? `/api/trips/${tripId}/proposals/activities`
       : `/api/trips/${tripId}/activities`;
 
-  const headers = version === "v2"
-    ? ({ "x-activities-version": "2" } as Record<string, string>)
-    : undefined;
-
   const normalizedPayload = normalizeSubmissionPayload(payload);
   const sanitizedPayload = redactDates(normalizedPayload);
   console.info("[activity:create] submitting", {
     tripId,
-    version,
     endpoint,
     payload: sanitizedPayload,
   });
@@ -295,7 +288,6 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
     const response = await apiRequest(endpoint, {
       method: "POST",
       body: normalizedPayload,
-      headers,
     });
 
     const responseClone = response.clone();
@@ -317,7 +309,6 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
 
     console.info("[activity:create] success", {
       tripId,
-      version,
       endpoint,
       status: response.status,
       correlationId,
@@ -334,7 +325,6 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
 
       console.error("[activity:create] failure", {
         tripId,
-        version,
         endpoint,
         status: error.status,
         message: error.message,
@@ -345,7 +335,6 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
     } else {
       console.error("[activity:create] failure", {
         tripId,
-        version,
         endpoint,
         payload: sanitizedPayload,
         error: error instanceof Error ? error.message : String(error),
