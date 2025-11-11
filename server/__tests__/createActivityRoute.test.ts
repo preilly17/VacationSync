@@ -16,6 +16,7 @@ let storageModule: any;
 let storage: any;
 let observabilityModule: any;
 let activitiesV2Module: any;
+let activityValidationModule: any;
 let logActivityCreationFailure: jest.SpyInstance;
 let trackActivityCreationMetric: jest.SpyInstance;
 
@@ -95,6 +96,7 @@ beforeAll(async () => {
 
   observabilityModule = await import("../observability");
   activitiesV2Module = await import("../activitiesV2");
+  activityValidationModule = await import("@shared/activityValidation");
 });
 
 
@@ -118,6 +120,79 @@ describe("POST /api/trips/:id/activities", () => {
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
     });
+  });
+
+  it("returns a friendly attendee error when validation omits attendeeIds", async () => {
+    const trip = {
+      id: 456,
+      createdBy: "organizer",
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Dinner",
+      startTime: new Date("2024-02-02T19:00:00Z").toISOString(),
+      endTime: new Date("2024-02-02T21:00:00Z").toISOString(),
+      category: "food",
+      attendeeIds: ["friend"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const validateSpy = jest
+      .spyOn(activityValidationModule, "validateActivityInput")
+      .mockReturnValueOnce({
+        data: {
+          tripCalendarId: trip.id,
+          name: requestBody.name,
+          description: null,
+          startTime: requestBody.startTime,
+          endTime: requestBody.endTime,
+          location: null,
+          cost: null,
+          maxCapacity: null,
+          category: "food",
+          type: "SCHEDULED",
+        },
+        attendeeIds: undefined,
+        errors: undefined,
+      });
+
+    const createActivitySpy = jest.spyOn(storage, "createActivityWithInvites");
+
+    await handler(req, res);
+
+    expect(validateSpy).toHaveBeenCalled();
+    expect(createActivitySpy).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      message: activityValidationModule.ATTENDEE_REQUIRED_MESSAGE,
+      correlationId: expect.any(String),
+    });
+    expect(payload.errors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "attendeeIds",
+          message: activityValidationModule.ATTENDEE_REQUIRED_MESSAGE,
+        }),
+      ]),
+    );
+
+    validateSpy.mockRestore();
   });
 
   it("returns 400 with invite details when a constraint violation occurs", async () => {

@@ -33,7 +33,7 @@ import {
 } from "@shared/schema";
 import { createActivityV2, convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
-import { validateActivityInput } from "@shared/activityValidation";
+import { ATTENDEE_REQUIRED_MESSAGE, validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
 import { unfurlLinkMetadata } from "./wishListService";
 import { registerCoverPhotoUploadRoutes } from "./coverPhotoUpload";
@@ -2873,17 +2873,27 @@ export function setupRoutes(app: Express) {
         tripEndDate: trip.endDate ?? null,
       });
 
-      if (validationResult.errors || !validationResult.data || !validationResult.attendeeIds) {
-        const validationFields = Array.isArray(validationResult.errors)
-          ? validationResult.errors.map((issue) => issue.field).filter(Boolean)
-          : [];
+      const attendeeIds = Array.isArray(validationResult.attendeeIds) ? validationResult.attendeeIds : [];
+      const validationIssues = Array.isArray(validationResult.errors)
+        ? [...validationResult.errors]
+        : [];
+
+      if (attendeeIds.length === 0) {
+        const hasAttendeeIssue = validationIssues.some((issue) => issue?.field === "attendeeIds");
+        if (!hasAttendeeIssue) {
+          validationIssues.push({ field: "attendeeIds", message: ATTENDEE_REQUIRED_MESSAGE });
+        }
+      }
+
+      if (validationIssues.length > 0 || !validationResult.data || attendeeIds.length === 0) {
+        const validationFields = validationIssues.map((issue) => issue.field).filter(Boolean);
 
         logActivityCreationFailure({
           correlationId,
           step: "validate",
           userId,
           tripId,
-          error: validationResult.errors ?? "Unknown validation error",
+          error: validationIssues.length > 0 ? validationIssues : "Unknown validation error",
           mode,
           validationFields,
           payloadSummary,
@@ -2901,21 +2911,21 @@ export function setupRoutes(app: Express) {
           tripId,
           pipeline: "legacy",
           reason: "server-validation",
-          errors: validationResult.errors ?? [],
+          errors: validationIssues,
         });
 
-        const firstErrorMessage = validationResult.errors?.[0]?.message
+        const firstErrorMessage = validationIssues[0]?.message
           ?? "Activity could not be created due to validation errors.";
 
         res.status(400).json({
           message: firstErrorMessage,
           correlationId,
-          errors: validationResult.errors ?? [],
+          errors: validationIssues,
         });
         return;
       }
 
-      const attendeeIdSet = new Set(validationResult.attendeeIds);
+      const attendeeIdSet = new Set(attendeeIds);
       attendeeIdSet.delete(userId);
       const inviteeIds = Array.from(attendeeIdSet);
       attemptedInviteeIds = inviteeIds;
@@ -2924,7 +2934,7 @@ export function setupRoutes(app: Express) {
         name: validationResult.data.name,
         startTime: validationResult.data.startTime,
         type: validationResult.data.type,
-        attendeeCount: validationResult.attendeeIds.length,
+        attendeeCount: attendeeIds.length,
       };
 
       const normalizedData = { ...validationResult.data, type: mode };
