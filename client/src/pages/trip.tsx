@@ -6167,75 +6167,6 @@ function getMissingHotelProposalFields(hotel: HotelWithDetails): string[] {
   );
 }
 
-function buildInsertHotelPayloadFromHotel(hotel: HotelWithDetails): InsertHotel {
-  const toNullableNumber = (value: unknown): number | null => {
-    if (value == null) {
-      return null;
-    }
-
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? value : null;
-    }
-
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  const toDateInput = (value: unknown): string | Date => {
-    if (value instanceof Date) {
-      return value;
-    }
-
-    if (typeof value === "string") {
-      return value;
-    }
-
-    if (value == null) {
-      throw new Error("Missing hotel date value");
-    }
-
-    const parsedDate = new Date(value as string | number);
-    if (Number.isNaN(parsedDate.getTime())) {
-      throw new Error("Invalid hotel date value");
-    }
-
-    return parsedDate.toISOString();
-  };
-
-  return {
-    tripId: hotel.tripId,
-    hotelName: hotel.hotelName ?? hotel.name ?? "",
-    address: hotel.address ?? "",
-    city: hotel.city ?? "",
-    country: hotel.country ?? "",
-    checkInDate: toDateInput(hotel.checkInDate),
-    checkOutDate: toDateInput(hotel.checkOutDate),
-    guestCount: toNullableNumber(hotel.guestCount),
-    roomCount: toNullableNumber(hotel.roomCount),
-    roomType: hotel.roomType ?? null,
-    hotelChain: hotel.hotelChain ?? null,
-    hotelRating: toNullableNumber(hotel.hotelRating),
-    bookingReference: hotel.bookingReference ?? null,
-    totalPrice: toNullableNumber(hotel.totalPrice),
-    pricePerNight: toNullableNumber(hotel.pricePerNight),
-    currency: hotel.currency ?? "USD",
-    status: hotel.status ?? "confirmed",
-    bookingSource: hotel.bookingSource ?? null,
-    purchaseUrl: hotel.purchaseUrl ?? null,
-    amenities: hotel.amenities ?? null,
-    images: hotel.images ?? null,
-    policies: hotel.policies ?? null,
-    contactInfo: hotel.contactInfo ?? null,
-    bookingPlatform: hotel.bookingPlatform ?? null,
-    bookingUrl: hotel.bookingUrl ?? null,
-    cancellationPolicy: hotel.cancellationPolicy ?? null,
-    notes: hotel.notes ?? null,
-    latitude: toNullableNumber(hotel.latitude),
-    longitude: toNullableNumber(hotel.longitude),
-    zipCode: hotel.zipCode ?? null,
-  };
-}
-
 function formatList(items: string[]): string {
   if (items.length === 0) {
     return "";
@@ -6314,10 +6245,9 @@ function HotelBooking({
         throw new Error("Invalid hotel ID");
       }
 
-      const payload = buildInsertHotelPayloadFromHotel(hotel);
-      return apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
+      return apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
-        body: { ...payload, id: parsedHotelId, hotelId: parsedHotelId },
+        body: { hotelId: parsedHotelId, tripId },
       });
     },
     onSuccess: async () => {
@@ -6406,9 +6336,10 @@ function HotelBooking({
   const shareHotelWithGroup = useCallback(
     async (hotel: HotelSearchResult) => {
       try {
-        await apiRequest(`/api/trips/${tripId}/hotel-proposals`, {
+        await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
           method: "POST",
           body: JSON.stringify({
+            tripId,
             hotelName: hotel.name,
             location: hotel.location,
             price: hotel.price,
