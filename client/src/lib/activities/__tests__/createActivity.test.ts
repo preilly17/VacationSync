@@ -22,6 +22,7 @@ import {
   mapApiErrorToValidation,
 } from "../activityCreation";
 import { normalizeActivityFromServer } from "../createActivity";
+import type { User } from "@shared/schema";
 import { mapClientErrorToValidation } from "../clientValidation";
 
 describe("mapClientErrorToValidation", () => {
@@ -93,7 +94,7 @@ describe("prepareActivitySubmission", () => {
 });
 
 describe("normalizeActivityFromServer", () => {
-  const baseUser = {
+  const baseUser: User = {
     id: "organizer",
     email: "organizer@example.com",
     username: null,
@@ -119,7 +120,7 @@ describe("normalizeActivityFromServer", () => {
     hasSeenTripOnboarding: false,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  } as const;
+  };
 
   it("maps activities v2 payloads to legacy format", () => {
     const now = new Date().toISOString();
@@ -200,6 +201,102 @@ describe("normalizeActivityFromServer", () => {
     const normalized = normalizeActivityFromServer(activity as any);
     expect(normalized.startTime).toBe(activity.startTime);
     expect(normalized.endTime).toBeNull();
+  });
+
+  it("converts activities v2 responses with invites and RSVPs", () => {
+    const now = new Date().toISOString();
+    const organizerUser: User = { ...baseUser, createdAt: now, updatedAt: now };
+    const friendUser: User = {
+      ...baseUser,
+      id: "friend",
+      email: "friend@example.com",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const v2Activity = {
+      id: "8a4d5b6c-1234-4a1b-9c8d-abcdef012345",
+      tripId: "123",
+      creatorId: "organizer",
+      title: "Brunch Meetup",
+      description: "Catch up over brunch",
+      category: "food",
+      date: "2024-08-12",
+      start_time: "09:30",
+      end_time: "11:00",
+      timezone: "America/New_York",
+      location: "Central Cafe",
+      cost_per_person: 45,
+      max_participants: 6,
+      status: "scheduled",
+      visibility: "trip",
+      createdAt: now,
+      updatedAt: now,
+      invitees: [
+        {
+          activityId: "8a4d5b6c-1234-4a1b-9c8d-abcdef012345",
+          userId: "organizer",
+          role: "participant",
+          createdAt: now,
+          updatedAt: now,
+          user: organizerUser,
+        },
+        {
+          activityId: "8a4d5b6c-1234-4a1b-9c8d-abcdef012345",
+          userId: "friend",
+          role: "participant",
+          createdAt: now,
+          updatedAt: now,
+          user: friendUser,
+        },
+      ],
+      rsvps: [
+        {
+          activityId: "8a4d5b6c-1234-4a1b-9c8d-abcdef012345",
+          userId: "organizer",
+          response: "yes",
+          respondedAt: now,
+          createdAt: now,
+          updatedAt: now,
+          user: organizerUser,
+        },
+        {
+          activityId: "8a4d5b6c-1234-4a1b-9c8d-abcdef012345",
+          userId: "friend",
+          response: "pending",
+          respondedAt: null,
+          createdAt: now,
+          updatedAt: now,
+          user: friendUser,
+        },
+      ],
+      votes: [],
+      creator: organizerUser,
+      currentUserRsvp: {
+        activityId: "8a4d5b6c-1234-4a1b-9c8d-abcdef012345",
+        userId: "organizer",
+        response: "yes",
+        respondedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        user: organizerUser,
+      },
+    } as any;
+
+    const normalized = normalizeActivityFromServer(v2Activity);
+
+    expect(typeof normalized.id).toBe("number");
+    expect(normalized.name).toBe("Brunch Meetup");
+    expect(normalized.invites).toHaveLength(2);
+    expect(normalized.acceptedCount).toBe(1);
+    expect(normalized.pendingCount).toBe(1);
+    expect(normalized.currentUserInvite?.userId).toBe("organizer");
+    expect(normalized.currentUserInvite?.status).toBe("accepted");
+    expect(new Date(String(normalized.startTime)).toISOString()).toBe("2024-08-12T13:30:00.000Z");
+    expect(new Date(String(normalized.endTime)).toISOString()).toBe("2024-08-12T15:00:00.000Z");
+    expect(normalized.poster.id).toBe("organizer");
+    expect(normalized.cost).toBe(45);
+    expect((normalized as any).__sourceActivityId).toBe("8a4d5b6c-1234-4a1b-9c8d-abcdef012345");
   });
 });
 

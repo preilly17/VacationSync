@@ -15,7 +15,15 @@ import {
 } from "./activityCreation";
 import { CLIENT_VALIDATION_FALLBACK_MESSAGE } from "./clientValidation";
 import { normalizeActivityTypeInput } from "@shared/activityValidation";
-import type { ActivityType, ActivityWithDetails, TripMember, User } from "@shared/schema";
+import type { ActivityType, ActivityWithDetails, TripMember, User, ActivityInviteStatus } from "@shared/schema";
+import type {
+  ActivityInvitee,
+  ActivityInviteeRole,
+  ActivityRsvp,
+  ActivityRsvpResponse,
+  ActivityVote,
+  ActivityWithDetails as ActivityWithDetailsV2,
+} from "@shared/activitiesV2";
 
 const mapStatusToLegacyType = (status: unknown): ActivityType => {
   if (typeof status === "string" && status.trim().toLowerCase() === "proposed") {
@@ -23,6 +31,225 @@ const mapStatusToLegacyType = (status: unknown): ActivityType => {
   }
 
   return "SCHEDULED";
+};
+
+const stringHashToNumber = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+
+  const normalized = Math.abs(hash);
+  const offset = 1_000_000_000;
+  return offset + normalized;
+};
+
+const mapV2UserToLegacy = (user: User | null | undefined, fallbackId: string): User => ({
+  id: user?.id ?? fallbackId,
+  email: user?.email ?? "",
+  username: user?.username ?? null,
+  firstName: user?.firstName ?? null,
+  lastName: user?.lastName ?? null,
+  phoneNumber: user?.phoneNumber ?? null,
+  passwordHash: null,
+  profileImageUrl: user?.profileImageUrl ?? null,
+  cashAppUsername: user?.cashAppUsername ?? null,
+  cashAppUsernameLegacy: user?.cashAppUsernameLegacy ?? null,
+  cashAppPhone: user?.cashAppPhone ?? null,
+  cashAppPhoneLegacy: user?.cashAppPhoneLegacy ?? null,
+  venmoUsername: user?.venmoUsername ?? null,
+  venmoPhone: user?.venmoPhone ?? null,
+  timezone: user?.timezone ?? null,
+  defaultLocation: user?.defaultLocation ?? null,
+  defaultLocationCode: user?.defaultLocationCode ?? null,
+  defaultCity: user?.defaultCity ?? null,
+  defaultCountry: user?.defaultCountry ?? null,
+  authProvider: user?.authProvider ?? null,
+  notificationPreferences: user?.notificationPreferences ?? null,
+  hasSeenHomeOnboarding: user?.hasSeenHomeOnboarding ?? false,
+  hasSeenTripOnboarding: user?.hasSeenTripOnboarding ?? false,
+  createdAt: user?.createdAt ?? null,
+  updatedAt: user?.updatedAt ?? null,
+});
+
+const mapRsvpResponseToInviteStatus = (
+  response: ActivityRsvpResponse | null | undefined,
+): ActivityInviteStatus => {
+  switch (response) {
+    case "yes":
+      return "accepted";
+    case "no":
+      return "declined";
+    case "maybe":
+    case "pending":
+    default:
+      return "pending";
+  }
+};
+
+type V2ActivityCandidate = ActivityWithDetails &
+  Partial<
+    ActivityWithDetailsV2 & {
+      invitees?: ActivityInvitee[];
+      votes?: ActivityVote[];
+      rsvps?: ActivityRsvp[];
+      creator?: User | null;
+      creatorId?: string | null;
+      tripId?: string | number | null;
+      currentUserVote?: ActivityVote | null;
+      currentUserRsvp?: ActivityRsvp | null;
+    }
+  >;
+
+const isActivitiesV2Payload = (activity: ActivityWithDetails): activity is V2ActivityCandidate => {
+  const candidate = activity as V2ActivityCandidate;
+  return (
+    typeof candidate.id === "string"
+    || Array.isArray(candidate.invitees)
+    || Array.isArray(candidate.votes)
+    || Array.isArray(candidate.rsvps)
+  );
+};
+
+const normalizeV2Activity = (activity: V2ActivityCandidate): ActivityWithDetails => {
+  const originalId = activity.id;
+  const legacyId = typeof originalId === "string" ? stringHashToNumber(originalId) : originalId;
+  const timezone =
+    toTrimmedString((activity as { timezone?: string | null }).timezone)
+    ?? toTrimmedString((activity as { timeZone?: string | null }).timeZone)
+    ?? "UTC";
+  const dateCandidate = toTrimmedString((activity as { date?: string | null }).date);
+  const startTimeCandidate =
+    toTrimmedString((activity as { start_time?: string | null }).start_time)
+    ?? toTrimmedString((activity as { startTime?: string | null }).startTime);
+  const endTimeCandidate =
+    toTrimmedString((activity as { end_time?: string | null }).end_time)
+    ?? toTrimmedString((activity as { endTime?: string | null }).endTime);
+
+  const resolvedStartTime = isValidDateValue(activity.startTime)
+    ? activity.startTime
+    : combineDateAndTimeInUtc(dateCandidate, startTimeCandidate, timezone);
+  const resolvedEndTime = isValidDateValue(activity.endTime)
+    ? activity.endTime
+    : combineDateAndTimeInUtc(dateCandidate, endTimeCandidate, timezone);
+
+  const invitees = Array.isArray(activity.invitees) ? activity.invitees : [];
+  const rsvps = Array.isArray(activity.rsvps) ? activity.rsvps : [];
+  const rsvpMap = new Map<string, ActivityRsvp>();
+  rsvps.forEach((entry) => {
+    if (entry?.userId) {
+      rsvpMap.set(entry.userId, entry);
+    }
+  });
+
+  const participants = invitees.filter((invitee) => invitee.role === ("participant" as ActivityInviteeRole));
+  const posterUser = mapV2UserToLegacy(activity.creator ?? null, String(activity.creatorId ?? activity.postedBy ?? ""));
+
+  const invites = participants.map((invitee, index) => {
+    const rsvp = invitee.userId ? rsvpMap.get(invitee.userId) : undefined;
+    const status = mapRsvpResponseToInviteStatus(rsvp?.response);
+    const user = mapV2UserToLegacy(invitee.user ?? null, invitee.userId ?? String(index));
+    return {
+      id: legacyId * 1000 + index + 1,
+      activityId: legacyId,
+      userId: invitee.userId ?? user.id,
+      status,
+      respondedAt: rsvp?.respondedAt ?? null,
+      createdAt: invitee.createdAt ?? activity.createdAt,
+      updatedAt: invitee.updatedAt ?? activity.updatedAt,
+      user,
+    } satisfies ActivityWithDetails["invites"][number];
+  });
+
+  const acceptances = invites
+    .filter((invite) => invite.status === "accepted")
+    .map((invite, index) => ({
+      id: legacyId * 2000 + index + 1,
+      activityId: legacyId,
+      userId: invite.userId,
+      acceptedAt: invite.respondedAt,
+      user: invite.user,
+    })) as ActivityWithDetails["acceptances"];
+
+  const tripCalendarIdCandidate = (() => {
+    const rawTripId =
+      (activity as { tripCalendarId?: number | null }).tripCalendarId
+      ?? (activity as { tripId?: string | number | null }).tripId
+      ?? null;
+    if (rawTripId === null || rawTripId === undefined) {
+      return legacyId;
+    }
+
+    const numeric = Number.parseInt(String(rawTripId), 10);
+    return Number.isNaN(numeric) ? legacyId : numeric;
+  })();
+
+  const currentUserId =
+    activity.currentUserRsvp?.userId ?? activity.currentUserVote?.userId ?? activity.currentUserInvite?.userId ?? null;
+  const currentUserInvite = currentUserId
+    ? invites.find((invite) => invite.userId === currentUserId) ?? null
+    : null;
+
+  const pendingCount = invites.filter((invite) => invite.status === "pending").length;
+  const declinedCount = invites.filter((invite) => invite.status === "declined").length;
+
+  const legacyActivity: ActivityWithDetails = {
+    id: legacyId,
+    tripCalendarId: tripCalendarIdCandidate,
+    postedBy: String(activity.creatorId ?? currentUserInvite?.userId ?? posterUser.id ?? ""),
+    name: toTrimmedString(activity.name) ?? toTrimmedString((activity as { title?: string | null }).title) ?? "Untitled activity",
+    description: (activity as { description?: string | null }).description ?? null,
+    startTime: resolvedStartTime ?? null,
+    endTime: resolvedEndTime ?? null,
+    location: (activity as { location?: string | null }).location ?? null,
+    cost:
+      (activity as { cost?: number | null }).cost
+      ?? (activity as { costPerPerson?: number | null }).costPerPerson
+      ?? (activity as { cost_per_person?: number | null }).cost_per_person
+      ?? null,
+    maxCapacity:
+      (activity as { maxCapacity?: number | null }).maxCapacity
+      ?? (activity as { maxParticipants?: number | null }).maxParticipants
+      ?? (activity as { max_participants?: number | null }).max_participants
+      ?? null,
+    category: (activity as { category?: string | null }).category ?? "other",
+    status: (() => {
+      const rawStatus = String((activity as { status?: string | null }).status ?? "");
+      if (rawStatus.toLowerCase() === "cancelled") {
+        return "canceled" as ActivityWithDetails["status"];
+      }
+      return rawStatus.trim().length > 0 ? (rawStatus as ActivityWithDetails["status"]) : "active";
+    })(),
+    type: mapStatusToLegacyType((activity as { status?: string | null }).status ?? null),
+    createdAt: activity.createdAt,
+    updatedAt: activity.updatedAt,
+    poster: posterUser,
+    invites,
+    acceptances,
+    comments: Array.isArray((activity as { comments?: ActivityWithDetails["comments"] }).comments)
+      ? ((activity as { comments?: ActivityWithDetails["comments"] }).comments as ActivityWithDetails["comments"])
+      : [],
+    acceptedCount: acceptances.length,
+    pendingCount,
+    declinedCount,
+    waitlistedCount: 0,
+    rsvpCloseTime: null,
+    currentUserInvite: currentUserInvite ?? undefined,
+    isAccepted: currentUserInvite?.status === "accepted" ? true : undefined,
+    hasResponded:
+      currentUserInvite?.status && currentUserInvite.status !== "pending"
+        ? true
+        : currentUserInvite?.status === "pending"
+          ? undefined
+          : undefined,
+    permissions: (activity as { permissions?: ActivityWithDetails["permissions"] }).permissions,
+  } satisfies ActivityWithDetails;
+
+  if (typeof originalId === "string") {
+    (legacyActivity as ActivityWithDetails & { __sourceActivityId?: string }).__sourceActivityId = originalId;
+  }
+
+  return legacyActivity;
 };
 
 const toTrimmedString = (value: unknown): string | null => {
@@ -133,9 +360,7 @@ const combineDateAndTimeInUtc = (
   }
 };
 
-export const normalizeActivityFromServer = (
-  activity: ActivityWithDetails,
-): ActivityWithDetails => {
+const normalizeLegacyActivity = (activity: ActivityWithDetails): ActivityWithDetails => {
   const rawType = activity?.type;
   const derivedType = mapStatusToLegacyType((activity as { status?: unknown }).status);
   const normalizedType =
@@ -196,6 +421,16 @@ export const normalizeActivityFromServer = (
     endTime: resolvedEndTime ?? null,
     status: normalizedStatus,
   } satisfies ActivityWithDetails;
+};
+
+export const normalizeActivityFromServer = (
+  activity: ActivityWithDetails,
+): ActivityWithDetails => {
+  const base = isActivitiesV2Payload(activity)
+    ? normalizeV2Activity(activity as V2ActivityCandidate)
+    : activity;
+
+  return normalizeLegacyActivity(base);
 };
 
 export type { ActivityCreateFormValues, ActivityValidationError } from "./activityCreation";

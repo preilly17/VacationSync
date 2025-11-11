@@ -22,6 +22,7 @@ import {
 } from "@/lib/activities/createActivity";
 import { type ActivityType, type ActivityWithDetails, type TripMember, type User } from "@shared/schema";
 import { resolveTripTimezone, formatDateInTimezone } from "@/lib/timezone";
+import { useNewActivityCreate } from "@/hooks/use-new-activity-create";
 import {
   ACTIVITY_CATEGORY_MESSAGE,
   ACTIVITY_CATEGORY_VALUES,
@@ -583,7 +584,7 @@ export function AddActivityModal({
     form.register("attendeeIds");
   }, [form]);
 
-  const activitiesVersion = "legacy" as const;
+  const activitiesVersion = useNewActivityCreate() ? "v2" : ("legacy" as const);
 
   useEffect(() => {
     if (open) {
