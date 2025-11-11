@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { useNewActivityCreate } from "@/hooks/use-new-activity-create";
 import {
   useCreateActivity,
   type ActivityCreateFormValues,
@@ -405,8 +404,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     () => (trip?.members ?? []) as (TripMember & { user: User })[],
     [trip?.members],
   );
-  const isNewActivityCreationEnabled = useNewActivityCreate();
-  const activitiesVersion: "legacy" | "v2" = isNewActivityCreationEnabled ? "v2" : "legacy";
+  const activitiesVersion = "legacy" as const;
 
   const handleManualValidationError = useCallback(
     (error: ActivityValidationError) => {

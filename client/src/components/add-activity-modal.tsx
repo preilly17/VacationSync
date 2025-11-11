@@ -15,7 +15,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useToast } from "@/hooks/use-toast";
-import { useNewActivityCreate } from "@/hooks/use-new-activity-create";
 import {
   useCreateActivity,
   type ActivityCreateFormValues,
@@ -584,8 +583,7 @@ export function AddActivityModal({
     form.register("attendeeIds");
   }, [form]);
 
-  const isNewActivityCreationEnabled = useNewActivityCreate();
-  const activitiesVersion: "legacy" | "v2" = isNewActivityCreationEnabled ? "v2" : "legacy";
+  const activitiesVersion = "legacy" as const;
 
   useEffect(() => {
     if (open) {
