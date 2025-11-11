@@ -69,6 +69,68 @@ const serverFieldMap: Partial<Record<string, keyof ActivityCreateFormValues>> = 
   mode: "type",
 };
 
+const toTrimmedStringOrNull = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const toNormalizedIdList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((entry) => {
+          if (entry === null || entry === undefined) {
+            return "";
+          }
+          return String(entry).trim();
+        })
+        .filter((entry) => entry.length > 0),
+    ),
+  );
+};
+
+const normalizeSubmissionPayload = (
+  payload: ReturnType<typeof buildActivitySubmission>["payload"],
+) => {
+  const attendeeIds = toNormalizedIdList(payload.attendeeIds);
+  const inviteeIds = toNormalizedIdList(payload.invitee_ids);
+  const resolvedName = toTrimmedStringOrNull(payload.name)
+    ?? toTrimmedStringOrNull(payload.title)
+    ?? "Untitled activity";
+  const resolvedTitle = toTrimmedStringOrNull(payload.title) ?? resolvedName;
+  const resolvedDate = toTrimmedStringOrNull(payload.date) ?? "";
+  const resolvedStartDate = toTrimmedStringOrNull(payload.startDate) ?? resolvedDate;
+  const resolvedTimezone =
+    toTrimmedStringOrNull(payload.timezone)
+    ?? toTrimmedStringOrNull(payload.timeZone)
+    ?? "UTC";
+  const resolvedTimeZone = toTrimmedStringOrNull(payload.timeZone) ?? resolvedTimezone;
+
+  return {
+    ...payload,
+    name: resolvedName,
+    title: resolvedTitle,
+    attendeeIds,
+    invitee_ids: inviteeIds.length > 0 ? inviteeIds : attendeeIds,
+    date: resolvedDate,
+    startDate: resolvedStartDate,
+    timezone: resolvedTimezone,
+    timeZone: resolvedTimeZone,
+    startTime: payload.startTime ?? null,
+    endTime: payload.endTime ?? null,
+    start_time: payload.start_time ?? null,
+    end_time: payload.end_time ?? null,
+  } satisfies ReturnType<typeof buildActivitySubmission>["payload"];
+};
+
 export class ActivitySubmissionError extends Error {
   readonly validation: ActivityValidationError;
 
@@ -103,19 +165,29 @@ export const prepareActivitySubmission = ({
       type: values.type,
     });
 
+    const normalizedPayload = normalizeSubmissionPayload(payload);
+
     const sanitizedValues: ActivityCreateFormValues = {
       ...values,
-      description: payload.description ?? undefined,
-      startTime: payload.start_time ?? undefined,
-      endTime: payload.endTime ? payload.endTime.slice(11, 16) : undefined,
-      location: payload.location ?? undefined,
+      name: normalizedPayload.name,
+      description: normalizedPayload.description ?? "",
+      startDate: normalizedPayload.startDate,
+      startTime:
+        typeof normalizedPayload.start_time === "string" && normalizedPayload.start_time.length > 0
+          ? normalizedPayload.start_time
+          : undefined,
+      endTime:
+        typeof normalizedPayload.end_time === "string" && normalizedPayload.end_time.length > 0
+          ? normalizedPayload.end_time
+          : undefined,
+      location: normalizedPayload.location ?? "",
       cost: values.cost,
       maxCapacity: values.maxCapacity,
-      attendeeIds: payload.attendeeIds,
-      category: payload.category,
+      attendeeIds: normalizedPayload.attendeeIds,
+      category: normalizedPayload.category,
     };
 
-    return { payload, sanitizedValues } satisfies PreparedSubmission;
+    return { payload: normalizedPayload, sanitizedValues } satisfies PreparedSubmission;
   } catch (error) {
     const validation = mapClientErrorToValidation(error);
     throw new ActivitySubmissionError(validation);
@@ -210,7 +282,8 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
     ? ({ "x-activities-version": "2" } as Record<string, string>)
     : undefined;
 
-  const sanitizedPayload = redactDates(payload);
+  const normalizedPayload = normalizeSubmissionPayload(payload);
+  const sanitizedPayload = redactDates(normalizedPayload);
   console.info("[activity:create] submitting", {
     tripId,
     version,
@@ -221,7 +294,7 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
   try {
     const response = await apiRequest(endpoint, {
       method: "POST",
-      body: payload,
+      body: normalizedPayload,
       headers,
     });
 
