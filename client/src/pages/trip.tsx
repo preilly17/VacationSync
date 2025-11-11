@@ -806,14 +806,15 @@ function DayView({
         <div className="space-y-4">
           {dayActivities.map((activity) => {
             const activityWithScheduling = activity as ActivityWithSchedulingDetails;
+            const invites = Array.isArray(activity.invites) ? activity.invites : [];
             const waitlistedCount =
               activity.waitlistedCount
-                ?? activity.invites.filter((invite) => invite.status === "waitlisted").length;
+                ?? invites.filter((invite) => invite.status === "waitlisted").length;
             const isCreator =
               currentUser?.id === activity.postedBy || currentUser?.id === activity.poster.id;
             const currentInvite =
               activity.currentUserInvite
-              ?? activity.invites.find((invite) => invite.userId === currentUser?.id)
+              ?? invites.find((invite) => invite.userId === currentUser?.id)
               ?? null;
             const derivedStatus: ActivityInviteStatus = currentInvite?.status
               ?? (activity.isAccepted ? "accepted" : "pending");
@@ -1051,13 +1052,13 @@ function DayView({
               );
             };
 
-            const acceptedParticipants = activity.invites
+            const acceptedParticipants = invites
               .filter((invite) => invite.status === "accepted")
               .map((invite) => getParticipantDisplayName(invite.user));
-            const pendingParticipants = activity.invites
+            const pendingParticipants = invites
               .filter((invite) => invite.status === "pending")
               .map((invite) => getParticipantDisplayName(invite.user));
-            const declinedParticipants = activity.invites
+            const declinedParticipants = invites
               .filter((invite) => invite.status === "declined")
               .map((invite) => getParticipantDisplayName(invite.user));
 
@@ -3419,9 +3420,10 @@ export default function Trip() {
                           const timeLabel = format(start, "h:mm a");
                           const locationLabel = activity.location?.trim();
                           const categoryLabel = !locationLabel && activity.category ? activity.category : null;
+                          const invites = Array.isArray(activity.invites) ? activity.invites : [];
                           const waitlistedCount =
                             activity.waitlistedCount
-                              ?? activity.invites.filter((invite) => invite.status === "waitlisted").length;
+                              ?? invites.filter((invite) => invite.status === "waitlisted").length;
 
                           return (
                             <div
@@ -3505,7 +3507,8 @@ export default function Trip() {
                       <div className="space-y-3 py-1">
                         {sortedMyInvitedActivities.map((activity) => {
                           const activityWithScheduling = activity as ActivityWithSchedulingDetails;
-                          const invite = activity.invites?.find((entry) => entry.userId === user.id);
+                          const invites = Array.isArray(activity.invites) ? activity.invites : [];
+                          const invite = invites.find((entry) => entry.userId === user.id);
                           const status: ActivityInviteStatus = invite?.status ?? "pending";
                           const start = getActivityPrimaryDate(activityWithScheduling);
                           const dateLabel = start ? format(start, "EEEE, MMM d") : null;
@@ -3513,7 +3516,7 @@ export default function Trip() {
                           const locationLabel = activity.location?.trim();
                           const waitlistedCount =
                             activity.waitlistedCount
-                              ?? activity.invites.filter((entry) => entry.status === "waitlisted").length;
+                              ?? invites.filter((entry) => entry.status === "waitlisted").length;
                           const capacityFull = Boolean(
                             activity.maxCapacity != null
                               && activity.acceptedCount >= activity.maxCapacity,

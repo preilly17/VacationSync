@@ -61,6 +61,7 @@ export function ActivityCard({
   onMaybe,
   isLoading = false,
 }: ActivityCardProps) {
+  const invites = Array.isArray(activity.invites) ? activity.invites : [];
   const formatDateTime = (dateTime: ActivityWithDetails["startTime"]) => {
     const date = dateTime instanceof Date ? dateTime : new Date(dateTime);
     return format(date, "MMM d, yyyy 'at' h:mm a");
@@ -107,13 +108,13 @@ export function ActivityCard({
     return spotsLeft > 0 ? `${spotsLeft} spots left` : "Full";
   };
 
-  const acceptedInvites = activity.invites.filter((invite) => invite.status === "accepted");
-  const pendingInvites = activity.invites.filter((invite) => invite.status === "pending");
-  const declinedInvites = activity.invites.filter((invite) => invite.status === "declined");
+  const acceptedInvites = invites.filter((invite) => invite.status === "accepted");
+  const pendingInvites = invites.filter((invite) => invite.status === "pending");
+  const declinedInvites = invites.filter((invite) => invite.status === "declined");
 
   const currentInvite =
     activity.currentUserInvite ??
-    activity.invites.find((invite) => invite.userId === currentUser?.id) ??
+    invites.find((invite) => invite.userId === currentUser?.id) ??
     null;
 
   const currentStatus: ActivityInviteStatus | undefined = currentInvite?.status

@@ -266,7 +266,9 @@ export default function MemberSchedule() {
           return false;
         }
 
-        return activity.invites.some(
+        const invites = Array.isArray(activity.invites) ? activity.invites : [];
+
+        return invites.some(
           (invite) => invite.userId === selectedMemberId && invite.status === "accepted",
         );
       })
@@ -452,13 +454,14 @@ export default function MemberSchedule() {
                       </div>
                       <div className="space-y-4">
                         {memberSchedule.map((activity) => {
-                          const acceptedParticipants = activity.invites
+                          const invites = Array.isArray(activity.invites) ? activity.invites : [];
+                          const acceptedParticipants = invites
                             .filter((invite) => invite.status === "accepted")
                             .map((invite) => getParticipantDisplayName(invite.user));
-                          const pendingParticipants = activity.invites
+                          const pendingParticipants = invites
                             .filter((invite) => invite.status === "pending")
                             .map((invite) => getParticipantDisplayName(invite.user));
-                          const declinedParticipants = activity.invites
+                          const declinedParticipants = invites
                             .filter((invite) => invite.status === "declined")
                             .map((invite) => getParticipantDisplayName(invite.user));
 
