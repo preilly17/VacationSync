@@ -3,6 +3,7 @@
 import { randomUUID } from "crypto";
 
 import { pool, query } from "./db";
+import type { PoolClient } from "pg";
 import type {
   ActivityAcceptance as LegacyActivityAcceptance,
   ActivityInvite as LegacyActivityInvite,
@@ -28,6 +29,30 @@ import {
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 const shouldEnsureTables = process.env.NODE_ENV !== "test";
+
+type InternalActivity = ActivityWithDetails & { legacyId: number };
+
+const stringHashToNumber = (value: string): number => {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+
+  const normalized = Math.abs(hash);
+  const offset = 1_000_000_000;
+  return offset + normalized;
+};
+
+const runQuery = async <T = any>(
+  client: PoolClient | null | undefined,
+  sql: string,
+  params: unknown[] = [],
+) => {
+  if (client) {
+    return client.query<T>(sql, params);
+  }
+  return query<T>(sql, params);
+};
 
 const ensureActivitiesTablePromise = shouldEnsureTables
   ? (async () => {
@@ -90,6 +115,30 @@ const ensureActivitiesTablePromise = shouldEnsureTables
     await query(`
       ALTER TABLE activities_v2
       ALTER COLUMN start_time DROP NOT NULL
+    `);
+
+    await query(`
+      ALTER TABLE activities_v2
+      ADD COLUMN IF NOT EXISTS legacy_id BIGINT
+    `);
+
+    const { rows: missingLegacyRows } = await query<{ id: string }>(
+      `SELECT id FROM activities_v2 WHERE legacy_id IS NULL`,
+    );
+
+    for (const row of missingLegacyRows) {
+      const legacyId = stringHashToNumber(String(row.id));
+      await query(`UPDATE activities_v2 SET legacy_id = $2 WHERE id = $1`, [row.id, legacyId]);
+    }
+
+    await query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS activities_v2_legacy_id_idx
+      ON activities_v2(legacy_id)
+    `);
+
+    await query(`
+      ALTER TABLE activities_v2
+      ALTER COLUMN legacy_id SET NOT NULL
     `);
   })()
   : Promise.resolve();
@@ -164,17 +213,6 @@ const normalizeUserProvidedTime = (value: string): string => {
   }
 
   return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
-};
-
-const stringHashToNumber = (value: string): number => {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  }
-
-  const normalized = Math.abs(hash);
-  const offset = 1_000_000_000;
-  return offset + normalized;
 };
 
 const getTimeZoneOffsetInMilliseconds = (instant: Date, timeZone: string): number => {
@@ -356,8 +394,12 @@ const buildTripDateRangeMessage = (min?: string | null, max?: string | null): st
   return "Pick a date within the trip dates.";
 };
 
-const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
-  const base: ActivityWithDetails = {
+const mapActivityRow = (row: Record<string, unknown>): InternalActivity => {
+  const legacyIdValue = row.legacy_id === null || row.legacy_id === undefined
+    ? stringHashToNumber(String(row.id))
+    : Number(row.legacy_id);
+
+  const base: InternalActivity = {
     id: String(row.id),
     tripId: String(row.trip_id),
     creatorId: String(row.creator_id),
@@ -376,6 +418,7 @@ const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
     createdAt: toIsoDateTime(row.created_at),
     updatedAt: toIsoDateTime(row.updated_at),
     version: Number(row.version ?? 1),
+    legacyId: Number.isFinite(legacyIdValue) ? legacyIdValue : stringHashToNumber(String(row.id)),
     invitees: [],
     votes: [],
     rsvps: [],
@@ -414,11 +457,11 @@ const mapActivityRow = (row: Record<string, unknown>): ActivityWithDetails => {
 };
 
 const attachRelations = (
-  base: ActivityWithDetails,
+  base: InternalActivity,
   inviteeRows: any[],
   voteRows: any[],
   rsvpRows: any[],
-): ActivityWithDetails => {
+): InternalActivity => {
   const invitees: ActivityInvitee[] = inviteeRows.map((row) => ({
     activityId: String(row.activity_id),
     userId: String(row.user_id),
@@ -542,8 +585,12 @@ const attachRelations = (
   };
 };
 
-const fetchActivityWithRelations = async (activityId: string): Promise<ActivityWithDetails | null> => {
-  const { rows } = await query(
+const fetchActivityWithRelations = async (
+  activityId: string,
+  client?: PoolClient | null,
+): Promise<InternalActivity | null> => {
+  const { rows } = await runQuery(
+    client,
     `
     SELECT a.*, u.email AS creator_email, u.username AS creator_username, u.first_name AS creator_first_name,
            u.last_name AS creator_last_name, u.phone_number AS creator_phone_number, u.profile_image_url AS creator_profile_image_url,
@@ -562,7 +609,8 @@ const fetchActivityWithRelations = async (activityId: string): Promise<ActivityW
   }
 
   const [invitees, votes, rsvps] = await Promise.all([
-    query(
+    runQuery(
+      client,
       `
       SELECT ai.*, u.email AS user_email, u.username AS user_username, u.first_name AS user_first_name,
              u.last_name AS user_last_name, u.phone_number AS user_phone_number, u.profile_image_url AS user_profile_image_url,
@@ -573,7 +621,8 @@ const fetchActivityWithRelations = async (activityId: string): Promise<ActivityW
     `,
       [activityId],
     ),
-    query(
+    runQuery(
+      client,
       `
       SELECT av.*, u.email AS vote_user_email, u.username AS vote_user_username, u.first_name AS vote_user_first_name,
              u.last_name AS vote_user_last_name, u.phone_number AS vote_user_phone_number, u.profile_image_url AS vote_user_profile_image_url,
@@ -584,7 +633,8 @@ const fetchActivityWithRelations = async (activityId: string): Promise<ActivityW
     `,
       [activityId],
     ),
-    query(
+    runQuery(
+      client,
       `
       SELECT ar.*, u.email AS rsvp_user_email, u.username AS rsvp_user_username, u.first_name AS rsvp_user_first_name,
              u.last_name AS rsvp_user_last_name, u.phone_number AS rsvp_user_phone_number, u.profile_image_url AS rsvp_user_profile_image_url,
@@ -599,6 +649,18 @@ const fetchActivityWithRelations = async (activityId: string): Promise<ActivityW
 
   const base = mapActivityRow(baseRow as Record<string, unknown>);
   return attachRelations(base, invitees.rows, votes.rows, rsvps.rows);
+};
+
+const fetchActivityWithRelationsByLegacyId = async (
+  legacyActivityId: number,
+  client?: PoolClient | null,
+): Promise<InternalActivity | null> => {
+  const { rows } = await runQuery(client, `SELECT id FROM activities_v2 WHERE legacy_id = $1 LIMIT 1`, [legacyActivityId]);
+  const row = rows[0];
+  if (!row) {
+    return null;
+  }
+  return fetchActivityWithRelations(String(row.id), client);
 };
 
 export interface ListTripActivitiesOptions {
@@ -719,7 +781,10 @@ export const convertActivitiesV2ToLegacy = (
   const normalizedViewer = currentUserId ? String(currentUserId) : null;
 
   return activities.map((activity) => {
-    const legacyId = stringHashToNumber(activity.id);
+    const legacyActivity = activity as InternalActivity;
+    const legacyId = Number.isFinite(legacyActivity.legacyId)
+      ? legacyActivity.legacyId
+      : stringHashToNumber(activity.id);
     const legacyTripId = Number.parseInt(String(activity.tripId), 10);
 
     const startTimeIso = combineDateAndTimeInUtc(activity.date, activity.startTime, activity.timezone);
@@ -834,6 +899,31 @@ const buildInitialState = (
   return state;
 };
 
+const mapInviteStatusToRsvpResponse = (status: ActivityInviteStatus): ActivityRsvpResponse => {
+  switch (status) {
+    case "accepted":
+      return "yes";
+    case "declined":
+      return "no";
+    case "waitlisted":
+      return "maybe";
+    case "pending":
+    default:
+      return "pending";
+  }
+};
+
+const mapInviteStatusToVoteValue = (status: ActivityInviteStatus): ActivityVoteValue | null => {
+  switch (status) {
+    case "accepted":
+      return "up";
+    case "declined":
+      return "down";
+    default:
+      return null;
+  }
+};
+
 export interface CreateActivityParams {
   trip: TripWithDetails;
   creatorId: string;
@@ -936,6 +1026,11 @@ export async function createActivityV2({
     trip.members.map((member) => String(member.userId)).filter((id) => id.trim().length > 0),
   );
 
+  const tripCreatorId = typeof trip.createdBy === "string" ? trip.createdBy.trim() : String(trip.createdBy ?? "").trim();
+  if (tripCreatorId.length > 0) {
+    tripMemberIds.add(tripCreatorId);
+  }
+
   const invalidInvitees = Array.from(inviteeSet).filter((id) => !tripMemberIds.has(id));
   if (invalidInvitees.length > 0) {
     const error = new Error("invalid_invitees");
@@ -1036,15 +1131,16 @@ export async function createActivityV2({
     }
 
     const insertedId = randomUUID();
+    const legacyId = stringHashToNumber(insertedId);
     await client.query(
       `
       INSERT INTO activities_v2 (
         id, trip_id, creator_id, title, description, category, date, start_time, end_time, timezone,
-        location, cost_per_person, max_participants, status, visibility, idempotency_key
+        location, cost_per_person, max_participants, status, visibility, idempotency_key, legacy_id
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, 'trip', $15
+        $11, $12, $13, $14, 'trip', $15, $16
       )
     `,
       [
@@ -1063,6 +1159,7 @@ export async function createActivityV2({
         data.max_participants ?? null,
         status,
         data.idempotency_key,
+        legacyId,
       ],
     );
 
@@ -1118,3 +1215,226 @@ export async function createActivityV2({
     client.release();
   }
 }
+
+export interface GetActivityByLegacyIdOptions {
+  legacyActivityId: number;
+  currentUserId?: string | null;
+}
+
+export const getActivityByLegacyIdV2 = async ({
+  legacyActivityId,
+  currentUserId,
+}: GetActivityByLegacyIdOptions): Promise<LegacyActivityWithDetails | null> => {
+  await ensureActivitiesTablePromise;
+  const activity = await fetchActivityWithRelationsByLegacyId(legacyActivityId);
+  if (!activity) {
+    return null;
+  }
+
+  const [legacyActivity] = convertActivitiesV2ToLegacy([activity], { currentUserId });
+  return legacyActivity;
+};
+
+export interface ApplyInviteStatusForLegacyIdOptions {
+  legacyActivityId: number;
+  userId: string;
+  status: ActivityInviteStatus;
+}
+
+export interface ApplyInviteStatusForLegacyIdResult {
+  activity: LegacyActivityWithDetails;
+  updatedInvite: (LegacyActivityInvite & { user: LegacyUser }) | null;
+  promotedUserId: string | null;
+}
+
+export const applyInviteStatusForLegacyId = async ({
+  legacyActivityId,
+  userId,
+  status,
+}: ApplyInviteStatusForLegacyIdOptions): Promise<ApplyInviteStatusForLegacyIdResult | null> => {
+  await ensureActivitiesTablePromise;
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const activity = await fetchActivityWithRelationsByLegacyId(legacyActivityId, client);
+    if (!activity) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    if (activity.status === "scheduled") {
+      const response = mapInviteStatusToRsvpResponse(status);
+      await runQuery(
+        client,
+        `
+        INSERT INTO activity_rsvps_v2 (activity_id, user_id, response, responded_at)
+        VALUES ($1, $2, $3, CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END)
+        ON CONFLICT (activity_id, user_id) DO UPDATE
+          SET response = EXCLUDED.response,
+              responded_at = CASE WHEN EXCLUDED.response = 'pending' THEN NULL ELSE NOW() END
+        `,
+        [activity.id, userId, response],
+      );
+    } else {
+      const voteValue = mapInviteStatusToVoteValue(status);
+      if (voteValue) {
+        await runQuery(
+          client,
+          `
+          INSERT INTO activity_votes_v2 (activity_id, user_id, value, created_at)
+          VALUES ($1, $2, $3, NOW())
+          ON CONFLICT (activity_id, user_id) DO UPDATE
+            SET value = EXCLUDED.value,
+                created_at = NOW()
+          `,
+          [activity.id, userId, voteValue],
+        );
+      } else {
+        await runQuery(
+          client,
+          `DELETE FROM activity_votes_v2 WHERE activity_id = $1 AND user_id = $2`,
+          [activity.id, userId],
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const refreshed = await fetchActivityWithRelationsByLegacyId(legacyActivityId);
+  if (!refreshed) {
+    return null;
+  }
+
+  const [legacyActivity] = convertActivitiesV2ToLegacy([refreshed], { currentUserId: userId });
+  const updatedInvite =
+    legacyActivity.invites.find((invite) => invite.userId === userId) ?? null;
+
+  return {
+    activity: legacyActivity,
+    updatedInvite,
+    promotedUserId: null,
+  };
+};
+
+export interface ConvertProposalToScheduledV2Options {
+  legacyActivityId: number;
+  userId: string;
+}
+
+export const convertProposalToScheduledV2 = async ({
+  legacyActivityId,
+  userId,
+}: ConvertProposalToScheduledV2Options): Promise<LegacyActivityWithDetails | null> => {
+  await ensureActivitiesTablePromise;
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const activity = await fetchActivityWithRelationsByLegacyId(legacyActivityId, client);
+    if (!activity) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    if (activity.creatorId !== userId) {
+      await client.query("ROLLBACK");
+      const error = new Error("You can only convert activities you created");
+      (error as any).code = "FORBIDDEN";
+      throw error;
+    }
+
+    if (activity.status !== "proposed") {
+      await client.query("ROLLBACK");
+      const error = new Error("Activity is already scheduled");
+      (error as any).code = "INVALID_STATE";
+      throw error;
+    }
+
+    const yesVoters = new Set(
+      activity.votes.filter((vote) => vote.value === "up").map((vote) => vote.userId),
+    );
+
+    const attendeeIds = new Set<string>();
+    attendeeIds.add(userId);
+    for (const voterId of yesVoters) {
+      attendeeIds.add(voterId);
+    }
+
+    if (attendeeIds.size === 0) {
+      attendeeIds.add(userId);
+    }
+
+    await runQuery(
+      client,
+      `DELETE FROM activity_invitees_v2 WHERE activity_id = $1 AND user_id <> ALL($2::text[])`,
+      [activity.id, Array.from(attendeeIds)],
+    );
+
+    for (const attendeeId of attendeeIds) {
+      await runQuery(
+        client,
+        `
+        INSERT INTO activity_invitees_v2 (activity_id, user_id, role, created_at, updated_at)
+        VALUES ($1, $2, 'participant', NOW(), NOW())
+        ON CONFLICT (activity_id, user_id) DO UPDATE
+          SET role = 'participant',
+              updated_at = NOW()
+        `,
+        [activity.id, attendeeId],
+      );
+    }
+
+    await runQuery(
+      client,
+      `DELETE FROM activity_rsvps_v2 WHERE activity_id = $1 AND user_id <> ALL($2::text[])`,
+      [activity.id, Array.from(attendeeIds)],
+    );
+
+    for (const attendeeId of attendeeIds) {
+      const response = attendeeId === userId || yesVoters.has(attendeeId) ? "yes" : "pending";
+      await runQuery(
+        client,
+        `
+        INSERT INTO activity_rsvps_v2 (activity_id, user_id, response, responded_at)
+        VALUES ($1, $2, $3, CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END)
+        ON CONFLICT (activity_id, user_id) DO UPDATE
+          SET response = EXCLUDED.response,
+              responded_at = CASE WHEN EXCLUDED.response = 'pending' THEN NULL ELSE NOW() END
+        `,
+        [activity.id, attendeeId, response],
+      );
+    }
+
+    await runQuery(client, `DELETE FROM activity_votes_v2 WHERE activity_id = $1`, [activity.id]);
+
+    await runQuery(
+      client,
+      `UPDATE activities_v2 SET status = 'scheduled', updated_at = NOW() WHERE id = $1`,
+      [activity.id],
+    );
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  const updated = await fetchActivityWithRelationsByLegacyId(legacyActivityId);
+  if (!updated) {
+    return null;
+  }
+
+  const [legacyActivity] = convertActivitiesV2ToLegacy([updated], { currentUserId: userId });
+  return legacyActivity;
+};

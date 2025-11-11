@@ -583,7 +583,7 @@ export function AddActivityModal({
     form.register("attendeeIds");
   }, [form]);
 
-  const activitiesVersion = "legacy" as const;
+  const activitiesVersion = "v2" as const;
 
   useEffect(() => {
     if (open) {

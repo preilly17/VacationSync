@@ -8,11 +8,11 @@ import {
   it,
   jest,
 } from "@jest/globals";
+import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 
 type RouteHandler = (req: any, res: any, next?: any) => Promise<unknown> | unknown;
 
 let setupRoutes: (app: express.Express) => import("http").Server;
-let storageModule: any;
 let storage: any;
 let observabilityModule: any;
 let activitiesV2Module: any;
@@ -76,6 +76,11 @@ beforeAll(async () => {
   await jest.unstable_mockModule("../activitiesV2", () => ({
     __esModule: true,
     createActivityV2: jest.fn(),
+    convertActivitiesV2ToLegacy: jest.fn(),
+    listActivitiesForTripV2: jest.fn(),
+    getActivityByLegacyIdV2: jest.fn(),
+    applyInviteStatusForLegacyId: jest.fn(),
+    convertProposalToScheduledV2: jest.fn(),
   }));
 
   await jest.unstable_mockModule("ws", () => ({
@@ -90,13 +95,12 @@ beforeAll(async () => {
   const routesModule: any = await import("../routes");
   setupRoutes = routesModule.setupRoutes;
 
-  storageModule = await import("../storage");
+  const storageModule = await import("../storage");
   storage = storageModule.storage;
 
   observabilityModule = await import("../observability");
   activitiesV2Module = await import("../activitiesV2");
 });
-
 
 describe("POST /api/trips/:id/activities", () => {
   let app: express.Express;
@@ -105,6 +109,8 @@ describe("POST /api/trips/:id/activities", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.FEATURE_ACTIVITIES_V2 = "true";
+    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
     logActivityCreationFailure = jest.spyOn(observabilityModule, "logActivityCreationFailure");
     trackActivityCreationMetric = jest.spyOn(observabilityModule, "trackActivityCreationMetric");
     app = express();
@@ -115,26 +121,29 @@ describe("POST /api/trips/:id/activities", () => {
 
   afterEach(async () => {
     jest.restoreAllMocks();
+    delete process.env.FEATURE_ACTIVITIES_V2;
+    delete process.env.FEATURE_ACTIVITIES_V2_WRITES;
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
     });
   });
 
-  it("returns 400 with invite details when a constraint violation occurs", async () => {
-    const trip = {
-      id: 123,
+  it("normalizes ISO inputs and surfaces invite validation errors from the v2 pipeline", async () => {
+    const trip: TripWithDetails = {
+      id: 101,
+      createdBy: "organizer",
       members: [
         { userId: "organizer", user: { firstName: "Org" } },
-        { userId: "former-member", user: { firstName: "Former" } },
+        { userId: "friend", user: { firstName: "Friend" } },
       ],
-    };
+    } as TripWithDetails;
 
     const requestBody = {
-      name: "Brunch",
-      startTime: new Date("2024-01-01T10:00:00Z").toISOString(),
-      endTime: new Date("2024-01-01T12:00:00Z").toISOString(),
-      category: "food",
+      name: "Sunrise Hike",
+      startTime: new Date("2024-03-01T09:00:00Z").toISOString(),
+      endTime: new Date("2024-03-01T11:30:00Z").toISOString(),
       attendeeIds: ["former-member"],
+      category: "outdoors",
     };
 
     const req: any = {
@@ -146,97 +155,67 @@ describe("POST /api/trips/:id/activities", () => {
 
     const res = createMockResponse();
 
-    jest
-      .spyOn(storage, "getTripById")
-      .mockResolvedValueOnce(trip as any);
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
-    const fkError = Object.assign(new Error("violates foreign key constraint"), {
-      code: "23503",
-      detail:
-        "Key (user_id)=(former-member) is not present in table \"trip_members\".",
+    const validationError = Object.assign(new Error("invalid_invitees"), {
+      code: "VALIDATION",
+      details: [
+        { field: "invitee_ids", message: "All invitees must be members of this trip." },
+      ],
     });
 
-    jest
-      .spyOn(storage, "createActivityWithInvites")
-      .mockRejectedValueOnce(fkError as never);
-
-    const setInviteStatusSpy = jest
-      .spyOn(storage, "setActivityInviteStatus")
-      .mockResolvedValue(undefined as any);
-
-    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-    const consoleErrorSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+    const createActivitySpy = jest
+      .spyOn(activitiesV2Module, "createActivityV2")
+      .mockRejectedValueOnce(validationError);
 
     await handler(req, res);
 
-    expect(res.setHeader).toHaveBeenCalledWith("x-correlation-id", expect.any(String));
-    const headerCorrelationId = res.setHeader.mock.calls[0][1];
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    const payload = res.json.mock.calls[0][0];
-    expect(payload).toMatchObject({
-      message: "One or more invitees are no longer members of this trip.",
-      correlationId: expect.any(String),
-      invalidInviteeIds: ["former-member"],
-      errors: expect.arrayContaining([
-        expect.objectContaining({ field: "attendeeIds" }),
-      ]),
-    });
-    expect(payload.correlationId).toBe(headerCorrelationId);
-
-    expect(logActivityCreationFailure).toHaveBeenCalledWith(
+    expect(createActivitySpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        correlationId: payload.correlationId,
-        step: "save",
-        userId: "organizer",
-        tripId: trip.id,
-        error: fkError,
-        mode: "SCHEDULED",
-        payloadSummary: expect.objectContaining({
-          name: requestBody.name,
-          startTime: requestBody.startTime,
+        trip,
+        creatorId: "organizer",
+        body: expect.objectContaining({
+          date: "2024-03-01",
+          start_time: "09:00",
+          end_time: "11:30",
+          invitee_ids: ["former-member"],
         }),
       }),
     );
 
-    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "SCHEDULED", outcome: "failure", reason: "constraint" }),
-    );
+    expect(res.status).toHaveBeenCalledWith(422);
+    const payload = res.json.mock.calls[0][0];
+    expect(payload).toMatchObject({
+      message: "All invitees must be members of this trip.",
+      errors: validationError.details,
+    });
 
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "Activity creation failed due to invite constraint violation",
+    expect(logActivityCreationFailure).toHaveBeenCalledWith(
       expect.objectContaining({
-        correlationId: payload.correlationId,
+        step: "validate",
         tripId: trip.id,
-        userId: "organizer",
-        invalidInviteeIds: ["former-member"],
-        attemptedInviteeIds: ["former-member"],
-        error: fkError,
+        mode: "SCHEDULED",
+        validationFields: ["invitee_ids"],
       }),
     );
 
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    expect(setInviteStatusSpy).not.toHaveBeenCalled();
-
-    consoleWarnSpy.mockRestore();
-    consoleErrorSpy.mockRestore();
+    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: "SCHEDULED", outcome: "failure", reason: "validation" }),
+    );
   });
 
-  it("returns a trip date range message when the legacy payload is outside the window", async () => {
-    const trip = {
-      id: 321,
-      members: [{ userId: "organizer", user: { firstName: "Org" } }],
+  it("rejects dates outside the trip window before invoking the v2 pipeline", async () => {
+    const trip: TripWithDetails = {
+      id: 202,
       createdBy: "organizer",
-      startDate: "2024-01-01",
-      endDate: "2024-01-10",
-    };
+      members: [{ userId: "organizer", user: { firstName: "Org" } }],
+      startDate: "2024-05-01",
+      endDate: "2024-05-05",
+    } as TripWithDetails;
 
     const requestBody = {
-      name: "Boat tour",
-      startTime: new Date("2024-01-15T15:00:00Z").toISOString(),
-      category: "manual",
+      name: "Boat Tour",
+      startTime: new Date("2024-05-10T15:00:00Z").toISOString(),
       attendeeIds: ["organizer"],
     };
 
@@ -251,284 +230,35 @@ describe("POST /api/trips/:id/activities", () => {
 
     jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
-    const createSpy = jest.spyOn(storage, "createActivityWithInvites");
+    const createActivitySpy = jest.spyOn(activitiesV2Module, "createActivityV2");
 
     await handler(req, res);
 
-    expect(createSpy).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(400);
+    expect(createActivitySpy).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(422);
     const payload = res.json.mock.calls[0][0];
-    expect(payload.message).toBe("Pick a date between Jan 1, 2024 and Jan 10, 2024.");
-    expect(payload.errors).toEqual(
-      expect.arrayContaining([expect.objectContaining({ field: "startDate" })]),
-    );
-  });
-
-  it("returns 400 when invitees are no longer trip members", async () => {
-    const trip = {
-      id: 789,
-      createdBy: "former-member",
-      members: [
-        { userId: "organizer", user: { firstName: "Org" } },
-        { userId: "friend", user: { firstName: "Friend" } },
-      ],
-    };
-
-    const requestBody = {
-      name: "Sunset Cruise",
-      startTime: new Date("2024-04-01T18:00:00Z").toISOString(),
-      endTime: null,
-      category: "entertainment",
-      attendeeIds: ["friend", "former-member"],
-    };
-
-    const req: any = {
-      params: { id: String(trip.id) },
-      body: requestBody,
-      session: { userId: "organizer" },
-      isAuthenticated: jest.fn(() => true),
-    };
-
-    const res = createMockResponse();
-
-    jest
-      .spyOn(storage, "getTripById")
-      .mockResolvedValueOnce(trip as any);
-
-    const membershipError = new storageModule.ActivityInviteMembershipError({
-      invalidInviteeIds: ["former-member"],
-      attemptedInviteeIds: ["friend", "former-member"],
+    expect(payload).toMatchObject({
+      message: "Pick a date between May 1, 2024 and May 5, 2024.",
+      errors: expect.arrayContaining([expect.objectContaining({ field: "date" })]),
     });
-
-    const createSpy = jest
-      .spyOn(storage, "createActivityWithInvites")
-      .mockRejectedValueOnce(membershipError as never);
-
-    const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
-
-    await handler(req, res);
-
-    expect(res.setHeader).toHaveBeenCalledWith("x-correlation-id", expect.any(String));
-
-    expect(res.status).toHaveBeenCalledWith(400);
-    const membershipPayload = res.json.mock.calls[0][0];
-    expect(membershipPayload).toEqual(
-      expect.objectContaining({
-        message: "One or more invitees are no longer members of this trip.",
-        correlationId: expect.any(String),
-        invalidInviteeIds: ["former-member"],
-        errors: expect.arrayContaining([
-          expect.objectContaining({ field: "attendeeIds" }),
-        ]),
-      }),
-    );
-    expect(membershipPayload.correlationId).toBe(res.setHeader.mock.calls[0][1]);
-
-    expect(logActivityCreationFailure).toHaveBeenCalledWith(
-      expect.objectContaining({
-        correlationId: expect.any(String),
-        step: "save",
-        userId: "organizer",
-        tripId: trip.id,
-        error: membershipError,
-        mode: "SCHEDULED",
-        payloadSummary: expect.objectContaining({
-          name: requestBody.name,
-          startTime: requestBody.startTime,
-        }),
-      }),
-    );
-
-    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "SCHEDULED", outcome: "failure", reason: "invalid-invite" }),
-    );
-
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      "Activity creation blocked due to non-member invites",
-      expect.objectContaining({
-        correlationId: expect.any(String),
-        tripId: trip.id,
-        userId: "organizer",
-        invalidInviteeIds: ["former-member"],
-        attemptedInviteeIds: ["friend", "former-member"],
-        error: membershipError,
-      }),
-    );
-
-    expect(createSpy).toHaveBeenCalled();
-
-    consoleWarnSpy.mockRestore();
   });
 
-  it("allows inviting the trip creator even if they are not in members", async () => {
-    const trip = {
-      id: 654,
-      createdBy: "trip-owner",
-      members: [
-        { userId: "organizer", user: { firstName: "Org" } },
-        { userId: "friend", user: { firstName: "Friend" } },
-      ],
-    };
-
-    const requestBody = {
-      name: "Owner Dinner",
-      startTime: new Date("2024-05-01T18:00:00Z").toISOString(),
-      endTime: null,
-      category: "food",
-      attendeeIds: ["trip-owner"],
-    };
-
-    const req: any = {
-      params: { id: String(trip.id) },
-      body: requestBody,
-      session: { userId: "organizer" },
-      isAuthenticated: jest.fn(() => true),
-    };
-
-    const res = createMockResponse();
-
-    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
-
-    const createdActivity = {
-      id: 321,
-      tripCalendarId: trip.id,
-      name: requestBody.name,
-      description: null,
-      startTime: requestBody.startTime,
-      endTime: requestBody.endTime,
-      location: null,
-      cost: null,
-      maxCapacity: null,
-      category: requestBody.category,
-      type: "SCHEDULED",
-    };
-
-    const createActivitySpy = jest
-      .spyOn(storage, "createActivityWithInvites")
-      .mockResolvedValueOnce(createdActivity as any);
-
-    jest
-      .spyOn(storage, "getTripActivities")
-      .mockResolvedValueOnce([createdActivity] as any);
-
-    jest
-      .spyOn(storage, "createNotification")
-      .mockResolvedValue(undefined as any);
-
-    await handler(req, res);
-
-    expect(createActivitySpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tripCalendarId: trip.id,
-        name: requestBody.name,
-      }),
-      "organizer",
-      ["trip-owner"],
-    );
-
-    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "SCHEDULED", outcome: "success" }),
-    );
-
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
-  });
-
-  it("allows manual entry activities to be created", async () => {
-    const trip = {
-      id: 456,
-      createdBy: "organizer",
-      members: [
-        { userId: "organizer", user: { firstName: "Org" } },
-        { userId: "friend", user: { firstName: "Friend" } },
-      ],
-    };
-
-    const requestBody = {
-      name: "Manual Museum Visit",
-      location: "City Museum",
-      startTime: new Date("2024-03-10T15:00:00Z").toISOString(),
-      endTime: null,
-      description: "Manual entry · Status: Confirmed · Currency: USD",
-      cost: 25,
-      category: "manual",
-      attendeeIds: ["friend"],
-    };
-
-    const req: any = {
-      params: { id: String(trip.id) },
-      body: requestBody,
-      session: { userId: "organizer" },
-      isAuthenticated: jest.fn(() => true),
-    };
-
-    const res = createMockResponse();
-
-    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
-
-    const createdActivity = {
-      id: 99,
-      tripCalendarId: trip.id,
-      name: requestBody.name,
-      description: requestBody.description,
-      startTime: requestBody.startTime,
-      endTime: requestBody.endTime,
-      location: requestBody.location,
-      cost: requestBody.cost,
-      maxCapacity: null,
-      category: requestBody.category,
-      type: "SCHEDULED",
-    };
-
-    const createActivitySpy = jest
-      .spyOn(storage, "createActivityWithInvites")
-      .mockResolvedValueOnce(createdActivity as any);
-
-    const getActivitiesSpy = jest
-      .spyOn(storage, "getTripActivities")
-      .mockResolvedValueOnce([createdActivity] as any);
-
-    const createNotificationSpy = jest
-      .spyOn(storage, "createNotification")
-      .mockResolvedValue(undefined as any);
-
-    await handler(req, res);
-
-    expect(createActivitySpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        category: "manual",
-        tripCalendarId: trip.id,
-      }),
-      "organizer",
-      ["friend"],
-    );
-
-    expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
-    expect(createNotificationSpy).toHaveBeenCalledTimes(1);
-    expect(trackActivityCreationMetric).toHaveBeenCalledWith(
-      expect.objectContaining({ mode: "SCHEDULED", outcome: "success" }),
-    );
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ id: createdActivity.id, category: "manual" }),
-    );
-  });
-
-  it("ignores the activities v2 header and uses the legacy pipeline", async () => {
-    const trip = {
-      id: 987,
+  it("creates a scheduled activity via the v2 pipeline and dispatches notifications", async () => {
+    const trip: TripWithDetails = {
+      id: 303,
       createdBy: "organizer",
       members: [
         { userId: "organizer", user: { firstName: "Org", email: "org@example.com" } },
         { userId: "friend", user: { firstName: "Friend", email: "friend@example.com" } },
       ],
-    };
+      timezone: "America/New_York",
+    } as TripWithDetails;
 
     const requestBody = {
       name: "Morning Run",
       description: "Shake off the jet lag",
       category: "outdoor",
       startTime: new Date("2024-06-01T07:30:00Z").toISOString(),
-      endTime: null,
-      timezone: "America/New_York",
       attendeeIds: ["friend"],
     };
 
@@ -538,293 +268,297 @@ describe("POST /api/trips/:id/activities", () => {
       session: { userId: "organizer" },
       headers: { "x-activities-version": "2" },
       isAuthenticated: jest.fn(() => true),
-    };
-
-    const res = createMockResponse();
-    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
-    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
-    process.env.FEATURE_ACTIVITIES_V2 = "true";
-    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
-
-    try {
-      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
-
-      const createdActivity = {
-        id: 42,
-        tripCalendarId: trip.id,
-        name: requestBody.name,
-        description: requestBody.description,
-        startTime: requestBody.startTime,
-        endTime: requestBody.endTime,
-        location: null,
-        cost: null,
-        maxCapacity: null,
-        category: requestBody.category,
-        status: "active",
-        type: "SCHEDULED",
-      };
-
-      const legacyCreateSpy = jest
-        .spyOn(storage, "createActivityWithInvites")
-        .mockResolvedValueOnce(createdActivity as any);
-
-      const getActivitiesSpy = jest
-        .spyOn(storage, "getTripActivities")
-        .mockResolvedValueOnce([createdActivity] as any);
-
-      const createNotificationSpy = jest
-        .spyOn(storage, "createNotification")
-        .mockResolvedValue(undefined as any);
-
-      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
-
-      await handler(req, res);
-
-      expect(createActivityV2Spy).not.toHaveBeenCalled();
-      expect(legacyCreateSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tripCalendarId: trip.id,
-          name: requestBody.name,
-        }),
-        "organizer",
-        ["friend"],
-      );
-      expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
-      expect(createNotificationSpy).toHaveBeenCalledTimes(1);
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
-    } finally {
-      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
-      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
-    }
-  });
-
-  it("returns a trip date range message when a v2-style payload is outside the window", async () => {
-    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
-    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
-    process.env.FEATURE_ACTIVITIES_V2 = "true";
-    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
-
-    const trip = {
-      id: 555,
-      members: [{ userId: "organizer", user: { firstName: "Org", email: "org@example.com" } }],
-      createdBy: "organizer",
-      startDate: "2024-01-01",
-      endDate: "2024-01-10",
-      timezone: "UTC",
-    };
-
-    const requestBody = {
-      mode: "scheduled",
-      title: "Dinner",
-      date: "2024-01-15",
-      start_time: "18:00",
-      timezone: "UTC",
-      invitee_ids: ["organizer"],
-      idempotency_key: "date-range-test",
-    };
-
-    const req: any = {
-      params: { id: String(trip.id) },
-      body: requestBody,
-      headers: { "x-activities-version": "2" },
-      session: { userId: "organizer" },
-      isAuthenticated: jest.fn(() => true),
-    };
-
-    const res = createMockResponse();
-
-    try {
-      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
-
-      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
-
-      await handler(req, res);
-
-      expect(createActivityV2Spy).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(400);
-      const payload = res.json.mock.calls[0][0];
-      expect(payload.message).toBe("Activity name is required.");
-      expect(payload.errors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "name" }),
-          expect.objectContaining({ field: "startDate" }),
-        ]),
-      );
-    } finally {
-      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
-      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
-    }
-  });
-
-  it("allows activity proposals without a start time via the legacy pipeline", async () => {
-    const trip = {
-      id: 321,
-      createdBy: "organizer",
-      timezone: "",
-      members: [
-        { userId: "organizer", user: { firstName: "Org", email: "org@example.com" } },
-        { userId: "friend", user: { firstName: "Friend", email: "friend@example.com" } },
-      ],
-    };
-
-    const requestBody = {
-      name: "Sunset Stroll",
-      description: "Relaxed walk along the beach",
-      category: "outdoor",
-      startTime: null,
-      endTime: null,
-      attendeeIds: ["friend"],
-    };
-
-    const req: any = {
-      params: { tripId: String(trip.id) },
-      body: requestBody,
-      session: { userId: "organizer" },
-      headers: { "x-activities-version": "2" },
-      isAuthenticated: jest.fn(() => true),
-    };
-
-    const proposalHandler = findRouteHandler(app, "/api/trips/:tripId/proposals/activities", "post");
-    const res = createMockResponse();
-    const previousFeatureFlag = process.env.FEATURE_ACTIVITIES_V2;
-    const previousWriteFlag = process.env.FEATURE_ACTIVITIES_V2_WRITES;
-    process.env.FEATURE_ACTIVITIES_V2 = "true";
-    process.env.FEATURE_ACTIVITIES_V2_WRITES = "true";
-
-    try {
-      jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
-
-      const createdActivity = {
-        id: 55,
-        tripCalendarId: trip.id,
-        name: requestBody.name,
-        description: requestBody.description,
-        startTime: null,
-        endTime: null,
-        location: null,
-        cost: null,
-        maxCapacity: null,
-        category: requestBody.category,
-        status: "pending",
-        type: "PROPOSE",
-      };
-
-      const createActivitySpy = jest
-        .spyOn(storage, "createActivityWithInvites")
-        .mockResolvedValueOnce(createdActivity as any);
-
-      const getActivitiesSpy = jest
-        .spyOn(storage, "getTripActivities")
-        .mockResolvedValueOnce([createdActivity] as any);
-
-      const createNotificationSpy = jest
-        .spyOn(storage, "createNotification")
-        .mockResolvedValue(undefined as any);
-
-      const createActivityV2Spy = jest.spyOn(activitiesV2Module, "createActivityV2");
-
-      await proposalHandler(req, res);
-
-      expect(createActivityV2Spy).not.toHaveBeenCalled();
-      expect(createActivitySpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          tripCalendarId: trip.id,
-          name: requestBody.name,
-          type: "PROPOSE",
-        }),
-        "organizer",
-        ["friend"],
-      );
-      expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
-      expect(createNotificationSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: "friend",
-          type: "activity_proposal",
-          tripId: trip.id,
-          activityId: createdActivity.id,
-        }),
-      );
-      expect(res.status).toHaveBeenCalledWith(201);
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
-    } finally {
-      process.env.FEATURE_ACTIVITIES_V2 = previousFeatureFlag;
-      process.env.FEATURE_ACTIVITIES_V2_WRITES = previousWriteFlag;
-    }
-  });
-
-  it("ensures the demo user exists before creating an activity in development", async () => {
-    const originalEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = "development";
-
-    const trip = {
-      id: 789,
-      createdBy: "demo-user",
-      members: [],
-    };
-
-    const requestBody = {
-      name: "Gallery Visit",
-      startTime: new Date("2024-05-01T18:00:00Z").toISOString(),
-      endTime: null,
-      category: "culture",
-      attendeeIds: ["demo-user"],
-    };
-
-    const req: any = {
-      params: { id: String(trip.id) },
-      body: requestBody,
-      session: {},
-      headers: {},
-      isAuthenticated: jest.fn(() => false),
     };
 
     const res = createMockResponse();
 
     jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
 
-    const getUserSpy = jest
-      .spyOn(storage, "getUser")
-      .mockResolvedValueOnce(undefined as any);
+    const v2Activity = {
+      id: "activity-1",
+      tripId: String(trip.id),
+      creatorId: "organizer",
+      title: requestBody.name,
+      description: requestBody.description,
+      category: requestBody.category,
+      date: "2024-06-01",
+      startTime: "07:30",
+      endTime: null,
+      timezone: trip.timezone ?? "UTC",
+      location: null,
+      costPerPerson: null,
+      maxParticipants: null,
+      status: "scheduled" as const,
+      visibility: "trip" as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 1,
+      invitees: [
+        {
+          activityId: "activity-1",
+          userId: "organizer",
+          role: "participant" as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          user: { id: "organizer" },
+        },
+        {
+          activityId: "activity-1",
+          userId: "friend",
+          role: "participant" as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          user: { id: "friend" },
+        },
+      ],
+      votes: [],
+      rsvps: [
+        {
+          activityId: "activity-1",
+          userId: "organizer",
+          response: "yes" as const,
+          respondedAt: new Date().toISOString(),
+          user: { id: "organizer" },
+        },
+      ],
+      creator: { id: "organizer", email: "org@example.com" },
+      currentUserVote: null,
+      currentUserRsvp: null,
+    };
 
-    const upsertUserSpy = jest
-      .spyOn(storage, "upsertUser")
-      .mockResolvedValueOnce({ id: "demo-user" } as any);
-
-    const createdActivity = {
-      id: 321,
+    const legacyActivity = {
+      id: 987654321,
       tripCalendarId: trip.id,
-      postedBy: "demo-user",
       name: requestBody.name,
-      description: null,
-      startTime: requestBody.startTime,
-      endTime: requestBody.endTime,
+      description: requestBody.description,
+      startTime: new Date("2024-06-01T07:30:00Z").toISOString(),
+      endTime: null,
       location: null,
       cost: null,
       maxCapacity: null,
       category: requestBody.category,
       status: "active",
       type: "SCHEDULED",
+      invites: [
+        { userId: "organizer", status: "accepted", respondedAt: expect.any(String), user: { id: "organizer" } },
+        { userId: "friend", status: "pending", respondedAt: null, user: { id: "friend" } },
+      ],
+    } as unknown as ActivityWithDetails;
+
+    const createActivityV2Spy = jest
+      .spyOn(activitiesV2Module, "createActivityV2")
+      .mockResolvedValueOnce(v2Activity as any);
+
+    jest
+      .spyOn(activitiesV2Module, "convertActivitiesV2ToLegacy")
+      .mockReturnValueOnce([legacyActivity]);
+
+    const notificationSpy = jest
+      .spyOn(storage, "createNotification")
+      .mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(createActivityV2Spy).toHaveBeenCalled();
+    expect(notificationSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "friend", type: "activity_invite" }),
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: legacyActivity.id }));
+  });
+
+  it("returns 409 and existing activity data when the v2 pipeline deduplicates a request", async () => {
+    const trip: TripWithDetails = {
+      id: 404,
+      createdBy: "organizer",
+      members: [{ userId: "organizer", user: { firstName: "Org" } }],
+    } as TripWithDetails;
+
+    const requestBody = {
+      name: "Duplicate Dinner",
+      startTime: new Date("2024-08-01T19:00:00Z").toISOString(),
+      attendeeIds: ["organizer"],
     };
 
-    jest
-      .spyOn(storage, "createActivityWithInvites")
-      .mockResolvedValueOnce(createdActivity as any);
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      headers: { "x-activities-version": "2" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const v2Activity = {
+      id: "activity-duplicate",
+      tripId: String(trip.id),
+      creatorId: "organizer",
+      title: requestBody.name,
+      description: null,
+      category: null,
+      date: "2024-08-01",
+      startTime: "19:00",
+      endTime: null,
+      timezone: "UTC",
+      location: null,
+      costPerPerson: null,
+      maxParticipants: null,
+      status: "scheduled" as const,
+      visibility: "trip" as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 1,
+      invitees: [],
+      votes: [],
+      rsvps: [],
+      creator: { id: "organizer" },
+      currentUserVote: null,
+      currentUserRsvp: null,
+      wasDeduplicated: true,
+    };
+
+    const legacyActivity = {
+      id: 555,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      type: "SCHEDULED",
+      invites: [],
+    } as unknown as ActivityWithDetails;
 
     jest
-      .spyOn(storage, "getTripActivities")
-      .mockResolvedValueOnce([createdActivity] as any);
+      .spyOn(activitiesV2Module, "createActivityV2")
+      .mockResolvedValueOnce(v2Activity as any);
 
-    try {
-      await handler(req, res);
+    jest
+      .spyOn(activitiesV2Module, "convertActivitiesV2ToLegacy")
+      .mockReturnValueOnce([legacyActivity]);
 
-      expect(getUserSpy).toHaveBeenCalledWith("demo-user");
-      expect(upsertUserSpy).toHaveBeenCalledWith(
-        expect.objectContaining({ id: "demo-user", email: "demo@example.com" }),
-      );
-      expect(res.status).toHaveBeenCalledWith(201);
-    } finally {
-      process.env.NODE_ENV = originalEnv;
-    }
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "We already created this activity. Try refreshing.",
+        activity: legacyActivity,
+      }),
+    );
+  });
+
+  it("allows inviting the trip creator even if they are not in the members list", async () => {
+    const trip: TripWithDetails = {
+      id: 505,
+      createdBy: "trip-owner",
+      members: [
+        { userId: "organizer", user: { firstName: "Org", email: "org@example.com" } },
+        { userId: "friend", user: { firstName: "Friend", email: "friend@example.com" } },
+      ],
+    } as TripWithDetails;
+
+    const requestBody = {
+      name: "Owner Dinner",
+      startTime: new Date("2024-05-01T18:00:00Z").toISOString(),
+      attendeeIds: ["trip-owner"],
+      category: "dining",
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      headers: { "x-activities-version": "2" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const v2Activity = {
+      id: "activity-owner",
+      tripId: String(trip.id),
+      creatorId: "organizer",
+      title: requestBody.name,
+      description: null,
+      category: requestBody.category,
+      date: "2024-05-01",
+      startTime: "18:00",
+      endTime: null,
+      timezone: "UTC",
+      location: null,
+      costPerPerson: null,
+      maxParticipants: null,
+      status: "scheduled" as const,
+      visibility: "trip" as const,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 1,
+      invitees: [
+        {
+          activityId: "activity-owner",
+          userId: "organizer",
+          role: "participant" as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          user: { id: "organizer" },
+        },
+        {
+          activityId: "activity-owner",
+          userId: "trip-owner",
+          role: "participant" as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          user: { id: "trip-owner" },
+        },
+      ],
+      votes: [],
+      rsvps: [
+        {
+          activityId: "activity-owner",
+          userId: "organizer",
+          response: "yes" as const,
+          respondedAt: new Date().toISOString(),
+          user: { id: "organizer" },
+        },
+      ],
+      creator: { id: "organizer" },
+      currentUserVote: null,
+      currentUserRsvp: null,
+    };
+
+    const legacyActivity = {
+      id: 123456,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      type: "SCHEDULED",
+      invites: [
+        { userId: "organizer", status: "accepted" },
+        { userId: "trip-owner", status: "pending" },
+      ],
+    } as unknown as ActivityWithDetails;
+
+    const createActivityV2Spy = jest
+      .spyOn(activitiesV2Module, "createActivityV2")
+      .mockResolvedValueOnce(v2Activity as any);
+
+    jest
+      .spyOn(activitiesV2Module, "convertActivitiesV2ToLegacy")
+      .mockReturnValueOnce([legacyActivity]);
+
+    jest.spyOn(storage, "createNotification").mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(createActivityV2Spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trip,
+        body: expect.objectContaining({ invitee_ids: ["trip-owner"] }),
+      }),
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: legacyActivity.id }));
   });
 });
+

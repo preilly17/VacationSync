@@ -269,7 +269,7 @@ export function useCreateActivity({
   onSuccess,
   onValidationError,
   enabled = true,
-  activitiesVersion = "legacy",
+  activitiesVersion = "v2",
 }: UseCreateActivityOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();

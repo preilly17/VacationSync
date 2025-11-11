@@ -31,7 +31,14 @@ import {
   type ActivityWithDetails,
   type InsertHotel,
 } from "@shared/schema";
-import { createActivityV2, convertActivitiesV2ToLegacy, listActivitiesForTripV2 } from "./activitiesV2";
+import {
+  createActivityV2,
+  convertActivitiesV2ToLegacy,
+  listActivitiesForTripV2,
+  getActivityByLegacyIdV2,
+  applyInviteStatusForLegacyId,
+  convertProposalToScheduledV2,
+} from "./activitiesV2";
 import type { CreateActivityRequest } from "@shared/activitiesV2";
 import { validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
@@ -80,11 +87,22 @@ const extractInviteeIdsFromDetail = (detail?: string): string[] => {
 const CORRELATION_HEADER_CANDIDATES = ["x-correlation-id", "x-request-id", "x-idempotency-key"];
 
 const ACTIVITIES_V2_HEADER_KEY = "x-activities-version";
-const isActivitiesV2Enabled = () => process.env.FEATURE_ACTIVITIES_V2 === "true";
-const isActivitiesV2WriteEnabled = () =>
-  process.env.FEATURE_ACTIVITIES_V2_WRITES === "true";
+const isActivitiesV2Enabled = () => process.env.FEATURE_ACTIVITIES_V2 !== "false";
+const isActivitiesV2WriteEnabled = () => process.env.FEATURE_ACTIVITIES_V2_WRITES !== "false";
 
-const requestUsesActivitiesV2 = (_req: { headers?: Record<string, unknown> }): boolean => false;
+const requestUsesActivitiesV2 = (req: { headers?: Record<string, unknown> }): boolean => {
+  if (!isActivitiesV2Enabled()) {
+    return false;
+  }
+
+  const headerValue = req?.headers?.[ACTIVITIES_V2_HEADER_KEY];
+  const resolvedHeader = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  if (typeof resolvedHeader === "string" && resolvedHeader.trim() === "2") {
+    return true;
+  }
+
+  return isActivitiesV2WriteEnabled();
+};
 
 const ACTIVITY_LOG_DATE_KEYS = new Set([
   "startTime",
@@ -97,6 +115,8 @@ const ACTIVITY_LOG_DATE_KEYS = new Set([
   "updatedAt",
   "responded_at",
 ]);
+
+const ISO_DATETIME_PATTERN = /^(\d{4}-\d{2}-\d{2})[T\s]/;
 
 const sanitizeActivityLogValue = (value: unknown): unknown => {
   if (value === null || value === undefined) {
@@ -155,6 +175,40 @@ const toDateOnlyIsoString = (value: unknown): string | null => {
     }
 
     return parsed.toISOString().slice(0, 10);
+  }
+
+  return null;
+};
+
+const toTimeOnlyIsoString = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+    return value.toISOString().slice(11, 16);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (/^\d{2}:\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    if (ISO_DATETIME_PATTERN.test(trimmed)) {
+      const parsed = new Date(trimmed);
+      if (Number.isNaN(parsed.getTime())) {
+        return null;
+      }
+      return parsed.toISOString().slice(11, 16);
+    }
   }
 
   return null;
@@ -363,7 +417,83 @@ const applyActivityResponse = async (
 ) => {
   const activity = await storage.getActivityById(activityId);
   if (!activity) {
-    return { error: { status: 404, message: "Activity not found" } } as const;
+    if (!isActivitiesV2Enabled()) {
+      return { error: { status: 404, message: "Activity not found" } } as const;
+    }
+
+    const v2Activity = await getActivityByLegacyIdV2({
+      legacyActivityId: activityId,
+      currentUserId: userId,
+    });
+
+    if (!v2Activity) {
+      return { error: { status: 404, message: "Activity not found" } } as const;
+    }
+
+    const trip = await storage.getTripById(v2Activity.tripCalendarId);
+    if (!trip) {
+      return { error: { status: 404, message: "Trip not found" } } as const;
+    }
+
+    const isMember = trip.members.some((member) => member.userId === userId);
+    if (!isMember) {
+      return {
+        error: {
+          status: 403,
+          message: "You are no longer a member of this trip",
+        },
+      } as const;
+    }
+
+    const v2Result = await applyInviteStatusForLegacyId({
+      legacyActivityId: activityId,
+      userId,
+      status,
+    });
+
+    if (!v2Result) {
+      return { error: { status: 500, message: "Failed to update activity invite" } } as const;
+    }
+
+    if (v2Result.activity.postedBy !== userId && (status === "accepted" || status === "declined")) {
+      const responderMember = trip.members.find((member) => member.userId === userId);
+      const responderName = responderMember
+        ? getUserDisplayName(responderMember.user)
+        : "A trip member";
+
+      const message =
+        status === "accepted"
+          ? `${responderName} accepted ${v2Result.activity.name}.`
+          : `${responderName} declined ${v2Result.activity.name}.`;
+
+      try {
+        await storage.createNotification({
+          userId: v2Result.activity.postedBy,
+          type: "activity_rsvp",
+          title: "RSVP update",
+          message,
+          tripId: v2Result.activity.tripCalendarId,
+          activityId: v2Result.activity.id,
+        });
+      } catch (notificationError) {
+        console.error("Failed to persist RSVP notification:", notificationError);
+      }
+    }
+
+    broadcastToTrip(v2Result.activity.tripCalendarId, {
+      type: "activity_invite_updated",
+      activityId,
+      userId,
+      status,
+    });
+
+    return {
+      activity: v2Result.activity,
+      trip,
+      updatedInvite: v2Result.updatedInvite,
+      updatedActivity: v2Result.activity,
+      promotedUserId: v2Result.promotedUserId,
+    } as const;
   }
 
   const trip = await storage.getTripById(activity.tripCalendarId);
@@ -2435,6 +2565,12 @@ export function setupRoutes(app: Express) {
             : typeof rawBody.startTime === "string"
               ? rawBody.startTime
               : "";
+        const endTimeFromBody =
+          typeof rawBody.end_time === "string"
+            ? rawBody.end_time
+            : typeof rawBody.endTime === "string"
+              ? rawBody.endTime
+              : null;
         const timezoneFromBody =
           typeof rawBody.timezone === "string"
             ? rawBody.timezone
@@ -2443,6 +2579,20 @@ export function setupRoutes(app: Express) {
               : "";
 
         const trimmedStartTime = startTimeFromBody?.trim?.() ?? "";
+        const normalizedStartTime = toTimeOnlyIsoString(trimmedStartTime) ?? trimmedStartTime;
+        const normalizedEndTime = (() => {
+          const fromIso = toTimeOnlyIsoString(endTimeFromBody);
+          if (fromIso) {
+            return fromIso;
+          }
+
+          if (typeof endTimeFromBody === "string") {
+            const trimmed = endTimeFromBody.trim();
+            return trimmed.length > 0 ? trimmed : null;
+          }
+
+          return null;
+        })();
         const trimmedTimezone = timezoneFromBody?.trim?.() ?? "";
         const isProposedRequest = requestMode === "proposed";
         const resolvedTimezone = (() => {
@@ -2475,19 +2625,28 @@ export function setupRoutes(app: Express) {
               ? headerIdempotency
               : randomUUID();
 
+        const resolvedDate = (() => {
+          const fromBody = toDateOnlyIsoString(dateFromBody);
+          if (fromBody) {
+            return fromBody;
+          }
+
+          const fromStart = toDateOnlyIsoString(startTimeFromBody);
+          if (fromStart) {
+            return fromStart;
+          }
+
+          return "";
+        })();
+
         const createPayload: CreateActivityRequest = {
           mode: requestMode,
           title: typeof titleFromBody === "string" ? titleFromBody : "",
           description: typeof rawBody.description === "string" ? rawBody.description : rawBody.description ?? null,
           category: typeof rawBody.category === "string" ? rawBody.category : rawBody.category ?? null,
-          date: dateFromBody,
-          start_time: trimmedStartTime,
-          end_time:
-            typeof rawBody.end_time === "string"
-              ? rawBody.end_time
-              : typeof rawBody.endTime === "string"
-                ? rawBody.endTime
-                : null,
+          date: resolvedDate,
+          start_time: normalizedStartTime,
+          end_time: normalizedEndTime,
           timezone: resolvedTimezone,
           location: typeof rawBody.location === "string" ? rawBody.location : rawBody.location ?? null,
           cost_per_person:
@@ -2501,7 +2660,12 @@ export function setupRoutes(app: Express) {
         attemptedInviteeIds = normalizedInvitees;
         payloadSummary = {
           name: createPayload.title,
-          startTime: trimmedStartTime.length > 0 ? trimmedStartTime : null,
+          startTime:
+            typeof normalizedStartTime === "string" && normalizedStartTime.length > 0
+              ? normalizedStartTime
+              : trimmedStartTime.length > 0
+                ? trimmedStartTime
+                : null,
           type: requestMode,
           attendeeCount: createPayload.invitee_ids.length,
         };
@@ -2611,9 +2775,17 @@ export function setupRoutes(app: Express) {
             body: createPayload,
           });
 
+          const [legacyActivity] = convertActivitiesV2ToLegacy([creationResult], {
+            currentUserId: userId,
+          });
+
+          if (!legacyActivity) {
+            throw new Error("activity_conversion_failed");
+          }
+
           payloadSummary = {
             ...payloadSummary,
-            activityId: creationResult.id,
+            activityId: legacyActivity.id,
           };
 
           if (creationResult.wasDeduplicated) {
@@ -2621,7 +2793,7 @@ export function setupRoutes(app: Express) {
             res.status(409).json({
               message: "We already created this activity. Try refreshing.",
               correlationId,
-              activity: creationResult,
+              activity: legacyActivity,
             });
             return;
           }
@@ -2634,9 +2806,8 @@ export function setupRoutes(app: Express) {
             activityId: creationResult.id,
           });
 
-          const attendeesToNotify = creationResult.invitees
-            .filter((invitee) => invitee.role === "participant")
-            .map((invitee) => invitee.userId)
+          const attendeesToNotify = legacyActivity.invites
+            .map((invite) => invite.userId)
             .filter((inviteeId) => inviteeId !== userId);
 
           if (attendeesToNotify.length > 0) {
@@ -2695,18 +2866,18 @@ export function setupRoutes(app: Express) {
             const notificationType = requestMode === "proposed" ? "activity_proposal" : "activity_invite";
             const notificationTitle =
               requestMode === "proposed"
-                ? `${proposerName} proposed ${creationResult.title}`
-                : `You've been invited to ${creationResult.title}`;
+                ? `${proposerName} proposed ${legacyActivity.name}`
+                : `You've been invited to ${legacyActivity.name}`;
             const notificationMessage = (() => {
               if (requestMode === "proposed") {
                 return formattedDate
-                  ? `${proposerName} suggested ${creationResult.title} on ${formattedDate}. Vote when you're ready.`
-                  : `${proposerName} suggested ${creationResult.title}. Vote when you're ready.`;
+                  ? `${proposerName} suggested ${legacyActivity.name} on ${formattedDate}. Vote when you're ready.`
+                  : `${proposerName} suggested ${legacyActivity.name}. Vote when you're ready.`;
               }
 
               return formattedDate
-                ? `You've been invited to ${creationResult.title} on ${formattedDate}.`
-                : `You've been invited to ${creationResult.title}.`;
+                ? `You've been invited to ${legacyActivity.name} on ${formattedDate}.`
+                : `You've been invited to ${legacyActivity.name}.`;
             })();
 
             const notificationResults = await Promise.allSettled(
@@ -2717,7 +2888,7 @@ export function setupRoutes(app: Express) {
                   title: notificationTitle,
                   message: notificationMessage,
                   tripId,
-                  activityId: creationResult.id,
+                  activityId: legacyActivity.id,
                 }),
               ),
             );
@@ -2749,13 +2920,13 @@ export function setupRoutes(app: Express) {
 
           broadcastToTrip(tripId, {
             type: "activity_created",
-            activityId: creationResult.id,
+            activityId: legacyActivity.id,
             activityType: metricMode,
           });
 
           trackActivityCreationMetric({ mode: metricMode, outcome: "success" });
 
-          res.status(201).json(creationResult);
+          res.status(201).json(legacyActivity);
           return;
         } catch (error: unknown) {
           const details = (error as any)?.details;
@@ -3335,9 +3506,57 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: 'User ID not found' });
       }
 
-      const updatedActivity = await storage.convertActivityProposalToScheduled(activityId, userId);
+      let updatedActivity: ActivityWithDetails | null = null;
+      let trip: TripWithDetails | null = null;
 
-      const trip = await storage.getTripById(updatedActivity.tripCalendarId);
+      try {
+        updatedActivity = await storage.convertActivityProposalToScheduled(activityId, userId);
+        trip = await storage.getTripById(updatedActivity.tripCalendarId);
+      } catch (error) {
+        if (!isActivitiesV2Enabled()) {
+          throw error;
+        }
+
+        if (error instanceof Error && error.message !== 'Activity not found') {
+          throw error;
+        }
+      }
+
+      if (!updatedActivity && isActivitiesV2Enabled()) {
+        const v2Activity = await getActivityByLegacyIdV2({
+          legacyActivityId: activityId,
+          currentUserId: userId,
+        });
+
+        if (!v2Activity) {
+          return res.status(404).json({ message: 'Activity not found' });
+        }
+
+        trip = await storage.getTripById(v2Activity.tripCalendarId);
+        if (!trip) {
+          return res.status(404).json({ message: 'Trip not found' });
+        }
+
+        const isMember = trip.members.some((member) => member.userId === userId);
+        if (!isMember) {
+          return res.status(403).json({ message: 'You are no longer a member of this trip' });
+        }
+
+        const converted = await convertProposalToScheduledV2({ legacyActivityId: activityId, userId });
+        if (!converted) {
+          return res.status(500).json({ message: 'Failed to convert activity proposal' });
+        }
+
+        updatedActivity = converted;
+      }
+
+      if (!updatedActivity) {
+        return res.status(404).json({ message: 'Activity not found' });
+      }
+
+      if (!trip) {
+        trip = await storage.getTripById(updatedActivity.tripCalendarId);
+      }
       const proposerMember = trip?.members.find((member) => member.userId === userId);
       const proposerName = getTripMemberDisplayName(proposerMember);
 

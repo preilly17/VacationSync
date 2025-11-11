@@ -270,7 +270,7 @@ const redactDates = (value: unknown): unknown => {
 
 export const submitActivityRequest = async <T extends ActivityWithDetails>({
   tripId,
-  version = "legacy",
+  version = "v2",
   payload,
 }: SubmitActivityOptions): Promise<T> => {
   const endpoint =

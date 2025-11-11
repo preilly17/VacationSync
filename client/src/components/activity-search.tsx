@@ -404,7 +404,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     () => (trip?.members ?? []) as (TripMember & { user: User })[],
     [trip?.members],
   );
-  const activitiesVersion = "legacy" as const;
+  const activitiesVersion = "v2" as const;
 
   const handleManualValidationError = useCallback(
     (error: ActivityValidationError) => {

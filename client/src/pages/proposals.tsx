@@ -1345,7 +1345,12 @@ function ProposalsPage({
 
   // Helper function to get proposal status badge
   const getStatusBadge = (status: string, averageRanking?: number) => {
-    const normalizedStatus = (status || "active").toLowerCase();
+    const normalizedStatus = (() => {
+      if (typeof status === "string" && status.trim().length > 0) {
+        return status.trim().toLowerCase();
+      }
+      return "proposed";
+    })();
 
     if (normalizedStatus === "selected") {
       return <Badge className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Selected</Badge>;

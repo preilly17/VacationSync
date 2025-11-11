@@ -4320,7 +4320,7 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    const shouldIncludeV2 = process.env.FEATURE_ACTIVITIES_V2 === "true";
+    const shouldIncludeV2 = process.env.FEATURE_ACTIVITIES_V2 !== "false";
     const combined = [...legacyActivities];
 
     if (shouldIncludeV2) {
