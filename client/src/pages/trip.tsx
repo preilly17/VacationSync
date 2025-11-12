@@ -6188,6 +6188,32 @@ function formatList(items: string[]): string {
   return `${allButLast.join(", ")}, and ${lastItem}`;
 }
 
+function normalizeHotelIdForRequest(value: unknown): number | string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+}
+
+function getHotelIdString(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toString();
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+}
+
 function canShareHotelWithGroup(hotel: HotelWithDetails): boolean {
   if (!hotel.proposalId) {
     return true;
@@ -6287,14 +6313,14 @@ function HotelBooking({
     HotelWithDetails
   >({
     mutationFn: async (hotel: HotelWithDetails) => {
-      const parsedHotelId = Number.parseInt(String(hotel.id), 10);
-      if (!Number.isFinite(parsedHotelId)) {
+      const normalizedHotelId = normalizeHotelIdForRequest(hotel.id);
+      if (normalizedHotelId === null) {
         throw new Error("Invalid hotel ID");
       }
 
       const response = await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
-        body: { hotelId: parsedHotelId, tripId },
+        body: { hotelId: normalizedHotelId, tripId },
       });
 
       return (await response.json()) as HotelProposalWithDetails;
@@ -6302,7 +6328,9 @@ function HotelBooking({
     onSuccess: async (proposal, hotel) => {
       toast({ title: "Hotel proposed to group." });
 
-      const stayId = proposal.stayId ?? Number.parseInt(String(hotel.id), 10);
+      const proposalStayId = getHotelIdString(proposal.stayId);
+      const fallbackStayId = getHotelIdString(hotel.id);
+      const stayId = proposalStayId ?? fallbackStayId;
 
       queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
         [`/api/trips/${tripId}/hotel-proposals`],
@@ -6342,7 +6370,11 @@ function HotelBooking({
           }
 
           return existing.map((entry) => {
-            if (Number.parseInt(String(entry.id), 10) !== stayId) {
+            if (!stayId) {
+              return entry;
+            }
+
+            if (getHotelIdString(entry.id) !== stayId) {
               return entry;
             }
 
@@ -6439,7 +6471,7 @@ function HotelBooking({
         return;
       }
 
-      if (!Number.isFinite(Number.parseInt(String(hotel.id), 10))) {
+      if (!getHotelIdString(hotel.id)) {
         toast({
           title: "Unable to share stay",
           description: "We couldn’t determine which stay to share. Try saving it again and then propose it to the group.",

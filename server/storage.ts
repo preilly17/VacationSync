@@ -788,7 +788,7 @@ type FlightWithDetailsRow = FlightRow &
   };
 
 type HotelRow = {
-  id: number;
+  id: number | string;
   trip_id: number;
   user_id: string;
   hotel_name: string;
@@ -7763,10 +7763,14 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async ensureHotelProposalForSavedHotel(options: {
-    hotelId: number;
+    hotelId: number | string;
     tripId: number;
     currentUserId: string;
-  }): Promise<{ proposal: HotelProposalWithDetails; wasCreated: boolean; stayId: number }> {
+  }): Promise<{
+    proposal: HotelProposalWithDetails;
+    wasCreated: boolean;
+    stayId: number | string;
+  }> {
     const { hotelId, tripId, currentUserId } = options;
 
     const client = await pool.connect();
@@ -8003,7 +8007,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
         throw new Error("Failed to load hotel proposal");
       }
 
-      return { proposal, wasCreated, stayId: hotelId };
+      const stayIdentifier = hotel.id;
+      return { proposal, wasCreated, stayId: stayIdentifier };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

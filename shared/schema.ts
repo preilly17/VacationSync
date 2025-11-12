@@ -769,7 +769,7 @@ export interface HotelProposal {
   status: string;
   averageRanking: number | null;
   createdAt: IsoDate | null;
-  stayId?: number | null;
+  stayId?: number | string | null;
   checkInDate?: IsoDate | null;
   checkOutDate?: IsoDate | null;
   address?: string | null;

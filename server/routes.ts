@@ -3878,12 +3878,39 @@ export function setupRoutes(app: Express) {
 
       const parsedData = parsedRequest.data as Record<string, unknown>;
       const rawHotelId = parsedData.hotelId ?? parsedData.id;
-      let hotelId =
-        typeof rawHotelId === 'number'
-          ? rawHotelId
-          : rawHotelId != null
-            ? Number.parseInt(String(rawHotelId), 10)
-            : NaN;
+      const normalizeHotelId = (value: unknown): number | string | null => {
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          return value;
+        }
+
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (!trimmed) {
+            return null;
+          }
+
+          if (/^-?\d+$/.test(trimmed)) {
+            const parsed = Number.parseInt(trimmed, 10);
+            if (Number.isFinite(parsed)) {
+              return parsed;
+            }
+          }
+
+          return trimmed;
+        }
+
+        return null;
+      };
+
+      const hasHotelIdentifier = (value: number | string | null): value is number | string => {
+        if (typeof value === 'number') {
+          return Number.isFinite(value);
+        }
+
+        return typeof value === 'string' && value.length > 0;
+      };
+
+      let hotelId = normalizeHotelId(rawHotelId);
 
       const { hotelId: _ignoredHotelId, id: _ignoredId, ...rest } = parsedData;
       const { tripId: rawTripId, ...hotelDetails } = rest as {
@@ -3893,7 +3920,7 @@ export function setupRoutes(app: Express) {
 
       const hasAdditionalHotelDetails = Object.keys(hotelDetails).length > 0;
       const requiresHotelDetails =
-        !Number.isFinite(hotelId) || hasAdditionalHotelDetails || rawTripId !== undefined;
+        !hasHotelIdentifier(hotelId) || hasAdditionalHotelDetails || rawTripId !== undefined;
 
       let parsedHotelPayload: InsertHotel | null = null;
       let hotelPayloadIssues: z.ZodIssue[] | null = null;
@@ -3927,11 +3954,11 @@ export function setupRoutes(app: Express) {
         }
       }
 
-      if (!Number.isFinite(hotelId)) {
+      if (!hasHotelIdentifier(hotelId)) {
         if (parsedHotelPayload) {
           try {
             const createdHotel = await storage.createHotel(parsedHotelPayload, userId);
-            hotelId = createdHotel.id;
+            hotelId = normalizeHotelId(createdHotel.id);
           } catch (creationError: unknown) {
             console.error("Error creating hotel before proposing:", creationError);
             return res.status(500).json({ message: "Failed to prepare hotel for proposal" });
@@ -4006,7 +4033,7 @@ export function setupRoutes(app: Express) {
         }
       }
 
-      if (!Number.isFinite(hotelId)) {
+      if (!hasHotelIdentifier(hotelId)) {
         return res.status(400).json({
           message:
             "Provide either an existing hotelId or the required hotel details to share with the group.",
