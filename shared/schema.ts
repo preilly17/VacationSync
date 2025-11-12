@@ -788,7 +788,7 @@ export const insertHotelProposalSchema = z.object({
   amenities: z.string().nullable().optional(),
   platform: z.string().min(1, "Platform is required"),
   bookingUrl: z.string().min(1, "Booking URL is required"),
-  status: z.string().default("active"),
+  status: z.string().default("proposed"),
 });
 
 export type InsertHotelProposal = z.infer<typeof insertHotelProposalSchema>;

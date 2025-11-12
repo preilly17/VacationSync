@@ -10544,7 +10544,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         booking_url,
         status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'active'))
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, COALESCE($11, 'proposed'))
       RETURNING
         id,
         trip_id,
@@ -10573,7 +10573,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         proposal.amenities ?? null,
         proposal.platform,
         proposal.bookingUrl,
-        proposal.status ?? "active",
+        proposal.status ?? "proposed",
       ],
     );
 

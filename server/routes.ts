@@ -3977,7 +3977,7 @@ export function setupRoutes(app: Express) {
             status:
               typeof parsedData.status === 'string' && parsedData.status.trim().length > 0
                 ? (parsedData.status as string)
-                : 'active',
+                : 'proposed',
           };
 
           const fallbackSchema = insertHotelProposalSchema.extend({
