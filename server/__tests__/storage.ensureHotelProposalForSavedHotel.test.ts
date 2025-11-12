@@ -160,6 +160,7 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       hotelId: 55,
       tripId: 10,
       currentUserId: "user-123",
+      overrideDetails: undefined,
     });
 
     expect(clientQueryMock).toHaveBeenCalledWith(expect.stringContaining("FROM hotels"), [55]);
@@ -332,6 +333,7 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       hotelId: 55,
       tripId: 10,
       currentUserId: "host@example.com",
+      overrideDetails: undefined,
     });
 
     expect(result).toEqual(
@@ -348,11 +350,11 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
     );
   });
 
-  it("throws a descriptive error when the stay is missing required details", async () => {
-    const now = new Date("2024-06-03T12:00:00Z");
+  it("fills missing stay details from override payload before creating a proposal", async () => {
+    const now = new Date("2024-06-04T10:00:00Z");
 
-    const hotelRow = {
-      id: 77,
+    const incompleteHotelRow = {
+      id: 99,
       trip_id: 10,
       user_id: "user-123",
       hotel_name: "",
@@ -360,12 +362,12 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       hotel_rating: null,
       address: "   ",
       city: "",
-      country: "USA",
+      country: "",
       zip_code: null,
       latitude: null,
       longitude: null,
       check_in_date: null,
-      check_out_date: now,
+      check_out_date: null,
       room_type: null,
       room_count: null,
       guest_count: null,
@@ -387,40 +389,326 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       created_at: now,
       updated_at: now,
       trip_created_by: "owner@example.com",
-      trip_name: "City Trip",
+      trip_name: "City Escape",
       trip_start_date: now,
-      trip_end_date: now,
+      trip_end_date: new Date(now.getTime() + 86400000),
     };
 
-    clientQueryMock.mockImplementation((sql: string) => {
-      if (sql === "BEGIN") {
-        return Promise.resolve({ rows: [] });
-      }
-      if (sql.includes("FROM hotels")) {
-        return Promise.resolve({ rows: [hotelRow] });
-      }
-      if (sql.includes("FROM trip_members")) {
-        return Promise.resolve({ rows: [{ role: "member" }] });
-      }
-      if (sql === "ROLLBACK") {
-        return Promise.resolve({ rows: [] });
-      }
-      return Promise.resolve({ rows: [] });
+    const refreshedHotelRow = {
+      ...incompleteHotelRow,
+      hotel_name: "Downtown Suites",
+      address: "400 Market St",
+      city: "San Francisco",
+      country: "USA",
+      check_in_date: now,
+      check_out_date: new Date(now.getTime() + 86400000),
+    };
+
+    clientQueryMock
+      // BEGIN
+      .mockResolvedValueOnce({ rows: [] })
+      // Initial load
+      .mockResolvedValueOnce({ rows: [incompleteHotelRow] })
+      // Membership lookup
+      .mockResolvedValueOnce({ rows: [{ role: "member" }] })
+      // Update with override details
+      .mockResolvedValueOnce({ rows: [] })
+      // Reload with refreshed values
+      .mockResolvedValueOnce({ rows: [refreshedHotelRow] })
+      // Existing proposal link check
+      .mockResolvedValueOnce({ rows: [] })
+      // Insert hotel proposal
+      .mockResolvedValueOnce({ rows: [{ id: 321 }] })
+      // Insert proposal schedule link
+      .mockResolvedValueOnce({ rows: [] })
+      // Trip members for notifications
+      .mockResolvedValueOnce({ rows: [{ user_id: "owner@example.com" }] })
+      // Proposer details
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            first_name: "Casey",
+            last_name: "Traveler",
+            username: null,
+            email: "user-123",
+          },
+        ],
+      })
+      // Notification insert
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 888,
+            user_id: "owner@example.com",
+            type: "proposal-hotel-created",
+            title: "Casey Traveler proposed Downtown Suites",
+            message: "Casey Traveler shared Downtown Suites (Jun 4 – Jun 5).",
+            trip_id: 10,
+            activity_id: null,
+            expense_id: null,
+            is_read: false,
+            created_at: now,
+          },
+        ],
+      })
+      // COMMIT
+      .mockResolvedValueOnce({ rows: [] });
+
+    queryMock
+      // ensureProposalLinkStructures -> CREATE TABLE
+      .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({ rows: [] })
+      // Fetch proposal with proposer details
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 321,
+            trip_id: 10,
+            proposed_by: "user-123",
+            hotel_name: "Downtown Suites",
+            location: "San Francisco, USA",
+            price: "0",
+            price_per_night: null,
+            rating: null,
+            amenities: null,
+            platform: "Manual Save",
+            booking_url: "",
+            status: "proposed",
+            average_ranking: null,
+            created_at: now,
+            updated_at: now,
+            linked_hotel_id: 99,
+            linked_check_in_date: now,
+            linked_check_out_date: new Date(now.getTime() + 86400000),
+            linked_address: "400 Market St",
+            linked_city: "San Francisco",
+            linked_country: "USA",
+            linked_currency: "USD",
+            proposer_id: "user-123",
+            proposer_email: "user-123",
+            proposer_username: null,
+            proposer_first_name: "Casey",
+            proposer_last_name: "Traveler",
+            proposer_phone_number: null,
+            proposer_password_hash: null,
+            proposer_profile_image_url: null,
+            proposer_cashapp_username: null,
+            proposer_cash_app_username: null,
+            proposer_cashapp_phone: null,
+            proposer_cash_app_phone: null,
+            proposer_venmo_username: null,
+            proposer_venmo_phone: null,
+            proposer_timezone: null,
+            proposer_default_location: null,
+            proposer_default_location_code: null,
+            proposer_default_city: null,
+            proposer_default_country: null,
+            proposer_auth_provider: null,
+            proposer_notification_preferences: null,
+            proposer_has_seen_home_onboarding: false,
+            proposer_has_seen_trip_onboarding: false,
+            proposer_created_at: now,
+            proposer_updated_at: now,
+          },
+        ],
+      })
+      // Fetch rankings (none)
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await storage.ensureHotelProposalForSavedHotel({
+      hotelId: 99,
+      tripId: 10,
+      currentUserId: "user-123",
+      overrideDetails: {
+        hotelName: "Downtown Suites",
+        address: "400 Market St",
+        city: "San Francisco",
+        country: "USA",
+        checkInDate: now,
+        checkOutDate: new Date(now.getTime() + 86400000),
+      },
     });
 
-    queryMock.mockResolvedValue({ rows: [] });
-
-    await expect(
-      storage.ensureHotelProposalForSavedHotel({
-        hotelId: 77,
-        tripId: 10,
-        currentUserId: "user-123",
-      }),
-    ).rejects.toThrow(
-      "Saved stay is missing required details: hotel name, address, city, check-in date. Add them before sharing with the group.",
+    expect(clientQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE hotels SET"),
+      expect.any(Array),
     );
 
-    expect(clientQueryMock).toHaveBeenCalledWith("ROLLBACK");
+    expect(result).toEqual(
+      expect.objectContaining({
+        stayId: 99,
+        wasCreated: true,
+        proposal: expect.objectContaining({
+          hotelName: "Downtown Suites",
+          city: "San Francisco",
+          country: "USA",
+        }),
+      }),
+    );
+  });
+
+  it("falls back to placeholder details when the saved stay is incomplete", async () => {
+    const now = new Date("2024-06-05T08:00:00Z");
+
+    const minimalHotelRow = {
+      id: 77,
+      trip_id: 10,
+      user_id: "user-123",
+      hotel_name: "",
+      hotel_chain: null,
+      hotel_rating: null,
+      address: "",
+      city: "",
+      country: "",
+      zip_code: null,
+      latitude: null,
+      longitude: null,
+      check_in_date: null,
+      check_out_date: null,
+      room_type: null,
+      room_count: null,
+      guest_count: null,
+      booking_reference: null,
+      total_price: null,
+      price_per_night: null,
+      currency: "USD",
+      status: "confirmed",
+      booking_source: null,
+      purchase_url: null,
+      amenities: null,
+      images: null,
+      policies: null,
+      contact_info: null,
+      booking_platform: null,
+      booking_url: null,
+      cancellation_policy: null,
+      notes: null,
+      created_at: now,
+      updated_at: now,
+      trip_created_by: "owner@example.com",
+      trip_name: "Mystery Trip",
+      trip_start_date: now,
+      trip_end_date: new Date(now.getTime() + 86400000),
+    };
+
+    const refreshedRow = {
+      ...minimalHotelRow,
+      hotel_name: "Saved stay",
+      address: "Address to be provided",
+      city: "Mystery Trip",
+      country: "Country to be decided",
+      check_in_date: now,
+      check_out_date: new Date(now.getTime() + 86400000),
+    };
+
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rows: [minimalHotelRow] }) // initial load
+      .mockResolvedValueOnce({ rows: [{ role: "member" }] }) // membership lookup
+      .mockResolvedValueOnce({ rows: [] }) // update
+      .mockResolvedValueOnce({ rows: [refreshedRow] }) // refreshed row
+      .mockResolvedValueOnce({ rows: [] }) // existing link check
+      .mockResolvedValueOnce({ rows: [{ id: 412 }] }) // insert proposal
+      .mockResolvedValueOnce({ rows: [] }) // insert link
+      .mockResolvedValueOnce({ rows: [] }) // trip members
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            first_name: "User",
+            last_name: "Example",
+            username: null,
+            email: "user-123",
+          },
+        ],
+      }) // proposer details
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 999,
+            user_id: "owner@example.com",
+            type: "proposal-hotel-created",
+            title: "User Example proposed Saved stay",
+            message: "User Example shared Saved stay (Jun 5 – Jun 6).",
+            trip_id: 10,
+            activity_id: null,
+            expense_id: null,
+            is_read: false,
+            created_at: now,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 412,
+            trip_id: 10,
+            proposed_by: "user-123",
+            hotel_name: "Saved stay",
+            location: "Mystery Trip, Country to be decided",
+            price: "0",
+            price_per_night: null,
+            rating: null,
+            amenities: null,
+            platform: "Manual Save",
+            booking_url: "",
+            status: "proposed",
+            average_ranking: null,
+            created_at: now,
+            updated_at: now,
+            linked_hotel_id: 77,
+            linked_check_in_date: now,
+            linked_check_out_date: new Date(now.getTime() + 86400000),
+            linked_address: "Address to be provided",
+            linked_city: "Mystery Trip",
+            linked_country: "Country to be decided",
+            linked_currency: "USD",
+            proposer_id: "user-123",
+            proposer_email: "user-123",
+            proposer_username: null,
+            proposer_first_name: "User",
+            proposer_last_name: "Example",
+            proposer_phone_number: null,
+            proposer_password_hash: null,
+            proposer_profile_image_url: null,
+            proposer_cashapp_username: null,
+            proposer_cash_app_username: null,
+            proposer_cashapp_phone: null,
+            proposer_cash_app_phone: null,
+            proposer_venmo_username: null,
+            proposer_venmo_phone: null,
+            proposer_timezone: null,
+            proposer_default_location: null,
+            proposer_default_location_code: null,
+            proposer_default_city: null,
+            proposer_default_country: null,
+            proposer_auth_provider: null,
+            proposer_notification_preferences: null,
+            proposer_has_seen_home_onboarding: false,
+            proposer_has_seen_trip_onboarding: false,
+            proposer_created_at: now,
+            proposer_updated_at: now,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await storage.ensureHotelProposalForSavedHotel({
+      hotelId: 77,
+      tripId: 10,
+      currentUserId: "user-123",
+      overrideDetails: undefined,
+    });
+
+    expect(result.proposal.hotelName).toBe("Saved stay");
+    expect(result.proposal.address).toBe("Address to be provided");
+    expect(result.proposal.city).toBe("Mystery Trip");
+    expect(result.proposal.country).toBe("Country to be decided");
   });
 });
 

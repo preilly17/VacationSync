@@ -7766,8 +7766,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
     hotelId: number;
     tripId: number;
     currentUserId: string;
+    overrideDetails?: Partial<InsertHotel>;
   }): Promise<{ proposal: HotelProposalWithDetails; wasCreated: boolean; stayId: number }> {
-    const { hotelId, tripId, currentUserId } = options;
+    const { hotelId, tripId, currentUserId, overrideDetails } = options;
 
     const client = await pool.connect();
     let wasCreated = false;
@@ -7860,6 +7861,140 @@ ${selectUserColumns("participant_user", "participant_user_")}
         const date = value instanceof Date ? value : new Date(value as string | number);
         return date instanceof Date && !Number.isNaN(date.getTime());
       };
+
+      const pendingUpdates: Record<string, unknown> = {};
+
+      const applyOverrideText = (
+        current: string | null,
+        overrideValue: unknown,
+        column: string,
+      ): string | null => {
+        if (hasNonEmptyString(current)) {
+          return current;
+        }
+
+        if (typeof overrideValue === "string" && overrideValue.trim().length > 0) {
+          const normalized = overrideValue.trim();
+          pendingUpdates[column] = normalized;
+          return normalized;
+        }
+
+        return current;
+      };
+
+      const applyOverrideDate = (
+        current: Date | string | null,
+        overrideValue: unknown,
+        column: string,
+      ): Date | string | null => {
+        if (ensureValidDate(current)) {
+          return current;
+        }
+
+        if (overrideValue instanceof Date && !Number.isNaN(overrideValue.getTime())) {
+          pendingUpdates[column] = overrideValue;
+          return overrideValue;
+        }
+
+        if (typeof overrideValue === "string") {
+          const parsed = new Date(overrideValue);
+          if (!Number.isNaN(parsed.getTime())) {
+            pendingUpdates[column] = parsed;
+            return parsed;
+          }
+        }
+
+        return current;
+      };
+
+      if (overrideDetails) {
+        hotel.hotel_name = applyOverrideText(hotel.hotel_name, overrideDetails.hotelName, "hotel_name");
+        hotel.address = applyOverrideText(hotel.address, overrideDetails.address, "address");
+        hotel.city = applyOverrideText(hotel.city, overrideDetails.city, "city");
+        hotel.country = applyOverrideText(hotel.country, overrideDetails.country, "country");
+        hotel.check_in_date = applyOverrideDate(hotel.check_in_date, overrideDetails.checkInDate, "check_in_date");
+        hotel.check_out_date = applyOverrideDate(hotel.check_out_date, overrideDetails.checkOutDate, "check_out_date");
+      }
+
+      const applyFallbackDate = (
+        current: Date | string | null,
+        fallback: Date | null,
+        column: string,
+      ): Date | string | null => {
+        if (ensureValidDate(current)) {
+          return current;
+        }
+
+        if (fallback && !Number.isNaN(fallback.getTime())) {
+          pendingUpdates[column] = fallback;
+          return fallback;
+        }
+
+        return current;
+      };
+
+      hotel.check_in_date = applyFallbackDate(hotel.check_in_date, hotel.trip_start_date, "check_in_date");
+      hotel.check_out_date = applyFallbackDate(hotel.check_out_date, hotel.trip_end_date, "check_out_date");
+
+      const applyFallbackText = (
+        current: string | null,
+        fallback: string,
+        column: string,
+      ): string | null => {
+        if (hasNonEmptyString(current)) {
+          return current;
+        }
+
+        pendingUpdates[column] = fallback;
+        return fallback;
+      };
+
+      hotel.hotel_name = applyFallbackText(hotel.hotel_name, "Saved stay", "hotel_name");
+      hotel.address = applyFallbackText(hotel.address, "Address to be provided", "address");
+      hotel.city = applyFallbackText(
+        hotel.city,
+        hotel.trip_name ?? "City to be decided",
+        "city",
+      );
+      hotel.country = applyFallbackText(hotel.country, "Country to be decided", "country");
+
+      if (Object.keys(pendingUpdates).length > 0) {
+        const assignments: string[] = [];
+        const params: unknown[] = [];
+        let paramIndex = 1;
+        for (const [column, value] of Object.entries(pendingUpdates)) {
+          assignments.push(`${column} = $${paramIndex}`);
+          params.push(value);
+          paramIndex += 1;
+        }
+        assignments.push("updated_at = NOW()");
+        params.push(hotelId);
+
+        await client.query(
+          `UPDATE hotels SET ${assignments.join(", ")} WHERE id = $${paramIndex}`,
+          params,
+        );
+
+        const { rows: refreshedRows } = await client.query<typeof hotel>(
+          `
+          SELECT
+            h.*,
+            tc.created_by AS trip_created_by,
+            tc.name AS trip_name,
+            tc.start_date AS trip_start_date,
+            tc.end_date AS trip_end_date
+          FROM hotels h
+          JOIN trip_calendars tc ON tc.id = h.trip_id
+          WHERE h.id = $1
+          FOR UPDATE
+          `,
+          [hotelId],
+        );
+
+        if (refreshedRows[0]) {
+          Object.assign(hotel, refreshedRows[0]);
+        }
+      }
 
       const missingDetails: string[] = [];
 

@@ -6292,9 +6292,60 @@ function HotelBooking({
         throw new Error("Invalid hotel ID");
       }
 
+      const normalizeDate = (value: unknown): string | undefined => {
+        if (!value) {
+          return undefined;
+        }
+
+        if (value instanceof Date) {
+          return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+        }
+
+        const parsed = new Date(value as string | number);
+        if (Number.isNaN(parsed.getTime())) {
+          return undefined;
+        }
+
+        return parsed.toISOString();
+      };
+
+      const payload = {
+        hotelId: parsedHotelId,
+        tripId,
+        hotelName: hotel.hotelName ?? hotel.name ?? undefined,
+        hotelChain: hotel.hotelChain ?? null,
+        hotelRating: hotel.hotelRating ?? hotel.rating ?? null,
+        address: hotel.address ?? undefined,
+        city: hotel.city ?? undefined,
+        country: hotel.country ?? undefined,
+        zipCode: hotel.zipCode ?? null,
+        latitude: hotel.latitude ?? null,
+        longitude: hotel.longitude ?? null,
+        checkInDate: normalizeDate(hotel.checkInDate),
+        checkOutDate: normalizeDate(hotel.checkOutDate),
+        roomType: hotel.roomType ?? null,
+        roomCount: hotel.roomCount ?? null,
+        guestCount: hotel.guestCount ?? null,
+        bookingReference: hotel.bookingReference ?? null,
+        totalPrice: hotel.totalPrice ?? null,
+        pricePerNight: hotel.pricePerNight ?? null,
+        currency: hotel.currency ?? undefined,
+        status: hotel.status ?? undefined,
+        bookingSource: hotel.bookingSource ?? null,
+        purchaseUrl: hotel.purchaseUrl ?? null,
+        amenities: hotel.amenities ?? null,
+        images: hotel.images ?? null,
+        policies: hotel.policies ?? null,
+        contactInfo: hotel.contactInfo ?? null,
+        bookingPlatform: hotel.bookingPlatform ?? null,
+        bookingUrl: hotel.bookingUrl ?? null,
+        cancellationPolicy: hotel.cancellationPolicy ?? null,
+        notes: hotel.notes ?? null,
+      };
+
       const response = await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
-        body: { hotelId: parsedHotelId, tripId },
+        body: payload,
       });
 
       return (await response.json()) as HotelProposalWithDetails;
@@ -6411,17 +6462,6 @@ function HotelBooking({
 
   const handleProposeHotel = useCallback(
     (hotel: HotelWithDetails) => {
-      const missingFields = getMissingHotelProposalFields(hotel);
-      if (missingFields.length > 0) {
-        const fieldList = formatList(missingFields);
-        toast({
-          title: "Add stay details before sharing",
-          description: `Add the ${fieldList} to this stay before proposing it to your group.`,
-          variant: "destructive",
-        });
-        return;
-      }
-
       if (!canManageHotel(hotel)) {
         toast({
           title: "Not allowed",
@@ -6857,10 +6897,10 @@ function HotelBooking({
                 const proposalStatusLabel = hotel.proposalStatus
                   ? hotel.proposalStatus.charAt(0).toUpperCase() + hotel.proposalStatus.slice(1)
                   : null;
-                const cannotShareUntilDetailsProvided = missingFields.length > 0;
-                const missingFieldsMessage = cannotShareUntilDetailsProvided
-                  ? `Add the ${formatList(missingFields)} to share this stay with your group.`
-                  : null;
+                const missingFieldsMessage =
+                  missingFields.length > 0
+                    ? `Add the ${formatList(missingFields)} so everyone has the full details.`
+                    : null;
 
                 return (
                   <AccordionItem
@@ -6910,10 +6950,8 @@ function HotelBooking({
                               onClick={() => handleProposeHotel(hotel)}
                               disabled={
                                 !canShareWithGroup ||
-                                cannotShareUntilDetailsProvided ||
                                 (proposeHotelMutation.isPending && proposingHotelId === hotel.id)
                               }
-                              title={missingFieldsMessage ?? undefined}
                             >
                               {proposeHotelMutation.isPending && proposingHotelId === hotel.id ? (
                                 <>
@@ -6926,7 +6964,7 @@ function HotelBooking({
                                 "Shared with Group"
                               )}
                             </Button>
-                            {cannotShareUntilDetailsProvided ? (
+                            {missingFieldsMessage ? (
                               <p className="text-xs text-muted-foreground">
                                 {missingFieldsMessage}
                               </p>

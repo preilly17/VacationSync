@@ -4018,6 +4018,7 @@ export function setupRoutes(app: Express) {
         hotelId,
         tripId,
         currentUserId: userId,
+        overrideDetails: parsedHotelPayload ?? undefined,
       });
 
       const statusCode = result.wasCreated ? 201 : 200;
