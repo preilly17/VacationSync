@@ -20,7 +20,7 @@ describe("buildActivitySubmission", () => {
   };
 
   it("normalizes values into a payload the API accepts", () => {
-    const { payload } = buildActivitySubmission(baseInput);
+    const { payload, metadata } = buildActivitySubmission(baseInput);
 
     expect(payload).toMatchObject({
       tripCalendarId: 42,
@@ -28,27 +28,15 @@ describe("buildActivitySubmission", () => {
       description: "Enjoy the bay",
       location: "Pier 39",
       cost: 49.99,
-      cost_per_person: 49.99,
       maxCapacity: 12,
-      max_participants: 12,
       category: "entertainment",
       attendeeIds: ["abc", "def"],
-      invitee_ids: ["abc", "def"],
       type: "SCHEDULED",
-      mode: "scheduled",
-      title: "Sunset Cruise",
-      date: "2025-07-04",
-      start_time: "18:00",
-      end_time: "20:00",
-      startDate: "2025-07-04",
     });
 
     expect(payload.startTime).toBe(new Date("2025-07-04T18:00:00").toISOString());
     expect(payload.endTime).toBe(new Date("2025-07-04T20:00:00").toISOString());
-    expect(payload.timezone).toEqual(payload.timeZone);
-    expect(payload.timezone).not.toHaveLength(0);
-    expect(payload.idempotency_key).toEqual(payload.idempotencyKey);
-    expect(payload.idempotency_key).not.toHaveLength(0);
+    expect(metadata).toMatchObject({ startDate: "2025-07-04", startTime: "18:00", endTime: "20:00" });
   });
 
   it("throws when the end time is before the start time", () => {
@@ -88,7 +76,7 @@ describe("buildActivitySubmission", () => {
   });
 
   it("allows proposals without a start time", () => {
-    const { payload } = buildActivitySubmission({
+    const { payload, metadata } = buildActivitySubmission({
       ...baseInput,
       type: "PROPOSE",
       startTime: "",
@@ -96,9 +84,9 @@ describe("buildActivitySubmission", () => {
     });
 
     expect(payload.startTime).toBeNull();
-    expect(payload.start_time).toBeNull();
     expect(payload.endTime).toBeNull();
-    expect(payload.end_time).toBeNull();
+    expect(metadata.startTime).toBeNull();
+    expect(metadata.endTime).toBeNull();
   });
 
   it("preserves the selected calendar date for YYYY-MM-DD inputs", async () => {
@@ -108,14 +96,14 @@ describe("buildActivitySubmission", () => {
     process.env.TZ = "America/Los_Angeles";
 
     const module = await import("../activitySubmission");
-    const { payload } = module.buildActivitySubmission({
+    const { payload, metadata } = module.buildActivitySubmission({
       ...baseInput,
       date: "2025-07-04",
       startTime: "09:30",
     });
 
-    expect(payload.date).toBe("2025-07-04");
-    expect(payload.startDate).toBe("2025-07-04");
+    expect(metadata.startDate).toBe("2025-07-04");
+    expect(metadata.startTime).toBe("09:30");
 
     process.env.TZ = originalTimeZone;
     jest.resetModules();
