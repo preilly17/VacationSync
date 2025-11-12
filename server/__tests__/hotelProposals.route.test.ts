@@ -197,6 +197,12 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
       hotelId: 77,
       tripId: 10,
       currentUserId: "test-user",
+      overrideDetails: expect.objectContaining({
+        hotelName: "Riverside Inn",
+        address: "500 River Rd",
+        city: "Portland",
+        country: "USA",
+      }),
     });
 
     expect(res.status).toHaveBeenCalledWith(201);
