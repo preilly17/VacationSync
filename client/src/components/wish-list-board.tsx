@@ -1,5 +1,10 @@
-import { type FormEvent, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type UseQueryOptions,
+} from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Heart, Loader2, Sparkles, Trash2 } from "lucide-react";
 
@@ -85,13 +90,15 @@ const getCreatorInitials = (
   return "M";
 };
 
-const getCreatedAtLabel = (createdAt: string | null | undefined): string => {
+const getCreatedAtLabel = (
+  createdAt: string | Date | null | undefined,
+): string => {
   if (!createdAt) {
     return "Added just now";
   }
 
   try {
-    const parsed = new Date(createdAt);
+    const parsed = createdAt instanceof Date ? createdAt : new Date(createdAt);
     if (Number.isNaN(parsed.getTime())) {
       return "Added just now";
     }
@@ -101,6 +108,8 @@ const getCreatedAtLabel = (createdAt: string | null | undefined): string => {
     return "Added just now";
   }
 };
+
+type WishListQueryKey = ["wish-list", number];
 
 export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   const { toast } = useToast();
@@ -119,12 +128,15 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     return trimmed.length > 0 ? trimmed : null;
   }, [shareCode]);
 
-  const wishListQueryKey = useMemo(() => ["wish-list", tripId] as const, [tripId]);
+  const wishListQueryKey = useMemo<WishListQueryKey>(
+    () => ["wish-list", tripId],
+    [tripId],
+  );
 
   const getShareCodeHeaders = () =>
     normalizedShareCode ? { "X-Trip-Share-Code": normalizedShareCode } : undefined;
 
-  const handleUnauthorized = () => {
+  const handleUnauthorized = useCallback(() => {
     toast({
       title: "Unauthorized",
       description: "You have been signed out. Please log in again.",
@@ -133,14 +145,14 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     setTimeout(() => {
       window.location.href = "/login";
     }, 300);
-  };
+  }, [toast]);
 
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-  } = useQuery<WishListIdeasResponse>({
+  const wishListQueryOptions: UseQueryOptions<
+    WishListIdeasResponse,
+    Error,
+    WishListIdeasResponse,
+    WishListQueryKey
+  > = {
     queryKey: wishListQueryKey,
     enabled: Number.isFinite(tripId) && tripId > 0,
     queryFn: async () => {
@@ -152,26 +164,33 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       return (await res.json()) as WishListIdeasResponse;
     },
     retry: (failureCount, requestError) => {
-      if (isUnauthorizedError(requestError as Error)) {
+      if (isUnauthorizedError(requestError)) {
         return false;
       }
       return failureCount < 2;
     },
-    onError: (requestError) => {
-      const err = requestError as Error;
-      if (isUnauthorizedError(err)) {
-        handleUnauthorized();
-        return;
-      }
-      toast({
-        title: "Unable to load wish list",
-        description: err.message || "Please try again later.",
-        variant: "destructive",
-      });
-    },
-  });
+  };
 
-  const ideas = data?.ideas ?? [];
+  const { data, isLoading, isError, error } = useQuery(wishListQueryOptions);
+
+  useEffect(() => {
+    if (!isError || !error) {
+      return;
+    }
+
+    if (isUnauthorizedError(error)) {
+      handleUnauthorized();
+      return;
+    }
+
+    toast({
+      title: "Unable to load wish list",
+      description: error.message || "Please try again later.",
+      variant: "destructive",
+    });
+  }, [error, handleUnauthorized, isError, toast]);
+
+  const ideas: WishListIdeaWithDetails[] = data?.ideas ?? [];
 
   const createIdeaMutation = useMutation<
     { idea: WishListIdeaWithDetails },
