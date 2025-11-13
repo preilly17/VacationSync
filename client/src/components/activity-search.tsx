@@ -33,6 +33,11 @@ import { markExternalRedirect, ACTIVITY_REDIRECT_STORAGE_KEY } from "@/lib/exter
 import { format } from "date-fns";
 import type { ActivityWithDetails, ActivityType, TripMember, TripWithDetails, User } from "@shared/schema";
 import { normalizeActivityTypeInput } from "@shared/activityValidation";
+import {
+  scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
+  proposalActivitiesQueryKey as buildProposalActivitiesKey,
+  calendarActivitiesQueryKey as buildCalendarActivitiesKey,
+} from "@/lib/activities/queryKeys";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
 
@@ -377,7 +382,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const trimmedLocation = useMemo(() => submittedLocation.trim(), [submittedLocation]);
 
   const { data: tripActivities = [], isLoading: tripActivitiesLoading } = useQuery<ActivityWithDetails[]>({
-    queryKey: [`/api/trips/${tripId}/activities`],
+    queryKey: buildScheduledActivitiesKey(tripId),
     enabled: !!tripId,
   });
 
@@ -437,9 +442,9 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
 
   const manualCreateActivity = useCreateActivity({
     tripId,
-    scheduledActivitiesQueryKey: [`/api/trips/${tripId}/activities`],
-    proposalActivitiesQueryKey: [`/api/trips/${tripId}/proposals/activities`],
-    calendarActivitiesQueryKey: [`/api/trips/${tripId}/activities`],
+    scheduledActivitiesQueryKey: buildScheduledActivitiesKey(tripId),
+    proposalActivitiesQueryKey: buildProposalActivitiesKey(tripId),
+    calendarActivitiesQueryKey: buildCalendarActivitiesKey(tripId),
     members: tripMembers,
     currentUserId,
     enabled: tripId > 0 && tripMembers.length > 0,

@@ -51,6 +51,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useTripRealtime } from "@/hooks/use-trip-realtime";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiFetch } from "@/lib/api";
+import {
+  scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
+  proposalActivitiesQueryKey as buildProposalActivitiesKey,
+} from "@/lib/activities/queryKeys";
 import { cn, formatCurrency } from "@/lib/utils";
 import { activityMatchesPeopleFilter } from "@/lib/activityFilters";
 import {
@@ -1452,12 +1456,12 @@ export default function Trip() {
   }, [numericTripIdFromRoute, routeIdWithoutQuery]);
 
   const activitiesQueryKey = useMemo(
-    () => [`/api/trips/${activityQueryKeySuffix}/activities`],
+    () => buildScheduledActivitiesKey(activityQueryKeySuffix),
     [activityQueryKeySuffix],
   );
 
   const activityProposalsQueryKey = useMemo(
-    () => [`/api/trips/${activityQueryKeySuffix}/proposals/activities`],
+    () => buildProposalActivitiesKey(activityQueryKeySuffix),
     [activityQueryKeySuffix],
   );
 
@@ -1594,19 +1598,13 @@ export default function Trip() {
         return {};
       }
 
-      const legacyActivitiesKey = numericTripId > 0 ? (["/api/trips", numericTripId, "activities"] as const) : null;
-
       await Promise.all([
         queryClient.cancelQueries({ queryKey: activitiesQueryKey }),
         queryClient.cancelQueries({ queryKey: activityProposalsQueryKey }),
-        legacyActivitiesKey ? queryClient.cancelQueries({ queryKey: legacyActivitiesKey }) : Promise.resolve(),
       ]);
 
       const previousCalendarActivities = queryClient.getQueryData<ActivityWithDetails[]>(activitiesQueryKey) ?? null;
       const previousProposals = queryClient.getQueryData<ActivityWithDetails[]>(activityProposalsQueryKey) ?? null;
-      const previousLegacyActivities = legacyActivitiesKey
-        ? queryClient.getQueryData<ActivityWithDetails[]>(legacyActivitiesKey) ?? null
-        : null;
 
       const applyUpdate = (list: ActivityWithDetails[] | null) =>
         list?.map((activity) =>
@@ -1629,26 +1627,14 @@ export default function Trip() {
         queryClient.setQueryData(activityProposalsQueryKey, updatedProposals);
       }
 
-      if (legacyActivitiesKey) {
-        const updatedLegacy = applyUpdate(previousLegacyActivities);
-        if (updatedLegacy) {
-          queryClient.setQueryData(legacyActivitiesKey, updatedLegacy);
-        }
-      }
-
       return {
         previousCalendarActivities,
         previousProposals,
-        previousLegacyActivities,
-        legacyActivitiesKey,
       } as const;
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: activitiesQueryKey });
       queryClient.invalidateQueries({ queryKey: activityProposalsQueryKey });
-      if (numericTripId > 0) {
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", numericTripId, "activities"] });
-      }
 
       const action = variables.action;
       let title = "RSVP updated";
@@ -1676,9 +1662,6 @@ export default function Trip() {
       }
       if (context?.previousProposals) {
         queryClient.setQueryData(activityProposalsQueryKey, context.previousProposals);
-      }
-      if (context?.legacyActivitiesKey && context.previousLegacyActivities) {
-        queryClient.setQueryData(context.legacyActivitiesKey, context.previousLegacyActivities);
       }
 
       if (isUnauthorizedError(error)) {
@@ -1730,7 +1713,7 @@ export default function Trip() {
 
       if (id) {
         queryClient.setQueryData<ActivityWithDetails[] | undefined>(
-          [`/api/trips/${id}/activities`],
+          activitiesQueryKey,
           (existing) => {
             if (!Array.isArray(existing)) {
               return existing;
@@ -1740,7 +1723,7 @@ export default function Trip() {
           },
         );
 
-        await queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/activities`] });
+        await queryClient.invalidateQueries({ queryKey: activitiesQueryKey });
       }
 
       toast({

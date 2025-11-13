@@ -39,6 +39,10 @@ import { ACTIVITY_CATEGORY_VALUES } from "@shared/activityValidation";
 import type { ActivityType, ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
 import { resolveTripTimezone } from "@/lib/timezone";
+import {
+  scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
+  proposalActivitiesQueryKey as buildProposalActivitiesKey,
+} from "@/lib/activities/queryKeys";
 
 interface Activity {
   id: string;
@@ -88,12 +92,12 @@ export default function Activities() {
   const triggerButtonRef = useRef<HTMLButtonElement | null>(null);
   const parsedTripId = useMemo(() => (tripId ? Number.parseInt(tripId, 10) || 0 : 0), [tripId]);
   const activitiesQueryKey = useMemo(
-    () => [`/api/trips/${tripId ?? ""}/activities`],
-    [tripId],
+    () => buildScheduledActivitiesKey(parsedTripId),
+    [parsedTripId],
   );
   const activityProposalsQueryKey = useMemo(
-    () => [`/api/trips/${tripId ?? ""}/proposals/activities`],
-    [tripId],
+    () => buildProposalActivitiesKey(parsedTripId),
+    [parsedTripId],
   );
   const [shouldAutoSearch, setShouldAutoSearch] = useState(false);
   useEffect(() => {

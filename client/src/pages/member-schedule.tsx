@@ -27,6 +27,10 @@ import type { TripWithDetails, ActivityWithDetails, User as UserType } from "@sh
 import { format, startOfMonth, endOfMonth, addMonths, subMonths, isSameMonth } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { resolveTripTimezone } from "@/lib/timezone";
+import {
+  scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
+  proposalActivitiesQueryKey as buildProposalActivitiesKey,
+} from "@/lib/activities/queryKeys";
 
 const getParticipantDisplayName = (user: UserType) => {
   const first = user.firstName?.trim();
@@ -101,10 +105,13 @@ export default function MemberSchedule() {
     userId: currentUser?.id ?? null,
   });
 
-  const activitiesQueryKey = useMemo(() => ["/api/trips", tripId, "activities"], [tripId]);
+  const activitiesQueryKey = useMemo(
+    () => buildScheduledActivitiesKey(numericTripId),
+    [numericTripId],
+  );
   const activityProposalsQueryKey = useMemo(
-    () => ["/api/trips", tripId, "proposals", "activities"],
-    [tripId],
+    () => buildProposalActivitiesKey(numericTripId),
+    [numericTripId],
   );
 
   // Redirect if not authenticated

@@ -29,12 +29,14 @@ import { BookingConfirmationModal } from "@/components/booking-confirmation-moda
 import { RestaurantProposalModal } from "@/components/restaurant-proposal-modal";
 import { RestaurantSearchPanel } from "@/components/restaurant-search-panel";
 import { RestaurantManualDialog } from "@/components/restaurant-manual-dialog";
+import { scheduledActivitiesQueryKey as buildScheduledActivitiesKey } from "@/lib/activities/queryKeys";
 
 export default function RestaurantsPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const numericTripId = tripId ? Number.parseInt(tripId, 10) : null;
 
   // Booking confirmation system
   const {
@@ -366,25 +368,25 @@ export default function RestaurantsPage() {
         onClose={closeBookingModal}
         bookingType="restaurant"
         bookingData={bookingData}
-        tripId={tripId ? parseInt(tripId) : 0}
+        tripId={numericTripId ?? 0}
         onConfirm={confirmBooking}
         markBookingAsAsked={markBookingAsAsked}
         onSuccess={() => {
           // Refresh activities if booking was confirmed
-          if (tripId) {
-            queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
-            queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
+          if (numericTripId) {
+            const scheduledKey = buildScheduledActivitiesKey(numericTripId);
+            queryClient.invalidateQueries({ queryKey: scheduledKey });
           }
         }}
       />
 
       {/* Restaurant Proposal Modal */}
-      {tripId && restaurantToPropose && (
+      {numericTripId && restaurantToPropose && (
         <RestaurantProposalModal
           open={showProposalModal}
           onOpenChange={setShowProposalModal}
           restaurant={restaurantToPropose}
-          tripId={parseInt(tripId)}
+          tripId={numericTripId}
         />
       )}
     </div>
