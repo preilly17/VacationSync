@@ -1,16 +1,12 @@
 import type { CorsOptions } from "cors";
 
-const BASE_ALLOWED_HEADERS = [
+export const CORS_ALLOWED_HEADERS = [
   "Content-Type",
   "Authorization",
   "X-Request-ID",
   "X-Filename",
   "X-Content-Type",
 ];
-
-const ACTIVITIES_HEADERS = ["X-Activities-Version"];
-
-export const CORS_ALLOWED_HEADERS = [...BASE_ALLOWED_HEADERS, ...ACTIVITIES_HEADERS];
 
 export const createCorsOptions = (
   isOriginAllowed: (origin?: string | null) => boolean,

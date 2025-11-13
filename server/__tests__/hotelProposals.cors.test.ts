@@ -65,11 +65,6 @@ beforeAll(async () => {
     registerCoverPhotoUploadRoutes: jest.fn(),
   }));
 
-  await jest.unstable_mockModule("../activitiesV2", () => ({
-    __esModule: true,
-    createActivityV2: jest.fn(),
-  }));
-
   await jest.unstable_mockModule("ws", () => ({
     __esModule: true,
     WebSocketServer: jest.fn(() => ({

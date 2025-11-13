@@ -6,11 +6,17 @@ const toLowerSet = (values: readonly string[]) =>
   new Set(values.map((value) => value.toLowerCase()));
 
 describe("CORS configuration", () => {
-  it("includes the activities version header in the allow-list", () => {
-    expect(toLowerSet(CORS_ALLOWED_HEADERS)).toContain("x-activities-version");
-  });
+  it("only exposes the base allow-list headers", () => {
+    const expectedHeaders = [
+      "content-type",
+      "authorization",
+      "x-request-id",
+      "x-filename",
+      "x-content-type",
+    ];
 
-  it("exposes the activities version header in generated options", () => {
+    expect(toLowerSet(CORS_ALLOWED_HEADERS)).toEqual(new Set(expectedHeaders));
+
     const options = createCorsOptions(() => true);
     const allowedHeaders = Array.isArray(options.allowedHeaders)
       ? options.allowedHeaders
@@ -18,7 +24,7 @@ describe("CORS configuration", () => {
         ? options.allowedHeaders.split(",")
         : [];
 
-    expect(toLowerSet(allowedHeaders as string[])).toContain("x-activities-version");
+    expect(toLowerSet(allowedHeaders as string[])).toEqual(new Set(expectedHeaders));
   });
 });
 
