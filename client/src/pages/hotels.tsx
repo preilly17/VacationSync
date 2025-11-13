@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form } from "@/components/ui/form";
 import { Label } from "@/components/ui/label";
@@ -83,7 +83,7 @@ export default function HotelsPage() {
 
   const { toast } = useToast();
   const { user } = useAuth();
-  const queryClient = useQueryClient();
+  const reactQueryClient = useQueryClient();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingHotel, setEditingHotel] = useState<HotelWithDetails | null>(null);
   const [hasSearchResults, setHasSearchResults] = useState(false);
@@ -241,8 +241,8 @@ export default function HotelsPage() {
 
       // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
-        queryClient.invalidateQueries({
+        reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        reactQueryClient.invalidateQueries({
           queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
         }),
       ]);
@@ -286,7 +286,7 @@ export default function HotelsPage() {
       });
       
       // PROPOSALS FEATURE: keep rankings consistent across tabs.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -353,9 +353,9 @@ export default function HotelsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
       // PROPOSALS FEATURE: sync manual hotel saves with the proposals tab.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Hotel added successfully",
         description: "Your hotel booking has been saved to the trip.",
@@ -390,9 +390,9 @@ export default function HotelsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
       // PROPOSALS FEATURE: ensure proposal details reflect the latest hotel edits.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Hotel updated successfully",
         description: "Your hotel booking has been updated.",
@@ -426,9 +426,9 @@ export default function HotelsPage() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
       // PROPOSALS FEATURE: remove deleted hotels from the proposals list immediately.
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
       toast({
         title: "Hotel deleted successfully",
         description: "Your hotel booking has been removed.",
@@ -1167,9 +1167,9 @@ export default function HotelsPage() {
         tripId={tripId}
         onSuccess={() => {
           // Refetch hotels data
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+          reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
           // PROPOSALS FEATURE: reflect scheduled hotels in the proposals tab immediately.
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+          reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
         }}
       />
     </div>
