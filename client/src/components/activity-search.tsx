@@ -38,18 +38,9 @@ import {
   proposalActivitiesQueryKey as buildProposalActivitiesKey,
   calendarActivitiesQueryKey as buildCalendarActivitiesKey,
 } from "@/lib/activities/queryKeys";
+import { buildManualMemberOptions } from "@/lib/activities/manualMemberOptions";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
-
-const getMemberDisplayName = (member?: User | null) => {
-  if (!member) return "Trip member";
-  const first = member.firstName?.trim();
-  const last = member.lastName?.trim();
-  if (first && last) return `${first} ${last}`;
-  if (first) return first;
-  if (member.username) return member.username;
-  return member.email || "Trip member";
-};
 
 const MANUAL_STATUS_OPTIONS = [
   { value: "planned", label: "Planned" },
@@ -172,12 +163,8 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     status: MANUAL_STATUS_OPTIONS[0].value,
   });
   const memberOptions = useMemo(
-    () =>
-      (trip?.members ?? []).map((member) => ({
-        id: String(member.userId),
-        name: getMemberDisplayName(member.user),
-      })),
-    [trip?.members],
+    () => buildManualMemberOptions(trip?.members ?? [], currentUser, currentUserId),
+    [currentUser, currentUserId, trip?.members],
   );
   const defaultMemberIds = useMemo(() => memberOptions.map((member) => member.id), [memberOptions]);
   const [manualAttendeeIds, setManualAttendeeIds] = useState<string[]>(defaultMemberIds);
@@ -447,7 +434,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     calendarActivitiesQueryKey: buildCalendarActivitiesKey(tripId),
     members: tripMembers,
     currentUserId,
-    enabled: tripId > 0 && tripMembers.length > 0,
+    enabled: tripId > 0 && memberOptions.length > 0,
     onValidationError: handleManualValidationError,
     onSuccess: () => {
       setManualFieldErrors({});
