@@ -29,6 +29,10 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInCalendarDays, differenceInMinutes, format, formatDistanceToNow } from "date-fns";
 import { filterActiveProposals, isCanceledStatus, normalizeProposalStatus } from "./proposalStatusFilters";
 import {
+  scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
+  proposalActivitiesQueryKey as buildProposalActivitiesKey,
+} from "@/lib/activities/queryKeys";
+import {
   ArrowLeft,
   Hotel,
   Plane,
@@ -320,6 +324,15 @@ function ProposalsPage({
 
   useTripRealtime(tripId, { enabled: !!tripId && isAuthenticated, userId: user?.id ?? null });
 
+  const scheduledActivitiesQueryKey = useMemo(
+    () => buildScheduledActivitiesKey(tripId ?? 0),
+    [tripId],
+  );
+  const activityProposalsQueryKey = useMemo(
+    () => buildProposalActivitiesKey(tripId ?? 0),
+    [tripId],
+  );
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -398,7 +411,7 @@ function ProposalsPage({
     error: activityProposalsError,
     refetch: refetchActivityProposals,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/proposals/activities`],
+    queryKey: activityProposalsQueryKey,
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -787,10 +800,10 @@ function ProposalsPage({
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
       } else if (type === "activity") {
         queryClient.setQueryData<ActivityWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/proposals/activities`],
+          activityProposalsQueryKey,
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
+        queryClient.invalidateQueries({ queryKey: activityProposalsQueryKey });
       }
 
       toast({
@@ -844,7 +857,7 @@ function ProposalsPage({
       }
 
       queryClient.setQueryData<ActivityWithDetails[] | undefined>(
-        [`/api/trips/${tripId}/proposals/activities`],
+        activityProposalsQueryKey,
         (previous) => previous?.filter((proposal) => proposal.id !== activity.id),
       );
 
@@ -854,22 +867,13 @@ function ProposalsPage({
         return sortActivitiesByStartTime([...filtered, activity]);
       };
 
-      const activitiesKey = [`/api/trips/${tripId}/activities`];
-      const legacyActivitiesKey = ["/api/trips", tripId, "activities"] as const;
-
       queryClient.setQueryData<ActivityWithDetails[] | undefined>(
-        activitiesKey,
+        scheduledActivitiesQueryKey,
         (previous) => updateActivitiesList(previous),
       );
 
-      queryClient.setQueryData<ActivityWithDetails[] | undefined>(
-        legacyActivitiesKey,
-        (previous) => updateActivitiesList(previous),
-      );
-
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
+      queryClient.invalidateQueries({ queryKey: activityProposalsQueryKey });
+      queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
 
       const startTime = activity.startTime ? new Date(activity.startTime) : null;
       const hasValidStart = !!(startTime && !Number.isNaN(startTime.getTime()));
@@ -923,19 +927,15 @@ function ProposalsPage({
         return {};
       }
 
-      const proposalKey = [`/api/trips/${tripId}/proposals/activities`] as const;
-      const activitiesKey = [`/api/trips/${tripId}/activities`] as const;
-      const legacyActivitiesKey = ["/api/trips", tripId, "activities"] as const;
-
       await Promise.all([
-        queryClient.cancelQueries({ queryKey: proposalKey }),
-        queryClient.cancelQueries({ queryKey: activitiesKey }),
-        queryClient.cancelQueries({ queryKey: legacyActivitiesKey }),
+        queryClient.cancelQueries({ queryKey: activityProposalsQueryKey }),
+        queryClient.cancelQueries({ queryKey: scheduledActivitiesQueryKey }),
       ]);
 
-      const previousProposals = queryClient.getQueryData<ActivityWithDetails[]>(proposalKey) ?? null;
-      const previousCalendarActivities = queryClient.getQueryData<ActivityWithDetails[]>(activitiesKey) ?? null;
-      const previousLegacyActivities = queryClient.getQueryData<ActivityWithDetails[]>(legacyActivitiesKey) ?? null;
+      const previousProposals =
+        queryClient.getQueryData<ActivityWithDetails[]>(activityProposalsQueryKey) ?? null;
+      const previousCalendarActivities =
+        queryClient.getQueryData<ActivityWithDetails[]>(scheduledActivitiesQueryKey) ?? null;
 
       const applyUpdate = (list: ActivityWithDetails[] | null) =>
         list?.map((activity) =>
@@ -944,26 +944,17 @@ function ProposalsPage({
 
       const updatedProposals = applyUpdate(previousProposals);
       if (updatedProposals) {
-        queryClient.setQueryData(proposalKey, updatedProposals);
+        queryClient.setQueryData(activityProposalsQueryKey, updatedProposals);
       }
 
       const updatedCalendarActivities = applyUpdate(previousCalendarActivities);
       if (updatedCalendarActivities) {
-        queryClient.setQueryData(activitiesKey, updatedCalendarActivities);
-      }
-
-      const updatedLegacyActivities = applyUpdate(previousLegacyActivities);
-      if (updatedLegacyActivities) {
-        queryClient.setQueryData(legacyActivitiesKey, updatedLegacyActivities);
+        queryClient.setQueryData(scheduledActivitiesQueryKey, updatedCalendarActivities);
       }
 
       return {
-        proposalKey,
-        activitiesKey,
-        legacyActivitiesKey,
         previousProposals,
         previousCalendarActivities,
-        previousLegacyActivities,
       } as const;
     },
     onError: (error, _variables, context) => {
@@ -973,14 +964,14 @@ function ProposalsPage({
       }
 
       if (context) {
-        if (context.previousProposals && context.proposalKey) {
-          queryClient.setQueryData(context.proposalKey, context.previousProposals);
+        if (context.previousProposals) {
+          queryClient.setQueryData(activityProposalsQueryKey, context.previousProposals);
         }
-        if (context.previousCalendarActivities && context.activitiesKey) {
-          queryClient.setQueryData(context.activitiesKey, context.previousCalendarActivities);
-        }
-        if (context.previousLegacyActivities && context.legacyActivitiesKey) {
-          queryClient.setQueryData(context.legacyActivitiesKey, context.previousLegacyActivities);
+        if (context.previousCalendarActivities) {
+          queryClient.setQueryData(
+            scheduledActivitiesQueryKey,
+            context.previousCalendarActivities,
+          );
         }
       }
 
@@ -998,9 +989,8 @@ function ProposalsPage({
     },
     onSuccess: () => {
       if (tripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
+        queryClient.invalidateQueries({ queryKey: activityProposalsQueryKey });
+        queryClient.invalidateQueries({ queryKey: scheduledActivitiesQueryKey });
       }
     },
   });

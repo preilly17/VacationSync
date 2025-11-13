@@ -2,6 +2,10 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { buildWebSocketUrl } from "@/lib/api";
+import {
+  scheduledActivitiesQueryKey,
+  proposalActivitiesQueryKey,
+} from "@/lib/activities/queryKeys";
 
 type TripRealtimeOptions = {
   enabled?: boolean;
@@ -59,9 +63,10 @@ export function useTripRealtime(
     };
 
     const invalidateActivityQueries = () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "activities"] });
+      const scheduledKey = scheduledActivitiesQueryKey(tripId);
+      const proposalsKey = proposalActivitiesQueryKey(tripId);
+      queryClient.invalidateQueries({ queryKey: scheduledKey });
+      queryClient.invalidateQueries({ queryKey: proposalsKey });
     };
 
     const invalidateHotelProposals = () => {

@@ -20,6 +20,10 @@ import {
   type ActivityCreateFormValues,
   type ActivityValidationError,
 } from "@/lib/activities/createActivity";
+import {
+  scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
+  proposalActivitiesQueryKey as buildProposalActivitiesKey,
+} from "@/lib/activities/queryKeys";
 import { type ActivityType, type ActivityWithDetails, type TripMember, type User } from "@shared/schema";
 import { resolveTripTimezone, formatDateInTimezone } from "@/lib/timezone";
 import {
@@ -433,11 +437,11 @@ export function AddActivityModal({
   const { toast } = useToast();
 
   const fallbackScheduledActivitiesQueryKey = useMemo(
-    () => [`/api/trips/${tripId}/activities`],
+    () => buildScheduledActivitiesKey(tripId),
     [tripId],
   );
   const fallbackProposalActivitiesQueryKey = useMemo(
-    () => [`/api/trips/${tripId}/proposals/activities`],
+    () => buildProposalActivitiesKey(tripId),
     [tripId],
   );
 

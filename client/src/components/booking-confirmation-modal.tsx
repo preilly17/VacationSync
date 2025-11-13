@@ -18,6 +18,12 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/useAuth";
 import type { ActivityType } from "@shared/schema";
 import { normalizeCostInput, normalizeMaxCapacityInput } from "@shared/activityValidation";
+import {
+  activitiesEndpoint,
+  activityProposalsEndpoint,
+  scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
+  proposalActivitiesQueryKey as buildProposalActivitiesKey,
+} from "@/lib/activities/queryKeys";
 
 interface BookingConfirmationModalProps {
   isOpen: boolean;
@@ -204,8 +210,8 @@ export function BookingConfirmationModal({
       };
 
       const endpoint = submissionType === 'PROPOSE'
-        ? `/api/trips/${tripId}/proposals/activities`
-        : `/api/trips/${tripId}/activities`;
+        ? activityProposalsEndpoint(tripId)
+        : activitiesEndpoint(tripId);
 
       await apiRequest(endpoint, {
         method: 'POST',
@@ -213,15 +219,17 @@ export function BookingConfirmationModal({
       });
 
       // Invalidate relevant queries
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/activities`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/activities`] });
-      queryClient.invalidateQueries({ queryKey: ['/api/trips', tripId, 'activities'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/trips', tripId] });
+      const scheduledKey = buildScheduledActivitiesKey(tripId);
+      const proposalsKey = buildProposalActivitiesKey(tripId);
+      queryClient.invalidateQueries({ queryKey: scheduledKey });
+      queryClient.invalidateQueries({ queryKey: proposalsKey });
+      queryClient.invalidateQueries({ queryKey: ['/api/trips', String(tripId)] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}`] });
 
       toast({
         title: "Booking Added",
-        description: confirmed 
-          ? `Your restaurant reservation has been added to your calendar and proposed to the group.`
+        description: confirmed
+          ? `Your restaurant reservation has been added to your calendar and invites are on the way.`
           : `Your restaurant proposal has been shared with the group.`,
       });
 

@@ -1,5 +1,6 @@
 import { buildActivitySubmission } from "@/lib/activitySubmission";
 import { ApiError, apiRequest } from "@/lib/queryClient";
+import { activitiesEndpoint, activityProposalsEndpoint } from "@/lib/activities/queryKeys";
 import {
   CLIENT_VALIDATION_FALLBACK_MESSAGE,
   mapClientErrorToValidation,
@@ -199,8 +200,8 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
 }: SubmitActivityOptions): Promise<T> => {
   const endpoint =
     payload.type === "PROPOSE"
-      ? `/api/trips/${tripId}/proposals/activities`
-      : `/api/trips/${tripId}/activities`;
+      ? activityProposalsEndpoint(tripId)
+      : activitiesEndpoint(tripId);
 
   const sanitizedPayload = redactDates(payload);
   console.info("[activity:create] submitting", {
