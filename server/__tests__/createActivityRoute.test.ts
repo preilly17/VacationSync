@@ -580,82 +580,7 @@ describe("POST /api/trips/:id/activities", () => {
     );
   });
 
-  it("ignores the activities v2 header and uses the legacy pipeline", async () => {
-    const trip = {
-      id: 987,
-      createdBy: "organizer",
-      members: [
-        { userId: "organizer", user: { firstName: "Org", email: "org@example.com" } },
-        { userId: "friend", user: { firstName: "Friend", email: "friend@example.com" } },
-      ],
-    };
-
-    const requestBody = {
-      name: "Morning Run",
-      description: "Shake off the jet lag",
-      category: "outdoor",
-      startTime: new Date("2024-06-01T07:30:00Z").toISOString(),
-      endTime: null,
-      timezone: "America/New_York",
-      attendeeIds: ["friend"],
-    };
-
-    const req: any = {
-      params: { id: String(trip.id) },
-      body: requestBody,
-      session: { userId: "organizer" },
-      headers: { "x-activities-version": "2" },
-      isAuthenticated: jest.fn(() => true),
-    };
-
-    const res = createMockResponse();
-
-    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
-
-    const createdActivity = {
-      id: 42,
-      tripCalendarId: trip.id,
-      name: requestBody.name,
-      description: requestBody.description,
-      startTime: requestBody.startTime,
-      endTime: requestBody.endTime,
-      location: null,
-      cost: null,
-      maxCapacity: null,
-      category: requestBody.category,
-      status: "active",
-      type: "SCHEDULED",
-    };
-
-    const legacyCreateSpy = jest
-      .spyOn(storage, "createActivityWithInvites")
-      .mockResolvedValueOnce(createdActivity as any);
-
-    const getActivitiesSpy = jest
-      .spyOn(storage, "getTripActivities")
-      .mockResolvedValueOnce([createdActivity] as any);
-
-    const createNotificationSpy = jest
-      .spyOn(storage, "createNotification")
-      .mockResolvedValue(undefined as any);
-
-    await handler(req, res);
-
-    expect(legacyCreateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tripCalendarId: trip.id,
-        name: requestBody.name,
-      }),
-      "organizer",
-      ["friend"],
-    );
-    expect(getActivitiesSpy).toHaveBeenCalledWith(trip.id, "organizer");
-    expect(createNotificationSpy).toHaveBeenCalledTimes(1);
-    expect(res.status).toHaveBeenCalledWith(201);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
-  });
-
-  it("returns a trip date range message when a v2-style payload is outside the window", async () => {
+  it("returns validation errors when an alternate payload is outside the trip window", async () => {
     const trip = {
       id: 555,
       members: [{ userId: "organizer", user: { firstName: "Org", email: "org@example.com" } }],
@@ -678,7 +603,6 @@ describe("POST /api/trips/:id/activities", () => {
     const req: any = {
       params: { id: String(trip.id) },
       body: requestBody,
-      headers: { "x-activities-version": "2" },
       session: { userId: "organizer" },
       isAuthenticated: jest.fn(() => true),
     };
@@ -724,7 +648,6 @@ describe("POST /api/trips/:id/activities", () => {
       params: { tripId: String(trip.id) },
       body: requestBody,
       session: { userId: "organizer" },
-      headers: { "x-activities-version": "2" },
       isAuthenticated: jest.fn(() => true),
     };
 
