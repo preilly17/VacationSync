@@ -1,8 +1,6 @@
 import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
 
-const PEOPLE_FILTER_ALLOWED_STATUSES: ActivityInviteStatus[] = [
-  "accepted",
-];
+const PEOPLE_FILTER_ALLOWED_STATUSES: ActivityInviteStatus[] = ["accepted"];
 
 const normalizeId = (value: unknown): string | null => {
   if (value === null || value === undefined) {

@@ -612,17 +612,45 @@ const activityMatchesAnySelectedPerson = (
   selectedPeople: string[],
   currentUserId?: string | null,
 ): boolean => {
-  if (selectedPeople.length === 0 || selectedPeople.includes("everyone")) {
+  if (selectedPeople.length === 0) {
     return true;
   }
 
   const normalizedCurrentUserId = normalizeUserId(currentUserId);
-  const normalizedSelections = selectedPeople.map((value) => value === "me" ? normalizedCurrentUserId : normalizeUserId(value)).filter(Boolean);
-  if (normalizedSelections.length === 0) {
+  const includeEveryone = selectedPeople.includes("everyone");
+  const normalizedSelections = selectedPeople
+    .filter((value) => value !== "everyone")
+    .map((value) => (value === "me" ? normalizedCurrentUserId : normalizeUserId(value)))
+    .filter((value): value is string => Boolean(value));
+
+  if (normalizedSelections.length > 0) {
+    const matchesSpecificSelection = normalizedSelections.some((personId) =>
+      activityMatchesPeopleFilter(activity, personId),
+    );
+
+    if (matchesSpecificSelection) {
+      return true;
+    }
+
+    return false;
+  }
+
+  if (!includeEveryone) {
     return true;
   }
 
-  return normalizedSelections.some((personId) => activityMatchesPeopleFilter(activity, personId ?? ""));
+  const hasAcceptedInvite = (activity.invites ?? []).some(
+    (invite) => invite.status === "accepted",
+  );
+
+  if (hasAcceptedInvite) {
+    return true;
+  }
+
+  const creatorId =
+    normalizeUserId(activity.postedBy) ?? normalizeUserId(activity.poster?.id);
+
+  return Boolean(creatorId);
 };
 
 const activityOccursWithinRange = (
