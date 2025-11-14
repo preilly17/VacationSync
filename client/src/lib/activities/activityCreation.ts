@@ -42,6 +42,7 @@ export interface ActivityValidationError {
 export interface PrepareSubmissionOptions {
   tripId: number;
   values: ActivityCreateFormValues;
+  timezone?: string | null;
 }
 
 export interface PreparedSubmission {
@@ -91,6 +92,7 @@ export class ActivitySubmissionError extends Error {
 export const prepareActivitySubmission = ({
   tripId,
   values,
+  timezone,
 }: PrepareSubmissionOptions): PreparedSubmission => {
   try {
     const { payload, metadata } = buildActivitySubmission({
@@ -106,6 +108,7 @@ export const prepareActivitySubmission = ({
       category: values.category,
       attendeeIds: values.attendeeIds,
       type: values.type,
+      timezone,
     });
 
     const sanitizedValues: ActivityCreateFormValues = {
