@@ -147,6 +147,8 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const [selectedLocation, setSelectedLocation] = useState<any>(null);
   const [shouldAutoSearch, setShouldAutoSearch] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const currentUser = _user ?? null;
+  const currentUserId = currentUser?.id ?? undefined;
   const [manualFormData, setManualFormData] = useState<{
     name: string;
     location: string;
@@ -390,8 +392,6 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const hasManualActivities = sortedManualActivities.length > 0;
   const canBuildExternalLink = Boolean((locationSearch.trim() || trip?.destination) && trip?.startDate);
 
-  const currentUser = _user ?? null;
-  const currentUserId = currentUser?.id ?? undefined;
   const tripMembers = useMemo(
     () => (trip?.members ?? []) as (TripMember & { user: User })[],
     [trip?.members],
