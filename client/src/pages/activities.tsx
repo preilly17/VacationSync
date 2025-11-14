@@ -38,6 +38,7 @@ import { apiFetch } from "@/lib/api";
 import { ACTIVITY_CATEGORY_VALUES } from "@shared/activityValidation";
 import type { ActivityType, ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import type { DateRange } from "react-day-picker";
+import { parseTripDateToLocal } from "@/lib/date";
 import { resolveTripTimezone } from "@/lib/timezone";
 import {
   scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
@@ -331,8 +332,8 @@ export default function Activities() {
         }
 
         if (trip.startDate) {
-          const parsed = new Date(trip.startDate);
-          return Number.isNaN(parsed.getTime()) ? null : parsed;
+          const parsed = parseTripDateToLocal(trip.startDate);
+          return parsed ?? null;
         }
 
         return null;

@@ -141,7 +141,7 @@ import {
 } from "date-fns";
 import { Form } from "@/components/ui/form";
 import { resolveTripTimezone, formatDateInTimezone, formatTimeInTimezone } from "@/lib/timezone";
-import { parseTripDateToLocal } from "@/lib/date";
+import { parseTripDateToLocal, toDateInputValue } from "@/lib/date";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
@@ -2416,9 +2416,20 @@ export default function Trip() {
   );
 
   const totalMembers = trip?.members?.length ?? 0;
-  const tripDurationDays = trip?.startDate && trip?.endDate
-    ? Math.max(differenceInCalendarDays(new Date(trip.endDate), new Date(trip.startDate)) + 1, 1)
-    : null;
+  const tripDurationDays = (() => {
+    if (!trip?.startDate || !trip?.endDate) {
+      return null;
+    }
+
+    const parsedStart = parseTripDateToLocal(trip.startDate);
+    const parsedEnd = parseTripDateToLocal(trip.endDate);
+
+    if (!parsedStart || !parsedEnd) {
+      return null;
+    }
+
+    return Math.max(differenceInCalendarDays(parsedEnd, parsedStart) + 1, 1);
+  })();
   const isTripCreator = trip ? user?.id === trip.createdBy : false;
   const heroCoverPhoto = resolveCoverPhotoUrl(
     trip?.coverPhotoUrl ?? trip?.coverPhotoOriginalUrl ?? trip?.coverImageUrl ?? null,
@@ -4308,12 +4319,12 @@ function FlightCoordination({
       }
 
       if (!prev.departureDate && trip?.startDate) {
-        next.departureDate = format(new Date(trip.startDate), "yyyy-MM-dd");
+        next.departureDate = toDateInputValue(trip.startDate);
         changed = true;
       }
 
       if (!prev.returnDate && trip?.endDate) {
-        next.returnDate = format(new Date(trip.endDate), "yyyy-MM-dd");
+        next.returnDate = toDateInputValue(trip.endDate);
         changed = true;
       }
 
@@ -4490,7 +4501,7 @@ function FlightCoordination({
       tripType: value,
       returnDate:
         value === "roundtrip"
-          ? prev.returnDate || (trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : "")
+          ? prev.returnDate || toDateInputValue(trip?.endDate)
           : "",
     }));
   };
@@ -7660,8 +7671,8 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
       const params = new URLSearchParams({
         location: trip.destination,
         units: 'F',
-        startDate: new Date(trip.startDate).toISOString().split('T')[0],
-        endDate: new Date(trip.endDate).toISOString().split('T')[0]
+        startDate: toDateInputValue(trip.startDate),
+        endDate: toDateInputValue(trip.endDate)
       });
       
       const response = await apiFetch(`/api/weather?${params}`);
@@ -7730,6 +7741,11 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
 
   const { current, forecast, advice, metadata } = weatherData;
 
+  const requestedStartDate = parseTripDateToLocal(metadata?.requestedStart ?? null);
+  const requestedEndDate = parseTripDateToLocal(metadata?.requestedEnd ?? null);
+  const coverageStartDate = parseTripDateToLocal(metadata?.forecastCoverageStart ?? null);
+  const coverageEndDate = parseTripDateToLocal(metadata?.forecastCoverageEnd ?? null);
+
   // Helper function to get weather icon
   const getWeatherIcon = (condition: string) => {
     const lowerCondition = condition.toLowerCase();
@@ -7750,12 +7766,17 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
   };
 
   // Filter forecast to only show days within trip dates
-  const tripStartDate = new Date(trip.startDate);
-  const tripEndDate = new Date(trip.endDate);
-  const tripForecast = forecast.filter((day: WeatherForecast) => {
-    const forecastDate = new Date(day.date);
-    return forecastDate >= tripStartDate && forecastDate <= tripEndDate;
-  });
+  const tripStartDate = parseTripDateToLocal(trip.startDate);
+  const tripEndDate = parseTripDateToLocal(trip.endDate);
+  const tripForecast = tripStartDate && tripEndDate
+    ? forecast.filter((day: WeatherForecast) => {
+        const forecastDate = parseTripDateToLocal(day.date) ?? new Date(day.date);
+        return (
+          forecastDate.getTime() >= tripStartDate.getTime() &&
+          forecastDate.getTime() <= tripEndDate.getTime()
+        );
+      })
+    : forecast;
 
   return (
     <div className="space-y-6" data-testid="weather-report">
@@ -7782,11 +7803,25 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
                 </h3>
                 <div className="text-sm text-yellow-700 space-y-1">
                   <p>
-                    <strong>Your trip:</strong> {format(new Date(metadata.requestedStart), 'MMM dd')} - {format(new Date(metadata.requestedEnd), 'MMM dd, yyyy')}
+                    <strong>Your trip:</strong>{' '}
+                    {requestedStartDate
+                      ? format(requestedStartDate, 'MMM dd')
+                      : metadata?.requestedStart ?? 'Unknown'}
+                    {' '}–{' '}
+                    {requestedEndDate
+                      ? format(requestedEndDate, 'MMM dd, yyyy')
+                      : metadata?.requestedEnd ?? ''}
                   </p>
                   {metadata.forecastCoverageStart && metadata.forecastCoverageEnd && (
                     <p>
-                      <strong>Available forecast:</strong> {format(new Date(metadata.forecastCoverageStart), 'MMM dd')} - {format(new Date(metadata.forecastCoverageEnd), 'MMM dd, yyyy')}
+                      <strong>Available forecast:</strong>{' '}
+                      {coverageStartDate
+                        ? format(coverageStartDate, 'MMM dd')
+                        : metadata.forecastCoverageStart}
+                      {' '}–{' '}
+                      {coverageEndDate
+                        ? format(coverageEndDate, 'MMM dd, yyyy')
+                        : metadata.forecastCoverageEnd}
                     </p>
                   )}
                   <p className="mt-2 text-xs text-yellow-600">
@@ -7871,37 +7906,42 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
       {tripForecast.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Calendar className="w-5 h-5" />
-              <span>
-                {metadata?.outOfRange 
-                  ? `Available Forecast ${metadata.forecastCoverageStart && metadata.forecastCoverageEnd ? `(${format(new Date(metadata.forecastCoverageStart), 'MMM dd')} - ${format(new Date(metadata.forecastCoverageEnd), 'MMM dd')})` : ''}`
-                  : `Trip Forecast (${format(tripStartDate, 'MMM dd')} - ${format(tripEndDate, 'MMM dd')})`
-                }
-              </span>
-            </CardTitle>
+              <CardTitle className="flex items-center space-x-2">
+                <Calendar className="w-5 h-5" />
+                <span>
+                  {metadata?.outOfRange
+                    ? `Available Forecast ${coverageStartDate && coverageEndDate ? `(${format(coverageStartDate, 'MMM dd')} - ${format(coverageEndDate, 'MMM dd')})` : ''}`
+                    : tripStartDate && tripEndDate
+                      ? `Trip Forecast (${format(tripStartDate, 'MMM dd')} - ${format(tripEndDate, 'MMM dd')})`
+                      : 'Trip Forecast'
+                  }
+                </span>
+              </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {tripForecast.map((day: WeatherForecast, index: number) => (
-                <div key={day.date} className="bg-gray-50 rounded-lg p-4 text-center">
-                  <div className="font-medium text-gray-900 mb-2">
-                    {format(new Date(day.date), 'MMM dd')}
-                  </div>
-                  <div className="text-2xl mb-2">{getWeatherIcon(day.conditions[0]?.main || 'Clear')}</div>
-                  <div className="text-sm font-medium text-gray-800 mb-2 capitalize">
-                    {day.conditions[0]?.description || 'Clear'}
-                  </div>
-                  <div className="text-lg font-bold text-gray-900 mb-1">
-                    {day.temperature.max}° / {day.temperature.min}°F
-                  </div>
-                  <div className="text-xs text-gray-600 space-y-1">
-                    <div>💧 {day.precipitationChance}% chance</div>
-                    <div>💨 {day.windSpeed} mph</div>
-                    <div>💧 {day.humidity}% humidity</div>
-                  </div>
-                </div>
-              ))}
+                {tripForecast.map((day: WeatherForecast, index: number) => {
+                  const displayDate = parseTripDateToLocal(day.date) ?? new Date(day.date);
+                  return (
+                    <div key={day.date} className="bg-gray-50 rounded-lg p-4 text-center">
+                      <div className="font-medium text-gray-900 mb-2">
+                        {format(displayDate, 'MMM dd')}
+                      </div>
+                      <div className="text-2xl mb-2">{getWeatherIcon(day.conditions[0]?.main || 'Clear')}</div>
+                      <div className="text-sm font-medium text-gray-800 mb-2 capitalize">
+                        {day.conditions[0]?.description || 'Clear'}
+                      </div>
+                      <div className="text-lg font-bold text-gray-900 mb-1">
+                        {day.temperature.max}° / {day.temperature.min}°F
+                      </div>
+                      <div className="text-xs text-gray-600 space-y-1">
+                        <div>💧 {day.precipitationChance}% chance</div>
+                        <div>💨 {day.windSpeed} mph</div>
+                        <div>💧 {day.humidity}% humidity</div>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </CardContent>
         </Card>

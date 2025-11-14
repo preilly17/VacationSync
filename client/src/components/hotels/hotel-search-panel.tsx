@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -21,6 +22,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { HOTEL_REDIRECT_STORAGE_KEY, markExternalRedirect } from "@/lib/externalRedirects";
 import type { TripWithDates, HotelSearchResult } from "@shared/schema";
 import { format } from "date-fns";
+import { parseTripDateToLocal, toDateInputValue } from "@/lib/date";
 import {
   Building,
   DollarSign,
@@ -109,13 +111,31 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
 
     useEffect(() => {
       if (trip?.startDate) {
-        setCheckInDate((prev) => prev || format(new Date(trip.startDate), "yyyy-MM-dd"));
+        setCheckInDate((prev) => prev || toDateInputValue(trip.startDate));
       }
 
       if (trip?.endDate) {
-        setCheckOutDate((prev) => prev || format(new Date(trip.endDate), "yyyy-MM-dd"));
+        setCheckOutDate((prev) => prev || toDateInputValue(trip.endDate));
       }
     }, [trip?.startDate, trip?.endDate]);
+
+    const tripStartLabel = useMemo(() => {
+      if (!trip?.startDate) {
+        return null;
+      }
+
+      const parsed = parseTripDateToLocal(trip.startDate);
+      return parsed ? format(parsed, "MMM d") : null;
+    }, [trip?.startDate]);
+
+    const tripEndLabel = useMemo(() => {
+      if (!trip?.endDate) {
+        return null;
+      }
+
+      const parsed = parseTripDateToLocal(trip.endDate);
+      return parsed ? format(parsed, "MMM d") : null;
+    }, [trip?.endDate]);
 
     const getExternalDestination = useCallback(() => {
       if (searchLocation?.displayName) return searchLocation.displayName;
@@ -152,8 +172,8 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
     const handleExternalSearch = useCallback(
       (provider: "airbnb" | "vrbo" | "expedia") => {
         const destination = getExternalDestination();
-        const checkIn = checkInDate || (trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd") : "");
-        const checkOut = checkOutDate || (trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : "");
+        const checkIn = checkInDate || toDateInputValue(trip?.startDate);
+        const checkOut = checkOutDate || toDateInputValue(trip?.endDate);
         const adults = Math.max(parseInt(adultCount, 10) || 1, 1);
         const children = Math.max(parseInt(childCount, 10) || 0, 0);
 
@@ -261,8 +281,8 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
         const destLower = destination.toLowerCase();
 
         if (destLower.includes("tokyo") || destLower.includes("japan")) {
-          const baseDate = trip?.startDate ? new Date(trip.startDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
-          const endDate = trip?.endDate ? new Date(trip.endDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
+          const baseDate = trip?.startDate ? toDateInputValue(trip.startDate) : new Date().toISOString().split("T")[0];
+          const endDate = trip?.endDate ? toDateInputValue(trip.endDate) : new Date().toISOString().split("T")[0];
 
           return [
             {
@@ -443,8 +463,8 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
       const locationToUse = searchLocation;
       const destination = locationToUse?.displayName || locationToUse?.name || trip?.destination || "";
 
-      const resolvedCheckIn = checkInDate || (trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd") : "");
-      const resolvedCheckOut = checkOutDate || (trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : "");
+      const resolvedCheckIn = checkInDate || toDateInputValue(trip?.startDate);
+      const resolvedCheckOut = checkOutDate || toDateInputValue(trip?.endDate);
 
       if (!destination) {
         toast({
@@ -662,8 +682,8 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
               <p className="text-xs text-muted-foreground">
                 {trip.destination}
                 {(trip.startDate || trip.endDate) && " • "}
-                {trip.startDate ? format(new Date(trip.startDate), "MMM d") : "Start TBD"}
-                {trip.endDate ? `–${format(new Date(trip.endDate), "MMM d")}` : ""}
+                {tripStartLabel ?? "Start TBD"}
+                {tripEndLabel ? `–${tripEndLabel}` : ""}
               </p>
             )}
           </CardHeader>
@@ -838,8 +858,8 @@ export const HotelSearchPanel = forwardRef<HotelSearchPanelRef, HotelSearchPanel
                   </CardTitle>
                   <p className="text-sm text-muted-foreground">
                     {trip?.destination ? `For ${trip.destination}` : "Suggested stays"}
-                    {trip?.startDate && ` • ${format(new Date(trip.startDate), "MMM d")}`}
-                    {trip?.endDate && ` – ${format(new Date(trip.endDate), "MMM d")}`}
+                    {tripStartLabel && ` • ${tripStartLabel}`}
+                    {tripEndLabel && ` – ${tripEndLabel}`}
                   </p>
                   {hotelProposalsCount > 0 && (
                     <p className="text-xs text-muted-foreground">
