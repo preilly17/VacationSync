@@ -26,6 +26,7 @@ import {
 } from "@/lib/activities/queryKeys";
 import { type ActivityType, type ActivityWithDetails, type TripMember, type User } from "@shared/schema";
 import { resolveTripTimezone, formatDateInTimezone } from "@/lib/timezone";
+import { parseTripDateToLocal } from "@/lib/date";
 import {
   ACTIVITY_CATEGORY_MESSAGE,
   ACTIVITY_CATEGORY_VALUES,
@@ -309,16 +310,9 @@ const sanitizeOptional = (value: string | null | undefined) => {
   return value ?? "";
 };
 
-const toDateOnlyString = (value: string | Date | null | undefined, timeZone: string): string => {
+const toDateOnlyString = (value: string | Date | null | undefined): string => {
   if (!value) {
     return "";
-  }
-
-  if (value instanceof Date) {
-    if (!isValid(value)) {
-      return "";
-    }
-    return formatDateInTimezone(value, timeZone);
   }
 
   if (typeof value === "string") {
@@ -331,10 +325,15 @@ const toDateOnlyString = (value: string | Date | null | undefined, timeZone: str
       return trimmed;
     }
 
+    const parsedTripDate = parseTripDateToLocal(trimmed);
+    if (parsedTripDate) {
+      return format(parsedTripDate, "yyyy-MM-dd");
+    }
+
     try {
       const parsedIso = parseISO(trimmed);
       if (isValid(parsedIso)) {
-        return formatDateInTimezone(parsedIso, timeZone);
+        return format(parsedIso, "yyyy-MM-dd");
       }
     } catch (error) {
       // Ignore parse errors and try a fallback below.
@@ -342,8 +341,21 @@ const toDateOnlyString = (value: string | Date | null | undefined, timeZone: str
 
     const fallback = new Date(trimmed);
     if (!Number.isNaN(fallback.getTime())) {
-      return formatDateInTimezone(fallback, timeZone);
+      return format(fallback, "yyyy-MM-dd");
     }
+  }
+
+  if (value instanceof Date) {
+    if (!isValid(value)) {
+      return "";
+    }
+
+    const parsedTripDate = parseTripDateToLocal(value);
+    if (parsedTripDate) {
+      return format(parsedTripDate, "yyyy-MM-dd");
+    }
+
+    return format(value, "yyyy-MM-dd");
   }
 
   return "";
@@ -463,14 +475,8 @@ export function AddActivityModal({
     () => resolveTripTimezone({ tripTimezone }),
     [tripTimezone],
   );
-  const startDateMin = useMemo(
-    () => toDateOnlyString(tripStartDate, resolvedTimezone),
-    [tripStartDate, resolvedTimezone],
-  );
-  const startDateMax = useMemo(
-    () => toDateOnlyString(tripEndDate, resolvedTimezone),
-    [tripEndDate, resolvedTimezone],
-  );
+  const startDateMin = useMemo(() => toDateOnlyString(tripStartDate), [tripStartDate]);
+  const startDateMax = useMemo(() => toDateOnlyString(tripEndDate), [tripEndDate]);
   const dateRangeHint = useMemo(
     () => buildDateRangeHint(startDateMin, startDateMax),
     [startDateMin, startDateMax],
@@ -516,8 +522,8 @@ export function AddActivityModal({
   );
 
   const determineInitialStartDate = useCallback(() => {
-    const prefillCandidate = toDateOnlyString(prefill?.startDate, resolvedTimezone);
-    const selectedCandidate = toDateOnlyString(selectedDate, resolvedTimezone);
+    const prefillCandidate = toDateOnlyString(prefill?.startDate);
+    const selectedCandidate = toDateOnlyString(selectedDate);
     const today = getTodayInTimezone(resolvedTimezone);
 
     let candidate = (prefillCandidate || selectedCandidate || "").trim();
@@ -535,7 +541,7 @@ export function AddActivityModal({
     }
 
     return clampDateWithinRange(candidate, startDateMin || null, startDateMax || null);
-  }, [prefill?.startDate, resolvedTimezone, selectedDate, startDateMin, startDateMax]);
+  }, [prefill?.startDate, selectedDate, startDateMin, startDateMax]);
 
   const computeDefaults = useCallback(() => {
     const attendeePrefill = Array.isArray(prefill?.attendeeIds)
