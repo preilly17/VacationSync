@@ -441,15 +441,35 @@ const normalizeUserId = (value: unknown): string | null => {
     return null;
   }
 
-  if (typeof value === "string") {
-    return value;
+  const toCandidateString = (): string => {
+    if (typeof value === "string") {
+      return value.trim();
+    }
+
+    return String(value).trim();
+  };
+
+  let candidate = toCandidateString();
+  if (candidate.length === 0) {
+    return null;
   }
 
-  if (typeof value === "number") {
-    return String(value);
+  if (
+    (candidate.startsWith("\"") && candidate.endsWith("\"")) ||
+    (candidate.startsWith("'") && candidate.endsWith("'"))
+  ) {
+    candidate = candidate.slice(1, -1).trim();
   }
 
-  return null;
+  if (candidate.length === 0) {
+    return null;
+  }
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+    return candidate.toLowerCase();
+  }
+
+  return candidate;
 };
 
 const isActivityCreator = (activity: ActivityWithDetails, userId?: string | null): boolean => {
@@ -6213,21 +6233,29 @@ function HotelBooking({
   });
 
   const currentUserId = user?.id ?? null;
+  const normalizedCurrentUserId = useMemo(
+    () => normalizeUserId(currentUserId),
+    [currentUserId],
+  );
   const membership = useMemo(() => {
-    if (!trip || !currentUserId) {
+    if (!trip || !normalizedCurrentUserId) {
       return null;
     }
 
-    return trip.members?.find((member) => member.userId === currentUserId) ?? null;
-  }, [trip, currentUserId]);
+    return (
+      trip.members?.find(
+        (member) => normalizeUserId(member.userId) === normalizedCurrentUserId,
+      ) ?? null
+    );
+  }, [trip, normalizedCurrentUserId]);
 
   const isTripOwner = useMemo(() => {
-    if (!trip?.createdBy || !currentUserId) {
+    if (!trip?.createdBy || !normalizedCurrentUserId) {
       return false;
     }
 
-    return trip.createdBy === currentUserId;
-  }, [trip?.createdBy, currentUserId]);
+    return normalizeUserId(trip.createdBy) === normalizedCurrentUserId;
+  }, [trip?.createdBy, normalizedCurrentUserId]);
 
   const isTripEditor = useMemo(() => {
     if (!membership?.role) {
@@ -6239,17 +6267,18 @@ function HotelBooking({
 
   const canManageHotel = useCallback(
     (hotel: HotelWithDetails) => {
-      if (!currentUserId) {
+      if (!normalizedCurrentUserId) {
         return false;
       }
 
-      if (String(hotel.userId) === currentUserId) {
+      const stayCreatorId = normalizeUserId(hotel.userId);
+      if (stayCreatorId && stayCreatorId === normalizedCurrentUserId) {
         return true;
       }
 
       return isTripOwner || isTripEditor;
     },
-    [currentUserId, isTripEditor, isTripOwner],
+    [isTripEditor, isTripOwner, normalizedCurrentUserId],
   );
 
   const {
