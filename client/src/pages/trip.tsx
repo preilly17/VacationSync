@@ -25,6 +25,7 @@ import {
   ArrowRight,
   Clock,
   User as UserIcon,
+  UserMinus,
   Package,
   DollarSign,
   ShoppingCart,
@@ -57,6 +58,7 @@ import {
 } from "@/lib/activities/queryKeys";
 import { cn, formatCurrency } from "@/lib/utils";
 import { activityMatchesPeopleFilter } from "@/lib/activityFilters";
+import { getMemberDisplayName } from "@/lib/activities/manualMemberOptions";
 import {
   TRIP_COVER_GRADIENT,
   buildCoverPhotoSrcSet,
@@ -7361,62 +7363,203 @@ function MembersModal({ open, onOpenChange, trip }: {
   trip: TripWithDetails;
 }) {
   const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [memberPendingRemoval, setMemberPendingRemoval] = useState<
+    TripWithDetails["members"][number] | null
+  >(null);
+
+  const isTripCreator = user?.id === trip.createdBy;
+
+  const removeMemberMutation = useMutation<
+    TripWithDetails,
+    Error,
+    TripWithDetails["members"][number]
+  >({
+    mutationFn: async (member) => {
+      const response = await apiRequest(
+        `/api/trips/${trip.id}/members/${encodeURIComponent(member.userId)}`,
+        { method: "DELETE" },
+      );
+
+      return (await response.json()) as TripWithDetails;
+    },
+    onSuccess: (updatedTrip, removedMember) => {
+      queryClient.setQueryData<TripWithDetails>(
+        ["/api/trips", trip.id.toString()],
+        updatedTrip,
+      );
+      queryClient.setQueryData<TripWithDetails[] | undefined>(
+        ["/api/trips"],
+        (existing) => {
+          if (!existing) {
+            return existing;
+          }
+
+          return existing.map((entry) =>
+            entry.id === updatedTrip.id ? updatedTrip : entry,
+          );
+        },
+      );
+
+      queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+
+      toast({
+        title: "Member removed",
+        description: `${getMemberDisplayName(removedMember.user)} was removed from the trip.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Unable to remove member",
+        description: error.message || "Failed to remove trip member.",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setMemberPendingRemoval(null);
+    },
+  });
+
+  const pendingMemberName = memberPendingRemoval
+    ? getMemberDisplayName(memberPendingRemoval.user)
+    : "this member";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Trip Members</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          {trip.members && trip.members.length > 0 ? (
-            <div className="space-y-3">
-              {(trip as any).members.map((member: any) => (
-                <div key={member.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-semibold">
-                    {member.user?.firstName ? member.user.firstName.charAt(0).toUpperCase() : 'U'}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">
-                      {member.user?.firstName} {member.user?.lastName}
-                      {member.userId === (trip as any).createdBy && (
-                        <Badge variant="secondary" className="ml-2 text-xs">Trip Creator</Badge>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Trip Members</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {trip.members && trip.members.length > 0 ? (
+              <div className="space-y-3">
+                {trip.members.map((member) => {
+                  const isCreator = member.userId === trip.createdBy;
+                  const isYou = member.userId === user?.id;
+                  const disableRemoveButton =
+                    removeMemberMutation.isPending
+                    && memberPendingRemoval?.userId === member.userId;
+                  const displayName = (() => {
+                    const first = member.user.firstName?.trim();
+                    const last = member.user.lastName?.trim();
+                    if (first || last) {
+                      return [first, last].filter(Boolean).join(" ");
+                    }
+                    return getMemberDisplayName(member.user);
+                  })();
+                  const initials =
+                    member.user.firstName?.charAt(0)?.toUpperCase()
+                    ?? member.user.email?.charAt(0)?.toUpperCase()
+                    ?? "U";
+
+                  return (
+                    <div
+                      key={member.id}
+                      className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white font-semibold">
+                        {initials}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-900">
+                          {displayName}
+                          {isCreator && (
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              Trip Creator
+                            </Badge>
+                          )}
+                          {isYou && (
+                            <Badge variant="outline" className="ml-2 text-xs">
+                              You
+                            </Badge>
+                          )}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {member.user.email ?? "Email unavailable"}
+                        </p>
+                      </div>
+                      {isTripCreator && !isCreator && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => setMemberPendingRemoval(member)}
+                          disabled={disableRemoveButton}
+                        >
+                          <UserMinus className="w-4 h-4 mr-1" />
+                          Remove
+                        </Button>
                       )}
-                      {member.userId === user?.id && (
-                        <Badge variant="outline" className="ml-2 text-xs">You</Badge>
-                      )}
-                    </p>
-                    <p className="text-sm text-gray-600">{member.user?.email}</p>
-                  </div>
-                </div>
-              ))}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No members found</p>
+              </div>
+            )}
+
+            <div className="border-t pt-4">
+              <p className="text-sm text-gray-600 mb-2">
+                {trip.members?.length || 0} member
+                {(trip.members?.length || 0) !== 1 ? "s" : ""} total
+              </p>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  onOpenChange(false);
+                  // You could add invite functionality here
+                }}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Invite More People
+              </Button>
             </div>
-          ) : (
-            <div className="text-center py-6">
-              <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No members found</p>
-            </div>
-          )}
-          
-          <div className="border-t pt-4">
-            <p className="text-sm text-gray-600 mb-2">
-              {trip.members?.length || 0} member{(trip.members?.length || 0) !== 1 ? 's' : ''} total
-            </p>
-            <Button 
-              variant="outline" 
-              className="w-full"
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(memberPendingRemoval)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen && !removeMemberMutation.isPending) {
+            setMemberPendingRemoval(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove member?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Removing {pendingMemberName} will revoke their access to this trip.
+                They'll need a new invitation link to rejoin later.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={removeMemberMutation.isPending}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={removeMemberMutation.isPending || !memberPendingRemoval}
               onClick={() => {
-                onOpenChange(false);
-                // You could add invite functionality here
+                if (memberPendingRemoval) {
+                  removeMemberMutation.mutate(memberPendingRemoval);
+                }
               }}
             >
-              <Plus className="w-4 h-4 mr-2" />
-              Invite More People
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+              {removeMemberMutation.isPending ? "Removing..." : "Remove member"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
