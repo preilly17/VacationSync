@@ -636,6 +636,7 @@ export function AddActivityModal({
     const value = Array.isArray(watchedAttendeeIds) ? watchedAttendeeIds : [];
     return normalizeAttendeeIds(value).value;
   }, [watchedAttendeeIds]);
+  const hasSelectedAttendees = selectedAttendeeIds.length > 0;
 
   useEffect(() => {
     if (mode === "SCHEDULED" && creatorMemberId) {
@@ -832,6 +833,11 @@ export function AddActivityModal({
     }
     const attendeeSelection = Array.from(attendeeSelectionSet);
 
+    if (attendeeSelection.length === 0) {
+      form.setError("attendeeIds", { type: "manual", message: ATTENDEE_REQUIRED_MESSAGE });
+      return;
+    }
+
     const sanitized: ActivityCreateFormValues = {
       name: values.name,
       description: values.description,
@@ -850,7 +856,8 @@ export function AddActivityModal({
   });
 
   const isSubmitting = createActivity.isPending;
-  const isSubmitDisabled = isSubmitting || isStartTimeMissing || hasFormErrors;
+  const isSubmitDisabled =
+    isSubmitting || isStartTimeMissing || hasFormErrors || !hasSelectedAttendees;
 
   const handleDialogChange = (next: boolean) => {
     if (!next) {
