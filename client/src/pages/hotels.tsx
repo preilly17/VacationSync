@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
+import { parseTripDateToLocal } from "@/lib/date";
 import {
   MapPin,
   Users,
@@ -575,8 +576,14 @@ export default function HotelsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {availableTrips.map((tripOption) => {
-                        const startLabel = format(new Date(tripOption.startDate), "MMM d");
-                        const endLabel = format(new Date(tripOption.endDate), "MMM d");
+                        const startLabel = (() => {
+                          const parsed = parseTripDateToLocal(tripOption.startDate);
+                          return parsed ? format(parsed, "MMM d") : "Start TBD";
+                        })();
+                        const endLabel = (() => {
+                          const parsed = parseTripDateToLocal(tripOption.endDate);
+                          return parsed ? format(parsed, "MMM d") : "End TBD";
+                        })();
                         const displayName = tripOption.name?.trim().length
                           ? tripOption.name
                           : tripOption.destination;

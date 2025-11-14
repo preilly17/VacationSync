@@ -13,9 +13,9 @@ import { apiRequest } from "@/lib/queryClient";
 import { buildApiUrl } from "@/lib/api";
 import SmartLocationSearch from "@/components/SmartLocationSearch";
 import type { TripWithDetails } from "@shared/schema";
-import { format } from "date-fns";
 import { CoverPhotoSection, type CoverPhotoValue } from "@/components/cover-photo-section";
 import { createCoverPhotoBannerFile } from "@/lib/coverPhotoProcessing";
+import { toDateInputValue } from "@/lib/date";
 
 interface EditTripModalProps {
   open: boolean;
@@ -56,8 +56,8 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     defaultValues: {
       name: trip.name,
       destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      startDate: toDateInputValue(trip.startDate),
+      endDate: toDateInputValue(trip.endDate),
       coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
       coverPhotoUrl: trip.coverPhotoUrl ?? null,
       coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
@@ -82,8 +82,8 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
       form.reset({
         name: trip.name,
         destination: trip.destination,
-        startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-        endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+        startDate: toDateInputValue(trip.startDate),
+        endDate: toDateInputValue(trip.endDate),
         coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
         coverPhotoUrl: trip.coverPhotoUrl ?? null,
         coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,
@@ -481,8 +481,8 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     form.reset({
       name: trip.name,
       destination: trip.destination,
-      startDate: format(new Date(trip.startDate), "yyyy-MM-dd"),
-      endDate: format(new Date(trip.endDate), "yyyy-MM-dd"),
+      startDate: toDateInputValue(trip.startDate),
+      endDate: toDateInputValue(trip.endDate),
       coverImageUrl: trip.coverImageUrl ?? trip.coverPhotoUrl ?? null,
       coverPhotoUrl: trip.coverPhotoUrl ?? null,
       coverPhotoCardUrl: trip.coverPhotoCardUrl ?? null,

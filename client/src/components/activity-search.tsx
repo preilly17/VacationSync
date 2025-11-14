@@ -38,6 +38,7 @@ import {
   proposalActivitiesQueryKey as buildProposalActivitiesKey,
   calendarActivitiesQueryKey as buildCalendarActivitiesKey,
 } from "@/lib/activities/queryKeys";
+import { parseTripDateToLocal, toDateInputValue } from "@/lib/date";
 import { buildManualMemberOptions } from "@/lib/activities/manualMemberOptions";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
@@ -149,6 +150,8 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const currentUser = _user ?? null;
   const currentUserId = currentUser?.id ?? undefined;
+  const initialTripStart = parseTripDateToLocal(trip?.startDate);
+
   const [manualFormData, setManualFormData] = useState<{
     name: string;
     location: string;
@@ -159,7 +162,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   }>({
     name: "",
     location: trip?.destination ?? "",
-    dateTime: trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd'T'HH:mm") : "",
+    dateTime: initialTripStart ? format(initialTripStart, "yyyy-MM-dd'T'HH:mm") : "",
     price: "",
     currency: MANUAL_CURRENCY_OPTIONS[0],
     status: MANUAL_STATUS_OPTIONS[0].value,
@@ -221,7 +224,10 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     setManualFormData({
       name: "",
       location: trip?.destination ?? "",
-      dateTime: trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd'T'HH:mm") : "",
+      dateTime: (() => {
+        const parsed = parseTripDateToLocal(trip?.startDate);
+        return parsed ? format(parsed, "yyyy-MM-dd'T'HH:mm") : "";
+      })(),
       price: "",
       currency: MANUAL_CURRENCY_OPTIONS[0],
       status: MANUAL_STATUS_OPTIONS[0].value,
@@ -242,8 +248,8 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   }, [resetManualForm]);
 
   const getTripDateRange = useCallback(() => {
-    const start = trip?.startDate ? format(new Date(trip.startDate), "yyyy-MM-dd") : "";
-    const end = trip?.endDate ? format(new Date(trip.endDate), "yyyy-MM-dd") : "";
+    const start = toDateInputValue(trip?.startDate);
+    const end = toDateInputValue(trip?.endDate);
 
     return {
       start,

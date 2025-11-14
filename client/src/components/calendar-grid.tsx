@@ -16,6 +16,7 @@ import {
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { parseTripDateToLocal } from "@/lib/date";
 
 type CalendarCssVariables = CSSProperties & Record<string, string | number | undefined>;
 
@@ -339,12 +340,18 @@ export function CalendarGrid({
   };
 
   const isTripDay = (day: Date) => {
-    const tripStart = startOfDay(parseDateValue(trip.startDate) ?? new Date(trip.startDate));
-    const tripEnd = endOfDay(parseDateValue(trip.endDate) ?? new Date(trip.endDate));
+    const startCandidate =
+      parseTripDateToLocal(trip.startDate) ?? parseDateValue(trip.startDate);
+    const endCandidate =
+      parseTripDateToLocal(trip.endDate) ?? parseDateValue(trip.endDate);
+
+    if (!startCandidate || !endCandidate) {
+      return false;
+    }
 
     return isWithinInterval(day, {
-      start: tripStart,
-      end: tripEnd,
+      start: startOfDay(startCandidate),
+      end: endOfDay(endCandidate),
     });
   };
 

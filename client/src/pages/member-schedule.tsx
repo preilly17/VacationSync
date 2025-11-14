@@ -31,6 +31,7 @@ import {
   scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
   proposalActivitiesQueryKey as buildProposalActivitiesKey,
 } from "@/lib/activities/queryKeys";
+import { parseTripDateToLocal } from "@/lib/date";
 
 const getParticipantDisplayName = (user: UserType) => {
   const first = user.firstName?.trim();
@@ -179,10 +180,13 @@ export default function MemberSchedule() {
   // Auto-navigate calendar to trip dates when trip loads
   useEffect(() => {
     if (trip?.startDate) {
-      const tripStartDate = new Date(trip.startDate);
+      const tripStartDate = parseTripDateToLocal(trip.startDate);
+      if (!tripStartDate) {
+        return;
+      }
       const currentMonthStart = startOfMonth(currentMonth);
       const tripMonthStart = startOfMonth(tripStartDate);
-      
+
       // Only update if we're not already showing the correct month
       if (!isSameMonth(currentMonthStart, tripMonthStart)) {
         setCurrentMonth(tripStartDate);
