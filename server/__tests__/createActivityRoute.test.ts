@@ -188,6 +188,87 @@ describe("POST /api/trips/:id/activities", () => {
     validateSpy.mockRestore();
   });
 
+  it("normalizes alternate field names to support new composer payloads", async () => {
+    const trip = {
+      id: 912,
+      createdBy: "organizer",
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+        { userId: "guest", user: { firstName: "Guest" } },
+      ],
+    };
+
+    const requestBody = {
+      title: "Evening Cruise",
+      details: "Enjoy the skyline at sunset",
+      start_time: new Date("2024-06-01T00:30:00Z").toISOString(),
+      end_time: new Date("2024-06-01T02:00:00Z").toISOString(),
+      address: "City Harbor",
+      cost_per_person: "125.50",
+      max_participants: 6,
+      invitees: [
+        { user_id: "friend" },
+        { id: "guest" },
+        { user: { id: "organizer" } },
+      ],
+      activity_category: "entertainment",
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const createdActivity = {
+      id: 444,
+      tripCalendarId: trip.id,
+      name: requestBody.title,
+      description: requestBody.details,
+      startTime: requestBody.start_time,
+      endTime: requestBody.end_time,
+      location: requestBody.address,
+      cost: 125.5,
+      maxCapacity: 6,
+      category: "entertainment",
+      type: "SCHEDULED" as const,
+    };
+
+    const createActivitySpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    jest.spyOn(storage, "getTripActivities").mockResolvedValueOnce([createdActivity] as any);
+    jest.spyOn(storage, "createNotification").mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(createActivitySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripCalendarId: trip.id,
+        name: requestBody.title,
+        description: requestBody.details,
+        startTime: requestBody.start_time,
+        endTime: requestBody.end_time,
+        location: requestBody.address,
+        cost: 125.5,
+        maxCapacity: 6,
+        category: "entertainment",
+      }),
+      "organizer",
+      expect.arrayContaining(["friend", "guest"]),
+    );
+    const inviteArgument = createActivitySpy.mock.calls[0]?.[2] as string[];
+    expect(inviteArgument).not.toContain("organizer");
+  });
+
   it("returns 400 with invite details when a constraint violation occurs", async () => {
     const trip = {
       id: 123,
@@ -615,11 +696,12 @@ describe("POST /api/trips/:id/activities", () => {
 
     expect(res.status).toHaveBeenCalledWith(400);
     const payload = res.json.mock.calls[0][0];
-    expect(payload.message).toBe("Activity name is required.");
+    expect(payload.message).toBe(activityValidationModule.ACTIVITY_CATEGORY_MESSAGE);
     expect(payload.errors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ field: "name" }),
+        expect.objectContaining({ field: "category" }),
         expect.objectContaining({ field: "startDate" }),
+        expect.objectContaining({ field: "startTime" }),
       ]),
     );
   });

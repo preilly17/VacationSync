@@ -2262,6 +2262,175 @@ export function setupRoutes(app: Express) {
     });
   };
 
+  const hasMeaningfulValue = (value: unknown): boolean => {
+    if (value === undefined || value === null) {
+      return false;
+    }
+
+    if (typeof value === "string") {
+      return value.trim().length > 0;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    return true;
+  };
+
+  const coerceArrayFromDelimitedString = (value: string): string[] => {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      return [];
+    }
+
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((entry) => (entry === null || entry === undefined ? "" : String(entry).trim()))
+            .filter((entry) => entry.length > 0);
+        }
+      } catch (error) {
+        console.warn("Failed to parse attendee JSON payload", { error, value: trimmed });
+      }
+    }
+
+    return trimmed
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  };
+
+  const coerceAttendeeIdCollection = (value: unknown): string[] | undefined => {
+    if (value === undefined || value === null) {
+      return undefined;
+    }
+
+    if (Array.isArray(value)) {
+      const normalized = value
+        .map((entry) => {
+          if (entry === null || entry === undefined) {
+            return "";
+          }
+
+          if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
+            return String(entry).trim();
+          }
+
+          if (typeof entry === "object") {
+            const record = entry as Record<string, unknown>;
+            const possibleIds = [
+              record.id,
+              record.userId,
+              record.user_id,
+              (record.user as Record<string, unknown> | undefined)?.id,
+              (record.user as Record<string, unknown> | undefined)?.userId,
+              (record.user as Record<string, unknown> | undefined)?.user_id,
+            ];
+
+            for (const candidate of possibleIds) {
+              if (typeof candidate === "string" || typeof candidate === "number" || typeof candidate === "boolean") {
+                return String(candidate).trim();
+              }
+            }
+          }
+
+          return "";
+        })
+        .filter((entry) => entry.length > 0);
+
+      return normalized;
+    }
+
+    if (typeof value === "string") {
+      return coerceArrayFromDelimitedString(value);
+    }
+
+    if (typeof value === "number" || typeof value === "boolean") {
+      const candidate = String(value).trim();
+      return candidate.length > 0 ? [candidate] : [];
+    }
+
+    return undefined;
+  };
+
+  const normalizeActivityRequestPayload = (
+    body: unknown,
+    tripId: number,
+    mode: ActivityType,
+  ): Record<string, unknown> => {
+    const base = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
+    const normalized: Record<string, unknown> = { ...base };
+
+    const ensureField = (field: string, candidates: unknown[]) => {
+      const current = normalized[field];
+
+      if (Array.isArray(current)) {
+        if (current.length > 0) {
+          return;
+        }
+      } else if (hasMeaningfulValue(current)) {
+        return;
+      }
+
+      for (const candidate of candidates) {
+        if (candidate === undefined) {
+          continue;
+        }
+
+        if (Array.isArray(candidate)) {
+          if (candidate.length === 0) {
+            continue;
+          }
+          normalized[field] = candidate;
+          return;
+        }
+
+        if (hasMeaningfulValue(candidate)) {
+          normalized[field] = candidate;
+          return;
+        }
+      }
+    };
+
+    ensureField("name", [base.title, base.activityName, base.label]);
+    ensureField("description", [base.details, base.summary, base.notes, base.descriptionText]);
+    ensureField("location", [base.address, base.venue, base.place, base.location_name, base.locationName]);
+    ensureField("cost", [base.cost_per_person, base.price_per_person, base.pricePerPerson, base.price, base.amount]);
+    ensureField("maxCapacity", [base.max_participants, base.max_attendees, base.maxGuests, base.capacity]);
+    ensureField("category", [base.activity_category, base.category_value]);
+    ensureField("startTime", [base.start_time, base.start, base.startDateTime, base.start_date_time, base.starts_at, base.startsAt]);
+    ensureField("endTime", [base.end_time, base.end, base.endDateTime, base.end_date_time, base.ends_at, base.endsAt]);
+    ensureField("startDate", [base.start_date, base.date, base.activity_date, base.event_date]);
+
+    if (!Array.isArray(normalized.attendeeIds) || normalized.attendeeIds.length === 0) {
+      const attendeeCandidates = [
+        base.attendeeIds,
+        base.attendee_ids,
+        base.inviteeIds,
+        base.invitee_ids,
+        base.attendees,
+        base.invitees,
+      ];
+
+      for (const candidate of attendeeCandidates) {
+        const coerced = coerceAttendeeIdCollection(candidate);
+        if (coerced) {
+          normalized.attendeeIds = coerced;
+          break;
+        }
+      }
+    }
+
+    return {
+      ...normalized,
+      tripCalendarId: tripId,
+      type: mode,
+    } as Record<string, unknown>;
+  };
+
   const handleTripActivityCreation = async (
     req: any,
     res: any,
@@ -2364,11 +2533,7 @@ export function setupRoutes(app: Express) {
         }
       }
 
-      const rawData = {
-        ...req.body,
-        tripCalendarId: tripId,
-        type: mode,
-      } as Record<string, unknown>;
+      const rawData = normalizeActivityRequestPayload(req.body, tripId, mode);
 
       logActivityEvent("payload-prepared", {
         correlationId,
