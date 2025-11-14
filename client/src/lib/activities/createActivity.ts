@@ -179,36 +179,101 @@ const normalizeLegacyActivity = (activity: ActivityWithDetails): ActivityWithDet
   const maybeV2 = activity as ActivityWithDetails & {
     title?: string | null;
     date?: string | null;
+    start_date?: string | null;
+    startDate?: string | null;
     start_time?: string | null;
+    startTime?: string | null;
+    start_at?: string | null;
+    startAt?: string | null;
     end_time?: string | null;
+    endTime?: string | null;
+    end_at?: string | null;
+    endAt?: string | null;
     timezone?: string | null;
     timeZone?: string | null;
   };
 
-  const resolvedName = toTrimmedString(activity.name) ?? toTrimmedString(maybeV2.title) ?? activity.name;
+  const pickTrimmed = (
+    ...candidates: Array<string | null | undefined>
+  ): string | null => {
+    for (const candidate of candidates) {
+      const trimmed = toTrimmedString(candidate);
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+    return null;
+  };
 
-  const timezone =
-    toTrimmedString(maybeV2.timezone)
-    ?? toTrimmedString(maybeV2.timeZone)
-    ?? "UTC";
+  const resolvedName = toTrimmedString(activity.name) ?? pickTrimmed(maybeV2.title) ?? activity.name;
 
-  const dateCandidate = toTrimmedString(maybeV2.date);
-  const startTimeCandidate =
-    toTrimmedString(maybeV2.start_time)
-    ?? toTrimmedString((maybeV2 as { startTime?: string | null }).startTime)
-    ?? (typeof activity.startTime === "string" ? toTrimmedString(activity.startTime) : null);
-  const endTimeCandidate =
-    toTrimmedString(maybeV2.end_time)
-    ?? toTrimmedString((maybeV2 as { endTime?: string | null }).endTime)
-    ?? (typeof activity.endTime === "string" ? toTrimmedString(activity.endTime) : null);
+  const timezone = pickTrimmed(maybeV2.timezone, maybeV2.timeZone) ?? "UTC";
 
-  const resolvedStartTime = isValidDateValue(activity.startTime)
-    ? activity.startTime
-    : combineDateAndTimeInUtc(dateCandidate, startTimeCandidate, timezone) ?? null;
+  const explicitDateCandidate = pickTrimmed(
+    maybeV2.date,
+    maybeV2.start_date,
+    maybeV2.startDate,
+    (activity as { startDate?: string | null }).startDate,
+  );
 
-  const resolvedEndTime = isValidDateValue(activity.endTime)
-    ? activity.endTime
-    : combineDateAndTimeInUtc(dateCandidate, endTimeCandidate, timezone);
+  const startTimeCandidate = pickTrimmed(
+    maybeV2.start_time,
+    maybeV2.startTime,
+    maybeV2.start_at,
+    maybeV2.startAt,
+    (activity as { startAt?: string | null }).startAt,
+    typeof activity.startTime === "string" ? activity.startTime : null,
+  );
+
+  const endTimeCandidate = pickTrimmed(
+    maybeV2.end_time,
+    maybeV2.endTime,
+    maybeV2.end_at,
+    maybeV2.endAt,
+    (activity as { endAt?: string | null }).endAt,
+    typeof activity.endTime === "string" ? activity.endTime : null,
+  );
+
+  const derivedDateFromStart = (() => {
+    if (explicitDateCandidate) {
+      return explicitDateCandidate;
+    }
+
+    if (startTimeCandidate && isValidDateValue(startTimeCandidate)) {
+      try {
+        const iso = new Date(startTimeCandidate).toISOString();
+        return iso.slice(0, 10);
+      } catch {
+        return null;
+      }
+    }
+
+    return null;
+  })();
+
+  const resolvedStartTime = (() => {
+    if (isValidDateValue(activity.startTime)) {
+      return activity.startTime;
+    }
+
+    if (startTimeCandidate && isValidDateValue(startTimeCandidate)) {
+      return new Date(startTimeCandidate).toISOString();
+    }
+
+    return combineDateAndTimeInUtc(derivedDateFromStart, startTimeCandidate, timezone) ?? null;
+  })();
+
+  const resolvedEndTime = (() => {
+    if (isValidDateValue(activity.endTime)) {
+      return activity.endTime;
+    }
+
+    if (endTimeCandidate && isValidDateValue(endTimeCandidate)) {
+      return new Date(endTimeCandidate).toISOString();
+    }
+
+    return combineDateAndTimeInUtc(derivedDateFromStart, endTimeCandidate, timezone);
+  })();
 
   const normalizedStatus = (() => {
     const rawStatus = toTrimmedString((activity as { status?: string | null }).status);

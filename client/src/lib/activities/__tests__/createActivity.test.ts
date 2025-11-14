@@ -247,6 +247,37 @@ describe("normalizeActivityFromServer", () => {
     expect(normalized.waitlistedCount).toBe(0);
   });
 
+  it("normalizes start_at/end_at payloads with timezone offsets", () => {
+    const now = new Date().toISOString();
+    const startAt = "2024-09-01T06:30:00-04:00";
+    const endAt = "2024-09-01T08:00:00-04:00";
+    const activity = {
+      id: 11,
+      tripCalendarId: 777,
+      postedBy: "organizer",
+      name: "Sunrise tour",
+      description: "Start the day right",
+      start_at: startAt,
+      end_at: endAt,
+      location: "Harbor",
+      cost: null,
+      maxCapacity: null,
+      category: "outdoor",
+      status: "scheduled",
+      type: "SCHEDULED" as const,
+      createdAt: now,
+      updatedAt: now,
+      poster: baseUser,
+      invites: [],
+      acceptances: [],
+      comments: [],
+    } as any;
+
+    const normalized = normalizeActivityFromServer(activity);
+    expect(normalized.startTime).toBe(new Date(startAt).toISOString());
+    expect(normalized.endTime).toBe(new Date(endAt).toISOString());
+  });
+
 });
 
 describe("mapApiErrorToValidation", () => {
