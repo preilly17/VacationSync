@@ -26,6 +26,7 @@ describe("buildActivitySubmission", () => {
       tripCalendarId: 42,
       name: "Sunset Cruise",
       description: "Enjoy the bay",
+      startDate: "2025-07-04",
       location: "Pier 39",
       cost: 49.99,
       maxCapacity: 12,
@@ -85,6 +86,7 @@ describe("buildActivitySubmission", () => {
 
     expect(payload.startTime).toBeNull();
     expect(payload.endTime).toBeNull();
+    expect(payload.startDate).toBe("2025-07-04");
     expect(metadata.startTime).toBeNull();
     expect(metadata.endTime).toBeNull();
   });

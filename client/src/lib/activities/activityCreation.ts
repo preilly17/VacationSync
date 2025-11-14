@@ -167,6 +167,7 @@ export interface SubmitActivityOptions {
 const DATE_FIELD_KEYS = new Set([
   "startTime",
   "endTime",
+  "startDate",
 ]);
 
 const redactDates = (value: unknown): unknown => {

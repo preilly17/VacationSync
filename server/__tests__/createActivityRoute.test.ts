@@ -483,6 +483,76 @@ describe("POST /api/trips/:id/activities", () => {
     );
   });
 
+  it("accepts activities on the trip's final day when the UTC time spills into the next day", async () => {
+    const trip = {
+      id: 987,
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+      ],
+      createdBy: "organizer",
+      startDate: "2026-02-09",
+      endDate: "2026-02-13",
+    };
+
+    const requestBody = {
+      name: "Late Night Celebration",
+      startDate: "2026-02-13",
+      startTime: "2026-02-14T07:30:00.000Z",
+      category: "manual",
+      attendeeIds: ["organizer", "friend"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const createdActivity = {
+      id: 555,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      description: null,
+      startTime: requestBody.startTime,
+      endTime: null,
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: requestBody.category,
+      type: "SCHEDULED",
+    };
+
+    const createActivitySpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    jest
+      .spyOn(storage, "getTripActivities")
+      .mockResolvedValueOnce([createdActivity] as any);
+
+    jest.spyOn(storage, "createNotification").mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: createdActivity.id }));
+    expect(createActivitySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripCalendarId: trip.id,
+        name: requestBody.name,
+        startTime: requestBody.startTime,
+      }),
+      "organizer",
+      ["friend"],
+    );
+  });
+
   it("returns 400 when invitees are no longer trip members", async () => {
     const trip = {
       id: 789,

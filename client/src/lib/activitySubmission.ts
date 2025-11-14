@@ -35,6 +35,7 @@ interface ActivitySubmissionPayload {
   description: string | null;
   startTime: string | null;
   endTime: string | null;
+  startDate: string;
   location: string | null;
   cost: number | null;
   maxCapacity: number | null;
@@ -216,6 +217,7 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
       description: trimmedDescription,
       startTime: startDateTime ? startDateTime.toISOString() : null,
       endTime: endDateTime ? endDateTime.toISOString() : null,
+      startDate,
       location: trimmedLocation,
       cost: costResult.value,
       maxCapacity: capacityResult.value,
