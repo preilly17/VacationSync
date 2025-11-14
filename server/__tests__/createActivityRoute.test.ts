@@ -28,7 +28,11 @@ const findRouteHandler = (
 
   for (const layer of stack) {
     if (layer?.route?.path === path && layer.route?.methods?.[method]) {
-      return layer.route.stack[0].handle as RouteHandler;
+      const handlers = Array.isArray(layer.route.stack) ? layer.route.stack : [];
+      const target = handlers[handlers.length - 1]?.handle;
+      if (typeof target === "function") {
+        return target as RouteHandler;
+      }
     }
   }
 
@@ -1002,5 +1006,101 @@ describe("POST /api/trips/:id/activities", () => {
     } finally {
       process.env.NODE_ENV = originalEnv;
     }
+  });
+});
+
+describe("GET /api/trips/:tripId/proposals/activities", () => {
+  let app: express.Express;
+  let httpServer: import("http").Server;
+  let handler: RouteHandler;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    httpServer = setupRoutes(app);
+    handler = findRouteHandler(app, "/api/trips/:tripId/proposals/activities", "get");
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => resolve());
+    });
+  });
+
+  it("returns scheduled and proposed activities while filtering canceled entries", async () => {
+    const tripId = 42;
+    const userId = "member-123";
+
+    const trip = {
+      id: tripId,
+      members: [
+        { userId, user: { firstName: "Traveler" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+      ],
+    };
+
+    const scheduledActivity = {
+      id: 1,
+      tripCalendarId: tripId,
+      postedBy: userId,
+      name: "Museum Tour",
+      status: "active",
+      type: "SCHEDULED",
+      startTime: "2024-05-02T15:00:00.000Z",
+    };
+
+    const proposedActivity = {
+      id: 2,
+      tripCalendarId: tripId,
+      postedBy: "friend",
+      name: "Dinner",
+      status: "pending",
+      type: "PROPOSE",
+      startTime: null,
+    };
+
+    const canceledActivity = {
+      id: 3,
+      tripCalendarId: tripId,
+      postedBy: userId,
+      name: "Old Plan",
+      status: "canceled",
+      type: "SCHEDULED",
+      startTime: "2024-05-01T12:00:00.000Z",
+    };
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+    const getActivitiesSpy = jest
+      .spyOn(storage, "getTripActivities")
+      .mockResolvedValueOnce([
+        canceledActivity,
+        proposedActivity,
+        scheduledActivity,
+      ] as any);
+
+    const req: any = {
+      params: { tripId: String(tripId) },
+      query: {},
+      session: { userId },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(storage.getTripById).toHaveBeenCalledWith(tripId);
+    expect(getActivitiesSpy).toHaveBeenCalledWith(tripId, userId);
+    expect(res.status).not.toHaveBeenCalled();
+
+    expect(res.json).toHaveBeenCalledTimes(1);
+    const payload = res.json.mock.calls[0][0];
+    expect(Array.isArray(payload)).toBe(true);
+    expect(payload).toHaveLength(2);
+    expect(payload).toEqual([
+      expect.objectContaining({ id: scheduledActivity.id }),
+      expect.objectContaining({ id: proposedActivity.id }),
+    ]);
   });
 });

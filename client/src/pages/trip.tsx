@@ -102,6 +102,11 @@ import { WishListBoard } from "@/components/wish-list-board";
 import Proposals from "@/pages/proposals";
 import { ActivityDetailsDialog } from "@/components/activity-details-dialog";
 import { normalizeActivityTypeInput } from "@shared/activityValidation";
+import {
+  getNormalizedActivityType,
+  isProposalActivity,
+  isScheduledActivity,
+} from "@/lib/activities/activityType";
 import { updateActivityInviteStatus } from "@/lib/activities/updateInviteStatus";
 import type {
   TripWithDetails,
@@ -666,7 +671,7 @@ const activityOccursWithinRange = (
   const scheduling = activity as ActivityWithSchedulingDetails;
   const candidates = getActivityDateCandidates(scheduling);
 
-  if (candidates.length === 0 && activity.type === "PROPOSE" && proposalFallbackDate) {
+  if (candidates.length === 0 && isProposalActivity(activity) && proposalFallbackDate) {
     candidates.push(proposalFallbackDate);
   }
 
@@ -770,7 +775,7 @@ const activityMatchesDay = (
     return true;
   }
 
-  if (proposalFallbackDate && activity.type === "PROPOSE") {
+  if (proposalFallbackDate && isProposalActivity(activity)) {
     return isSameDay(proposalFallbackDate, day);
   }
 
@@ -872,7 +877,7 @@ function DayView({
               ?? null;
             const derivedStatus: ActivityInviteStatus = currentInvite?.status
               ?? (activity.isAccepted ? "accepted" : "pending");
-            const activityType = activity.type;
+            const activityType = getNormalizedActivityType(activity);
             const isProposal = activityType === "PROPOSE";
             const showPersonalProposalChip = Boolean(isPersonalView && isCreator && isProposal);
             const statusLabel = showPersonalProposalChip
@@ -2111,10 +2116,7 @@ export default function Trip() {
     const { people, types, statuses } = debouncedCalendarFilters;
 
     return activities.filter((activity) => {
-      const activityType = (activity.type ?? "").toString().toUpperCase();
-      const isScheduled = activityType === "SCHEDULED";
-
-      if (!isScheduled) {
+      if (!isScheduledActivity(activity)) {
         return false;
       }
 
@@ -3142,7 +3144,10 @@ export default function Trip() {
                                 activityWithScheduling.timeOptions ?? null,
                               );
                               const locationLabel = expandedActivity.location?.trim() || null;
-                              const statusLabel = expandedActivity.type === "PROPOSE" ? "PROPOSED" : "SCHEDULED";
+                              const statusLabel =
+                                getNormalizedActivityType(expandedActivity) === "PROPOSE"
+                                  ? "PROPOSED"
+                                  : "SCHEDULED";
                               const isCreator = Boolean(
                                 user?.id
                                   && (expandedActivity.postedBy === user.id

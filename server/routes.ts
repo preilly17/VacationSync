@@ -4357,7 +4357,10 @@ export function setupRoutes(app: Express) {
         }
 
         const combinedActivities = (await storage.getTripActivities(tripId, userId))
-          .filter((activity) => activity.type === "PROPOSE")
+          .filter((activity) => {
+            const status = (activity.status ?? "").toString().trim().toLowerCase();
+            return status !== "canceled" && status !== "cancelled";
+          })
           .sort((a, b) => {
             const toTimestamp = (value: unknown): number => {
               if (!value) return Number.POSITIVE_INFINITY;
