@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -53,6 +52,8 @@ import {
   XCircle,
   User as UserIcon,
   Activity,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import { TravelLoading } from "@/components/LoadingSpinners";
 import type {
@@ -318,9 +319,6 @@ function ProposalsPage({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
-  const [responseFilter, setResponseFilter] = useState<"needs-response" | "accepted">(
-    "needs-response",
-  );
 
   useTripRealtime(tripId, { enabled: !!tripId && isAuthenticated, userId: user?.id ?? null });
 
@@ -1160,31 +1158,26 @@ function ProposalsPage({
     [user],
   );
 
-  const applyActivityResponseFilter = useCallback(
-    (items: NormalizedActivityProposal[]): NormalizedActivityProposal[] => {
-      return filterActiveProposals(items).filter((proposal) => {
-        if (user?.id) {
-          const proposerId = proposal.proposedBy ?? proposal.proposer?.id ?? null;
-          if (proposerId === user.id) {
-            return true;
-          }
+  const getActivityResponseStatus = useCallback(
+    (proposal: NormalizedActivityProposal): ActivityInviteStatus => {
+      const inviteStatus = proposal.currentUserInvite?.status;
+      if (inviteStatus) {
+        return inviteStatus;
+      }
+
+      const viewerId = user?.id ?? null;
+      if (viewerId) {
+        const fallbackInvite = proposal.invites?.find(
+          (invite) => invite.userId === viewerId,
+        );
+        if (fallbackInvite) {
+          return fallbackInvite.status;
         }
+      }
 
-        const responseStatus: ActivityInviteStatus = proposal.currentUserInvite?.status
-          ?? (proposal.isAccepted ? "accepted" : "pending");
-
-        if (responseFilter === "needs-response") {
-          return responseStatus === "pending";
-        }
-
-        if (responseFilter === "accepted") {
-          return responseStatus === "accepted";
-        }
-
-        return false;
-      });
+      return proposal.isAccepted ? "accepted" : "pending";
     },
-    [responseFilter, user?.id],
+    [user?.id],
   );
 
   const getUserRanking = (
@@ -2514,9 +2507,35 @@ function ProposalsPage({
     () => filterActiveProposals(flightProposalsForCategories),
     [flightProposalsForCategories],
   );
-  const filteredActivityProposals = useMemo(
-    () => applyActivityResponseFilter(activityProposalsForCategories),
-    [applyActivityResponseFilter, activityProposalsForCategories],
+  const needsResponseActivityProposals = useMemo(
+    () =>
+      filterActiveProposals(activityProposalsForCategories).filter((proposal) => {
+        if (isMyProposal(proposal)) {
+          return false;
+        }
+
+        return getActivityResponseStatus(proposal) === "pending";
+      }),
+    [
+      activityProposalsForCategories,
+      getActivityResponseStatus,
+      isMyProposal,
+    ],
+  );
+  const acceptedActivityProposals = useMemo(
+    () =>
+      filterActiveProposals(activityProposalsForCategories).filter((proposal) => {
+        if (isMyProposal(proposal)) {
+          return false;
+        }
+
+        return getActivityResponseStatus(proposal) === "accepted";
+      }),
+    [
+      activityProposalsForCategories,
+      getActivityResponseStatus,
+      isMyProposal,
+    ],
   );
   const filteredRestaurantProposals = useMemo(
     () => filterActiveProposals(restaurantProposalsForCategories),
@@ -2585,10 +2604,8 @@ function ProposalsPage({
     () => filterActiveProposals(myFlightProposals),
     [myFlightProposals],
   );
-  const filteredMyActivityProposals = useMemo(
-    () => applyActivityResponseFilter(myActivityProposals),
-    [applyActivityResponseFilter, myActivityProposals],
-  );
+  const actionableActivityProposalCount =
+    needsResponseActivityProposals.length + acceptedActivityProposals.length;
   const filteredMyRestaurantProposals = useMemo(
     () => filterActiveProposals(myRestaurantProposals),
     [myRestaurantProposals],
@@ -2597,7 +2614,7 @@ function ProposalsPage({
   const totalMyProposals =
     filteredMyHotelProposals.length +
     filteredMyFlightProposals.length +
-    filteredMyActivityProposals.length +
+    activeMyActivityProposals.length +
     filteredMyRestaurantProposals.length;
 
   const totalActiveMyProposals =
@@ -2708,29 +2725,6 @@ function ProposalsPage({
         </p>
       </div>
 
-      <div className="flex md:justify-end" data-testid="proposals-filters">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3" data-testid="filter-proposals-response">
-          <span className="text-sm font-medium text-neutral-600">Show</span>
-          <ToggleGroup
-            type="single"
-            value={responseFilter}
-            onValueChange={(value) => {
-              if (value) {
-                setResponseFilter(value as typeof responseFilter);
-              }
-            }}
-            className="justify-start sm:justify-center"
-          >
-            <ToggleGroupItem value="needs-response" className="px-3 py-1 text-sm">
-              Needs response
-            </ToggleGroupItem>
-            <ToggleGroupItem value="accepted" className="px-3 py-1 text-sm">
-              Accepted
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-      </div>
-
       <Tabs
         value={activeTab}
         onValueChange={(value) => setActiveTab(value as ProposalTab)}
@@ -2755,7 +2749,7 @@ function ProposalsPage({
             </TabsTrigger>
             <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
               <MapPin className="w-4 h-4" />
-              Activities {filteredActivityProposals.length > 0 && `(${filteredActivityProposals.length})`}
+              Activities {actionableActivityProposalCount > 0 && `(${actionableActivityProposalCount})`}
             </TabsTrigger>
             <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
               <Utensils className="w-4 h-4" />
@@ -2798,16 +2792,16 @@ function ProposalsPage({
                   </section>
                 )}
 
-                {filteredMyActivityProposals.length > 0 && (
+                {activeMyActivityProposals.length > 0 && (
                   <section className="space-y-4" data-testid="section-my-activity-proposals">
                     <div className="flex items-center gap-2 text-neutral-700">
                       <MapPin className="w-4 h-4" />
                       <h3 className="text-lg font-semibold">
-                        Activity proposals ({filteredMyActivityProposals.length})
+                        Activity proposals ({activeMyActivityProposals.length})
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      {filteredMyActivityProposals.map((proposal) => (
+                      {activeMyActivityProposals.map((proposal) => (
                         <ActivityProposalCard key={proposal.id} proposal={proposal} />
                       ))}
                     </div>
@@ -2894,14 +2888,60 @@ function ProposalsPage({
                 onRetry={() => void refetchActivityProposals()}
                 testId="error-activity-proposals"
               />
-            ) : filteredActivityProposals.length > 0 ? (
-              <div data-testid="list-activity-proposals">
-                {filteredActivityProposals.map((proposal) => (
-                  <ActivityProposalCard key={proposal.id} proposal={proposal} />
-                ))}
-              </div>
             ) : activeActivityProposalsForCategories.length > 0 ? (
-              <FilteredEmptyState type="Activity" />
+              <div className="space-y-8" data-testid="list-activity-proposals">
+                <section
+                  className="space-y-4"
+                  data-testid="section-activity-needs-response"
+                >
+                  <div className="flex items-center gap-2 text-neutral-700">
+                    <AlertCircle className="w-4 h-4" />
+                    <h3 className="text-lg font-semibold">
+                      Needs your response
+                      {needsResponseActivityProposals.length > 0
+                        ? ` (${needsResponseActivityProposals.length})`
+                        : ""}
+                    </h3>
+                  </div>
+                  {needsResponseActivityProposals.length > 0 ? (
+                    <div className="space-y-4">
+                      {needsResponseActivityProposals.map((proposal) => (
+                        <ActivityProposalCard key={proposal.id} proposal={proposal} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500">
+                      You're all caught up. No votes needed right now.
+                    </p>
+                  )}
+                </section>
+
+                <section
+                  className="space-y-4"
+                  data-testid="section-activity-accepted"
+                >
+                  <div className="flex items-center gap-2 text-neutral-700">
+                    <CheckCircle className="w-4 h-4" />
+                    <h3 className="text-lg font-semibold">
+                      You're in
+                      {acceptedActivityProposals.length > 0
+                        ? ` (${acceptedActivityProposals.length})`
+                        : ""}
+                    </h3>
+                  </div>
+                  {acceptedActivityProposals.length > 0 ? (
+                    <div className="space-y-4">
+                      {acceptedActivityProposals.map((proposal) => (
+                        <ActivityProposalCard key={proposal.id} proposal={proposal} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-neutral-500">
+                      Thumbs up an activity to have it appear on your calendar once it’s scheduled.
+                    </p>
+                  )}
+                </section>
+              </div>
             ) : (
               <EmptyState type="Activity" icon={MapPin} />
             )}
