@@ -752,6 +752,7 @@ export function AddActivityModal({
     enabled: tripId > 0,
     onValidationError: handleValidationError,
     onSuccess: handleSuccess,
+    timezone: resolvedTimezone,
   });
 
   const updateAttendeeSelection = useCallback(

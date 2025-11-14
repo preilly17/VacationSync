@@ -17,6 +17,7 @@ describe("buildActivitySubmission", () => {
     category: "entertainment",
     attendeeIds: ["abc", "def"],
     type: "SCHEDULED" as const,
+    timezone: "UTC" as const,
   };
 
   it("normalizes values into a payload the API accepts", () => {
@@ -74,6 +75,18 @@ describe("buildActivitySubmission", () => {
     });
 
     expect(payload.endTime).toBeNull();
+  });
+
+  it("converts local times into UTC using the provided timezone", () => {
+    const { payload } = buildActivitySubmission({
+      ...baseInput,
+      timezone: "America/New_York",
+      startTime: "09:30",
+      endTime: "11:00",
+    });
+
+    expect(payload.startTime).toBe("2025-07-04T13:30:00.000Z");
+    expect(payload.endTime).toBe("2025-07-04T15:00:00.000Z");
   });
 
   it("allows proposals without a start time", () => {

@@ -71,6 +71,7 @@ describe("prepareActivitySubmission", () => {
     const { payload, sanitizedValues } = prepareActivitySubmission({
       tripId: 42,
       values: baseValues,
+      timezone: "UTC",
     });
 
     expect(payload).toMatchObject({
@@ -91,6 +92,7 @@ describe("prepareActivitySubmission", () => {
       prepareActivitySubmission({
         tripId: 42,
         values: { ...baseValues, startTime: "" },
+        timezone: "UTC",
       }),
     ).toThrow(ActivitySubmissionError);
   });

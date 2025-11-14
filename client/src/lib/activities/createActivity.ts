@@ -14,6 +14,7 @@ import {
   type ActivityValidationError,
 } from "./activityCreation";
 import { CLIENT_VALIDATION_FALLBACK_MESSAGE } from "./clientValidation";
+import { combineDateAndTimeInUtc } from "@/lib/timezone";
 import { normalizeActivityTypeInput } from "@shared/activityValidation";
 import type { ActivityType, ActivityWithDetails, TripMember, User, ActivityInviteStatus } from "@shared/schema";
 
@@ -49,88 +50,6 @@ const isValidDateValue = (value: unknown): boolean => {
   }
 
   return false;
-};
-
-const getTimeZoneOffsetInMilliseconds = (instant: Date, timeZone: string): number => {
-  try {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone,
-      hour12: false,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-
-    const parts = formatter.formatToParts(instant);
-    const lookup: Record<string, number> = {};
-
-    for (const part of parts) {
-      if (part.type === "literal") continue;
-      const parsed = Number.parseInt(part.value, 10);
-      if (!Number.isNaN(parsed)) {
-        lookup[part.type] = parsed;
-      }
-    }
-
-    const year = lookup.year ?? instant.getUTCFullYear();
-    const month = (lookup.month ?? instant.getUTCMonth() + 1) - 1;
-    const day = lookup.day ?? instant.getUTCDate();
-    const hour = lookup.hour ?? instant.getUTCHours();
-    const minute = lookup.minute ?? instant.getUTCMinutes();
-    const second = lookup.second ?? instant.getUTCSeconds();
-
-    const asUtc = Date.UTC(year, month, day, hour, minute, second);
-    return asUtc - instant.getTime();
-  } catch (error) {
-    console.warn("Failed to determine timezone offset", { error, timeZone });
-    return 0;
-  }
-};
-
-const combineDateAndTimeInUtc = (
-  date: string | null | undefined,
-  time: string | null | undefined,
-  timeZone: string,
-): string | null => {
-  if (!date || !time) {
-    return null;
-  }
-
-  const [yearStr, monthStr, dayStr] = date.split("-");
-  const [hourStr = "0", minuteStr = "0"] = time.split(":");
-
-  const year = Number.parseInt(yearStr ?? "", 10);
-  const month = Number.parseInt(monthStr ?? "", 10);
-  const day = Number.parseInt(dayStr ?? "", 10);
-  const hour = Number.parseInt(hourStr ?? "", 10);
-  const minute = Number.parseInt(minuteStr ?? "", 10);
-
-  if (
-    Number.isNaN(year)
-    || Number.isNaN(month)
-    || Number.isNaN(day)
-    || Number.isNaN(hour)
-    || Number.isNaN(minute)
-  ) {
-    return null;
-  }
-
-  try {
-    const provisional = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
-    const offset = getTimeZoneOffsetInMilliseconds(provisional, timeZone);
-    return new Date(provisional.getTime() - offset).toISOString();
-  } catch (error) {
-    console.warn("Failed to convert activity time to UTC", {
-      error,
-      date,
-      time,
-      timeZone,
-    });
-    return `${date}T${time}:00.000Z`;
-  }
 };
 
 const normalizeLegacyActivity = (activity: ActivityWithDetails): ActivityWithDetails => {
@@ -324,6 +243,7 @@ export interface UseCreateActivityOptions {
   onSuccess?: (activity: ActivityWithDetails, values: ActivityCreateFormValues) => void;
   onValidationError?: (error: ActivityValidationError) => void;
   enabled?: boolean;
+  timezone?: string | null;
 }
 
 type InternalActivityCreateVariables = ActivityCreateFormValues & {
@@ -382,6 +302,7 @@ export function useCreateActivity({
   onSuccess,
   onValidationError,
   enabled = true,
+  timezone,
 }: UseCreateActivityOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -611,7 +532,7 @@ export function useCreateActivity({
 
       let submission;
       try {
-        submission = prepareActivitySubmission({ tripId, values: normalizedValues });
+        submission = prepareActivitySubmission({ tripId, values: normalizedValues, timezone });
       } catch (error) {
         console.error("Failed to prepare activity submission:", error);
 

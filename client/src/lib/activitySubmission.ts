@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import type { ActivityType } from "@shared/schema";
+import { combineDateAndTimeInUtc, resolveTripTimezone } from "./timezone";
 import {
   normalizeAttendeeIds,
   normalizeCategoryInput,
@@ -118,15 +119,6 @@ const toTimeString = (value: string | Date, label: string): string => {
   return trimmed;
 };
 
-const buildDateTime = (date: Date, time: string, label: string): Date => {
-  const isoDate = format(date, "yyyy-MM-dd");
-  const combined = new Date(`${isoDate}T${time}`);
-  if (Number.isNaN(combined.getTime())) {
-    throw new Error(`${label} must be a valid date/time.`);
-  }
-  return combined;
-};
-
 export function buildActivitySubmission(input: BaseActivitySubmissionInput): ActivitySubmissionResult {
   const tripCalendarId = Number(input.tripId);
   if (!Number.isInteger(tripCalendarId) || tripCalendarId <= 0) {
@@ -173,10 +165,18 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
     throw new Error(START_TIME_REQUIRED_FOR_END_MESSAGE);
   }
 
-  const startDateTime = startTimeString ? buildDateTime(baseDate, startTimeString, "Start time") : null;
-  const endDateTime = endTimeString && startTimeString
-    ? buildDateTime(baseDate, endTimeString, "End time")
+  const timezone = resolveTripTimezone({ tripTimezone: input.timezone ?? null });
+  const startDate = format(baseDate, "yyyy-MM-dd");
+
+  const startDateTimeIso = startTimeString
+    ? combineDateAndTimeInUtc(startDate, startTimeString, timezone)
     : null;
+  const endDateTimeIso = endTimeString && startTimeString
+    ? combineDateAndTimeInUtc(startDate, endTimeString, timezone)
+    : null;
+
+  const startDateTime = startDateTimeIso ? new Date(startDateTimeIso) : null;
+  const endDateTime = endDateTimeIso ? new Date(endDateTimeIso) : null;
 
   if (endDateTime && startDateTime && endDateTime <= startDateTime) {
     throw new Error(END_TIME_AFTER_START_MESSAGE);
@@ -208,15 +208,13 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
   const trimmedLocation = location.length > 0 ? location : null;
 
   const type = input.type === "PROPOSE" ? "PROPOSE" : "SCHEDULED";
-  const startDate = format(baseDate, "yyyy-MM-dd");
-
   return {
     payload: {
       tripCalendarId,
       name,
       description: trimmedDescription,
-      startTime: startDateTime ? startDateTime.toISOString() : null,
-      endTime: endDateTime ? endDateTime.toISOString() : null,
+      startTime: startDateTimeIso,
+      endTime: endDateTimeIso,
       startDate,
       location: trimmedLocation,
       cost: costResult.value,

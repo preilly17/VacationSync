@@ -40,6 +40,7 @@ import {
 } from "@/lib/activities/queryKeys";
 import { parseTripDateToLocal, toDateInputValue } from "@/lib/date";
 import { buildManualMemberOptions } from "@/lib/activities/manualMemberOptions";
+import { resolveTripTimezone } from "@/lib/timezone";
 
 const MANUAL_ACTIVITY_CATEGORY = "manual";
 
@@ -150,6 +151,13 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const currentUser = _user ?? null;
   const currentUserId = currentUser?.id ?? undefined;
+  const resolvedTimezone = useMemo(() => {
+    const tripWithTimezone = trip as (TripWithDetails & { timezone?: string | null }) | null | undefined;
+    return resolveTripTimezone({
+      tripTimezone: tripWithTimezone?.timezone ?? null,
+      userTimezone: currentUser?.timezone ?? null,
+    });
+  }, [trip, currentUser?.timezone]);
   const initialTripStart = parseTripDateToLocal(trip?.startDate);
 
   const [manualFormData, setManualFormData] = useState<{
@@ -446,6 +454,7 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       setManualFieldErrors({});
       closeManualForm();
     },
+    timezone: resolvedTimezone,
   });
 
   const isSavingManualActivity = manualCreateActivity.isPending;
