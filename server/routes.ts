@@ -1388,6 +1388,59 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.delete(
+    "/api/trips/:tripId/members/:memberId",
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        const memberIdParam =
+          typeof req.params.memberId === "string" ? req.params.memberId : "";
+
+        if (!Number.isFinite(tripId) || !memberIdParam) {
+          return res
+            .status(400)
+            .json({ message: "Invalid member removal request" });
+        }
+
+        const userId = getRequestUserId(req);
+
+        if (!userId) {
+          return res.status(401).json({ message: "Unauthorized" });
+        }
+
+        const updatedTrip = await storage.removeTripMember(
+          tripId,
+          memberIdParam,
+          userId,
+        );
+
+        res.json(updatedTrip);
+      } catch (error: unknown) {
+        console.error("Error removing trip member:", error);
+        if (error instanceof Error) {
+          if (error.message === "Trip not found") {
+            return res.status(404).json({ message: error.message });
+          }
+          if (error.message === "Member ID is required") {
+            return res.status(400).json({ message: error.message });
+          }
+          if (error.message === "Only the trip creator can remove members") {
+            return res.status(403).json({ message: error.message });
+          }
+          if (error.message === "Trip creator cannot be removed") {
+            return res.status(400).json({ message: error.message });
+          }
+          if (error.message === "Trip member not found") {
+            return res.status(404).json({ message: error.message });
+          }
+        }
+
+        res.status(500).json({ message: "Failed to remove trip member" });
+      }
+    },
+  );
+
   app.put("/api/trips/:id", async (req: any, res) => {
     let userId = getRequestUserId(req);
     let tripId: number | null = null;

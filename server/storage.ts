@@ -3404,6 +3404,50 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
+  async removeTripMember(
+    tripId: number,
+    memberId: string,
+    requestedById: string,
+  ): Promise<TripWithDetails> {
+    const normalizedMemberId = memberId.trim();
+    if (!normalizedMemberId) {
+      throw new Error("Member ID is required");
+    }
+
+    const trip = await this.fetchTripWithCreatorById(tripId);
+    if (!trip) {
+      throw new Error("Trip not found");
+    }
+
+    if (trip.created_by !== requestedById) {
+      throw new Error("Only the trip creator can remove members");
+    }
+
+    if (normalizedMemberId === trip.created_by) {
+      throw new Error("Trip creator cannot be removed");
+    }
+
+    const { rowCount } = await query(
+      `
+      DELETE FROM trip_members
+      WHERE trip_calendar_id = $1 AND user_id = $2
+      RETURNING id
+      `,
+      [tripId, normalizedMemberId],
+    );
+
+    if (!rowCount) {
+      throw new Error("Trip member not found");
+    }
+
+    const updatedTrip = await this.getTripById(tripId);
+    if (!updatedTrip) {
+      throw new Error("Trip not found");
+    }
+
+    return updatedTrip;
+  }
+
   async deleteTrip(tripId: number, userId: string): Promise<void> {
     const trip = await this.fetchTripWithCreatorById(tripId);
     if (!trip) {
