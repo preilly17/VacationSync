@@ -269,6 +269,76 @@ describe("POST /api/trips/:id/activities", () => {
     expect(inviteArgument).not.toContain("organizer");
   });
 
+  it("accepts camelCase startAt and endAt fields", async () => {
+    const trip = {
+      id: 613,
+      createdBy: "organizer",
+      members: [
+        { userId: "organizer", user: { firstName: "Org" } },
+        { userId: "friend", user: { firstName: "Friend" } },
+      ],
+    };
+
+    const requestBody = {
+      name: "Morning Kayak",
+      startAt: "2024-07-04T09:00:00-05:00",
+      endAt: "2024-07-04T11:00:00-05:00",
+      activityDate: "2024-07-04",
+      category: "outdoor",
+      attendees: ["organizer", "friend"],
+    };
+
+    const req: any = {
+      params: { id: String(trip.id) },
+      body: requestBody,
+      session: { userId: "organizer" },
+      isAuthenticated: jest.fn(() => true),
+    };
+
+    const res = createMockResponse();
+
+    jest.spyOn(storage, "getTripById").mockResolvedValueOnce(trip as any);
+
+    const createdActivity = {
+      id: 556,
+      tripCalendarId: trip.id,
+      name: requestBody.name,
+      description: null,
+      startTime: new Date(requestBody.startAt).toISOString(),
+      endTime: new Date(requestBody.endAt).toISOString(),
+      location: null,
+      cost: null,
+      maxCapacity: null,
+      category: "outdoor",
+      type: "SCHEDULED" as const,
+    };
+
+    const createActivitySpy = jest
+      .spyOn(storage, "createActivityWithInvites")
+      .mockResolvedValueOnce(createdActivity as any);
+
+    jest.spyOn(storage, "getTripActivities").mockResolvedValueOnce([createdActivity] as any);
+    jest.spyOn(storage, "createNotification").mockResolvedValue(undefined as any);
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(createActivitySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripCalendarId: trip.id,
+        name: requestBody.name,
+        startTime: new Date(requestBody.startAt).toISOString(),
+        endTime: new Date(requestBody.endAt).toISOString(),
+        category: "outdoor",
+      }),
+      "organizer",
+      expect.arrayContaining(["friend"]),
+    );
+
+    const inviteArgument = createActivitySpy.mock.calls[0]?.[2] as string[];
+    expect(inviteArgument).not.toContain("organizer");
+  });
+
   it("returns 400 with invite details when a constraint violation occurs", async () => {
     const trip = {
       id: 123,

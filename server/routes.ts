@@ -2454,9 +2454,35 @@ export function setupRoutes(app: Express) {
     ensureField("cost", [base.cost_per_person, base.price_per_person, base.pricePerPerson, base.price, base.amount]);
     ensureField("maxCapacity", [base.max_participants, base.max_attendees, base.maxGuests, base.capacity]);
     ensureField("category", [base.activity_category, base.category_value]);
-    ensureField("startTime", [base.start_time, base.start, base.startDateTime, base.start_date_time, base.starts_at, base.startsAt]);
-    ensureField("endTime", [base.end_time, base.end, base.endDateTime, base.end_date_time, base.ends_at, base.endsAt]);
-    ensureField("startDate", [base.start_date, base.date, base.activity_date, base.event_date]);
+    ensureField("startTime", [
+      base.start_time,
+      base.start,
+      base.startDateTime,
+      base.start_date_time,
+      base.starts_at,
+      base.startsAt,
+      base.start_at,
+      base.startAt,
+    ]);
+    ensureField("endTime", [
+      base.end_time,
+      base.end,
+      base.endDateTime,
+      base.end_date_time,
+      base.ends_at,
+      base.endsAt,
+      base.end_at,
+      base.endAt,
+    ]);
+    ensureField("startDate", [
+      base.start_date,
+      base.startDate,
+      base.date,
+      base.activity_date,
+      base.activityDate,
+      base.event_date,
+      base.eventDate,
+    ]);
 
     if (!Array.isArray(normalized.attendeeIds) || normalized.attendeeIds.length === 0) {
       const attendeeCandidates = [
