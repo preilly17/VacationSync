@@ -1,4 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
 import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from "react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -1452,8 +1457,13 @@ export default function Trip() {
     return base.trim();
   }, [id]);
 
+  const tripDetailQueryKey = useMemo(
+    () => [`/api/trips/${routeIdWithoutQuery || id}`],
+    [routeIdWithoutQuery, id],
+  );
+
   const { data: trip, isLoading: tripLoading, error: tripError } = useQuery<TripWithDetails>({
-    queryKey: [`/api/trips/${routeIdWithoutQuery || id}`],
+    queryKey: tripDetailQueryKey,
     enabled: !!id && isAuthenticated,
     retry: (failureCount, error) => {
       if (isUnauthorizedError(error)) {
@@ -3948,6 +3958,7 @@ export default function Trip() {
             open={showMembersModal}
             onOpenChange={setShowMembersModal}
             trip={trip}
+            tripQueryKey={tripDetailQueryKey}
           />
         )}
 
@@ -7357,10 +7368,16 @@ function RestaurantBooking({
 }
 
 // Members Modal Component
-function MembersModal({ open, onOpenChange, trip }: {
+function MembersModal({
+  open,
+  onOpenChange,
+  trip,
+  tripQueryKey,
+}: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trip: TripWithDetails;
+  tripQueryKey: QueryKey;
 }) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -7385,10 +7402,7 @@ function MembersModal({ open, onOpenChange, trip }: {
       return (await response.json()) as TripWithDetails;
     },
     onSuccess: (updatedTrip, removedMember) => {
-      queryClient.setQueryData<TripWithDetails>(
-        ["/api/trips", trip.id.toString()],
-        updatedTrip,
-      );
+      queryClient.setQueryData<TripWithDetails>(tripQueryKey, updatedTrip);
       queryClient.setQueryData<TripWithDetails[] | undefined>(
         ["/api/trips"],
         (existing) => {
@@ -7402,6 +7416,7 @@ function MembersModal({ open, onOpenChange, trip }: {
         },
       );
 
+      queryClient.invalidateQueries({ queryKey: tripQueryKey });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
 
       toast({
