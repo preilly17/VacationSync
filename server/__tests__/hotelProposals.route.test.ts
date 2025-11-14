@@ -209,6 +209,78 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     );
   });
 
+  it("creates a hotel before proposing when given a non-numeric hotel identifier", async () => {
+    const checkInDate = new Date("2024-07-10T15:00:00Z").toISOString();
+    const checkOutDate = new Date("2024-07-12T11:00:00Z").toISOString();
+
+    createHotelMock.mockResolvedValueOnce({
+      id: 201,
+      tripId: 10,
+    });
+
+    ensureHotelProposalMock.mockResolvedValueOnce({
+      proposal: {
+        id: 552,
+        tripId: 10,
+        hotelName: "Downtown Loft",
+      },
+      wasCreated: true,
+      stayId: 201,
+    });
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: {
+        id: "manual-stay-123",
+        hotelName: "Downtown Loft",
+        address: "123 Center St",
+        city: "Chicago",
+        country: "USA",
+        checkInDate,
+        checkOutDate,
+        guestCount: 2,
+        roomCount: 1,
+        status: "tentative",
+        currency: "USD",
+      },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(createHotelMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripId: 10,
+        hotelName: "Downtown Loft",
+        address: "123 Center St",
+        city: "Chicago",
+        country: "USA",
+      }),
+      "test-user",
+    );
+
+    expect(ensureHotelProposalMock).toHaveBeenCalledWith({
+      hotelId: 201,
+      tripId: 10,
+      currentUserId: "test-user",
+    });
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 552,
+        tripId: 10,
+        hotelName: "Downtown Loft",
+      }),
+    );
+  });
+
   it("returns a 400 with details when the saved stay is missing required data", async () => {
     ensureHotelProposalMock.mockRejectedValueOnce(
       new Error(

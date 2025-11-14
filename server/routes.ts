@@ -3902,12 +3902,8 @@ export function setupRoutes(app: Express) {
         return null;
       };
 
-      const hasHotelIdentifier = (value: number | string | null): value is number | string => {
-        if (typeof value === 'number') {
-          return Number.isFinite(value);
-        }
-
-        return typeof value === 'string' && value.length > 0;
+      const hasHotelIdentifier = (value: number | string | null): value is number => {
+        return typeof value === 'number' && Number.isFinite(value);
       };
 
       let hotelId = normalizeHotelId(rawHotelId);
