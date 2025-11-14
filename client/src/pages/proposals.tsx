@@ -68,6 +68,7 @@ import type {
 } from "@shared/schema";
 import { sortActivitiesByStartTime } from "@/lib/activities/activityCreation";
 import { updateActivityInviteStatus } from "@/lib/activities/updateInviteStatus";
+import { getNormalizedActivityType, isProposalActivity } from "@/lib/activities/activityType";
 
 type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
 
@@ -1094,7 +1095,7 @@ function ProposalsPage({
       return normalizedStatus;
     }
 
-    const normalizedType = typeof activity.type === "string" ? activity.type.toUpperCase() : "";
+    const normalizedType = getNormalizedActivityType(activity);
     if (normalizedType === "PROPOSE") {
       return "proposed";
     }
@@ -1374,9 +1375,9 @@ function ProposalsPage({
     const endTime = proposal.endTime ? new Date(proposal.endTime) : null;
     const createdAt = proposal.createdAt ? new Date(proposal.createdAt) : null;
     const isCanceled = isCanceledStatus(proposal.status);
-    const isProposalActivity = proposal.type === "PROPOSE";
+    const isProposalActivityFlag = isProposalActivity(proposal);
     const canCancel = isMyProposal(proposal) && !isCanceled;
-    const canConvert = isMyProposal(proposal) && !isCanceled && isProposalActivity;
+    const canConvert = isMyProposal(proposal) && !isCanceled && isProposalActivityFlag;
     const hasStartTime = Boolean(proposal.startTime);
     const isConverting =
       convertActivityProposalMutation.isPending
@@ -1437,7 +1438,7 @@ function ProposalsPage({
     const viewerCanRespond = !isMyProposal(proposal);
     const isAcceptedVote = derivedStatus === "accepted";
     const isDeclinedVote = derivedStatus === "declined";
-    const responseHeading = isProposalActivity ? "Your vote" : "Your RSVP";
+    const responseHeading = isProposalActivityFlag ? "Your vote" : "Your RSVP";
 
     const submitAction = (action: ActivityRsvpAction) => {
       const targetStatus = actionToStatusMap[action];
@@ -1584,7 +1585,7 @@ function ProposalsPage({
                 </Badge>
                 <span>{responseHeading}</span>
               </div>
-              {isProposalActivity ? (
+              {isProposalActivityFlag ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     size="sm"

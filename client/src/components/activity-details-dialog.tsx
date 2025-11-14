@@ -25,6 +25,7 @@ import { format } from "date-fns";
 import type { ActivityInviteStatus, ActivityWithDetails } from "@shared/schema";
 import type { User } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { getNormalizedActivityType } from "@/lib/activities/activityType";
 
 interface ActivityDetailsDialogProps {
   activity: ActivityWithDetails | null;
@@ -127,7 +128,7 @@ export function ActivityDetailsDialog({
   const isRsvpClosed = Boolean(
     rsvpCloseDate && !Number.isNaN(rsvpCloseDate.getTime()) && rsvpCloseDate < now,
   );
-  const activityType = activity?.type ?? "SCHEDULED";
+  const activityType = getNormalizedActivityType(activity);
   const isProposal = activityType === "PROPOSE";
   const capacityFull = Boolean(
     !isProposal && activity?.maxCapacity != null

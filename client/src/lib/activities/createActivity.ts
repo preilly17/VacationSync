@@ -53,10 +53,9 @@ const isValidDateValue = (value: unknown): boolean => {
 };
 
 const normalizeLegacyActivity = (activity: ActivityWithDetails): ActivityWithDetails => {
-  const rawType = activity?.type;
+  const rawType = typeof activity?.type === "string" ? activity.type.trim() : "";
   const derivedType = mapStatusToLegacyType((activity as { status?: unknown }).status);
-  const normalizedType =
-    typeof rawType === "string" && rawType.trim().length > 0 ? (rawType as ActivityType) : derivedType;
+  const normalizedType = normalizeActivityTypeInput(rawType, derivedType);
 
   const invites: ActivityWithDetails["invites"] = Array.isArray(activity.invites)
     ? activity.invites

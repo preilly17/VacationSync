@@ -15,6 +15,11 @@ import {
 } from "date-fns";
 import type { ActivityWithDetails, TripWithDetails } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import {
+  getNormalizedActivityType,
+  isProposalActivity,
+  isScheduledActivity,
+} from "@/lib/activities/activityType";
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { parseTripDateToLocal } from "@/lib/date";
 
@@ -73,27 +78,22 @@ interface LayoutState {
 }
 
 const isScheduledForCalendar = (activity: ActivityWithDetails): boolean => {
-  const rawType = (activity.type ?? "").toString().trim().toUpperCase();
-  if (rawType === "PROPOSE") {
+  if (isProposalActivity(activity)) {
     return false;
   }
 
-  if (rawType === "SCHEDULED") {
-    return true;
+  if (!isScheduledActivity(activity)) {
+    return false;
   }
 
   const rawStatus = (activity as { status?: string | null }).status;
   const normalizedStatus = typeof rawStatus === "string" ? rawStatus.trim().toLowerCase() : "";
 
-  if (["proposed", "pending", "idea", "draft"].includes(normalizedStatus)) {
+  if (["canceled", "cancelled"].includes(normalizedStatus)) {
     return false;
   }
 
-  if (["active", "scheduled", "in-progress", "completed"].includes(normalizedStatus)) {
-    return true;
-  }
-
-  return rawType.length === 0 && normalizedStatus.length === 0;
+  return true;
 };
 
 const MODE_CONFIG: Record<DisplayMode, { gap: number }> = {
@@ -734,7 +734,7 @@ function DayActivityList({
       >
         {activities.map((activity, index) => {
           const activityWithOptions = activity as ActivityWithOptionalTimeOptions;
-          const activityType = activity.type;
+          const activityType = getNormalizedActivityType(activity);
           const isProposal = activityType === "PROPOSE";
           const isCreator = Boolean(
             currentUserId && (activity.postedBy === currentUserId || activity.poster?.id === currentUserId),

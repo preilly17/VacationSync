@@ -32,6 +32,7 @@ import {
   proposalActivitiesQueryKey as buildProposalActivitiesKey,
 } from "@/lib/activities/queryKeys";
 import { parseTripDateToLocal } from "@/lib/date";
+import { isScheduledActivity } from "@/lib/activities/activityType";
 
 const getParticipantDisplayName = (user: UserType) => {
   const first = user.firstName?.trim();
@@ -272,8 +273,7 @@ export default function MemberSchedule() {
 
     return activities
       .filter((activity) => {
-        const isScheduled = (activity.type ?? "").toString().toUpperCase() === "SCHEDULED";
-        if (!isScheduled) {
+        if (!isScheduledActivity(activity)) {
           return false;
         }
 
