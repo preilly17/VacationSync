@@ -595,13 +595,20 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     <>
       <Card>
         <CardHeader className="border-b border-border/60 pb-4">
-          <CardTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5" />
-            Discover Activities
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Search for activities and experiences at your destination
-          </p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                Discover Activities
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Search for activities and experiences at your destination
+              </p>
+            </div>
+            <Button variant="outline" onClick={openManualForm} className="w-full sm:w-auto">
+              Add activity
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Location Search */}
@@ -725,16 +732,13 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
       <div className="relative mt-6">
         <div className="rounded-[28px] bg-gradient-to-br from-sky-50 via-white to-violet-50 p-[1px] shadow-[0_26px_60px_-34px_rgba(30,64,175,0.45)]">
           <div className="rounded-[26px] border border-white/70 bg-white shadow-md">
-            <div className="flex flex-col gap-3 border-b border-neutral-100 px-6 py-6 sm:flex-row sm:items-start sm:justify-between">
-              <div>
+            <div className="border-b border-neutral-100 px-6 py-6">
+              <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-neutral-900">Manually Added Activities</h3>
                 <p className="text-sm text-muted-foreground">
                   Keep track of activities you booked outside of VacationSync.
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={openManualForm} className="sm:shrink-0">
-                Add activity
-              </Button>
             </div>
             <div className="px-6 pb-6 pt-4">
               {manualActivitiesLoading ? (
@@ -792,9 +796,9 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
                   <p className="text-sm text-neutral-600">
                     Log activities you booked elsewhere to keep everyone aligned.
                   </p>
-                  <Button variant="outline" onClick={openManualForm}>
-                    Add activity manually
-                  </Button>
+                  <p className="text-xs text-neutral-500">
+                    Use the Add activity button above to add your plans manually.
+                  </p>
                 </div>
               )}
             </div>
