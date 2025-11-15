@@ -5560,11 +5560,6 @@ function FlightCoordination({
     <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-semibold">Manually Added Flights</h3>
-        {manualFlights.length > 0 ? (
-          <Button variant="outline" size="sm" onClick={openManualFlightForm}>
-            Add flight
-          </Button>
-        ) : null}
       </div>
 
       {manualFlights.length === 0 ? (
@@ -5576,7 +5571,6 @@ function FlightCoordination({
                 Log flights you've booked elsewhere so the group can stay in sync.
               </p>
             </div>
-            <Button onClick={openManualFlightForm}>Add a flight</Button>
           </CardContent>
         </Card>
       ) : (
