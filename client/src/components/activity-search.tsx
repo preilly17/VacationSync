@@ -593,14 +593,11 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
 
   return (
     <>
-      <Card>
-        <CardHeader className="border-b border-border/60 pb-4">
+      <div className="space-y-6">
+        <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Discover Activities
-              </CardTitle>
+              <h2 className="text-xl font-semibold text-neutral-900">Discover Activities</h2>
               <p className="text-sm text-muted-foreground">
                 Search for activities and experiences at your destination
               </p>
@@ -609,76 +606,97 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
               Add activity
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Location Search */}
-          <div className="space-y-2">
-            <Label>Search Destination</Label>
-            <form
-              className="flex gap-2"
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSearch();
-              }}
-            >
-              <div className="flex-1">
-                <SmartLocationSearch
-                  id="discover-activities-destination"
-                  placeholder={`Search activities in ${trip?.destination || 'any destination'}`}
-                  value={locationSearch}
-                  onLocationSelect={handleLocationSelect}
-                  ref={locationInputRef}
-                />
-              </div>
-              <Button type="submit" disabled={!locationSearch.trim()}>
-                <Search className="w-4 h-4 mr-2" />
-                Search Activities
-              </Button>
-            </form>
-            {trip?.destination && !hasSearched && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setLocationSearch(trip.destination);
-                  setHasSearched(false);
-                  focusLocationInput();
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Search results</p>
+              <p className="mt-1 text-2xl font-semibold text-neutral-900">{activities?.length ?? 0}</p>
+            </div>
+            <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Manual activities</p>
+              <p className="mt-1 text-2xl font-semibold text-neutral-900">{manualActivities.length}</p>
+            </div>
+            <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Destination</p>
+              <p className="mt-1 text-lg font-semibold text-neutral-900">{trip?.destination ?? "Anywhere"}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Search Activities</h3>
+            <p className="text-sm text-muted-foreground">
+              Explore things to do and share ideas with your group.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Search Destination</Label>
+              <form
+                className="flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleSearch();
                 }}
-                className="mt-2"
               >
-                <MapPin className="w-4 h-4 mr-2" />
-                Search in {trip.destination}
+                <div className="flex-1">
+                  <SmartLocationSearch
+                    id="discover-activities-destination"
+                    placeholder={`Search activities in ${trip?.destination || 'any destination'}`}
+                    value={locationSearch}
+                    onLocationSelect={handleLocationSelect}
+                    ref={locationInputRef}
+                  />
+                </div>
+                <Button type="submit" disabled={!locationSearch.trim()}>
+                  <Search className="w-4 h-4 mr-2" />
+                  Search Activities
+                </Button>
+              </form>
+              {trip?.destination && !hasSearched && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLocationSearch(trip.destination);
+                    setHasSearched(false);
+                    focusLocationInput();
+                  }}
+                  className="mt-2"
+                >
+                  <MapPin className="w-4 h-4 mr-2" />
+                  Search in {trip.destination}
+                </Button>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center">
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={handleViatorLink}
+                disabled={!canBuildExternalLink}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Search on Viator
               </Button>
-            )}
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full sm:w-auto"
+                onClick={handleAirbnbLink}
+                disabled={!canBuildExternalLink}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Search on Airbnb Experiences
+              </Button>
+            </div>
           </div>
 
-          {/* Search Filters */}
-          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center">
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full sm:w-auto"
-              onClick={handleViatorLink}
-              disabled={!canBuildExternalLink}
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Search on Viator
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              className="w-full sm:w-auto"
-              onClick={handleAirbnbLink}
-              disabled={!canBuildExternalLink}
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Search on Airbnb Experiences
-            </Button>
-          </div>
-
-          {/* Search Filters */}
           {hasSearched && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
               <Input
                 placeholder="Search activities..."
                 value={searchTerm}
@@ -726,159 +744,148 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
               </Select>
             </div>
           )}
-        </CardContent>
-      </Card>
 
-      <div className="relative mt-6">
-        <div className="rounded-[28px] bg-gradient-to-br from-sky-50 via-white to-violet-50 p-[1px] shadow-[0_26px_60px_-34px_rgba(30,64,175,0.45)]">
-          <div className="rounded-[26px] border border-white/70 bg-white shadow-md">
-            <div className="border-b border-neutral-100 px-6 py-6">
-              <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-neutral-900">Manually Added Activities</h3>
-                <p className="text-sm text-muted-foreground">
-                  Keep track of activities you booked outside of VacationSync.
-                </p>
-              </div>
-            </div>
-            <div className="px-6 pb-6 pt-4">
-              {manualActivitiesLoading ? (
-                <div className="flex justify-center py-6">
-                  <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
-                </div>
-              ) : hasManualActivities ? (
-                <div className="grid gap-4">
-                  {sortedManualActivities.map((activity) => {
-                    const metadata = parseManualActivityDescription(activity.description);
-                    const startLabel = activity.startTime
-                      ? (() => {
-                          const date = new Date(activity.startTime as string);
-                          return Number.isNaN(date.getTime())
-                            ? "Date TBD"
-                            : format(date, "MMM d, yyyy • h:mm a");
-                        })()
-                      : "Date TBD";
-                    const priceLabel =
-                      typeof activity.cost === "number"
-                        ? formatCurrency(activity.cost, {
-                            currency: metadata.currency,
-                            fallback: "",
-                          })
-                        : "";
-
-                    return (
-                      <div
-                        key={activity.id}
-                        className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
-                      >
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
-                            <p className="text-sm text-neutral-600">
-                              {activity.location || "Location TBD"}
-                            </p>
-                            <p className="text-sm text-neutral-500">{startLabel}</p>
-                          </div>
-                          <div className="flex flex-col items-start gap-2 sm:items-end">
-                            <Badge variant="outline" className="uppercase tracking-wide">
-                              {metadata.statusLabel}
-                            </Badge>
-                            {priceLabel ? (
-                              <span className="text-sm font-medium text-neutral-900">{priceLabel}</span>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-neutral-200 bg-white p-6 text-center">
-                  <p className="text-sm text-neutral-600">
-                    Log activities you booked elsewhere to keep everyone aligned.
-                  </p>
-                  <p className="text-xs text-neutral-500">
-                    Use the Add activity button above to add your plans manually.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Activities Results */}
-      {hasSearched ? (
-        activitiesLoading ? (
-          <Card className="relative overflow-hidden trip-themed-card mt-4">
-            <CardContent className="text-center py-12">
-              <TravelLoading variant="compass" size="lg" text="Discovering amazing activities..." />
-            </CardContent>
-          </Card>
-        ) : activities && activities.length > 0 ? (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {activities.map((activity) => (
-              <Card
-                key={activity.id}
-                className="relative overflow-hidden trip-themed-card hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col"
-                onClick={() => {
-                  setSelectedActivity(activity);
-                  setShowDetailsDialog(true);
-                }}
-              >
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base lg:text-lg leading-tight">
-                    {activity.name}
-                  </CardTitle>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3 text-sm text-neutral-600">
-                      <div className="flex items-center">
-                        <Star className="w-4 h-4 text-yellow-400 mr-1" />
-                        <span>{activity.rating}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <Clock className="w-4 h-4 mr-1" />
-                        <span className="truncate">{activity.duration}</span>
-                      </div>
-                    </div>
-                    {activity.provider && (
-                      <Badge variant="outline" className="text-xs">
-                        {activity.provider}
-                      </Badge>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-0 flex-1 flex flex-col">
-                  <p className="text-sm text-neutral-600 mb-4 line-clamp-3 flex-1">
-                    {activity.description}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center text-lg font-semibold text-green-600">
-                      <DollarSign className="w-4 h-4" />
-                      <span>{activity.currency || '$'}{activity.price}</span>
-                    </div>
-                    <Button size="sm" variant="outline">
-                      <ExternalLink className="w-4 h-4 mr-1" />
-                      View Details
-                    </Button>
-                  </div>
+          {hasSearched ? (
+            activitiesLoading ? (
+              <Card className="relative overflow-hidden trip-themed-card">
+                <CardContent className="text-center py-12">
+                  <TravelLoading variant="compass" size="lg" text="Discovering amazing activities..." />
                 </CardContent>
               </Card>
-            ))}
+            ) : activities && activities.length > 0 ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {activities.map((activity) => (
+                  <Card
+                    key={activity.id}
+                    className="relative overflow-hidden trip-themed-card hover:shadow-lg transition-shadow cursor-pointer h-full flex flex-col"
+                    onClick={() => {
+                      setSelectedActivity(activity);
+                      setShowDetailsDialog(true);
+                    }}
+                  >
+                    <CardHeader className="pb-3">
+                      <CardTitle className="text-base lg:text-lg leading-tight">
+                        {activity.name}
+                      </CardTitle>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3 text-sm text-neutral-600">
+                          <div className="flex items-center">
+                            <Star className="w-4 h-4 text-yellow-400 mr-1" />
+                            <span>{activity.rating}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <Clock className="w-4 h-4 mr-1" />
+                            <span className="truncate">{activity.duration}</span>
+                          </div>
+                        </div>
+                        {activity.provider && (
+                          <Badge variant="outline" className="text-xs">
+                            {activity.provider}
+                          </Badge>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0 flex-1 flex flex-col">
+                      <p className="text-sm text-neutral-600 mb-4 line-clamp-3 flex-1">
+                        {activity.description}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center text-lg font-semibold text-green-600">
+                          <DollarSign className="w-4 h-4" />
+                          <span>{activity.currency || "$"}{activity.price}</span>
+                        </div>
+                        <Button size="sm" variant="outline">
+                          <ExternalLink className="w-4 h-4 mr-1" />
+                          View Details
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="relative overflow-hidden trip-themed-card">
+                <CardContent className="text-center py-12">
+                  <h3 className="text-xl font-bold text-neutral-900 mb-2">No Activities Found</h3>
+                  <p className="text-neutral-600 mb-4">
+                    No activities were found for "{submittedLocation || locationSearch}". Try a different destination or broader search terms.
+                  </p>
+                  <Button variant="outline" onClick={() => setHasSearched(false)}>
+                    Try Different Location
+                  </Button>
+                </CardContent>
+              </Card>
+            )
+          ) : null}
+        </section>
+
+        <section className="space-y-4 rounded-lg border border-border/60 bg-white p-6">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Manually Added Activities</h3>
+            <p className="text-sm text-muted-foreground">
+              Keep track of activities you booked outside of VacationSync.
+            </p>
           </div>
-        ) : (
-          <Card className="relative overflow-hidden trip-themed-card mt-4">
-            <CardContent className="text-center py-12">
-              <h3 className="text-xl font-bold text-neutral-900 mb-2">No Activities Found</h3>
-              <p className="text-neutral-600 mb-4">
-                No activities were found for "{submittedLocation || locationSearch}". Try a different destination or broader search terms.
+          {manualActivitiesLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
+            </div>
+          ) : manualActivities.length > 0 ? (
+            <div className="grid gap-4">
+              {sortedManualActivities.map((activity) => {
+                const metadata = parseManualActivityDescription(activity.description);
+                const startLabel = activity.startTime
+                  ? (() => {
+                      const date = new Date(activity.startTime as string);
+                      return Number.isNaN(date.getTime())
+                        ? "Date TBD"
+                        : format(date, "MMM d, yyyy • h:mm a");
+                    })()
+                  : "Date TBD";
+                const priceLabel =
+                  typeof activity.cost === "number"
+                    ? formatCurrency(activity.cost, {
+                        currency: metadata.currency,
+                        fallback: "",
+                      })
+                    : "";
+
+                return (
+                  <div
+                    key={activity.id}
+                    className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                  >
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-base font-semibold text-neutral-900">{activity.name}</p>
+                        <p className="text-sm text-neutral-600">{activity.location || "Location TBD"}</p>
+                        <p className="text-sm text-neutral-500">{startLabel}</p>
+                      </div>
+                      <div className="flex flex-col items-start gap-2 sm:items-end">
+                        <Badge variant="outline" className="uppercase tracking-wide">
+                          {metadata.statusLabel}
+                        </Badge>
+                        {priceLabel ? (
+                          <span className="text-sm font-medium text-neutral-900">{priceLabel}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-neutral-200 bg-white p-6 text-center">
+              <p className="text-sm text-neutral-600">
+                Log activities you booked elsewhere to keep everyone aligned.
               </p>
-              <Button variant="outline" onClick={() => setHasSearched(false)}>
-                Try Different Location
-              </Button>
-            </CardContent>
-          </Card>
-        )
-      ) : null}
+              <p className="text-xs text-neutral-500">
+                Use the Add activity button above to add your plans manually.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
 
       <Dialog
         open={isManualModalOpen}
