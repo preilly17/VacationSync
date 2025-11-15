@@ -5585,9 +5585,9 @@ function FlightCoordination({
               Add confirmed flights so everyone knows how you're getting there.
             </p>
           </div>
-        ) : (
-          <Accordion type="multiple" className="space-y-3">
-          {manualFlights.map((flight) => {
+          ) : (
+            <Accordion type="multiple" className="space-y-3">
+              {manualFlights.map((flight) => {
             const formattedDepartureLabel = flight.departureCode
               ? `${flight.departureAirport ?? flight.departureCode} (${flight.departureCode})`
               : flight.departureAirport || flight.departureCode || "TBD";
@@ -5743,11 +5743,11 @@ function FlightCoordination({
                   </div>
                 </AccordionContent>
               </AccordionItem>
-            );
-          })}
-        </Accordion>
-      )}
-    </div>
+              );
+            })}
+            </Accordion>
+          )}
+      </section>
 
       <Dialog
         open={isManualFlightFormOpen}
@@ -7124,7 +7124,7 @@ function HotelBooking({
               })}
             </Accordion>
           )}
-        </div>
+        </section>
 
         <Dialog
           open={isManualHotelFormOpen}
