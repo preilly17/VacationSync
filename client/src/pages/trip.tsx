@@ -5224,6 +5224,18 @@ function FlightCoordination({
 
       <Card>
         <CardContent className="space-y-6 p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold text-neutral-900">Search Flights</h3>
+              <p className="text-sm text-muted-foreground">
+                Find options for your trip or log flights you’ve already booked.
+              </p>
+            </div>
+            <Button variant="outline" onClick={openManualFlightForm} className="sm:w-auto">
+              Add flight
+            </Button>
+          </div>
+
           <form
             className="space-y-6"
             onSubmit={(event) => {
