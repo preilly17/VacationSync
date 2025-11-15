@@ -1569,20 +1569,30 @@ const mapActivityWithDetails = (
   const activity = mapActivity(row);
   const proposerId = normalizeUserId(activity.postedBy);
   const viewerId = normalizeUserId(row.currentUserId);
+  const invites = Array.isArray(row.invites) ? row.invites : [];
+  const acceptances = Array.isArray(row.acceptances) ? row.acceptances : [];
+  const comments = Array.isArray(row.comments) ? row.comments : [];
+  const currentUserInvite = row.currentUserInvite ?? null;
+  const acceptedCount = acceptances.length;
+  const pendingCount = invites.filter((invite) => invite.status === "pending").length;
+  const declinedCount = invites.filter((invite) => invite.status === "declined").length;
+  const waitlistedCount = invites.filter((invite) => invite.status === "waitlisted").length;
+  const isAccepted = row.isAccepted ?? undefined;
+  const hasResponded = row.hasResponded ?? undefined;
 
   return {
     ...activity,
     poster: row.poster,
-    invites: row.invites,
-    acceptances: row.acceptances,
-    comments: row.comments,
-    acceptedCount: row.acceptances.length,
-    pendingCount: row.invites.filter((invite) => invite.status === "pending").length,
-    declinedCount: row.invites.filter((invite) => invite.status === "declined").length,
-    waitlistedCount: row.invites.filter((invite) => invite.status === "waitlisted").length,
-    currentUserInvite: row.currentUserInvite,
-    isAccepted: row.isAccepted,
-    hasResponded: row.hasResponded,
+    invites,
+    acceptances,
+    comments,
+    acceptedCount,
+    pendingCount,
+    declinedCount,
+    waitlistedCount,
+    currentUserInvite,
+    isAccepted,
+    hasResponded,
     permissions: {
       canCancel: Boolean(proposerId && viewerId && proposerId === viewerId),
     },
