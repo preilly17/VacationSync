@@ -5214,35 +5214,44 @@ function FlightCoordination({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Flight Coordination</h2>
-          <p className="text-gray-600">Coordinate flights with your group</p>
-        </div>
-        {/* Top-right Manual Entry button removed per requirements */}
-      </div>
-
-      <Card>
-        <CardContent className="space-y-6 p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <h3 className="text-lg font-semibold text-neutral-900">Search Flights</h3>
-              <p className="text-sm text-muted-foreground">
-                Find options for your trip or log flights you’ve already booked.
-              </p>
-            </div>
-            <Button variant="outline" onClick={openManualFlightForm} className="sm:w-auto">
-              Add flight
-            </Button>
+      <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-neutral-900">Flight Coordination</h2>
+            <p className="text-gray-600">Coordinate flights with your group</p>
           </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tracked flights</p>
+            <p className="mt-1 text-2xl font-semibold text-neutral-900">{flights.length}</p>
+          </div>
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Manual entries</p>
+            <p className="mt-1 text-2xl font-semibold text-neutral-900">{manualFlights.length}</p>
+          </div>
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Latest search results</p>
+            <p className="mt-1 text-2xl font-semibold text-neutral-900">{searchResults.length}</p>
+          </div>
+        </div>
+      </section>
 
-          <form
-            className="space-y-6"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleFlightSearch();
-            }}
-          >
+      <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
+        <div className="space-y-1">
+          <h3 className="text-lg font-semibold text-neutral-900">Search Flights</h3>
+          <p className="text-sm text-muted-foreground">
+            Find options for your trip or log flights you’ve already booked.
+          </p>
+        </div>
+
+        <form
+          className="space-y-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleFlightSearch();
+          }}
+        >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-2 md:col-span-2 lg:col-span-3">
                 <Label>Trip Type</Label>
@@ -5554,27 +5563,30 @@ function FlightCoordination({
               <p className="text-sm text-gray-600">Search for flights to start coordinating with your group.</p>
             </div>
           ) : null}
-      </CardContent>
-    </Card>
+      </section>
 
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <h3 className="text-lg font-semibold">Manually Added Flights</h3>
-      </div>
+      <section className="space-y-4 rounded-lg border border-border/60 bg-white p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Manually Added Flights</h3>
+            <p className="text-sm text-muted-foreground">
+              Log flights you've booked elsewhere so the group can stay in sync.
+            </p>
+          </div>
+          <Button variant="outline" onClick={openManualFlightForm} className="sm:w-auto">
+            Add flight
+          </Button>
+        </div>
 
-      {manualFlights.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
-              <p className="text-base font-medium text-neutral-900">No manual flights yet</p>
-              <p className="text-sm text-muted-foreground">
-                Log flights you've booked elsewhere so the group can stay in sync.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Accordion type="multiple" className="space-y-3">
+        {manualFlights.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-6 text-center">
+            <p className="text-base font-medium text-neutral-900">No manual flights yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Add confirmed flights so everyone knows how you're getting there.
+            </p>
+          </div>
+        ) : (
+          <Accordion type="multiple" className="space-y-3">
           {manualFlights.map((flight) => {
             const formattedDepartureLabel = flight.departureCode
               ? `${flight.departureAirport ?? flight.departureCode} (${flight.departureCode})`
@@ -6846,62 +6858,82 @@ function HotelBooking({
 
   return (
     <>
-      <div className="space-y-8">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-1.5">
-            <h2 className="text-2xl font-semibold text-neutral-900">Stays</h2>
-            <p className="text-sm text-muted-foreground">
-              Keep your hotel plans, proposals, and confirmations easy for everyone to find.
-            </p>
+      <div className="space-y-6">
+        <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1.5">
+              <h2 className="text-2xl font-semibold text-neutral-900">Stays</h2>
+              <p className="text-sm text-muted-foreground">
+                Keep your hotel plans, proposals, and confirmations easy for everyone to find.
+              </p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button className="inline-flex items-center gap-2 px-4">
+                  <Plus className="h-4 w-4" />
+                  Add stay
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={focusSearchPanel}>
+                  <Search className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Search hotels
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={openManualForm}>
+                  <Building className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Add manually
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="inline-flex items-center gap-2 px-4">
-                <Plus className="h-4 w-4" />
-                Add stay
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={focusSearchPanel}>
-                <Search className="mr-2 h-4 w-4 text-muted-foreground" />
-                Search hotels
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={openManualForm}>
-                <Building className="mr-2 h-4 w-4 text-muted-foreground" />
-                Add manually
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tracked stays</p>
+              <p className="mt-1 text-2xl font-semibold text-neutral-900">{hotels.length}</p>
+            </div>
+            <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Manual entries</p>
+              <p className="mt-1 text-2xl font-semibold text-neutral-900">{manualHotels.length}</p>
+            </div>
+            <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group proposals</p>
+              <p className="mt-1 text-2xl font-semibold text-neutral-900">{hotelProposals.length}</p>
+            </div>
+          </div>
+        </section>
 
-        <HotelSearchPanel
-          ref={searchPanelRef}
-          tripId={tripId}
-          trip={
-            trip
-              ? {
-                  id: trip.id,
-                  name: trip.name,
-                  destination: trip.destination,
-                  startDate: trip.startDate,
-                  endDate: trip.endDate,
-                  shareCode: trip.shareCode,
-                  createdBy: trip.createdBy,
-                  createdAt: trip.createdAt ?? undefined,
-                }
-              : null
-          }
-          onLogHotelManually={openManualForm}
-          onShareHotelWithGroup={shareHotelWithGroup}
-          storeBookingIntent={storeBookingIntent}
-          hotelProposalsCount={hotelProposals.length}
-          toast={toast}
-        />
+        <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Search Hotels</h3>
+            <p className="text-sm text-muted-foreground">Discover stays to share with your group.</p>
+          </div>
+          <HotelSearchPanel
+            ref={searchPanelRef}
+            tripId={tripId}
+            trip={
+              trip
+                ? {
+                    id: trip.id,
+                    name: trip.name,
+                    destination: trip.destination,
+                    startDate: trip.startDate,
+                    endDate: trip.endDate,
+                    shareCode: trip.shareCode,
+                    createdBy: trip.createdBy,
+                    createdAt: trip.createdAt ?? undefined,
+                  }
+                : null
+            }
+            onLogHotelManually={openManualForm}
+            onShareHotelWithGroup={shareHotelWithGroup}
+            storeBookingIntent={storeBookingIntent}
+            hotelProposalsCount={hotelProposals.length}
+            toast={toast}
+          />
+        </section>
 
-        <div className="border-t border-border/60" />
-
-        <div className="space-y-4">
+        <section className="space-y-4 rounded-lg border border-border/60 bg-white p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <h3 className="text-lg font-semibold text-neutral-900">Manually Added Stays</h3>
@@ -6909,27 +6941,23 @@ function HotelBooking({
                 Reservations you’ve tracked outside of the hotel search results.
               </p>
             </div>
-            {manualHotels.length > 0 ? (
-              <Button variant="outline" onClick={openManualForm} className="sm:w-auto">
-                Add stay
-              </Button>
-            ) : null}
+            <Button variant="outline" onClick={openManualForm} className="sm:w-auto">
+              Add stay
+            </Button>
           </div>
 
           {manualHotels.length === 0 ? (
-            <Card className="border border-dashed border-border/60 bg-muted/20">
-              <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-1">
-                  <p className="text-base font-medium text-neutral-900">No saved stays yet</p>
-                  <p className="text-sm text-muted-foreground">
-                    Log confirmation details for hotels you’ve already booked.
-                  </p>
-                </div>
-                <Button variant="outline" onClick={openManualForm} className="sm:w-auto">
-                  Add a stay
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-6 text-center sm:text-left">
+              <div className="space-y-1">
+                <p className="text-base font-medium text-neutral-900">No saved stays yet</p>
+                <p className="text-sm text-muted-foreground">
+                  Log confirmation details for hotels you’ve already booked.
+                </p>
+              </div>
+              <Button variant="outline" onClick={openManualForm} className="mt-4 w-full sm:w-auto">
+                Add a stay
+              </Button>
+            </div>
           ) : (
             <Accordion type="multiple" className="space-y-3">
               {manualHotels.map((hotel) => {
@@ -7299,90 +7327,127 @@ function RestaurantBooking({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Restaurant Reservations</h2>
-          <p className="text-gray-600">
-            Make dining plans for your group and keep everything in one place.
-          </p>
+      <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-neutral-900">Restaurant Reservations</h2>
+            <p className="text-gray-600">
+              Make dining plans for your group and keep everything in one place.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" onClick={() => setManualDialogOpen(true)}>
+              Log restaurant manually
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => setManualDialogOpen(true)}>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tracked restaurants</p>
+            <p className="mt-1 text-2xl font-semibold text-neutral-900">{restaurants.length}</p>
+          </div>
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">City focus</p>
+            <p className="mt-1 text-lg font-semibold text-neutral-900">{resolvedCity || "Anywhere"}</p>
+          </div>
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Country</p>
+            <p className="mt-1 text-lg font-semibold text-neutral-900">{resolvedCountry || "Any locale"}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
+        <div className="space-y-1">
+          <h3 className="text-lg font-semibold text-neutral-900">Search Restaurants</h3>
+          <p className="text-sm text-muted-foreground">Discover and track dining plans for your trip.</p>
+        </div>
+        <RestaurantSearchPanel
+          ref={searchPanelRef}
+          tripId={tripId}
+          trip={trip}
+          user={user ?? undefined}
+          onBookingLinkClick={handleBookingLinkClick}
+          onLogRestaurantManually={() => setManualDialogOpen(true)}
+          onExternalSearch={handleExternalRestaurantSearch}
+        />
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-border/60 bg-white p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Tracked Restaurants</h3>
+            <p className="text-sm text-muted-foreground">
+              Keep tabs on reservations you’ve added for the group.
+            </p>
+          </div>
+          <Button type="button" variant="outline" onClick={() => setManualDialogOpen(true)} className="sm:w-auto">
             Log restaurant manually
           </Button>
         </div>
-      </div>
 
-      <RestaurantSearchPanel
-        ref={searchPanelRef}
-        tripId={tripId}
-        trip={trip}
-        user={user ?? undefined}
-        onBookingLinkClick={handleBookingLinkClick}
-        onLogRestaurantManually={() => setManualDialogOpen(true)}
-        onExternalSearch={handleExternalRestaurantSearch}
-      />
+        {hasRestaurants ? (
+          <div className="space-y-4">
+            {restaurants.slice(0, 3).map((restaurant) => {
+              const displayName = (restaurant as any).restaurantName ?? restaurant.name ?? "Restaurant";
+              const displayAddress = restaurant.address ?? (restaurant as any).location ?? "";
+              const reservationStatusRaw = restaurant.reservationStatus ?? "pending";
+              const reservationStatusLabel = reservationStatusRaw
+                .split("_")
+                .filter(Boolean)
+                .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                .join(" ") || "Pending";
+              const reservationDate = restaurant.reservationDate
+                ? format(new Date(restaurant.reservationDate), "MMM dd")
+                : null;
+              const reservationTime = restaurant.reservationTime ?? (restaurant as any).reservation_start_time ?? "";
 
-      {hasRestaurants && (
-        <Card>
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              {restaurants.slice(0, 3).map((restaurant) => {
-                const displayName = (restaurant as any).restaurantName ?? restaurant.name ?? "Restaurant";
-                const displayAddress = restaurant.address ?? (restaurant as any).location ?? "";
-                const reservationStatusRaw = restaurant.reservationStatus ?? "pending";
-                const reservationStatusLabel = reservationStatusRaw
-                  .split("_")
-                  .filter(Boolean)
-                  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                  .join(" ") || "Pending";
-                const reservationDate = restaurant.reservationDate
-                  ? format(new Date(restaurant.reservationDate), "MMM dd")
-                  : null;
-                const reservationTime = restaurant.reservationTime ?? (restaurant as any).reservation_start_time ?? "";
-
-                return (
-                  <div
-                    key={restaurant.id}
-                    className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
-                        <Utensils className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-neutral-900">{displayName}</p>
-                        {displayAddress && (
-                          <p className="text-sm text-gray-600">{displayAddress}</p>
-                        )}
-                        {reservationDate && (
-                          <p className="text-sm text-gray-500">
-                            {reservationDate}
-                            {reservationTime ? ` at ${reservationTime}` : ""}
-                          </p>
-                        )}
-                      </div>
+              return (
+                <div
+                  key={restaurant.id}
+                  className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                      <Utensils className="h-5 w-5" />
                     </div>
-                    <div className="text-left sm:text-right">
-                      <Badge variant="outline" className="uppercase tracking-wide">
-                        {reservationStatusLabel}
-                      </Badge>
-                      {restaurant.partySize && (
-                        <p className="mt-1 text-sm text-gray-500">{restaurant.partySize} people</p>
+                    <div>
+                      <p className="font-semibold text-neutral-900">{displayName}</p>
+                      {displayAddress && <p className="text-sm text-gray-600">{displayAddress}</p>}
+                      {reservationDate && (
+                        <p className="text-sm text-gray-500">
+                          {reservationDate}
+                          {reservationTime ? ` at ${reservationTime}` : ""}
+                        </p>
                       )}
                     </div>
                   </div>
-                );
-              })}
-              {restaurants.length > 3 && (
-                <p className="text-sm text-gray-500 text-center">
-                  +{restaurants.length - 3} more restaurants
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  <div className="text-left sm:text-right">
+                    <Badge variant="outline" className="uppercase tracking-wide">
+                      {reservationStatusLabel}
+                    </Badge>
+                    {restaurant.partySize && (
+                      <p className="mt-1 text-sm text-gray-500">{restaurant.partySize} people</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {restaurants.length > 3 && (
+              <p className="text-sm text-gray-500 text-center">
+                +{restaurants.length - 3} more restaurants
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 p-6 text-center">
+            <p className="text-base font-medium text-neutral-900">No restaurants tracked yet</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Log reservations you’ve made so everyone knows where you’re dining.
+            </p>
+          </div>
+        )}
+      </section>
 
       <RestaurantManualDialog
         tripId={tripId}
