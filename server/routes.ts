@@ -25,10 +25,14 @@ import {
   insertWishListIdeaSchema,
   insertWishListCommentSchema,
   activityInviteStatusSchema,
+  type ActivityAcceptance,
+  type ActivityComment,
+  type ActivityInvite,
   type ActivityInviteStatus,
   type ActivityType,
   type ActivityWithDetails,
   type InsertHotel,
+  type User,
 } from "@shared/schema";
 import { ATTENDEE_REQUIRED_MESSAGE, validateActivityInput } from "@shared/activityValidation";
 import { z } from "zod";
@@ -2806,9 +2810,66 @@ export function setupRoutes(app: Express) {
       const activities = await storage.getTripActivities(tripId, userId);
       const createdActivity = activities.find((item) => item.id === activity.id);
 
+      const responsePayload =
+        createdActivity
+        ?? (mode === "PROPOSE"
+          ? (() => {
+              const posterMember = trip.members.find((member) => member.userId === userId);
+              const fallbackPoster: User =
+                posterMember?.user
+                ?? ({
+                  id: userId,
+                  email: "",
+                  username: null,
+                  firstName: null,
+                  lastName: null,
+                  phoneNumber: null,
+                  passwordHash: null,
+                  profileImageUrl: null,
+                  cashAppUsername: null,
+                  cashAppUsernameLegacy: null,
+                  cashAppPhone: null,
+                  cashAppPhoneLegacy: null,
+                  venmoUsername: null,
+                  venmoPhone: null,
+                  timezone: null,
+                  defaultLocation: null,
+                  defaultLocationCode: null,
+                  defaultCity: null,
+                  defaultCountry: null,
+                  authProvider: null,
+                  notificationPreferences: null,
+                  hasSeenHomeOnboarding: false,
+                  hasSeenTripOnboarding: false,
+                  createdAt: activity.createdAt ?? new Date().toISOString(),
+                  updatedAt:
+                    activity.updatedAt
+                    ?? activity.createdAt
+                    ?? new Date().toISOString(),
+                } satisfies User);
+
+              return {
+                ...activity,
+                type: "PROPOSE" as ActivityWithDetails["type"],
+                poster: fallbackPoster,
+                invites: [] as (ActivityInvite & { user: User })[],
+                acceptances: [] as (ActivityAcceptance & { user: User })[],
+                comments: [] as (ActivityComment & { user: User })[],
+                acceptedCount: 0,
+                pendingCount: 0,
+                declinedCount: 0,
+                waitlistedCount: 0,
+                currentUserInvite: null,
+                isAccepted: undefined,
+                hasResponded: undefined,
+                permissions: { canCancel: true },
+              } satisfies ActivityWithDetails;
+            })()
+          : activity);
+
       trackActivityCreationMetric({ mode, outcome: "success" });
 
-      res.status(201).json(createdActivity ?? activity);
+      res.status(201).json(responsePayload);
     } catch (error: unknown) {
       if (error instanceof ActivityInviteMembershipError) {
         const { invalidInviteeIds, attemptedInviteeIds: invalidAttemptedInviteeIds } = error;
