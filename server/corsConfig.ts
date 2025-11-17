@@ -6,6 +6,7 @@ export const CORS_ALLOWED_HEADERS = [
   "X-Request-ID",
   "X-Filename",
   "X-Content-Type",
+  "X-Trip-Share-Code",
 ];
 
 export const createCorsOptions = (
