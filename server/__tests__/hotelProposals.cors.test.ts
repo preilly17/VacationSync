@@ -152,6 +152,7 @@ describe("Hotel proposal CORS", () => {
     const allowHeaders = response.headers["access-control-allow-headers"];
     expect(typeof allowHeaders).toBe("string");
     expect(allowHeaders.toLowerCase()).toContain("authorization");
+    expect(allowHeaders.toLowerCase()).toContain("x-activities-version");
   });
 
   it("mirrors the origin header on hotel proposal POST", async () => {
