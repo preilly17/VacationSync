@@ -7826,6 +7826,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     const client = await pool.connect();
     let wasCreated = false;
+    let proposalId: number | null = null;
+    const pendingNotifications: InsertNotification[] = [];
     try {
       await client.query("BEGIN");
 
@@ -8087,6 +8089,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       }
 
       wasCreated = syncResult.wasCreated;
+      proposalId = syncResult.proposalId;
 
       if (wasCreated) {
         const { rows: memberRows } = await client.query<{ user_id: string }>(
@@ -8168,37 +8171,49 @@ ${selectUserColumns("participant_user", "participant_user_")}
               ? `${proposerName} shared ${stayLabel} (${checkInLabel} – ${checkOutLabel}).`
               : `${proposerName} shared ${stayLabel}.`;
 
-          await Promise.all(
-            Array.from(recipientIds).map((userId) =>
-              this.createNotification(
-                {
-                  userId,
-                  type: "proposal-hotel-created",
-                  title,
-                  message,
-                  tripId,
-                },
-                client,
-              ),
-            ),
-          );
+          for (const userId of recipientIds) {
+            pendingNotifications.push({
+              userId,
+              type: "proposal-hotel-created",
+              title,
+              message,
+              tripId,
+            });
+          }
         }
       }
 
       await client.query("COMMIT");
-
-      const proposal = await this.getHotelProposalById(syncResult.proposalId, currentUserId);
-      if (!proposal) {
-        throw new Error("Failed to load hotel proposal");
-      }
-
-      return { proposal, wasCreated, stayId: hotelId };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
     } finally {
       client.release();
     }
+
+    if (proposalId == null) {
+      throw new Error("Failed to load hotel proposal");
+    }
+
+    const proposal = await this.getHotelProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Failed to load hotel proposal");
+    }
+
+    if (pendingNotifications.length > 0) {
+      try {
+        await Promise.all(
+          pendingNotifications.map((notification) => this.createNotification(notification)),
+        );
+      } catch (notificationError) {
+        console.error(
+          "Failed to send hotel proposal notifications:",
+          notificationError,
+        );
+      }
+    }
+
+    return { proposal, wasCreated, stayId: hotelId };
   }
 
   private async syncFlightProposalFromFlightRow(

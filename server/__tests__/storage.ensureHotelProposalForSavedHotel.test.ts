@@ -247,23 +247,6 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
           },
         ],
       })
-      // Notification insert for trip owner
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 500,
-            user_id: "owner@example.com",
-            type: "proposal-hotel-created",
-            title: "Host User proposed Lakeside Lodge",
-            message: "Host User shared Lakeside Lodge.",
-            trip_id: 10,
-            activity_id: null,
-            expense_id: null,
-            is_read: false,
-            created_at: now,
-          },
-        ],
-      })
       // COMMIT
       .mockResolvedValueOnce({ rows: [] });
 
@@ -327,7 +310,24 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
         ],
       })
       // Fetch proposal rankings (none yet)
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] })
+      // Notification insert for trip owner
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 500,
+            user_id: "owner@example.com",
+            type: "proposal-hotel-created",
+            title: "Host User proposed Lakeside Lodge",
+            message: "Host User shared Lakeside Lodge.",
+            trip_id: 10,
+            activity_id: null,
+            expense_id: null,
+            is_read: false,
+            created_at: now,
+          },
+        ],
+      });
 
     const result = await storage.ensureHotelProposalForSavedHotel({
       hotelId: 55,
@@ -434,23 +434,6 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
           },
         ],
       })
-      // Notification insert
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 888,
-            user_id: "owner@example.com",
-            type: "proposal-hotel-created",
-            title: "Casey Traveler proposed Downtown Suites",
-            message: "Casey Traveler shared Downtown Suites (Jun 4 – Jun 5).",
-            trip_id: 10,
-            activity_id: null,
-            expense_id: null,
-            is_read: false,
-            created_at: now,
-          },
-        ],
-      })
       // COMMIT
       .mockResolvedValueOnce({ rows: [] });
 
@@ -514,7 +497,24 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
         ],
       })
       // Fetch rankings (none)
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] })
+      // Notification insert
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 888,
+            user_id: "owner@example.com",
+            type: "proposal-hotel-created",
+            title: "Casey Traveler proposed Downtown Suites",
+            message: "Casey Traveler shared Downtown Suites (Jun 4 – Jun 5).",
+            trip_id: 10,
+            activity_id: null,
+            expense_id: null,
+            is_read: false,
+            created_at: now,
+          },
+        ],
+      });
 
     const result = await storage.ensureHotelProposalForSavedHotel({
       hotelId: 99,
@@ -622,22 +622,6 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
           },
         ],
       }) // proposer details
-      .mockResolvedValueOnce({
-        rows: [
-          {
-            id: 999,
-            user_id: "owner@example.com",
-            type: "proposal-hotel-created",
-            title: "User Example proposed Saved stay",
-            message: "User Example shared Saved stay (Jun 5 – Jun 6).",
-            trip_id: 10,
-            activity_id: null,
-            expense_id: null,
-            is_read: false,
-            created_at: now,
-          },
-        ],
-      })
       .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
     queryMock
@@ -696,7 +680,23 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({ rows: [] });
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 999,
+            user_id: "owner@example.com",
+            type: "proposal-hotel-created",
+            title: "User Example proposed Saved stay",
+            message: "User Example shared Saved stay (Jun 5 – Jun 6).",
+            trip_id: 10,
+            activity_id: null,
+            expense_id: null,
+            is_read: false,
+            created_at: now,
+          },
+        ],
+      });
 
     const result = await storage.ensureHotelProposalForSavedHotel({
       hotelId: 77,
@@ -709,6 +709,150 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
     expect(result.proposal.address).toBe("Address to be provided");
     expect(result.proposal.city).toBe("Mystery Trip");
     expect(result.proposal.country).toBe("Country to be decided");
+  });
+
+  it("logs and continues when notification creation fails", async () => {
+    const now = new Date("2024-06-06T09:00:00Z");
+
+    const hotelRow = {
+      id: 77,
+      trip_id: 10,
+      user_id: "host@example.com",
+      hotel_name: "Harbor View",
+      hotel_chain: null,
+      hotel_rating: "4.2",
+      address: "55 Dock St",
+      city: "Seattle",
+      country: "USA",
+      zip_code: "98101",
+      latitude: null,
+      longitude: null,
+      check_in_date: now,
+      check_out_date: new Date(now.getTime() + 86400000),
+      room_type: null,
+      room_count: null,
+      guest_count: null,
+      booking_reference: null,
+      total_price: "800",
+      price_per_night: "200",
+      currency: "USD",
+      status: "confirmed",
+      booking_source: null,
+      purchase_url: null,
+      amenities: null,
+      images: null,
+      policies: null,
+      contact_info: null,
+      booking_platform: null,
+      booking_url: null,
+      cancellation_policy: null,
+      notes: null,
+      created_at: now,
+      updated_at: now,
+      trip_created_by: "owner@example.com",
+      trip_name: "Coastal Escape",
+      trip_start_date: now,
+      trip_end_date: new Date(now.getTime() + 86400000),
+    };
+
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rows: [hotelRow] }) // Load hotel row
+      .mockResolvedValueOnce({ rows: [{ role: "member" }] }) // membership
+      .mockResolvedValueOnce({ rows: [] }) // existing proposal link check
+      .mockResolvedValueOnce({ rows: [{ id: 555 }] }) // insert proposal
+      .mockResolvedValueOnce({ rows: [] }) // insert link
+      .mockResolvedValueOnce({ rows: [{ user_id: "owner@example.com" }] }) // trip members
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            first_name: "Harper",
+            last_name: "Lee",
+            username: null,
+            email: "host@example.com",
+          },
+        ],
+      }) // proposer details
+      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+    const notificationError = new Error("insert failed");
+
+    queryMock
+      .mockResolvedValueOnce({ rows: [] }) // ensureProposalLinkStructures -> CREATE TABLE
+      .mockResolvedValueOnce({ rows: [] }) // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 555,
+            trip_id: 10,
+            proposed_by: "host@example.com",
+            hotel_name: "Harbor View",
+            location: "Seattle, USA",
+            price: "800",
+            price_per_night: "200",
+            rating: "4.2",
+            amenities: null,
+            platform: "Manual Save",
+            booking_url: "",
+            status: "proposed",
+            average_ranking: null,
+            created_at: now,
+            updated_at: now,
+            linked_hotel_id: 77,
+            linked_check_in_date: now,
+            linked_check_out_date: new Date(now.getTime() + 86400000),
+            linked_address: "55 Dock St",
+            linked_city: "Seattle",
+            linked_country: "USA",
+            linked_currency: "USD",
+            proposer_id: "host@example.com",
+            proposer_email: "host@example.com",
+            proposer_username: null,
+            proposer_first_name: "Harper",
+            proposer_last_name: "Lee",
+            proposer_phone_number: null,
+            proposer_password_hash: null,
+            proposer_profile_image_url: null,
+            proposer_cashapp_username: null,
+            proposer_cash_app_username: null,
+            proposer_cashapp_phone: null,
+            proposer_cash_app_phone: null,
+            proposer_venmo_username: null,
+            proposer_venmo_phone: null,
+            proposer_timezone: null,
+            proposer_default_location: null,
+            proposer_default_location_code: null,
+            proposer_default_city: null,
+            proposer_default_country: null,
+            proposer_auth_provider: null,
+            proposer_notification_preferences: null,
+            proposer_has_seen_home_onboarding: false,
+            proposer_has_seen_trip_onboarding: false,
+            proposer_created_at: now,
+            proposer_updated_at: now,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] }) // fetch rankings
+      .mockRejectedValueOnce(notificationError); // notification insert fails
+
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await storage.ensureHotelProposalForSavedHotel({
+      hotelId: 77,
+      tripId: 10,
+      currentUserId: "host@example.com",
+      overrideDetails: undefined,
+    });
+
+    expect(result.proposal.hotelName).toBe("Harbor View");
+    expect(result.wasCreated).toBe(true);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Failed to send hotel proposal notifications:",
+      notificationError,
+    );
+
+    consoleErrorSpy.mockRestore();
   });
 });
 
