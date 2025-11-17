@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
+import { normalizeTimeTo24Hour } from "@/lib/time";
 import type { TripWithDetails } from "@shared/schema";
 
 const optionalUrlField = z.preprocess(
@@ -197,6 +198,7 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
     mutationFn: async ({ data, tripId: targetTripId }: { data: RestaurantFormData; tripId: number }) => {
       const { city, country } = getCityAndCountry(data.address);
       const reservationDate = format(data.reservationDate, "yyyy-MM-dd");
+      const reservationTime = normalizeTimeTo24Hour(data.reservationTime) || "19:00";
 
       const payload = {
         tripId: Number(targetTripId),
@@ -205,7 +207,7 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         city,
         country,
         reservationDate,
-        reservationTime: data.reservationTime,
+        reservationTime,
         partySize: data.partySize,
         cuisineType: data.cuisine || null,
         zipCode: null,

@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { format, parse } from "date-fns";
+import { format } from "date-fns";
 import {
   CalendarIcon,
   ChefHat,
@@ -33,6 +33,7 @@ import { apiFetch } from "@/lib/api";
 import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
+import { normalizeTimeTo24Hour } from "@/lib/time";
 import { buildOpenTableUrl, buildResyUrl } from "@/utils/urlBuilders/restaurants";
 
 import type { TripWithDetails } from "@shared/schema";
@@ -268,6 +269,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
         const addressValue = restaurant.address || searchLocation || "";
         const { city, country } = parseAddressForTrip(addressValue);
         const reservationDateValue = searchDate ?? new Date();
+        const reservationTime = normalizeTimeTo24Hour(searchTime) || "19:00";
         const ratingValue = Number(restaurant.rating);
         const openTableLink = restaurant.bookingLinks?.find((link: any) => {
           const text = (link.text || "").toLowerCase();
@@ -282,7 +284,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
           city,
           country,
           reservationDate: format(reservationDateValue, "yyyy-MM-dd"),
-          reservationTime: searchTime,
+          reservationTime,
           partySize: Number.isNaN(Number(searchPartySize)) ? 2 : Number(searchPartySize),
           cuisineType: restaurant.cuisineType || restaurant.cuisine || null,
           zipCode: null,
@@ -448,32 +450,6 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
       return format(value, "yyyy-MM-dd");
     }, []);
 
-    const formatTimeHHmm = useCallback((value?: string) => {
-      if (!value) {
-        return "";
-      }
-
-      const trimmed = value.trim();
-      if (!trimmed) {
-        return "";
-      }
-
-      if (/^\d{2}:\d{2}$/.test(trimmed)) {
-        return trimmed;
-      }
-
-      try {
-        const parsedTime = parse(trimmed, "h:mm a", new Date());
-        if (Number.isNaN(parsedTime.getTime())) {
-          return "";
-        }
-
-        return format(parsedTime, "HH:mm");
-      } catch (error) {
-        return "";
-      }
-    }, []);
-
     const openInNewTab = useCallback((url: string) => {
       if (typeof window !== "undefined") {
         window.open(url, "_blank", "noopener,noreferrer");
@@ -482,7 +458,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
 
     const reservationDetails = useMemo(() => {
       const date = formatDateYYYYMMDD(searchDate);
-      const time = formatTimeHHmm(searchTime);
+      const time = normalizeTimeTo24Hour(searchTime) || "";
       const partySize = Math.max(1, Number(searchPartySize) || 1);
       const hasCity = derivedLocation.city.trim().length > 0;
       const hasDate = Boolean(date);
@@ -498,7 +474,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
         resyDisabled,
         openTableDisabled,
       };
-    }, [derivedLocation.city, formatDateYYYYMMDD, formatTimeHHmm, searchDate, searchPartySize, searchTime]);
+    }, [derivedLocation.city, formatDateYYYYMMDD, searchDate, searchPartySize, searchTime]);
 
     const handleSearchResy = useCallback(() => {
       if (reservationDetails.resyDisabled) {
