@@ -211,15 +211,22 @@ export default function HotelsPage() {
       return;
     }
 
-    const manualHotelId = typeof hotel.id === "number" ? hotel.id : null;
-    if (manualHotelId != null) {
+    const manualHotelId = (() => {
+      if ("hotelName" in hotel) {
+        const parsedId = Number.parseInt(String(hotel.id ?? ""), 10);
+        return Number.isFinite(parsedId) ? parsedId : null;
+      }
+      return null;
+    })();
+    const isManualHotel = manualHotelId != null;
+    if (isManualHotel) {
       setProposingHotelId(manualHotelId);
     }
 
     try {
       const payload = buildHotelProposalPayload(hotel);
       const overrideFields =
-        manualHotelId != null
+        isManualHotel
           ? {
               ...(payload.address ? { address: payload.address } : {}),
               ...(payload.city ? { city: payload.city } : {}),
@@ -233,7 +240,7 @@ export default function HotelsPage() {
         method: "POST",
         body: JSON.stringify({
           tripId,
-          ...(manualHotelId != null ? { hotelId: manualHotelId } : {}),
+          ...(isManualHotel ? { hotelId: manualHotelId } : {}),
           hotelName: payload.hotelName,
           location: payload.location,
           price: payload.price,
@@ -277,7 +284,7 @@ export default function HotelsPage() {
         variant: "destructive",
       });
     } finally {
-      if (manualHotelId != null) {
+      if (isManualHotel) {
         setProposingHotelId(null);
       }
     }
