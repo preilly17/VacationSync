@@ -469,6 +469,7 @@ export default function Activities() {
                       <div className="space-y-2 md:col-span-2 lg:col-span-1">
                         <Label className="text-sm font-medium text-neutral-700">Destination</Label>
                         <SmartLocationSearch
+                          id="activities-search-destination"
                           placeholder="Enter destination (e.g., Zagreb, Tokyo, London...)"
                           value={locationSearch}
                           onLocationSelect={handleLocationSelect}

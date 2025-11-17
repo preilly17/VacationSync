@@ -594,6 +594,7 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
                 <div>
                   <Label htmlFor="location">Location</Label>
                   <SmartLocationSearch
+                    id="location"
                     placeholder="Enter city, airport, or region..."
                     value={searchLocation}
                     onLocationSelect={handleLocationSelect}
