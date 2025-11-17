@@ -1061,6 +1061,7 @@ export function AddExpenseModal({
                                 ) : (
                                   <input
                                     type="hidden"
+                                    name={field.name}
                                     value={field.value ?? ""}
                                     onChange={field.onChange}
                                     ref={field.ref}
@@ -1077,6 +1078,7 @@ export function AddExpenseModal({
                           render={({ field }) => (
                             <input
                               type="hidden"
+                              name={field.name}
                               value={field.value ?? ""}
                               onChange={field.onChange}
                               ref={field.ref}
