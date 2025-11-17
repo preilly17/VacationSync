@@ -83,9 +83,16 @@ export const buildHotelProposalPayload = (
     const platform = hotel.platform?.trim().length
       ? hotel.platform
       : "Manual";
+    const fallbackBookingUrlQuery = [hotel.name, hotel.location]
+      .filter((value): value is string => Boolean(value?.trim().length))
+      .join(" ")
+      .trim();
+    const fallbackBookingUrl = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(
+      fallbackBookingUrlQuery.length > 0 ? fallbackBookingUrlQuery : "hotel",
+    )}`;
     const bookingUrl = hotel.bookingUrl?.trim().length
       ? hotel.bookingUrl
-      : "";
+      : fallbackBookingUrl;
 
     return {
       hotelName: hotel.name?.trim().length ? hotel.name : "Unnamed Hotel",
@@ -147,11 +154,18 @@ export const buildHotelProposalPayload = (
       ? hotel.bookingSource
       : "Manual entry";
 
+  const manualFallbackBookingUrlQuery = [hotelName, manualLocation]
+    .filter((value): value is string => Boolean(value?.trim().length))
+    .join(" ")
+    .trim();
+  const manualFallbackBookingUrl = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(
+    manualFallbackBookingUrlQuery.length > 0 ? manualFallbackBookingUrlQuery : "hotel",
+  )}`;
   const bookingUrl = hotel.bookingUrl?.trim().length
     ? hotel.bookingUrl
     : hotel.purchaseUrl?.trim().length
       ? hotel.purchaseUrl
-      : "";
+      : manualFallbackBookingUrl;
 
   return {
     hotelName,
