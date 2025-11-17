@@ -5290,6 +5290,7 @@ function FlightCoordination({
               <div className="space-y-2">
                 <Label>From</Label>
                 <SmartLocationSearch
+                  id="trip-search-from"
                   placeholder="Search departure city or airport"
                   value={departureQuery}
                   allowedTypes={['city', 'airport']}
@@ -5331,6 +5332,7 @@ function FlightCoordination({
               <div className="space-y-2">
                 <Label>To</Label>
                 <SmartLocationSearch
+                  id="trip-search-to"
                   placeholder="Search arrival city or airport"
                   value={arrivalQuery}
                   allowedTypes={['city', 'airport']}
@@ -5820,6 +5822,7 @@ function FlightCoordination({
               <div>
                 <Label>From *</Label>
                 <SmartLocationSearch
+                  id="manual-flight-from"
                   placeholder="Departure airport"
                   value={manualFlightData.departureAirport}
                   allowedTypes={['airport']}
@@ -5849,6 +5852,7 @@ function FlightCoordination({
               <div>
                 <Label>To *</Label>
                 <SmartLocationSearch
+                  id="manual-flight-to"
                   placeholder="Arrival airport"
                   value={manualFlightData.arrivalAirport}
                   allowedTypes={['airport']}

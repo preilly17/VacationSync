@@ -550,6 +550,7 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
           <div>
             <Label htmlFor="destination">Destination</Label>
             <SmartLocationSearch
+              id="destination"
               placeholder="e.g., Tokyo, Japan"
               value={selectedDestination?.name || form.getValues("destination") || ""}
               allowedTypes={['city']}
