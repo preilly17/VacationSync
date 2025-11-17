@@ -711,6 +711,168 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
     expect(result.proposal.country).toBe("Country to be decided");
   });
 
+  it("coerces trip date strings when filling missing stay dates", async () => {
+    const nowIso = "2024-06-07T12:00:00.000Z";
+    const laterIso = "2024-06-10T12:00:00.000Z";
+
+    const hotelRow = {
+      id: 88,
+      trip_id: 10,
+      user_id: "user-123",
+      hotel_name: "",
+      hotel_chain: null,
+      hotel_rating: null,
+      address: "",
+      city: "",
+      country: "",
+      zip_code: null,
+      latitude: null,
+      longitude: null,
+      check_in_date: null,
+      check_out_date: null,
+      room_type: null,
+      room_count: null,
+      guest_count: null,
+      booking_reference: null,
+      total_price: null,
+      price_per_night: null,
+      currency: "USD",
+      status: "confirmed",
+      booking_source: null,
+      purchase_url: null,
+      amenities: null,
+      images: null,
+      policies: null,
+      contact_info: null,
+      booking_platform: null,
+      booking_url: null,
+      cancellation_policy: null,
+      notes: null,
+      created_at: new Date(nowIso),
+      updated_at: new Date(nowIso),
+      trip_created_by: "owner@example.com",
+      trip_name: "Summer Trip",
+      trip_start_date: nowIso,
+      trip_end_date: laterIso,
+    };
+
+    const refreshedRow = {
+      ...hotelRow,
+      hotel_name: "Saved stay",
+      address: "Address to be provided",
+      city: "Summer Trip",
+      country: "Country to be decided",
+      check_in_date: new Date(nowIso),
+      check_out_date: new Date(laterIso),
+    };
+
+    clientQueryMock
+      .mockResolvedValueOnce({ rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rows: [hotelRow] }) // initial load
+      .mockResolvedValueOnce({ rows: [{ role: "member" }] }) // membership
+      .mockResolvedValueOnce({ rows: [] }) // update missing fields
+      .mockResolvedValueOnce({ rows: [refreshedRow] }) // refreshed row with dates filled
+      .mockResolvedValueOnce({ rows: [] }) // existing link check
+      .mockResolvedValueOnce({ rows: [{ id: 900 }] }) // insert proposal
+      .mockResolvedValueOnce({ rows: [] }) // insert link
+      .mockResolvedValueOnce({ rows: [{ user_id: "owner@example.com" }] }) // trip members
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            first_name: "Casey",
+            last_name: "Traveler",
+            username: null,
+            email: "user-123",
+          },
+        ],
+      }) // proposer details
+      .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+    queryMock
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 900,
+            trip_id: 10,
+            proposed_by: "user-123",
+            hotel_name: "Saved stay",
+            location: "Summer Trip, Country to be decided",
+            price: "0",
+            price_per_night: null,
+            rating: null,
+            amenities: null,
+            platform: "Manual Save",
+            booking_url: "",
+            status: "proposed",
+            average_ranking: null,
+            created_at: new Date(nowIso),
+            updated_at: new Date(nowIso),
+            linked_hotel_id: 88,
+            linked_check_in_date: new Date(nowIso),
+            linked_check_out_date: new Date(laterIso),
+            linked_address: "Address to be provided",
+            linked_city: "Summer Trip",
+            linked_country: "Country to be decided",
+            linked_currency: "USD",
+            proposer_id: "user-123",
+            proposer_email: "user-123",
+            proposer_username: null,
+            proposer_first_name: "Casey",
+            proposer_last_name: "Traveler",
+            proposer_phone_number: null,
+            proposer_password_hash: null,
+            proposer_profile_image_url: null,
+            proposer_cashapp_username: null,
+            proposer_cash_app_username: null,
+            proposer_cashapp_phone: null,
+            proposer_cash_app_phone: null,
+            proposer_venmo_username: null,
+            proposer_venmo_phone: null,
+            proposer_timezone: null,
+            proposer_default_location: null,
+            proposer_default_location_code: null,
+            proposer_default_city: null,
+            proposer_default_country: null,
+            proposer_auth_provider: null,
+            proposer_notification_preferences: null,
+            proposer_has_seen_home_onboarding: false,
+            proposer_has_seen_trip_onboarding: false,
+            proposer_created_at: new Date(nowIso),
+            proposer_updated_at: new Date(nowIso),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 111,
+            user_id: "owner@example.com",
+            type: "proposal-hotel-created",
+            title: "Casey Traveler proposed Saved stay",
+            message: "Casey Traveler shared Saved stay (Jun 7 – Jun 10).",
+            trip_id: 10,
+            activity_id: null,
+            expense_id: null,
+            is_read: false,
+            created_at: new Date(nowIso),
+          },
+        ],
+      });
+
+    const result = await storage.ensureHotelProposalForSavedHotel({
+      hotelId: 88,
+      tripId: 10,
+      currentUserId: "user-123",
+      overrideDetails: undefined,
+    });
+
+    expect(result.proposal.checkInDate).toEqual(new Date(nowIso));
+    expect(result.proposal.checkOutDate).toEqual(new Date(laterIso));
+  });
+
   it("logs and continues when notification creation fails", async () => {
     const now = new Date("2024-06-06T09:00:00Z");
 

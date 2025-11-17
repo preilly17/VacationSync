@@ -7974,16 +7974,18 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
       const applyFallbackDate = (
         current: Date | string | null,
-        fallback: Date | null,
+        fallback: Date | string | number | null,
         column: string,
       ): Date | string | null => {
         if (ensureValidDate(current)) {
           return current;
         }
 
-        if (fallback && !Number.isNaN(fallback.getTime())) {
-          pendingUpdates[column] = fallback;
-          return fallback;
+        if (ensureValidDate(fallback)) {
+          const normalizedFallback =
+            fallback instanceof Date ? fallback : new Date(fallback as string | number);
+          pendingUpdates[column] = normalizedFallback;
+          return normalizedFallback;
         }
 
         return current;
