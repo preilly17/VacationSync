@@ -16,6 +16,8 @@ let storageModule: any;
 let createHotelMock: jest.SpyInstance;
 let ensureHotelProposalMock: jest.SpyInstance;
 let createHotelProposalMock: jest.SpyInstance;
+let getTripByIdMock: jest.SpyInstance;
+let isTripMemberMock: jest.SpyInstance;
 
 const findRouteHandler = (
   app: express.Express,
@@ -123,6 +125,10 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
       "ensureHotelProposalForSavedHotel",
     );
     createHotelProposalMock = jest.spyOn(storageModule.storage, "createHotelProposal");
+    getTripByIdMock = jest.spyOn(storageModule.storage, "getTripById");
+    isTripMemberMock = jest.spyOn(storageModule.storage, "isTripMember");
+    getTripByIdMock.mockResolvedValue({ id: 10 });
+    isTripMemberMock.mockResolvedValue(true);
   });
 
   afterEach(async () => {
@@ -180,6 +186,7 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
 
     await handler(req, res);
 
+    expect(isTripMemberMock).toHaveBeenCalledWith(10, "test-user");
     expect(createHotelMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tripId: 10,
@@ -275,6 +282,7 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
 
     await handler(req, res);
 
+    expect(isTripMemberMock).toHaveBeenCalledWith(10, "test-user");
     expect(createHotelProposalMock).toHaveBeenCalledWith(
       expect.objectContaining({
         price: "1234",
@@ -284,5 +292,102 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     );
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: 991 }));
+  });
+
+  it("returns a 403 when proposing an unsaved stay without trip access", async () => {
+    isTripMemberMock.mockResolvedValueOnce(false);
+    getTripByIdMock.mockResolvedValueOnce({ id: 10 });
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: {
+        tripId: 10,
+        hotelName: "Oceanview Resort",
+        location: "Miami, USA",
+        price: "$1,234 total",
+        pricePerNight: "$567/night",
+        platform: "Amadeus",
+        bookingUrl: "https://example.com/booking",
+      },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "You must be a member of this trip to share stays with the group.",
+    });
+    expect(createHotelMock).not.toHaveBeenCalled();
+    expect(createHotelProposalMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a 404 when the target trip no longer exists", async () => {
+    isTripMemberMock.mockResolvedValueOnce(false);
+    getTripByIdMock.mockResolvedValueOnce(undefined);
+
+    const req: any = {
+      params: { tripId: "99" },
+      body: {
+        tripId: 99,
+        hotelName: "Sunrise Suites",
+        location: "Miami, USA",
+        price: "$800",
+        pricePerNight: "$200",
+        platform: "Amadeus",
+        bookingUrl: "https://example.com/booking",
+      },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: "Trip not found" });
+    expect(createHotelMock).not.toHaveBeenCalled();
+    expect(createHotelProposalMock).not.toHaveBeenCalled();
+  });
+
+  it("maps database constraint violations to a 400 during ad-hoc proposals", async () => {
+    createHotelProposalMock.mockRejectedValueOnce({ code: "23503" });
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: {
+        tripId: 10,
+        hotelName: "Oceanview Resort",
+        location: "Miami, USA",
+        price: "$1,234 total",
+        pricePerNight: "$567/night",
+        platform: "Amadeus",
+        bookingUrl: "https://example.com/booking",
+      },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "Unable to share this stay with your group. Refresh the trip and try again.",
+    });
   });
 });
