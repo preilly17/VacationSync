@@ -6372,60 +6372,22 @@ function HotelBooking({
         throw new Error("Invalid hotel ID");
       }
 
-      const normalizeDate = (value: unknown): string | undefined => {
-        if (!value) {
-          return undefined;
-        }
-
-        if (value instanceof Date) {
-          return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
-        }
-
-        const parsed = new Date(value as string | number);
-        if (Number.isNaN(parsed.getTime())) {
-          return undefined;
-        }
-
-        return parsed.toISOString();
-      };
-
-      const payload = {
-        hotelId: parsedHotelId,
-        tripId,
-        hotelName: hotel.hotelName ?? hotel.name ?? undefined,
-        hotelChain: hotel.hotelChain ?? null,
-        hotelRating: hotel.hotelRating ?? hotel.rating ?? null,
-        address: hotel.address ?? undefined,
-        city: hotel.city ?? undefined,
-        country: hotel.country ?? undefined,
-        zipCode: hotel.zipCode ?? null,
-        latitude: hotel.latitude ?? null,
-        longitude: hotel.longitude ?? null,
-        checkInDate: normalizeDate(hotel.checkInDate),
-        checkOutDate: normalizeDate(hotel.checkOutDate),
-        roomType: hotel.roomType ?? null,
-        roomCount: hotel.roomCount ?? null,
-        guestCount: hotel.guestCount ?? null,
-        bookingReference: hotel.bookingReference ?? null,
-        totalPrice: hotel.totalPrice ?? null,
-        pricePerNight: hotel.pricePerNight ?? null,
-        currency: hotel.currency ?? undefined,
-        status: hotel.status ?? undefined,
-        bookingSource: hotel.bookingSource ?? null,
-        purchaseUrl: hotel.purchaseUrl ?? null,
-        amenities: hotel.amenities ?? null,
-        images: hotel.images ?? null,
-        policies: hotel.policies ?? null,
-        contactInfo: hotel.contactInfo ?? null,
-        bookingPlatform: hotel.bookingPlatform ?? null,
-        bookingUrl: hotel.bookingUrl ?? null,
-        cancellationPolicy: hotel.cancellationPolicy ?? null,
-        notes: hotel.notes ?? null,
-      };
+      const payload = buildHotelProposalPayload(hotel);
 
       const response = await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
-        body: payload,
+        body: {
+          tripId,
+          hotelId: parsedHotelId,
+          hotelName: payload.hotelName,
+          location: payload.location,
+          price: payload.price,
+          pricePerNight: payload.pricePerNight,
+          rating: payload.rating ?? 4,
+          amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+          platform: payload.platform,
+          bookingUrl: payload.bookingUrl,
+        },
       });
 
       return (await response.json()) as HotelProposalWithDetails;
