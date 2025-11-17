@@ -263,6 +263,72 @@ describe("POST /api/trips/:tripId/wish-list", () => {
     getUserMock.mockRestore();
     isTripAdminMock.mockRestore();
   });
+
+  it("builds a placeholder creator when the user lookup fails", async () => {
+    const createdAt = createDate("2024-02-01T03:04:05Z");
+    const updatedAt = createDate("2024-02-02T04:05:06Z");
+
+    const isTripMemberMock = jest
+      .spyOn(storageModule.storage, "isTripMember")
+      .mockResolvedValue(true);
+    const createIdeaMock = jest
+      .spyOn(storageModule.storage, "createWishListIdea")
+      .mockResolvedValue({
+        id: 88,
+        tripId: 42,
+        title: "Late-night ramen",
+        url: null,
+        notes: null,
+        tags: [],
+        thumbnailUrl: null,
+        imageUrl: null,
+        metadata: null,
+        createdBy: "user-123",
+        promotedDraftId: null,
+        createdAt,
+        updatedAt,
+      });
+    const detailedLookupMock = jest
+      .spyOn(storageModule.storage, "getWishListIdeaForUser")
+      .mockResolvedValue(undefined);
+    const getUserMock = jest.spyOn(storageModule.storage, "getUser").mockResolvedValue(undefined);
+    const isTripAdminMock = jest
+      .spyOn(storageModule.storage, "isTripAdmin")
+      .mockResolvedValue(false);
+
+    const req: any = {
+      params: { tripId: "42" },
+      body: { title: "Late-night ramen" },
+      session: { userId: "user-123" },
+      user: {
+        email: "fallback@example.com",
+        firstName: "Fallback",
+        lastName: "User",
+      },
+    };
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith({
+      idea: expect.objectContaining({
+        id: 88,
+        creator: expect.objectContaining({
+          id: "user-123",
+          email: "fallback@example.com",
+          firstName: "Fallback",
+          lastName: "User",
+        }),
+      }),
+    });
+
+    isTripMemberMock.mockRestore();
+    createIdeaMock.mockRestore();
+    detailedLookupMock.mockRestore();
+    getUserMock.mockRestore();
+    isTripAdminMock.mockRestore();
+  });
 });
 
 describe("GET /api/trips/:tripId/wish-list", () => {
