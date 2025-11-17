@@ -643,6 +643,57 @@ function getRequestUserId(req: any): string | undefined {
   return undefined;
 }
 
+const sanitizeOptionalString = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const createFallbackUserFromRequest = (req: any, userId: string): User => {
+  const requestUser = req?.user ?? {};
+
+  const firstName =
+    sanitizeOptionalString(requestUser.firstName ?? requestUser.given_name) ?? null;
+  const lastName =
+    sanitizeOptionalString(requestUser.lastName ?? requestUser.family_name) ?? null;
+  const username =
+    sanitizeOptionalString(requestUser.username ?? requestUser.preferred_username) ?? null;
+  const email =
+    sanitizeOptionalString(requestUser.email) ??
+    (username ? `${username}@vacationsync.local` : `${userId}@vacationsync.local`);
+
+  return {
+    id: userId,
+    email,
+    username,
+    firstName,
+    lastName,
+    phoneNumber: null,
+    passwordHash: null,
+    profileImageUrl: null,
+    cashAppUsername: null,
+    cashAppUsernameLegacy: null,
+    cashAppPhone: null,
+    cashAppPhoneLegacy: null,
+    venmoUsername: null,
+    venmoPhone: null,
+    timezone: null,
+    defaultLocation: null,
+    defaultLocationCode: null,
+    defaultCity: null,
+    defaultCountry: null,
+    authProvider: null,
+    notificationPreferences: null,
+    hasSeenHomeOnboarding: false,
+    hasSeenTripOnboarding: false,
+    createdAt: null,
+    updatedAt: null,
+  };
+};
+
 const DEMO_USER_ID = "demo-user";
 const demoUserSeed = {
   id: DEMO_USER_ID,
@@ -5701,10 +5752,8 @@ export function setupRoutes(app: Express) {
       let detailedIdea = await storage.getWishListIdeaForUser(created.id, userId);
 
       if (!detailedIdea) {
-        const creator = await storage.getUser(userId);
-        if (!creator) {
-          throw new Error("Failed to load created wish list idea");
-        }
+        const creator =
+          (await storage.getUser(userId)) ?? createFallbackUserFromRequest(req, userId);
 
         detailedIdea = {
           ...created,
