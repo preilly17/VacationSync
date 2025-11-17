@@ -211,7 +211,8 @@ export default function HotelsPage() {
       return;
     }
 
-    const manualHotelId = typeof hotel.id === "number" ? hotel.id : null;
+    const parsedHotelId = Number.parseInt(String(hotel.id ?? ""), 10);
+    const manualHotelId = Number.isFinite(parsedHotelId) ? parsedHotelId : null;
     if (manualHotelId != null) {
       setProposingHotelId(manualHotelId);
     }
