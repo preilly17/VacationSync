@@ -694,6 +694,57 @@ const ensureDemoUserExists = async () => {
   }
 };
 
+const parsePriceFromInput = (value: unknown): string | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value.toString() : null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const cleaned = trimmed.replace(/[^0-9.,-]/g, '');
+    if (!cleaned) {
+      return null;
+    }
+
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+
+    let normalized = cleaned;
+    if (lastComma >= 0 || lastDot >= 0) {
+      if (lastComma >= 0 && lastDot >= 0) {
+        normalized = lastComma > lastDot
+          ? cleaned.replace(/\./g, '').replace(/,/g, '.')
+          : cleaned.replace(/,/g, '');
+      } else if (lastComma >= 0) {
+        const decimalDigits = cleaned.length - lastComma - 1;
+        normalized = decimalDigits > 0 && decimalDigits <= 2
+          ? cleaned.replace(/,/g, '.')
+          : cleaned.replace(/,/g, '');
+      } else if (lastDot >= 0) {
+        const decimalDigits = cleaned.length - lastDot - 1;
+        normalized = decimalDigits > 0 && decimalDigits <= 2
+          ? cleaned
+          : cleaned.replace(/\./g, '');
+      }
+    }
+
+    normalized = normalized.replace(/,/g, '');
+
+    const parsed = Number.parseFloat(normalized);
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+
+    return parsed.toString();
+  }
+
+  return null;
+};
+
 function parseBooleanQueryParam(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.some((item) => parseBooleanQueryParam(item));
@@ -4242,6 +4293,13 @@ export function setupRoutes(app: Express) {
             return res.status(500).json({ message: "Failed to prepare hotel for proposal" });
           }
         } else {
+          const normalizedPrice =
+            parsePriceFromInput(parsedData.price) ??
+            parsePriceFromInput(parsedData.pricePerNight) ??
+            '0';
+          const normalizedPricePerNight =
+            parsePriceFromInput(parsedData.pricePerNight) ?? normalizedPrice;
+
           const fallbackProposalInput = {
             tripId,
             hotelName:
@@ -4252,16 +4310,8 @@ export function setupRoutes(app: Express) {
               typeof parsedData.location === 'string' && parsedData.location.trim().length > 0
                 ? parsedData.location
                 : 'Unknown Location',
-            price:
-              parsedData.price != null && String(parsedData.price).trim().length > 0
-                ? String(parsedData.price)
-                : '0',
-            pricePerNight:
-              parsedData.pricePerNight != null && String(parsedData.pricePerNight).trim().length > 0
-                ? String(parsedData.pricePerNight)
-                : parsedData.price != null && String(parsedData.price).trim().length > 0
-                  ? String(parsedData.price)
-                  : '0',
+            price: normalizedPrice,
+            pricePerNight: normalizedPricePerNight,
             rating:
               parsedData.rating == null ||
               (typeof parsedData.rating !== 'string' && typeof parsedData.rating !== 'number')
