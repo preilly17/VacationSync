@@ -2353,16 +2353,36 @@ export class DatabaseStorage implements IStorage {
           `ALTER TABLE trip_wish_list_items ALTER COLUMN tags DROP DEFAULT`,
         );
 
-        const conversionExpression =
-          tagDataType === "array" || tagColumnInfo.udt_name === "_text"
-            ? "to_jsonb(COALESCE(tags, ARRAY[]::text[]))"
-            : "tags::jsonb";
+        if (tagDataType === "array" || tagColumnInfo.udt_name === "_text") {
+          await query(`
+            ALTER TABLE trip_wish_list_items
+            ALTER COLUMN tags TYPE JSONB
+            USING to_jsonb(COALESCE(tags, ARRAY[]::text[]))
+          `);
+        } else {
+          await query(
+            `ALTER TABLE trip_wish_list_items ADD COLUMN IF NOT EXISTS tags_jsonb JSONB DEFAULT '[]'::jsonb`,
+          );
 
-        await query(`
-          ALTER TABLE trip_wish_list_items
-          ALTER COLUMN tags TYPE JSONB
-          USING ${conversionExpression}
-        `);
+          const { rows: tagRows } = await query<{ id: number; tags: unknown }>(
+            `SELECT id, tags FROM trip_wish_list_items`,
+          );
+
+          for (const row of tagRows) {
+            const normalizedTagsJson = toDbJson(toStringArray(row.tags)) ?? "[]";
+            await query(
+              `
+              UPDATE trip_wish_list_items
+              SET tags_jsonb = $2::jsonb
+              WHERE id = $1
+              `,
+              [row.id, normalizedTagsJson],
+            );
+          }
+
+          await query(`ALTER TABLE trip_wish_list_items DROP COLUMN tags`);
+          await query(`ALTER TABLE trip_wish_list_items RENAME COLUMN tags_jsonb TO tags`);
+        }
       }
 
       await query(
