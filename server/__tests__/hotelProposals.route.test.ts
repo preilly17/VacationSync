@@ -15,6 +15,7 @@ let setupRoutes: (app: express.Express) => import("http").Server;
 let storageModule: any;
 let createHotelMock: jest.SpyInstance;
 let ensureHotelProposalMock: jest.SpyInstance;
+let createHotelProposalMock: jest.SpyInstance;
 
 const findRouteHandler = (
   app: express.Express,
@@ -121,11 +122,13 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
       storageModule.storage,
       "ensureHotelProposalForSavedHotel",
     );
+    createHotelProposalMock = jest.spyOn(storageModule.storage, "createHotelProposal");
   });
 
   afterEach(async () => {
     createHotelMock.mockRestore();
     ensureHotelProposalMock.mockRestore();
+    createHotelProposalMock.mockRestore();
 
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
@@ -242,5 +245,44 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
       message:
         "Saved stay is missing required details: hotel name, address, city, check-in date. Add them before sharing with the group.",
     });
+  });
+
+  it("normalizes price strings before creating a fallback proposal", async () => {
+    createHotelProposalMock.mockResolvedValueOnce({
+      id: 991,
+      tripId: 10,
+    });
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: {
+        tripId: 10,
+        hotelName: "Oceanview Resort",
+        location: "Miami, USA",
+        price: "$1,234 total",
+        pricePerNight: "$567/night",
+        platform: "Amadeus",
+        bookingUrl: "https://example.com/booking",
+      },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(createHotelProposalMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        price: "1234",
+        pricePerNight: "567",
+      }),
+      "test-user",
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ id: 991 }));
   });
 });
