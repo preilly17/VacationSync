@@ -6373,6 +6373,13 @@ function HotelBooking({
       }
 
       const payload = buildHotelProposalPayload(hotel);
+      const overrideFields = {
+        ...(payload.address ? { address: payload.address } : {}),
+        ...(payload.city ? { city: payload.city } : {}),
+        ...(payload.country ? { country: payload.country } : {}),
+        ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
+        ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
+      };
 
       const response = await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
@@ -6387,6 +6394,7 @@ function HotelBooking({
           amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
           platform: payload.platform,
           bookingUrl: payload.bookingUrl,
+          ...overrideFields,
         },
       });
 
@@ -6548,6 +6556,13 @@ function HotelBooking({
     async (hotel: HotelSearchResult) => {
       try {
         const payload = buildHotelProposalPayload(hotel);
+        const overrideFields = {
+          ...(payload.address ? { address: payload.address } : {}),
+          ...(payload.city ? { city: payload.city } : {}),
+          ...(payload.country ? { country: payload.country } : {}),
+          ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
+          ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
+        };
 
         await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
           method: "POST",
@@ -6561,6 +6576,7 @@ function HotelBooking({
             amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
             platform: payload.platform,
             bookingUrl: payload.bookingUrl,
+            ...overrideFields,
           }),
         });
 

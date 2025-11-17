@@ -13,6 +13,11 @@ export interface HotelProposalPayload {
   platform: string;
   bookingUrl: string;
   displayName: string;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  checkInDate: string | null;
+  checkOutDate: string | null;
 }
 
 export const HOTEL_PROPOSAL_AMENITIES_FALLBACK = "WiFi, Breakfast";
@@ -63,6 +68,24 @@ const isHotelSearchResult = (
   return typeof hotel.id === "string";
 };
 
+const normalizeTextValue = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const normalizeDateValue = (value: unknown): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value as string | number);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
 export const buildHotelProposalPayload = (
   hotel: ProposableHotel,
 ): HotelProposalPayload => {
@@ -104,6 +127,11 @@ export const buildHotelProposalPayload = (
       platform,
       bookingUrl,
       displayName: hotel.name?.trim().length ? hotel.name : "Unnamed Hotel",
+      address: normalizeTextValue(hotel.address),
+      city: null,
+      country: null,
+      checkInDate: null,
+      checkOutDate: null,
     };
   }
 
@@ -167,6 +195,12 @@ export const buildHotelProposalPayload = (
       ? hotel.purchaseUrl
       : manualFallbackBookingUrl;
 
+  const normalizedAddress = normalizeTextValue(hotel.address);
+  const normalizedCity = normalizeTextValue(hotel.city);
+  const normalizedCountry = normalizeTextValue(hotel.country);
+  const normalizedCheckInDate = normalizeDateValue(hotel.checkInDate);
+  const normalizedCheckOutDate = normalizeDateValue(hotel.checkOutDate);
+
   return {
     hotelName,
     location,
@@ -177,5 +211,10 @@ export const buildHotelProposalPayload = (
     platform,
     bookingUrl,
     displayName: hotelName,
+    address: normalizedAddress,
+    city: normalizedCity,
+    country: normalizedCountry,
+    checkInDate: normalizedCheckInDate,
+    checkOutDate: normalizedCheckOutDate,
   };
 };

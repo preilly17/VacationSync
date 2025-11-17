@@ -218,6 +218,16 @@ export default function HotelsPage() {
 
     try {
       const payload = buildHotelProposalPayload(hotel);
+      const overrideFields =
+        manualHotelId != null
+          ? {
+              ...(payload.address ? { address: payload.address } : {}),
+              ...(payload.city ? { city: payload.city } : {}),
+              ...(payload.country ? { country: payload.country } : {}),
+              ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
+              ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
+            }
+          : {};
 
       await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
@@ -232,6 +242,7 @@ export default function HotelsPage() {
           amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
           platform: payload.platform,
           bookingUrl: payload.bookingUrl,
+          ...overrideFields,
         }),
       });
 
