@@ -57,6 +57,10 @@ import {
   proposalActivitiesQueryKey as buildProposalActivitiesKey,
 } from "@/lib/activities/queryKeys";
 import { cn, formatCurrency } from "@/lib/utils";
+import {
+  buildHotelProposalPayload,
+  HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+} from "@/lib/hotel-proposals";
 import { activityMatchesPeopleFilter } from "@/lib/activityFilters";
 import { getMemberDisplayName } from "@/lib/activities/manualMemberOptions";
 import {
@@ -6581,24 +6585,26 @@ function HotelBooking({
   const shareHotelWithGroup = useCallback(
     async (hotel: HotelSearchResult) => {
       try {
+        const payload = buildHotelProposalPayload(hotel);
+
         await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
           method: "POST",
           body: JSON.stringify({
             tripId,
-            hotelName: hotel.name,
-            location: hotel.location,
-            price: hotel.price,
-            pricePerNight: hotel.pricePerNight || hotel.price,
-            rating: hotel.rating || 4,
-            amenities: hotel.amenities || "WiFi, Breakfast",
-            platform: hotel.platform,
-            bookingUrl: hotel.bookingUrl,
+            hotelName: payload.hotelName,
+            location: payload.location,
+            price: payload.price,
+            pricePerNight: payload.pricePerNight,
+            rating: payload.rating ?? 4,
+            amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+            platform: payload.platform,
+            bookingUrl: payload.bookingUrl,
           }),
         });
 
         toast({
           title: "Added to Group Hotels!",
-          description: `${hotel.name} is now ready for everyone to review and rank.`,
+          description: `${payload.displayName} is now ready for everyone to review and rank.`,
         });
 
         await Promise.all([
