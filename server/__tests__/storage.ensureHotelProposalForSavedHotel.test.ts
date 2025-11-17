@@ -74,6 +74,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       updated_at: now,
       trip_created_by: "user-123",
       trip_name: "Lake Trip",
+      trip_start_date: now,
+      trip_end_date: now,
     };
 
     clientQueryMock
