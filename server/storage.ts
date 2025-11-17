@@ -7845,7 +7845,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           tc.start_date AS trip_start_date,
           tc.end_date AS trip_end_date
         FROM hotels h
-        JOIN trip_calendars tc ON tc.id = h.trip_id
+        LEFT JOIN trip_calendars tc ON tc.id = h.trip_id
         WHERE h.id = $1
         FOR UPDATE
         `,
@@ -7875,6 +7875,45 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
       if (normalizedHotelTripId !== tripId) {
         throw new Error("Hotel does not belong to this trip");
+      }
+
+      if (
+        hotel.trip_created_by == null ||
+        hotel.trip_name == null ||
+        hotel.trip_start_date == null ||
+        hotel.trip_end_date == null
+      ) {
+        const { rows: tripRows } = await client.query<{
+          created_by: string;
+          name: string;
+          start_date: Date;
+          end_date: Date;
+        }>(
+          `
+          SELECT created_by, name, start_date, end_date
+          FROM trip_calendars
+          WHERE id = $1
+          `,
+          [tripId],
+        );
+
+        const tripCalendar = tripRows[0];
+        if (!tripCalendar) {
+          throw new Error("Trip not found");
+        }
+
+        if (hotel.trip_created_by == null) {
+          hotel.trip_created_by = tripCalendar.created_by;
+        }
+        if (hotel.trip_name == null) {
+          hotel.trip_name = tripCalendar.name;
+        }
+        if (hotel.trip_start_date == null) {
+          hotel.trip_start_date = tripCalendar.start_date;
+        }
+        if (hotel.trip_end_date == null) {
+          hotel.trip_end_date = tripCalendar.end_date;
+        }
       }
 
       const normalizedRequesterId = normalizeUserId(currentUserId);
