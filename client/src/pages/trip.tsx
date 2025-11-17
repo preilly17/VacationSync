@@ -198,6 +198,8 @@ const TRIP_TAB_KEYS = [
   "wish-list",
 ] as const;
 
+const SHOW_SCHEDULED_CHECKBOX_ID = "calendar-show-scheduled";
+
 type TripTab = (typeof TRIP_TAB_KEYS)[number];
 
 const isTripTab = (value: string): value is TripTab =>
@@ -3045,10 +3047,21 @@ export default function Trip() {
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
-                              <label className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]">
+                              {/**
+                               * Associate the label with the checkbox for better accessibility.
+                               * Using a stable id ensures screen readers can properly announce
+                               * the control while keeping the existing visual layout intact.
+                               */}
+                              <label
+                                htmlFor={SHOW_SCHEDULED_CHECKBOX_ID}
+                                className="flex items-center gap-2 text-sm font-medium text-[color:var(--calendar-ink)]"
+                              >
                                 <Checkbox
+                                  id={SHOW_SCHEDULED_CHECKBOX_ID}
                                   checked={calendarFilters.statuses.scheduled}
-                                  onCheckedChange={(checked) => toggleStatusFilter("scheduled", checked === true)}
+                                  onCheckedChange={(checked) =>
+                                    toggleStatusFilter("scheduled", checked === true)
+                                  }
                                 />
                                 <span>Show scheduled</span>
                               </label>
