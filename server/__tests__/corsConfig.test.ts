@@ -13,6 +13,7 @@ describe("CORS configuration", () => {
       "x-request-id",
       "x-filename",
       "x-content-type",
+      "x-trip-share-code",
     ];
 
     expect(toLowerSet(CORS_ALLOWED_HEADERS)).toEqual(new Set(expectedHeaders));
