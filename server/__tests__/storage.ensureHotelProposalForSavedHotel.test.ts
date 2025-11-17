@@ -177,6 +177,144 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
     );
   });
 
+  it("inserts proposal links with ON CONFLICT safeguards", async () => {
+    const now = new Date("2024-06-02T12:00:00Z");
+
+    const hotelRow = {
+      id: 88,
+      trip_id: 12,
+      user_id: "user-xyz",
+      hotel_name: "Cliffside Cabin",
+      hotel_chain: null,
+      hotel_rating: "4.2",
+      address: "77 Canyon Rd",
+      city: "Sedona",
+      country: "USA",
+      zip_code: "86336",
+      latitude: null,
+      longitude: null,
+      check_in_date: now,
+      check_out_date: now,
+      room_type: null,
+      room_count: null,
+      guest_count: null,
+      booking_reference: null,
+      total_price: "800",
+      price_per_night: "200",
+      currency: "USD",
+      status: "confirmed",
+      booking_source: null,
+      purchase_url: null,
+      amenities: null,
+      images: null,
+      policies: null,
+      contact_info: null,
+      booking_platform: null,
+      booking_url: null,
+      cancellation_policy: null,
+      notes: null,
+      created_at: now,
+      updated_at: now,
+      trip_created_by: "user-xyz",
+      trip_name: "Red Rock Retreat",
+      trip_start_date: now,
+      trip_end_date: now,
+    };
+
+    clientQueryMock
+      // BEGIN
+      .mockResolvedValueOnce({ rows: [] })
+      // Load hotel row
+      .mockResolvedValueOnce({ rows: [hotelRow] })
+      // Membership lookup
+      .mockResolvedValueOnce({ rows: [{ role: "member" }] })
+      // Existing link check
+      .mockResolvedValueOnce({ rows: [] })
+      // Insert hotel proposal
+      .mockResolvedValueOnce({ rows: [{ id: 555 }] })
+      // Insert proposal link
+      .mockResolvedValueOnce({ rows: [] })
+      // Trip members for notifications
+      .mockResolvedValueOnce({ rows: [{ user_id: "user-xyz" }] })
+      // COMMIT
+      .mockResolvedValueOnce({ rows: [] });
+
+    queryMock
+      // ensureProposalLinkStructures -> CREATE TABLE
+      .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({ rows: [] })
+      // Fetch proposal with proposer details
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 555,
+            trip_id: 12,
+            proposed_by: "user-xyz",
+            hotel_name: "Cliffside Cabin",
+            location: "Sedona, USA",
+            price: "800",
+            price_per_night: "200",
+            rating: "4.2",
+            amenities: null,
+            platform: "Manual Save",
+            booking_url: "",
+            status: "proposed",
+            average_ranking: null,
+            created_at: now,
+            updated_at: now,
+            linked_hotel_id: 88,
+            linked_check_in_date: now,
+            linked_check_out_date: now,
+            linked_address: "77 Canyon Rd",
+            linked_city: "Sedona",
+            linked_country: "USA",
+            linked_currency: "USD",
+            proposer_id: "user-xyz",
+            proposer_email: "planner@example.com",
+            proposer_username: null,
+            proposer_first_name: "Trip",
+            proposer_last_name: "Owner",
+            proposer_phone_number: null,
+            proposer_password_hash: null,
+            proposer_profile_image_url: null,
+            proposer_cashapp_username: null,
+            proposer_cash_app_username: null,
+            proposer_cashapp_phone: null,
+            proposer_cash_app_phone: null,
+            proposer_venmo_username: null,
+            proposer_venmo_phone: null,
+            proposer_timezone: null,
+            proposer_default_location: null,
+            proposer_default_location_code: null,
+            proposer_default_city: null,
+            proposer_default_country: null,
+            proposer_auth_provider: null,
+            proposer_notification_preferences: null,
+            proposer_has_seen_home_onboarding: false,
+            proposer_has_seen_trip_onboarding: false,
+            proposer_created_at: now,
+            proposer_updated_at: now,
+          },
+        ],
+      })
+      // Fetch proposal rankings
+      .mockResolvedValueOnce({ rows: [] });
+
+    await storage.ensureHotelProposalForSavedHotel({
+      hotelId: 88,
+      tripId: 12,
+      currentUserId: "user-xyz",
+      overrideDetails: undefined,
+    });
+
+    const insertLinkCall = clientQueryMock.mock.calls.find(([sql]) =>
+      typeof sql === "string" && sql.includes("INSERT INTO proposal_schedule_links"),
+    );
+
+    expect(insertLinkCall?.[0]).toContain("ON CONFLICT DO NOTHING");
+  });
+
   it("repairs missing trip references before creating proposals", async () => {
     const now = new Date("2024-06-03T12:00:00Z");
 

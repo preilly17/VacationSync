@@ -7840,6 +7840,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         trip_id
       )
       VALUES ('hotel', $1, 'hotels', $2, $3)
+      ON CONFLICT DO NOTHING
       `,
       [insertedProposal.id, hotel.id, hotel.trip_id],
     );
