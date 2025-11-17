@@ -4218,6 +4218,24 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
+      const ensureTripMembershipForAdHocProposal = async () => {
+        const isMember = await storage.isTripMember(tripId, userId);
+        if (isMember) {
+          return { allowed: true as const };
+        }
+
+        const trip = await storage.getTripById(tripId);
+        if (!trip) {
+          return { allowed: false as const, status: 404, message: "Trip not found" };
+        }
+
+        return {
+          allowed: false as const,
+          status: 403,
+          message: "You must be a member of this trip to share stays with the group.",
+        };
+      };
+
       const proposeHotelRequestSchema = z
         .object({
           id: z.union([z.string(), z.number()]).optional(),
@@ -4284,6 +4302,11 @@ export function setupRoutes(app: Express) {
       }
 
       if (!Number.isFinite(hotelId)) {
+        const membershipResult = await ensureTripMembershipForAdHocProposal();
+        if (!membershipResult.allowed) {
+          return res.status(membershipResult.status).json({ message: membershipResult.message });
+        }
+
         if (parsedHotelPayload) {
           try {
             const createdHotel = await storage.createHotel(parsedHotelPayload, userId);
@@ -4407,6 +4430,12 @@ export function setupRoutes(app: Express) {
         if (error.message.includes('Saved stay is missing required details')) {
           return res.status(400).json({ message: error.message });
         }
+      }
+
+      if (isPostgresConstraintViolation(error)) {
+        return res.status(400).json({
+          message: "Unable to share this stay with your group. Refresh the trip and try again.",
+        });
       }
 
       res.status(500).json({ message: "Failed to propose hotel" });
