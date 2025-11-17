@@ -150,4 +150,34 @@ describe("DatabaseStorage wish list helpers", () => {
 
     ensureSpy.mockRestore();
   });
+
+  it("converts legacy text array tags to JSONB during initialization", async () => {
+    const executedSql: string[] = [];
+    queryMock.mockImplementation((sql: string) => {
+      executedSql.push(sql);
+      if (sql.includes("information_schema.columns") && sql.includes("column_name = 'tags'")) {
+        return Promise.resolve({ rows: [{ data_type: "ARRAY", udt_name: "_text" }] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+
+    const storage = new DatabaseStorage();
+    await (
+      storage as unknown as { ensureWishListStructures: () => Promise<void> }
+    ).ensureWishListStructures();
+
+    const converted = executedSql.some((sql) =>
+      sql.includes("ALTER TABLE trip_wish_list_items") &&
+      sql.includes("ALTER COLUMN tags TYPE JSONB"),
+    );
+
+    expect(converted).toBe(true);
+    expect(
+      executedSql.some((sql) =>
+        sql.includes(
+          "ALTER TABLE trip_wish_list_items ALTER COLUMN tags SET DEFAULT '[]'::jsonb",
+        ),
+      ),
+    ).toBe(true);
+  });
 });

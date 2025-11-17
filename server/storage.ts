@@ -2331,6 +2331,44 @@ export class DatabaseStorage implements IStorage {
         )
       `);
 
+      const { rows: tagColumnInfoRows } = await query<{
+        data_type: string | null;
+        udt_name: string | null;
+      }>(
+        `
+        SELECT data_type, udt_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'trip_wish_list_items'
+          AND column_name = 'tags'
+        LIMIT 1
+        `,
+      );
+
+      const tagColumnInfo = tagColumnInfoRows[0];
+      const tagDataType = tagColumnInfo?.data_type?.toLowerCase();
+
+      if (tagColumnInfo && tagDataType && tagDataType !== "jsonb") {
+        await query(
+          `ALTER TABLE trip_wish_list_items ALTER COLUMN tags DROP DEFAULT`,
+        );
+
+        const conversionExpression =
+          tagDataType === "array" || tagColumnInfo.udt_name === "_text"
+            ? "to_jsonb(COALESCE(tags, ARRAY[]::text[]))"
+            : "tags::jsonb";
+
+        await query(`
+          ALTER TABLE trip_wish_list_items
+          ALTER COLUMN tags TYPE JSONB
+          USING ${conversionExpression}
+        `);
+      }
+
+      await query(
+        `ALTER TABLE trip_wish_list_items ALTER COLUMN tags SET DEFAULT '[]'::jsonb`,
+      );
+
       await query(
         `ALTER TABLE trip_wish_list_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT`,
       );
