@@ -177,6 +177,152 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
     );
   });
 
+  it("repairs missing trip references before creating proposals", async () => {
+    const now = new Date("2024-06-03T12:00:00Z");
+
+    const hotelRow = {
+      id: 77,
+      trip_id: null,
+      user_id: "user-abc",
+      hotel_name: "Harbor View",
+      hotel_chain: null,
+      hotel_rating: "4.5",
+      address: "123 Ocean Ave",
+      city: "San Diego",
+      country: "USA",
+      zip_code: "92101",
+      latitude: null,
+      longitude: null,
+      check_in_date: now,
+      check_out_date: now,
+      room_type: null,
+      room_count: null,
+      guest_count: null,
+      booking_reference: null,
+      total_price: "900",
+      price_per_night: "300",
+      currency: "USD",
+      status: "confirmed",
+      booking_source: null,
+      purchase_url: null,
+      amenities: null,
+      images: null,
+      policies: null,
+      contact_info: null,
+      booking_platform: null,
+      booking_url: null,
+      cancellation_policy: null,
+      notes: null,
+      created_at: now,
+      updated_at: now,
+      trip_created_by: "user-abc",
+      trip_name: "Harbor Escape",
+      trip_start_date: now,
+      trip_end_date: now,
+    };
+
+    clientQueryMock
+      // BEGIN
+      .mockResolvedValueOnce({ rows: [] })
+      // Load hotel row with trip metadata
+      .mockResolvedValueOnce({ rows: [hotelRow] })
+      // Backfill missing trip id
+      .mockResolvedValueOnce({ rows: [] })
+      // Membership lookup
+      .mockResolvedValueOnce({ rows: [{ role: "member" }] })
+      // Existing proposal link check
+      .mockResolvedValueOnce({ rows: [] })
+      // Insert hotel proposal
+      .mockResolvedValueOnce({ rows: [{ id: 305 }] })
+      // Insert proposal schedule link
+      .mockResolvedValueOnce({ rows: [] })
+      // Trip members for notifications (current user only)
+      .mockResolvedValueOnce({ rows: [{ user_id: "user-abc" }] })
+      // COMMIT
+      .mockResolvedValueOnce({ rows: [] });
+
+    queryMock
+      // ensureProposalLinkStructures -> CREATE TABLE
+      .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({ rows: [] })
+      // Fetch proposal with proposer details
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            id: 305,
+            trip_id: 10,
+            proposed_by: "user-abc",
+            hotel_name: "Harbor View",
+            location: "San Diego, USA",
+            price: "900",
+            price_per_night: "300",
+            rating: "4.5",
+            amenities: null,
+            platform: "Manual Save",
+            booking_url: "",
+            status: "proposed",
+            average_ranking: null,
+            created_at: now,
+            updated_at: now,
+            linked_hotel_id: 77,
+            linked_check_in_date: now,
+            linked_check_out_date: now,
+            linked_address: "123 Ocean Ave",
+            linked_city: "San Diego",
+            linked_country: "USA",
+            linked_currency: "USD",
+            proposer_id: "user-abc",
+            proposer_email: "host@example.com",
+            proposer_username: null,
+            proposer_first_name: "Host",
+            proposer_last_name: "User",
+            proposer_phone_number: null,
+            proposer_password_hash: null,
+            proposer_profile_image_url: null,
+            proposer_cashapp_username: null,
+            proposer_cash_app_username: null,
+            proposer_cashapp_phone: null,
+            proposer_cash_app_phone: null,
+            proposer_venmo_username: null,
+            proposer_venmo_phone: null,
+            proposer_timezone: null,
+            proposer_default_location: null,
+            proposer_default_location_code: null,
+            proposer_default_city: null,
+            proposer_default_country: null,
+            proposer_auth_provider: null,
+            proposer_notification_preferences: null,
+            proposer_has_seen_home_onboarding: false,
+            proposer_has_seen_trip_onboarding: false,
+            proposer_created_at: now,
+            proposer_updated_at: now,
+          },
+        ],
+      })
+      // Fetch proposal rankings (none yet)
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await storage.ensureHotelProposalForSavedHotel({
+      hotelId: 77,
+      tripId: 10,
+      currentUserId: "user-abc",
+    });
+
+    expect(clientQueryMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining("UPDATE hotels SET trip_id"),
+      [10, 77],
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        stayId: 77,
+        wasCreated: true,
+        proposal: expect.objectContaining({ tripId: 10, hotelName: "Harbor View" }),
+      }),
+    );
+  });
+
   it("allows stay creators to propose even when email casing differs", async () => {
     const now = new Date("2024-06-02T12:00:00Z");
 

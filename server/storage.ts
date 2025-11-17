@@ -7857,7 +7857,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         throw new Error("Hotel not found");
       }
 
-      const normalizedHotelTripId =
+      let normalizedHotelTripId =
         typeof hotel.trip_id === "number"
           ? hotel.trip_id
           : typeof hotel.trip_id === "string"
@@ -7865,7 +7865,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
             : Number.NaN;
 
       if (!Number.isFinite(normalizedHotelTripId)) {
-        throw new Error("Hotel record has an invalid trip id");
+        normalizedHotelTripId = tripId;
+        hotel.trip_id = tripId;
+        await client.query(
+          `UPDATE hotels SET trip_id = $1, updated_at = NOW() WHERE id = $2`,
+          [tripId, hotelId],
+        );
       }
 
       if (normalizedHotelTripId !== tripId) {
