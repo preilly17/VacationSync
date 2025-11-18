@@ -43,6 +43,7 @@ import {
 import {
   buildHotelProposalRequestBody,
   createManualHotelProposalPayload,
+  type ManualHotelProposalPayload,
 } from "@/lib/manual-hotel-proposal";
 import {
   type InsertHotel,
@@ -228,38 +229,45 @@ export default function HotelsPage() {
       return null;
     })();
     const isManualHotel = manualHotelId != null;
-    if (isManualHotel) {
-      setProposingHotelId(manualHotelId);
-    }
 
-      try {
-        let requestBody: Record<string, unknown>;
-        let proposalDisplayName = "stay";
+    try {
+      let requestBody: ManualHotelProposalPayload | Record<string, unknown>;
+      let proposalDisplayName = "stay";
 
-        if (isManualHotel && "tripId" in hotel && manualHotelId != null) {
-          const manualPayload = createManualHotelProposalPayload({
-            stay: hotel as HotelWithDetails,
-            parsedHotelId: manualHotelId,
-            trip,
-            fallbackTripId: tripId,
-            currentUserId: user?.id ?? null,
+      if (isManualHotel && "tripId" in hotel && manualHotelId != null) {
+        const manualPayload = createManualHotelProposalPayload({
+          stay: hotel as HotelWithDetails,
+          parsedHotelId: manualHotelId,
+          trip,
+          fallbackTripId: tripId,
+          user,
+        });
+
+        if (manualPayload.tripMemberId == null || manualPayload.tripMemberId === "") {
+          toast({
+            title: "Unable to propose stay",
+            description: "We couldn’t identify your trip membership. Refresh the trip and try again.",
+            variant: "destructive",
           });
-          console.log("Proposal payload:", manualPayload);
-          requestBody = buildHotelProposalRequestBody(manualPayload);
-          proposalDisplayName = manualPayload.hotelName;
-        } else {
-          const payload = buildHotelProposalPayload(hotel);
-          requestBody = buildAdHocHotelProposalRequestBody(payload, {
-            tripId,
-            trip,
-          });
-          proposalDisplayName = payload.displayName;
+          return;
         }
 
-        await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
-          method: "POST",
-          body: requestBody,
+        requestBody = buildHotelProposalRequestBody(manualPayload);
+        proposalDisplayName = manualPayload.hotelName;
+        setProposingHotelId(manualHotelId);
+      } else {
+        const payload = buildHotelProposalPayload(hotel);
+        requestBody = buildAdHocHotelProposalRequestBody(payload, {
+          tripId,
+          trip,
         });
+        proposalDisplayName = payload.displayName;
+      }
+
+      await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
+        method: "POST",
+        body: requestBody,
+      });
 
         toast({
           title: "Added to Group Hotels!",
