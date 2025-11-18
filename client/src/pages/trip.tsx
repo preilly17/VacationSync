@@ -6543,11 +6543,10 @@ function HotelBooking({
         .join(", ");
       const normalizedLocation = locationLabel.length > 0 ? locationLabel : "Location TBD";
       const priceLabel = formatPriceValue(payload.priceTotal, payload.currency, "Price TBD");
-      const pricePerNightLabel = formatPriceValue(
-        payload.pricePerNight,
-        payload.currency,
-        priceLabel,
-      );
+      const normalizedPricePerNightValue =
+        typeof payload.pricePerNight === "number" && Number.isFinite(payload.pricePerNight)
+          ? payload.pricePerNight
+          : null;
       const bookingUrlQuery = [payload.hotelName, normalizedLocation, payload.address]
         .map((value) => value?.trim())
         .filter((value): value is string => Boolean(value && value.length > 0))
@@ -6568,7 +6567,6 @@ function HotelBooking({
         createdBy: payload.createdBy,
         location: normalizedLocation,
         price: priceLabel,
-        pricePerNight: pricePerNightLabel,
         rating: 4,
         amenities: HOTEL_PROPOSAL_AMENITIES_FALLBACK,
         platform: payload.sourceType,
@@ -6590,8 +6588,9 @@ function HotelBooking({
       if (payload.checkOut) {
         requestBody.checkOutDate = payload.checkOut;
       }
-      if (payload.pricePerNight != null) {
-        requestBody.pricePerNightValue = payload.pricePerNight;
+      if (normalizedPricePerNightValue != null) {
+        requestBody.pricePerNight = normalizedPricePerNightValue;
+        requestBody.pricePerNightValue = normalizedPricePerNightValue;
       }
       if (payload.imageUrl) {
         requestBody.imageUrl = payload.imageUrl;
