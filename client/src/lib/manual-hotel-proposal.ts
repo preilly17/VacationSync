@@ -50,6 +50,15 @@ const normalizeDateInput = (value: unknown): string | null => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
+const ensureUserId = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+};
+
 const resolveImageUrl = (images: unknown): string | null => {
   if (!images) {
     return null;
@@ -136,6 +145,44 @@ export function normalizeTripMemberIdValue(value: unknown): number | string | nu
   return null;
 }
 
+const resolveLocationValue = (
+  stay: HotelWithDetails,
+  trip?: TripLocationDetails | null,
+): { city: string; country: string } => {
+  const stayLocation = (stay as { location?: unknown }).location;
+  if (stayLocation && typeof stayLocation === "object" && !Array.isArray(stayLocation)) {
+    const locationRecord = stayLocation as { city?: unknown; country?: unknown };
+    const cityCandidate = ensureNullableText(locationRecord.city);
+    const countryCandidate = ensureNullableText(locationRecord.country);
+    if (cityCandidate || countryCandidate) {
+      return {
+        city: cityCandidate ?? "Unknown",
+        country: countryCandidate ?? "Unknown",
+      };
+    }
+  }
+
+  const resolvedCity =
+    ensureNullableText(stay.city) ||
+    ensureNullableText((stay as { cityName?: string | null }).cityName) ||
+    ensureNullableText((trip as { city?: string | null } | undefined)?.city) ||
+    ensureNullableText(trip?.cityName) ||
+    ensureNullableText((trip as { destination?: string | null } | undefined)?.destination) ||
+    "Unknown";
+
+  const resolvedCountry =
+    ensureNullableText(stay.country) ||
+    ensureNullableText((stay as { countryName?: string | null }).countryName) ||
+    ensureNullableText((trip as { country?: string | null } | undefined)?.country) ||
+    ensureNullableText(trip?.countryName) ||
+    "Unknown";
+
+  return {
+    city: resolvedCity,
+    country: resolvedCountry,
+  };
+};
+
 export function createManualHotelProposalPayload({
   stay,
   parsedHotelId,
@@ -157,7 +204,7 @@ export function createManualHotelProposalPayload({
   const normalizedHotelName =
     ensureText(stay.hotelName) || ensureText((stay as { name?: string }).name) || "Unnamed Stay";
   const normalizedAddress = ensureNullableText(stay.address);
-  const stayRecord = stay as Record<string, unknown>;
+  const stayRecord = stay as unknown as Record<string, unknown>;
   const normalizedCheckIn =
     normalizeDateInput(
       getFirstDefinedValue(stayRecord, [
@@ -180,19 +227,7 @@ export function createManualHotelProposalPayload({
         "end",
       ]),
     ) ?? null;
-  const normalizedCity =
-    ensureText(stay.city) ||
-    ensureText((stay as { location?: { city?: string | null } }).location?.city) ||
-    ensureText(trip?.city) ||
-    ensureText(trip?.cityName) ||
-    ensureText((trip as { destination?: string | null } | undefined)?.destination) ||
-    "Miami";
-  const normalizedCountry =
-    ensureText(stay.country) ||
-    ensureText((stay as { location?: { country?: string | null } }).location?.country) ||
-    ensureText(trip?.country) ||
-    ensureText(trip?.countryName) ||
-    "US";
+  const normalizedLocation = resolveLocationValue(stay, trip);
   const normalizedCurrency = ensureText(stay.currency) || "USD";
   const normalizedSourceType =
     ensureText((stay as { sourceType?: string | null }).sourceType) ||
@@ -242,6 +277,11 @@ export function createManualHotelProposalPayload({
     throw new Error("Trip member id is required to propose a stay.");
   }
 
+  const normalizedCreatedBy = ensureUserId(currentUserId) ?? ensureUserId(stay.userId);
+  if (!normalizedCreatedBy) {
+    throw new Error("User id is required to propose a stay.");
+  }
+
   return {
     hotelId: parsedHotelId,
     tripId: normalizedTripId,
@@ -255,12 +295,9 @@ export function createManualHotelProposalPayload({
     pricePerNight: normalizedPricePerNight,
     currency: normalizedCurrency,
     imageUrl: normalizedImageUrl,
-    location: {
-      city: normalizedCity,
-      country: normalizedCountry,
-    },
+    location: normalizedLocation,
     tripMemberId: normalizedTripMemberId,
-    createdBy: (currentUserId ?? stay.userId) as string,
+    createdBy: normalizedCreatedBy,
   };
 }
 

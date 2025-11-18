@@ -44,6 +44,7 @@ import {
   buildHotelProposalRequestBody,
   createManualHotelProposalPayload,
   normalizeTripMemberIdValue,
+  type ManualHotelProposalPayload,
 } from "@/lib/manual-hotel-proposal";
 import {
   type InsertHotel,
@@ -243,73 +244,89 @@ export default function HotelsPage() {
     if (isManualHotel) {
       setProposingHotelId(manualHotelId);
     }
+    let requestBody: Record<string, unknown> | null = null;
+    let manualPayloadForLogging: ManualHotelProposalPayload | null = null;
 
-      try {
-        let requestBody: Record<string, unknown>;
-        let proposalDisplayName = "stay";
+    try {
+      let proposalDisplayName = "stay";
 
-        if (isManualHotel && "hotelName" in hotel && manualHotelId != null) {
-          const resolvedTripMemberId = resolveTripMemberIdForTrip(trip ?? null, user as UserWithOptionalTripMember | null);
-          if (resolvedTripMemberId == null) {
-            toast({
-              title: "Unable to propose stay",
-              description: "We couldn’t verify your trip membership. Refresh the page and try again.",
-              variant: "destructive",
-            });
-            if (isManualHotel) {
-              setProposingHotelId(null);
-            }
-            return;
-          }
-          const manualPayload = createManualHotelProposalPayload({
-            stay: hotel as HotelWithDetails,
-            parsedHotelId: manualHotelId,
-            trip,
-            fallbackTripId: tripId,
-            currentUserId: user?.id ?? null,
-            tripMemberId: resolvedTripMemberId,
+      if (isManualHotel && "hotelName" in hotel && manualHotelId != null) {
+        const resolvedTripMemberId = resolveTripMemberIdForTrip(trip ?? null, user as UserWithOptionalTripMember | null);
+        if (resolvedTripMemberId == null) {
+          toast({
+            title: "Unable to propose stay",
+            description: "We couldn’t verify your trip membership. Refresh the page and try again.",
+            variant: "destructive",
           });
-          console.log("Proposal payload:", manualPayload);
-          requestBody = buildHotelProposalRequestBody(manualPayload);
-          proposalDisplayName = manualPayload.hotelName;
-        } else {
-          const payload = buildHotelProposalPayload(hotel);
-          const overrideFields =
-            isManualHotel
-              ? {
-                ...(payload.address ? { address: payload.address } : {}),
-                ...(payload.city ? { city: payload.city } : {}),
-                ...(payload.country ? { country: payload.country } : {}),
-                ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
-                ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
-              }
-            : {};
+          if (isManualHotel) {
+            setProposingHotelId(null);
+          }
+          return;
+        }
 
-          requestBody = {
-            tripId,
-            ...(isManualHotel ? { hotelId: manualHotelId } : {}),
-            hotelName: payload.hotelName,
-            location: payload.location,
+        if (!user?.id) {
+          toast({
+            title: "Sign in required",
+            description: "Log in to share manual stays with your group.",
+            variant: "destructive",
+          });
+          if (isManualHotel) {
+            setProposingHotelId(null);
+          }
+          setTimeout(() => {
+            window.location.href = "/login";
+          }, 500);
+          return;
+        }
+
+        manualPayloadForLogging = createManualHotelProposalPayload({
+          stay: hotel as HotelWithDetails,
+          parsedHotelId: manualHotelId,
+          trip,
+          fallbackTripId: tripId,
+          currentUserId: user.id,
+          tripMemberId: resolvedTripMemberId,
+        });
+        requestBody = buildHotelProposalRequestBody(manualPayloadForLogging);
+        proposalDisplayName = manualPayloadForLogging.hotelName;
+      } else {
+        const payload = buildHotelProposalPayload(hotel);
+        const overrideFields =
+          isManualHotel
+            ? {
+              ...(payload.address ? { address: payload.address } : {}),
+              ...(payload.city ? { city: payload.city } : {}),
+              ...(payload.country ? { country: payload.country } : {}),
+              ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
+              ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
+            }
+          : {};
+
+        requestBody = {
+          tripId,
+          ...(isManualHotel ? { hotelId: manualHotelId } : {}),
+          hotelName: payload.hotelName,
+          location: payload.location,
           price: payload.price,
           pricePerNight: payload.pricePerNight,
           rating: payload.rating ?? 4,
           amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-            platform: payload.platform,
-            bookingUrl: payload.bookingUrl,
-            ...overrideFields,
-          };
-          proposalDisplayName = payload.displayName;
-        }
+          platform: payload.platform,
+          bookingUrl: payload.bookingUrl,
+          ...overrideFields,
+        };
+        proposalDisplayName = payload.displayName;
+      }
 
-        await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
-          method: "POST",
-          body: requestBody,
-        });
+      await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
+        method: "POST",
+        body: requestBody,
+      });
 
-        toast({
-          title: "Added to Group Hotels!",
-          description: `${proposalDisplayName} is now ready for everyone to review and rank.`,
-        });
+      toast({
+        title: "Added to Group Hotels!",
+        description: `${proposalDisplayName} is now ready for everyone to review and rank.`,
+      });
 
       // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
       await Promise.all([
@@ -319,6 +336,12 @@ export default function HotelsPage() {
         }),
       ]);
     } catch (error) {
+      console.error("Proposal error:", error);
+      if (manualPayloadForLogging) {
+        console.error("Payload sent:", manualPayloadForLogging);
+      } else if (requestBody) {
+        console.error("Payload sent:", requestBody);
+      }
       const errorObj = error instanceof Error ? error : new Error(String(error));
       if (isUnauthorizedError(errorObj)) {
         toast({

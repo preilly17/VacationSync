@@ -6540,6 +6540,19 @@ function HotelBooking({
         return;
       }
 
+      const viewerId = typeof user?.id === "string" && user.id.trim().length > 0 ? user.id : null;
+      if (!viewerId) {
+        toast({
+          title: "Sign in required",
+          description: "Log in to share stays with your group.",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+
       const resolvedTripMemberId =
         membership?.id ?? normalizeTripMemberIdValue((user as { tripMemberId?: number | string | null })?.tripMemberId);
 
@@ -6557,7 +6570,7 @@ function HotelBooking({
         parsedHotelId,
         trip,
         fallbackTripId: tripId,
-        currentUserId: user?.id ?? null,
+        currentUserId: viewerId,
         tripMemberId: resolvedTripMemberId,
       });
 
