@@ -6388,7 +6388,6 @@ function HotelBooking({
     ManualHotelProposalPayload
   >({
     mutationFn: async (payload: ManualHotelProposalPayload) => {
-      console.log("Proposal payload:", payload);
       const requestBody = buildHotelProposalRequestBody(payload);
       const response = await apiRequest(`/api/trips/${payload.tripId}/proposals/hotels`, {
         method: "POST",
@@ -6461,7 +6460,9 @@ function HotelBooking({
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
       ]);
     },
-    onError: (error) => {
+    onError: (error, payload) => {
+      console.error("Proposal error:", error);
+      console.error("Payload sent:", payload);
       if (error instanceof ApiError) {
         if (error.status === 401) {
           toast({
@@ -6541,8 +6542,17 @@ function HotelBooking({
         parsedHotelId,
         trip,
         fallbackTripId: tripId,
-        currentUserId: user?.id ?? null,
+        user,
       });
+
+      if (payload.tripMemberId == null || payload.tripMemberId === "") {
+        toast({
+          title: "Unable to propose stay",
+          description: "We couldn’t identify your trip membership. Refresh the trip and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
 
       setProposingHotelId(hotel.id);
       proposeHotelMutation.mutate(payload, {
@@ -6558,7 +6568,7 @@ function HotelBooking({
       toast,
       trip,
       tripId,
-      user?.id,
+      user,
     ],
   );
 

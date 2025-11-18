@@ -1,10 +1,25 @@
-import type { HotelWithDetails, TripCalendar } from "@shared/schema";
+import type { HotelWithDetails, TripCalendar, TripMember, User } from "@shared/schema";
+
+type TripMemberLike = Pick<TripMember, "id" | "userId"> & {
+  user?: Pick<User, "id"> | null;
+};
+
+type TripLocationDetails =
+  | (Partial<Pick<TripCalendar, "id" | "cityName" | "countryName" | "destination">> & {
+      city?: string | null;
+      country?: string | null;
+      members?: TripMemberLike[] | null;
+    })
+  | null
+  | undefined;
+
+type MinimalUser = (Pick<User, "id"> & { tripMemberId?: string | number | null }) | null | undefined;
 
 export type ManualHotelProposalPayload = {
   hotelId: number;
   tripId: number;
   hotelName: string;
-  address: string;
+  address: string | null;
   checkIn: string | null;
   checkOut: string | null;
   listingId: string;
@@ -17,22 +32,34 @@ export type ManualHotelProposalPayload = {
     city: string;
     country: string;
   };
+  tripMemberId: string | number | null;
   createdBy: string;
 };
 
-type TripLocationDetails = Pick<TripCalendar, "id" | "cityName" | "countryName" | "destination"> & {
-  city?: string | null;
-  country?: string | null;
+const ensureNullableText = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 };
 
-const ensureText = (value: unknown): string => {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed.length > 0) {
-      return trimmed;
-    }
+const ensureString = (value: unknown, fallback: string): string => {
+  return ensureNullableText(value) ?? fallback;
+};
+
+const toNumericValue = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
   }
-  return "";
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 };
 
 const normalizeDateInput = (value: unknown): string | null => {
@@ -42,6 +69,100 @@ const normalizeDateInput = (value: unknown): string | null => {
 
   const date = value instanceof Date ? value : new Date(value as string | number);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+const normalizeIdentifier = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toString();
+  }
+
+  return null;
+};
+
+const extractDestinationParts = (value: unknown): { city: string | null; country: string | null } => {
+  const text = ensureNullableText(value);
+  if (!text) {
+    return { city: null, country: null };
+  }
+
+  const parts = text.split(",").map((part) => ensureNullableText(part));
+  if (parts.length === 1) {
+    return { city: parts[0], country: null };
+  }
+
+  return {
+    city: parts[0],
+    country: parts[parts.length - 1],
+  };
+};
+
+const resolveStayLocationParts = (
+  stay: HotelWithDetails,
+  trip: TripLocationDetails,
+): { city: string; country: string } => {
+  const stayLocation = (stay as { location?: unknown }).location;
+  const stayLocationObject =
+    stayLocation && typeof stayLocation === "object" && !Array.isArray(stayLocation)
+      ? (stayLocation as { city?: unknown; country?: unknown })
+      : null;
+  const stayLocationText =
+    typeof stayLocation === "string" ? stayLocation : ensureNullableText((stayLocationObject as { text?: string })?.text);
+
+  const locationTextParts = extractDestinationParts(stayLocationText);
+  const tripDestinationParts = extractDestinationParts(trip?.destination);
+  const tripCityCandidate =
+    ensureNullableText((trip as { city?: string | null })?.city) ??
+    ensureNullableText(trip?.cityName) ??
+    tripDestinationParts.city;
+  const tripCountryCandidate =
+    ensureNullableText((trip as { country?: string | null })?.country) ??
+    ensureNullableText(trip?.countryName) ??
+    tripDestinationParts.country;
+
+  const city =
+    ensureNullableText(stay.city) ??
+    ensureNullableText(stayLocationObject?.city) ??
+    locationTextParts.city ??
+    tripCityCandidate ??
+    "Unknown";
+  const country =
+    ensureNullableText(stay.country) ??
+    ensureNullableText(stayLocationObject?.country) ??
+    locationTextParts.country ??
+    tripCountryCandidate ??
+    "Unknown";
+
+  return { city, country };
+};
+
+const resolveTripMemberId = (
+  trip: TripLocationDetails,
+  normalizedUserId: string | null,
+  fallbackTripMemberId: string | number | null | undefined,
+): string | number | null => {
+  const members = trip?.members ?? null;
+  if (members && normalizedUserId) {
+    for (const member of members) {
+      const memberUserId =
+        normalizeIdentifier(member.userId) ?? normalizeIdentifier(member.user?.id);
+      if (memberUserId && memberUserId === normalizedUserId) {
+        if (member.id !== undefined && member.id !== null) {
+          return member.id;
+        }
+      }
+    }
+  }
+
+  if (fallbackTripMemberId !== undefined && fallbackTripMemberId !== null && fallbackTripMemberId !== "") {
+    return fallbackTripMemberId;
+  }
+
+  return null;
 };
 
 const resolveImageUrl = (images: unknown): string | null => {
@@ -85,60 +206,75 @@ export function createManualHotelProposalPayload({
   parsedHotelId,
   trip,
   fallbackTripId,
-  currentUserId,
+  user,
 }: {
   stay: HotelWithDetails;
   parsedHotelId: number;
-  trip?: TripLocationDetails | null;
+  trip?: TripLocationDetails;
   fallbackTripId: number;
-  currentUserId?: string | null;
+  user?: MinimalUser;
 }): ManualHotelProposalPayload {
   const normalizedTripId = Number.isFinite(stay.tripId)
     ? stay.tripId
     : trip?.id ?? fallbackTripId;
   const normalizedHotelName =
-    ensureText(stay.hotelName) || ensureText((stay as { name?: string }).name) || "Unnamed Stay";
-  const normalizedAddress = ensureText(stay.address);
-  const normalizedCity =
-    ensureText(stay.city) ||
-    ensureText(trip?.city) ||
-    ensureText(trip?.cityName) ||
-    ensureText((trip as { destination?: string | null } | undefined)?.destination) ||
-    "Miami";
-  const normalizedCountry =
-    ensureText(stay.country) || ensureText(trip?.country) || ensureText(trip?.countryName) || "US";
-  const normalizedCurrency = ensureText(stay.currency) || "USD";
+    ensureString(stay.hotelName, ensureString((stay as { name?: string }).name, "Unnamed Stay"));
+  const normalizedAddress = ensureNullableText(stay.address);
+  const { city: normalizedCity, country: normalizedCountry } = resolveStayLocationParts(stay, trip);
+  const normalizedCurrency = ensureString(stay.currency, "USD");
   const normalizedSourceType =
-    ensureText((stay as { sourceType?: string | null }).sourceType) ||
-    ensureText(stay.bookingPlatform) ||
-    ensureText(stay.bookingSource) ||
-    "manual";
+    ensureString((stay as { sourceType?: string | null }).sourceType, "") ||
+    ensureString(stay.bookingPlatform, "") ||
+    ensureString(stay.bookingSource, "manual");
   const normalizedListingId = (() => {
-    const rawListingId = ensureText((stay as { listingId?: string | null }).listingId);
-    return rawListingId.length > 0 ? rawListingId : `manual-${parsedHotelId}`;
+    const rawListingId =
+      ensureNullableText((stay as { listingId?: string | null }).listingId) ??
+      ensureNullableText(stay.bookingReference);
+    return rawListingId ?? `manual-${parsedHotelId}`;
   })();
   const normalizedPriceTotal =
-    typeof stay.totalPrice === "number" && Number.isFinite(stay.totalPrice)
-      ? stay.totalPrice
-      : typeof stay.pricePerNight === "number" && Number.isFinite(stay.pricePerNight)
-        ? stay.pricePerNight
-        : 0;
+    toNumericValue((stay as { priceTotal?: unknown }).priceTotal) ??
+    toNumericValue(stay.totalPrice) ??
+    toNumericValue((stay as { price?: unknown }).price) ??
+    0;
   const normalizedPricePerNight =
-    typeof stay.pricePerNight === "number" && Number.isFinite(stay.pricePerNight)
-      ? stay.pricePerNight
-      : null;
+    toNumericValue(stay.pricePerNight) ??
+    toNumericValue((stay as { nightlyRate?: unknown }).nightlyRate) ??
+    toNumericValue((stay as { pricePerNightValue?: unknown }).pricePerNightValue) ??
+    null;
   const normalizedImageUrl =
     resolveImageUrl((stay as { imageUrl?: string | null }).imageUrl ?? stay.images) ?? null;
+  const normalizedCheckIn = normalizeDateInput(
+    (stay as { start_date?: unknown }).start_date ??
+      (stay as { startDate?: unknown }).startDate ??
+      stay.checkInDate,
+  );
+  const normalizedCheckOut = normalizeDateInput(
+    (stay as { end_date?: unknown }).end_date ??
+      (stay as { endDate?: unknown }).endDate ??
+      stay.checkOutDate,
+  );
+  const normalizedUserId = normalizeIdentifier(user?.id ?? stay.userId);
+  const normalizedTripMemberId = resolveTripMemberId(
+    trip,
+    normalizedUserId,
+    user?.tripMemberId ?? (user as { activeTripMemberId?: string | number | null })?.activeTripMemberId,
+  );
+  const normalizedSource =
+    ensureNullableText((stay as { sourceType?: string | null }).sourceType) ??
+    ensureNullableText(stay.bookingPlatform) ??
+    ensureNullableText(stay.bookingSource) ??
+    "manual";
 
   return {
     hotelId: parsedHotelId,
     tripId: normalizedTripId,
     hotelName: normalizedHotelName,
     address: normalizedAddress,
-    checkIn: normalizeDateInput(stay.checkInDate),
-    checkOut: normalizeDateInput(stay.checkOutDate),
+    checkIn: normalizedCheckIn,
+    checkOut: normalizedCheckOut,
     listingId: normalizedListingId,
-    sourceType: normalizedSourceType,
+    sourceType: normalizedSourceType || normalizedSource,
     priceTotal: Number.isFinite(normalizedPriceTotal) ? normalizedPriceTotal : 0,
     pricePerNight: normalizedPricePerNight,
     currency: normalizedCurrency,
@@ -147,14 +283,13 @@ export function createManualHotelProposalPayload({
       city: normalizedCity,
       country: normalizedCountry,
     },
-    createdBy: (currentUserId ?? stay.userId) as string,
+    tripMemberId: normalizedTripMemberId,
+    createdBy: normalizeIdentifier(user?.id) ?? normalizeIdentifier(stay.userId) ?? "system",
   };
 }
 
 export function buildHotelProposalRequestBody(
   payload: ManualHotelProposalPayload,
-): Record<string, unknown> {
-  return {
-    hotelId: payload.hotelId,
-  };
+): ManualHotelProposalPayload {
+  return payload;
 }
