@@ -20,18 +20,16 @@ export type ManualHotelProposalPayload = {
   tripId: number;
   hotelName: string;
   address: string | null;
-  checkIn: string | null;
-  checkOut: string | null;
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  city: string;
+  country: string;
   listingId: string;
   sourceType: string;
   priceTotal: number;
   pricePerNight: number | null;
   currency: string;
   imageUrl: string | null;
-  location: {
-    city: string;
-    country: string;
-  };
   tripMemberId: string | number | null;
   createdBy: string;
 };
@@ -271,18 +269,16 @@ export function createManualHotelProposalPayload({
     tripId: normalizedTripId,
     hotelName: normalizedHotelName,
     address: normalizedAddress,
-    checkIn: normalizedCheckIn,
-    checkOut: normalizedCheckOut,
+    checkInDate: normalizedCheckIn,
+    checkOutDate: normalizedCheckOut,
+    city: normalizedCity,
+    country: normalizedCountry,
     listingId: normalizedListingId,
     sourceType: normalizedSourceType || normalizedSource,
     priceTotal: Number.isFinite(normalizedPriceTotal) ? normalizedPriceTotal : 0,
     pricePerNight: normalizedPricePerNight,
     currency: normalizedCurrency,
     imageUrl: normalizedImageUrl,
-    location: {
-      city: normalizedCity,
-      country: normalizedCountry,
-    },
     tripMemberId: normalizedTripMemberId,
     createdBy: normalizeIdentifier(user?.id) ?? normalizeIdentifier(stay.userId) ?? "system",
   };
