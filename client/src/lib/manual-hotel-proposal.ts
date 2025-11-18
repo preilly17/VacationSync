@@ -1,5 +1,3 @@
-import { HOTEL_PROPOSAL_AMENITIES_FALLBACK } from "@/lib/hotel-proposals";
-import { formatCurrency } from "@/lib/utils";
 import type { HotelWithDetails, TripCalendar } from "@shared/schema";
 
 export type ManualHotelProposalPayload = {
@@ -156,78 +154,7 @@ export function createManualHotelProposalPayload({
 export function buildHotelProposalRequestBody(
   payload: ManualHotelProposalPayload,
 ): Record<string, unknown> {
-  const formatPriceValue = (
-    amount: number | null | undefined,
-    currency: string,
-    fallback: string,
-  ) => {
-    if (typeof amount !== "number" || Number.isNaN(amount)) {
-      return fallback;
-    }
-
-    const formatted = formatCurrency(amount, {
-      currency,
-      fallback: "",
-    }).trim();
-
-    return formatted.length > 0 ? formatted : fallback;
-  };
-
-  const locationLabel = [payload.location.city, payload.location.country]
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part && part.length > 0))
-    .join(", ");
-  const normalizedLocation = locationLabel.length > 0 ? locationLabel : "Location TBD";
-  const priceLabel = formatPriceValue(payload.priceTotal, payload.currency, "Price TBD");
-  const pricePerNightLabel = formatPriceValue(payload.pricePerNight, payload.currency, priceLabel);
-  const bookingUrlQuery = [payload.hotelName, normalizedLocation, payload.address]
-    .map((value) => value?.trim())
-    .filter((value): value is string => Boolean(value && value.length > 0))
-    .join(" ")
-    .trim();
-  const bookingUrl = `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(
-    bookingUrlQuery.length > 0 ? bookingUrlQuery : "hotel",
-  )}`;
-
-  const requestBody: Record<string, unknown> = {
-    tripId: payload.tripId,
+  return {
     hotelId: payload.hotelId,
-    hotelName: payload.hotelName,
-    listingId: payload.listingId,
-    sourceType: payload.sourceType,
-    priceTotal: payload.priceTotal,
-    currency: payload.currency,
-    createdBy: payload.createdBy,
-    location: normalizedLocation,
-    price: priceLabel,
-    pricePerNight: pricePerNightLabel,
-    rating: 4,
-    amenities: HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-    platform: payload.sourceType,
-    bookingUrl,
   };
-
-  if (payload.address) {
-    requestBody.address = payload.address;
-  }
-  if (payload.location.city) {
-    requestBody.city = payload.location.city;
-  }
-  if (payload.location.country) {
-    requestBody.country = payload.location.country;
-  }
-  if (payload.checkIn) {
-    requestBody.checkInDate = payload.checkIn;
-  }
-  if (payload.checkOut) {
-    requestBody.checkOutDate = payload.checkOut;
-  }
-  if (payload.pricePerNight != null) {
-    requestBody.pricePerNightValue = payload.pricePerNight;
-  }
-  if (payload.imageUrl) {
-    requestBody.imageUrl = payload.imageUrl;
-  }
-
-  return requestBody;
 }
