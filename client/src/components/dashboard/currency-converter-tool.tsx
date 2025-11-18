@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, useId, type RefObject } from "react";
 import type { ClipboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -602,6 +602,10 @@ type CurrencyComboboxProps = {
 function CurrencyCombobox({ label, value, onChange }: CurrencyComboboxProps) {
   const [open, setOpen] = useState(false);
   const selected = CURRENCIES.find((currency) => currency.code === value);
+  const searchInputId = useId();
+  const normalizedLabel = label.toLowerCase().replace(/\s+/g, "-");
+  const comboboxInputId = `${normalizedLabel}-search-${searchInputId}`;
+  const comboboxInputName = `${normalizedLabel}-currency-search`;
 
   return (
     <div className="space-y-2">
@@ -628,7 +632,11 @@ function CurrencyCombobox({ label, value, onChange }: CurrencyComboboxProps) {
         </PopoverTrigger>
         <PopoverContent className="w-[280px] p-0" align="start">
           <Command>
-            <CommandInput placeholder="Search currency..." />
+            <CommandInput
+              id={comboboxInputId}
+              name={comboboxInputName}
+              placeholder="Search currency..."
+            />
             <CommandEmpty>No currency found.</CommandEmpty>
             <CommandList>
               <CommandGroup>
