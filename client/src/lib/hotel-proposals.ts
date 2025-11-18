@@ -1,5 +1,5 @@
 import { formatCurrency } from "@/lib/utils";
-import type { HotelSearchResult, HotelWithDetails } from "@shared/schema";
+import type { HotelSearchResult, HotelWithDetails, TripWithDates } from "@shared/schema";
 
 export type ProposableHotel = HotelSearchResult | HotelWithDetails;
 
@@ -216,5 +216,189 @@ export const buildHotelProposalPayload = (
     country: normalizedCountry,
     checkInDate: normalizedCheckInDate,
     checkOutDate: normalizedCheckOutDate,
+  };
+};
+
+type TripLocationHints =
+  | (Pick<TripWithDates, "destination" | "startDate" | "endDate"> & {
+      cityName?: string | null;
+      countryName?: string | null;
+    })
+  | null
+  | undefined;
+
+const ensureNonEmptyText = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const extractCityAndCountry = (
+  value: unknown,
+): { city: string | null; country: string | null } => {
+  if (typeof value !== "string") {
+    return { city: null, country: null };
+  }
+
+  const parts = value
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+
+  if (parts.length === 0) {
+    return { city: null, country: null };
+  }
+
+  if (parts.length === 1) {
+    return { city: parts[0], country: null };
+  }
+
+  return {
+    city: parts[0],
+    country: parts.slice(1).join(", "),
+  };
+};
+
+const DEFAULT_CITY = "Unknown city";
+const DEFAULT_COUNTRY = "Unknown country";
+const DEFAULT_ADDRESS = "Address TBD";
+
+const deriveCity = (
+  payload: HotelProposalPayload,
+  trip: TripLocationHints,
+): string => {
+  return (
+    ensureNonEmptyText(payload.city) ??
+    ensureNonEmptyText(extractCityAndCountry(payload.location).city) ??
+    ensureNonEmptyText(trip?.cityName) ??
+    ensureNonEmptyText(extractCityAndCountry(trip?.destination).city) ??
+    DEFAULT_CITY
+  );
+};
+
+const deriveCountry = (
+  payload: HotelProposalPayload,
+  trip: TripLocationHints,
+): string => {
+  return (
+    ensureNonEmptyText(payload.country) ??
+    ensureNonEmptyText(extractCityAndCountry(payload.location).country) ??
+    ensureNonEmptyText(trip?.countryName) ??
+    ensureNonEmptyText(extractCityAndCountry(trip?.destination).country) ??
+    DEFAULT_COUNTRY
+  );
+};
+
+const deriveAddress = (
+  payload: HotelProposalPayload,
+  city: string,
+  country: string,
+): string => {
+  return (
+    ensureNonEmptyText(payload.address) ??
+    ensureNonEmptyText([payload.hotelName, city, country].filter(Boolean).join(", ")) ??
+    DEFAULT_ADDRESS
+  );
+};
+
+const normalizePriceValue = (value: unknown): number | null => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const cleaned = trimmed.replace(/[^0-9.,-]/g, "");
+  if (!cleaned) {
+    return null;
+  }
+
+  const lastComma = cleaned.lastIndexOf(",");
+  const lastDot = cleaned.lastIndexOf(".");
+
+  let normalized = cleaned;
+  if (lastComma >= 0 || lastDot >= 0) {
+    if (lastComma >= 0 && lastDot >= 0) {
+      normalized = lastComma > lastDot
+        ? cleaned.replace(/\./g, "").replace(/,/g, ".")
+        : cleaned.replace(/,/g, "");
+    } else if (lastComma >= 0) {
+      const decimalDigits = cleaned.length - lastComma - 1;
+      normalized = decimalDigits > 0 && decimalDigits <= 2
+        ? cleaned.replace(/,/g, ".")
+        : cleaned.replace(/,/g, "");
+    } else if (lastDot >= 0) {
+      const decimalDigits = cleaned.length - lastDot - 1;
+      normalized = decimalDigits > 0 && decimalDigits <= 2
+        ? cleaned
+        : cleaned.replace(/\./g, "");
+    }
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const fallbackIsoDate = (value?: string | null, fallback?: string | null): string => {
+  if (value && value.toString().trim().length > 0) {
+    return value as string;
+  }
+
+  if (fallback && fallback.toString().trim().length > 0) {
+    return fallback as string;
+  }
+
+  return new Date().toISOString();
+};
+
+export const buildAdHocHotelProposalRequestBody = (
+  payload: HotelProposalPayload,
+  options: { tripId: number; trip?: TripLocationHints; currency?: string },
+): Record<string, unknown> => {
+  const { tripId, trip } = options;
+  const city = deriveCity(payload, trip);
+  const country = deriveCountry(payload, trip);
+  const address = deriveAddress(payload, city, country);
+  const checkInDate = fallbackIsoDate(payload.checkInDate, trip?.startDate);
+  const defaultCheckoutDate = trip?.endDate
+    ? trip.endDate
+    : new Date(new Date(checkInDate).getTime() + 2 * 24 * 60 * 60 * 1000).toISOString();
+  const checkOutDate = fallbackIsoDate(payload.checkOutDate, defaultCheckoutDate);
+  const normalizedTotalPrice =
+    normalizePriceValue(payload.price) ?? normalizePriceValue(payload.pricePerNight) ?? 0;
+  const normalizedPricePerNight =
+    normalizePriceValue(payload.pricePerNight) ?? normalizedTotalPrice;
+
+  return {
+    tripId,
+    hotelName: payload.hotelName,
+    location: payload.location,
+    price: payload.price,
+    pricePerNight: normalizedPricePerNight,
+    rating: payload.rating ?? null,
+    amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+    platform: payload.platform,
+    bookingUrl: payload.bookingUrl,
+    status: "proposed",
+    address,
+    city,
+    country,
+    checkInDate,
+    checkOutDate,
+    totalPrice: normalizedTotalPrice,
+    currency: ensureNonEmptyText(options.currency) ?? "USD",
+    bookingSource: payload.platform,
+    bookingPlatform: payload.platform,
+    hotelRating: payload.rating ?? null,
   };
 };
