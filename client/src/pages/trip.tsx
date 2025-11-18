@@ -58,8 +58,8 @@ import {
 } from "@/lib/activities/queryKeys";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
+  buildAdHocHotelProposalRequestBody,
   buildHotelProposalPayload,
-  HOTEL_PROPOSAL_AMENITIES_FALLBACK,
 } from "@/lib/hotel-proposals";
 import { activityMatchesPeopleFilter } from "@/lib/activityFilters";
 import { getMemberDisplayName } from "@/lib/activities/manualMemberOptions";
@@ -6570,27 +6570,12 @@ function HotelBooking({
     async (hotel: HotelSearchResult) => {
       try {
         const payload = buildHotelProposalPayload(hotel);
-        const overrideFields = {
-          ...(payload.address ? { address: payload.address } : {}),
-          ...(payload.city ? { city: payload.city } : {}),
-          ...(payload.country ? { country: payload.country } : {}),
-          ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
-          ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
-        };
 
         await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
           method: "POST",
-          body: JSON.stringify({
+          body: buildAdHocHotelProposalRequestBody(payload, {
             tripId,
-            hotelName: payload.hotelName,
-            location: payload.location,
-            price: payload.price,
-            pricePerNight: payload.pricePerNight,
-            rating: payload.rating ?? 4,
-            amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-            platform: payload.platform,
-            bookingUrl: payload.bookingUrl,
-            ...overrideFields,
+            trip,
           }),
         });
 

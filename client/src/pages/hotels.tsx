@@ -36,8 +36,8 @@ import {
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
+  buildAdHocHotelProposalRequestBody,
   buildHotelProposalPayload,
-  HOTEL_PROPOSAL_AMENITIES_FALLBACK,
   type ProposableHotel,
 } from "@/lib/hotel-proposals";
 import {
@@ -249,30 +249,10 @@ export default function HotelsPage() {
           proposalDisplayName = manualPayload.hotelName;
         } else {
           const payload = buildHotelProposalPayload(hotel);
-          const overrideFields =
-            isManualHotel
-              ? {
-                ...(payload.address ? { address: payload.address } : {}),
-                ...(payload.city ? { city: payload.city } : {}),
-                ...(payload.country ? { country: payload.country } : {}),
-                ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
-                ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
-              }
-            : {};
-
-          requestBody = {
+          requestBody = buildAdHocHotelProposalRequestBody(payload, {
             tripId,
-            ...(isManualHotel ? { hotelId: manualHotelId } : {}),
-            hotelName: payload.hotelName,
-            location: payload.location,
-          price: payload.price,
-          pricePerNight: payload.pricePerNight,
-          rating: payload.rating ?? 4,
-          amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-            platform: payload.platform,
-            bookingUrl: payload.bookingUrl,
-            ...overrideFields,
-          };
+            trip,
+          });
           proposalDisplayName = payload.displayName;
         }
 
