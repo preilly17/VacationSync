@@ -59,7 +59,9 @@ import {
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   buildHotelProposalPayload,
+  buildManualHotelProposalRequestPayload,
   HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+  type ManualHotelProposalRequestPayload,
 } from "@/lib/hotel-proposals";
 import { activityMatchesPeopleFilter } from "@/lib/activityFilters";
 import { getMemberDisplayName } from "@/lib/activities/manualMemberOptions";
@@ -6381,46 +6383,49 @@ function HotelBooking({
   const proposeHotelMutation = useMutation<
     HotelProposalWithDetails,
     Error,
-    HotelWithDetails
+    ManualHotelProposalRequestPayload
   >({
-    mutationFn: async (hotel: HotelWithDetails) => {
-      const parsedHotelId = Number.parseInt(String(hotel.id), 10);
-      if (!Number.isFinite(parsedHotelId)) {
-        throw new Error("Invalid hotel ID");
-      }
+    mutationFn: async (payload: ManualHotelProposalRequestPayload) => {
+      const hotelDetails = (() => {
+        try {
+          const manualHotel = hotels.find((entry) => Number.parseInt(String(entry.id), 10) === payload.hotelId);
+          return manualHotel ?? null;
+        } catch {
+          return null;
+        }
+      })();
+      const proposalDetails = hotelDetails ? buildHotelProposalPayload(hotelDetails) : null;
+      const legacyFields = proposalDetails
+        ? {
+            hotelName: proposalDetails.hotelName,
+            location: proposalDetails.location,
+            price: proposalDetails.price,
+            pricePerNight: proposalDetails.pricePerNight,
+            rating: proposalDetails.rating ?? 4,
+            amenities: proposalDetails.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+            platform: proposalDetails.platform,
+            bookingUrl: proposalDetails.bookingUrl,
+            ...(proposalDetails.address ? { address: proposalDetails.address } : {}),
+            ...(proposalDetails.city ? { city: proposalDetails.city } : {}),
+            ...(proposalDetails.country ? { country: proposalDetails.country } : {}),
+            ...(proposalDetails.checkInDate ? { checkInDate: proposalDetails.checkInDate } : {}),
+            ...(proposalDetails.checkOutDate ? { checkOutDate: proposalDetails.checkOutDate } : {}),
+          }
+        : {};
 
-      const payload = buildHotelProposalPayload(hotel);
-      const overrideFields = {
-        ...(payload.address ? { address: payload.address } : {}),
-        ...(payload.city ? { city: payload.city } : {}),
-        ...(payload.country ? { country: payload.country } : {}),
-        ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
-        ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
-      };
-
+      const requestBody = { ...payload, ...legacyFields };
+      console.log("Proposal payload:", requestBody);
       const response = await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
         method: "POST",
-        body: {
-          tripId,
-          hotelId: parsedHotelId,
-          hotelName: payload.hotelName,
-          location: payload.location,
-          price: payload.price,
-          pricePerNight: payload.pricePerNight,
-          rating: payload.rating ?? 4,
-          amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-          platform: payload.platform,
-          bookingUrl: payload.bookingUrl,
-          ...overrideFields,
-        },
+        body: requestBody,
       });
 
       return (await response.json()) as HotelProposalWithDetails;
     },
-    onSuccess: async (proposal, hotel) => {
+    onSuccess: async (proposal, payload) => {
       toast({ title: "Hotel proposed to group." });
 
-      const stayId = proposal.stayId ?? Number.parseInt(String(hotel.id), 10);
+      const stayId = proposal.stayId ?? payload.hotelId ?? null;
 
       queryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
         [`/api/trips/${tripId}/hotel-proposals`],
@@ -6555,14 +6560,30 @@ function HotelBooking({
         return;
       }
 
-      setProposingHotelId(hotel.id);
-      proposeHotelMutation.mutate(hotel, {
-        onSettled: () => {
-          setProposingHotelId(null);
-        },
-      });
+      try {
+        const normalizedPayload = buildManualHotelProposalRequestPayload(hotel, {
+          trip,
+          user,
+        });
+        setProposingHotelId(hotel.id);
+        proposeHotelMutation.mutate(normalizedPayload, {
+          onSettled: () => {
+            setProposingHotelId(null);
+          },
+        });
+      } catch (payloadError) {
+        const errorMessage =
+          payloadError instanceof Error && payloadError.message.trim().length > 0
+            ? payloadError.message
+            : "We couldn't prepare this stay to share with your group.";
+        toast({
+          title: "Unable to propose stay",
+          description: errorMessage,
+          variant: "destructive",
+        });
+      }
     },
-    [canManageHotel, proposeHotelMutation, toast],
+    [canManageHotel, proposeHotelMutation, toast, trip, user],
   );
 
   const focusSearchPanel = useCallback(() => {
@@ -6581,20 +6602,23 @@ function HotelBooking({
           ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
         };
 
+        const requestBody = {
+          tripId,
+          hotelName: payload.hotelName,
+          location: payload.location,
+          price: payload.price,
+          pricePerNight: payload.pricePerNight,
+          rating: payload.rating ?? 4,
+          amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+          platform: payload.platform,
+          bookingUrl: payload.bookingUrl,
+          ...overrideFields,
+        };
+
+        console.log("Proposal payload:", requestBody);
         await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
           method: "POST",
-          body: JSON.stringify({
-            tripId,
-            hotelName: payload.hotelName,
-            location: payload.location,
-            price: payload.price,
-            pricePerNight: payload.pricePerNight,
-            rating: payload.rating ?? 4,
-            amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-            platform: payload.platform,
-            bookingUrl: payload.bookingUrl,
-            ...overrideFields,
-          }),
+          body: requestBody,
         });
 
         toast({

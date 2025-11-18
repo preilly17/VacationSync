@@ -3,6 +3,37 @@ import type { HotelSearchResult, HotelWithDetails } from "@shared/schema";
 
 export type ProposableHotel = HotelSearchResult | HotelWithDetails;
 
+export interface ManualHotelProposalRequestPayload {
+  tripId: number;
+  hotelId?: number;
+  hotelName: string;
+  address: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  listingId: string;
+  sourceType: string;
+  priceTotal: number;
+  pricePerNight: number | null;
+  currency: string;
+  imageUrl: string | null;
+  location: {
+    city: string;
+    country: string;
+  };
+  createdBy: string;
+}
+
+type TripLocationContext = {
+  id: number;
+  cityName?: string | null;
+  countryName?: string | null;
+  destination?: string | null;
+};
+
+type UserContext = { id: string } | null | undefined;
+
 export interface HotelProposalPayload {
   hotelName: string;
   location: string;
@@ -85,6 +116,162 @@ const normalizeDateValue = (value: unknown): string | null => {
   const date = value instanceof Date ? value : new Date(value as string | number);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
+
+const getTrimmedString = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
+};
+
+const coerceNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+};
+
+export function buildManualHotelProposalRequestPayload(
+  hotel: HotelWithDetails,
+  options: { trip?: TripLocationContext | null; user: UserContext },
+): ManualHotelProposalRequestPayload {
+  const trip = options.trip ?? null;
+  const user = options.user ?? null;
+
+  if (!trip?.id) {
+    throw new Error("Trip information is required to share this stay.");
+  }
+
+  if (!user?.id) {
+    throw new Error("User information is required to share this stay.");
+  }
+
+  const normalizedHotelId = Number.parseInt(String(hotel.id), 10);
+  if (!Number.isFinite(normalizedHotelId)) {
+    throw new Error("Invalid stay identifier");
+  }
+
+  const trimmedHotelName = getTrimmedString(hotel.hotelName);
+  const fallbackName =
+    trimmedHotelName.length > 0
+      ? trimmedHotelName
+      : (() => {
+          const legacyName = getTrimmedString((hotel as { name?: string }).name);
+          return legacyName.length > 0 ? legacyName : "Manual stay";
+        })();
+
+  const listingId = (() => {
+    if ("listingId" in hotel) {
+      const raw = (hotel as { listingId?: unknown }).listingId;
+      if (typeof raw === "string" && raw.trim().length > 0) {
+        return raw.trim();
+      }
+      if (typeof raw === "number" && Number.isFinite(raw)) {
+        return String(raw);
+      }
+    }
+
+    return `manual-${normalizedHotelId}`;
+  })();
+
+  const sourceType = (() => {
+    const candidates = [
+      (hotel as { sourceType?: unknown }).sourceType,
+      hotel.bookingSource,
+      hotel.bookingPlatform,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === "string") {
+        const trimmed = candidate.trim();
+        if (trimmed.length > 0) {
+          return trimmed;
+        }
+      }
+    }
+
+    return "manual";
+  })();
+
+  const priceTotal =
+    coerceNumber((hotel as { priceTotal?: unknown }).priceTotal) ??
+    coerceNumber((hotel as { price?: unknown }).price) ??
+    coerceNumber(hotel.totalPrice) ??
+    coerceNumber(hotel.pricePerNight) ??
+    0;
+
+  const pricePerNight = coerceNumber(hotel.pricePerNight);
+  const currency = (() => {
+    const trimmed = getTrimmedString(hotel.currency);
+    return trimmed.length > 0 ? trimmed : "USD";
+  })();
+
+  const address = getTrimmedString(hotel.address);
+
+  const parseImageUrl = (): string | null => {
+    const directImage = (hotel as { imageUrl?: unknown }).imageUrl;
+    if (typeof directImage === "string" && directImage.trim().length > 0) {
+      return directImage.trim();
+    }
+
+    if (typeof hotel.images === "string" && hotel.images.trim().length > 0) {
+      return hotel.images.trim();
+    }
+
+    if (Array.isArray(hotel.images) && hotel.images.length > 0) {
+      const firstImage = hotel.images.find((image) => typeof image === "string");
+      if (typeof firstImage === "string" && firstImage.trim().length > 0) {
+        return firstImage.trim();
+      }
+    }
+
+    return null;
+  };
+
+  const fallbackCity = (() => {
+    const cityCandidates = [getTrimmedString(hotel.city), getTrimmedString(trip.cityName), getTrimmedString(trip.destination)];
+    const selected = cityCandidates.find((candidate) => candidate.length > 0);
+    return selected && selected.length > 0 ? selected : "Miami";
+  })();
+
+  const fallbackCountry = (() => {
+    const countryCandidates = [getTrimmedString(hotel.country), getTrimmedString(trip.countryName)];
+    const selected = countryCandidates.find((candidate) => candidate.length > 0);
+    return selected && selected.length > 0 ? selected : "US";
+  })();
+
+  const checkInDate = normalizeDateValue(hotel.checkInDate);
+  const checkOutDate = normalizeDateValue(hotel.checkOutDate);
+
+  return {
+    tripId: trip.id,
+    hotelId: normalizedHotelId,
+    hotelName: fallbackName,
+    address: address.length > 0 ? address : "",
+    checkIn: checkInDate,
+    checkOut: checkOutDate,
+    checkInDate,
+    checkOutDate,
+    listingId,
+    sourceType,
+    priceTotal,
+    pricePerNight,
+    currency,
+    imageUrl: parseImageUrl(),
+    location: {
+      city: fallbackCity,
+      country: fallbackCountry,
+    },
+    createdBy: user.id,
+  };
+}
 
 export const buildHotelProposalPayload = (
   hotel: ProposableHotel,

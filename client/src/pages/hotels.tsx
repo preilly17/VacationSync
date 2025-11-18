@@ -37,7 +37,9 @@ import {
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   buildHotelProposalPayload,
+  buildManualHotelProposalRequestPayload,
   HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+  type ManualHotelProposalRequestPayload,
   type ProposableHotel,
 } from "@/lib/hotel-proposals";
 import {
@@ -236,11 +238,44 @@ export default function HotelsPage() {
             }
           : {};
 
-      await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
-        method: "POST",
-        body: JSON.stringify({
+      let requestBody: Record<string, unknown>;
+
+      if (isManualHotel) {
+        try {
+          const normalizedTrip = trip
+            ? { id: trip.id, cityName: null, countryName: null, destination: trip.destination }
+            : undefined;
+          const normalizedPayload = buildManualHotelProposalRequestPayload(hotel as HotelWithDetails, {
+            trip: normalizedTrip,
+            user,
+          });
+          requestBody = {
+            ...normalizedPayload,
+            hotelName: payload.hotelName,
+            location: payload.location,
+            price: payload.price,
+            pricePerNight: payload.pricePerNight,
+            rating: payload.rating ?? 4,
+            amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+            platform: payload.platform,
+            bookingUrl: payload.bookingUrl,
+            ...overrideFields,
+          } satisfies ManualHotelProposalRequestPayload & Record<string, unknown>;
+        } catch (prepError) {
+          const message =
+            prepError instanceof Error && prepError.message.trim().length > 0
+              ? prepError.message
+              : "We couldn't prepare this stay to share with your group.";
+          toast({
+            title: "Unable to propose stay",
+            description: message,
+            variant: "destructive",
+          });
+          return;
+        }
+      } else {
+        requestBody = {
           tripId,
-          ...(isManualHotel ? { hotelId: manualHotelId } : {}),
           hotelName: payload.hotelName,
           location: payload.location,
           price: payload.price,
@@ -250,7 +285,13 @@ export default function HotelsPage() {
           platform: payload.platform,
           bookingUrl: payload.bookingUrl,
           ...overrideFields,
-        }),
+        };
+      }
+
+      console.log("Proposal payload:", requestBody);
+      await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
+        method: "POST",
+        body: requestBody,
       });
 
       toast({

@@ -37,13 +37,11 @@ interface WishListIdeasResponse {
 }
 
 interface CreateIdeaPayload {
+  tripId: number;
   title: string;
-  url: string | null;
+  link: string | null;
   notes: string | null;
   tags: string[];
-  thumbnailUrl: null;
-  imageUrl: null;
-  metadata: null;
 }
 
 const getCreatorDisplayName = (
@@ -157,11 +155,21 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     enabled: Number.isFinite(tripId) && tripId > 0,
     queryFn: async () => {
       const headers = getShareCodeHeaders();
-      const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
+      const requestOptions = {
         method: "GET",
         ...(headers ? { headers } : {}),
-      });
-      return (await res.json()) as WishListIdeasResponse;
+      } as const;
+
+      try {
+        const res = await apiRequest(`/api/trips/${tripId}/wishlist`, requestOptions);
+        return (await res.json()) as WishListIdeasResponse;
+      } catch (requestError) {
+        if (requestError instanceof ApiError && requestError.status === 404) {
+          const fallbackRes = await apiRequest(`/api/trips/${tripId}/wish-list`, requestOptions);
+          return (await fallbackRes.json()) as WishListIdeasResponse;
+        }
+        throw requestError;
+      }
     },
     retry: (failureCount, requestError) => {
       if (isUnauthorizedError(requestError)) {
@@ -199,12 +207,26 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   >({
     mutationFn: async (payload) => {
       const headers = getShareCodeHeaders();
-      const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
-        method: "POST",
-        body: payload,
-        ...(headers ? { headers } : {}),
-      });
-      return (await res.json()) as { idea: WishListIdeaWithDetails };
+      const requestBody = { ...payload, url: payload.link };
+      console.log("Wishlist payload:", requestBody);
+      try {
+        const res = await apiRequest(`/api/trips/${tripId}/wishlist`, {
+          method: "POST",
+          body: requestBody,
+          ...(headers ? { headers } : {}),
+        });
+        return (await res.json()) as { idea: WishListIdeaWithDetails };
+      } catch (requestError) {
+        if (requestError instanceof ApiError && requestError.status === 404) {
+          const fallbackRes = await apiRequest(`/api/trips/${tripId}/wish-list`, {
+            method: "POST",
+            body: requestBody,
+            ...(headers ? { headers } : {}),
+          });
+          return (await fallbackRes.json()) as { idea: WishListIdeaWithDetails };
+        }
+        throw requestError;
+      }
     },
     onSuccess: (payload) => {
       if (payload.idea) {
@@ -496,14 +518,14 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       .map((tag) => tag.trim())
       .filter((tag) => tag.length > 0);
 
+    const normalizedLink = url.trim();
+    const normalizedNotes = notes.trim();
     const payload: CreateIdeaPayload = {
+      tripId,
       title: trimmedTitle,
-      url: url.trim() ? url.trim() : null,
-      notes: notes.trim() ? notes.trim() : null,
+      link: normalizedLink.length > 0 ? normalizedLink : null,
+      notes: normalizedNotes.length > 0 ? normalizedNotes : null,
       tags,
-      thumbnailUrl: null,
-      imageUrl: null,
-      metadata: null,
     };
 
     try {
