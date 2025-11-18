@@ -37,13 +37,11 @@ interface WishListIdeasResponse {
 }
 
 interface CreateIdeaPayload {
+  tripId: number;
   title: string;
-  url: string | null;
+  link: string | null;
   notes: string | null;
   tags: string[];
-  thumbnailUrl: null;
-  imageUrl: null;
-  metadata: null;
 }
 
 const getCreatorDisplayName = (
@@ -157,7 +155,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     enabled: Number.isFinite(tripId) && tripId > 0,
     queryFn: async () => {
       const headers = getShareCodeHeaders();
-      const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
+      const res = await apiRequest(`/api/trips/${tripId}/wishlist`, {
         method: "GET",
         ...(headers ? { headers } : {}),
       });
@@ -199,7 +197,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   >({
     mutationFn: async (payload) => {
       const headers = getShareCodeHeaders();
-      const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
+      const res = await apiRequest(`/api/trips/${tripId}/wishlist`, {
         method: "POST",
         body: payload,
         ...(headers ? { headers } : {}),
@@ -497,14 +495,13 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       .filter((tag) => tag.length > 0);
 
     const payload: CreateIdeaPayload = {
+      tripId,
       title: trimmedTitle,
-      url: url.trim() ? url.trim() : null,
+      link: url.trim() ? url.trim() : null,
       notes: notes.trim() ? notes.trim() : null,
       tags,
-      thumbnailUrl: null,
-      imageUrl: null,
-      metadata: null,
     };
+    console.log("Wishlist payload:", payload);
 
     try {
       await createIdeaMutation.mutateAsync(payload);
