@@ -72,6 +72,14 @@ import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/
 
 type UserWithOptionalTripMember = User & { tripMemberId?: number | string | null };
 
+type ShareHotelMutationVariables = {
+  tripId: number;
+  requestBody: Record<string, unknown>;
+  manualPayload?: ManualHotelProposalPayload | null;
+  proposalDisplayName: string;
+  isManualHotel: boolean;
+};
+
 const resolveTripMemberIdForTrip = (
   trip: TripWithDetails | null | undefined,
   user: (UserWithOptionalTripMember | null) | undefined,
@@ -165,6 +173,57 @@ export default function HotelsPage() {
     }
   }, [focusSearchPanel]);
 
+  const shareHotelMutation = useMutation<void, Error, ShareHotelMutationVariables>({
+    mutationFn: async ({ tripId: selectedTripId, requestBody }) => {
+      await apiRequest(`/api/trips/${selectedTripId}/proposals/hotels`, {
+        method: "POST",
+        body: requestBody,
+      });
+    },
+    onSuccess: async (_, variables) => {
+      toast({
+        title: "Added to Group Hotels!",
+        description: `${variables.proposalDisplayName} is now ready for everyone to review and rank.`,
+      });
+
+      await Promise.all([
+        reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
+        reactQueryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
+        }),
+      ]);
+    },
+    onError: (error, variables) => {
+      console.error("Proposal error:", error);
+      if (variables?.manualPayload) {
+        console.error("Payload sent:", variables.manualPayload);
+      } else if (variables?.requestBody) {
+        console.error("Payload sent:", variables.requestBody);
+      }
+
+      if (isUnauthorizedError(error)) {
+        toast({
+          title: "Unauthorized",
+          description: "You need to be logged in to propose hotels.",
+          variant: "destructive",
+        });
+        setTimeout(() => {
+          window.location.href = "/login";
+        }, 500);
+        return;
+      }
+
+      toast({
+        title: "Error",
+        description: "Failed to propose hotel. Please try again.",
+        variant: "destructive",
+      });
+    },
+    onSettled: () => {
+      setProposingHotelId(null);
+    },
+  });
+
   // Currency conversion function
   const convertCurrency = async () => {
     if (!currencyAmount || !fromCurrency || !toCurrency) {
@@ -223,7 +282,7 @@ export default function HotelsPage() {
   };
 
   // Share hotel with group as a proposal
-  const shareHotelWithGroup = async (hotel: ProposableHotel) => {
+  const shareHotelWithGroup = (hotel: ProposableHotel) => {
     if (!hasSelectedTrip) {
       toast({
         title: "Trip required",
@@ -244,12 +303,11 @@ export default function HotelsPage() {
     if (isManualHotel) {
       setProposingHotelId(manualHotelId);
     }
-    let requestBody: Record<string, unknown> | null = null;
     let manualPayloadForLogging: ManualHotelProposalPayload | null = null;
+    let proposalDisplayName = "stay";
+    let requestBody: Record<string, unknown> | null = null;
 
     try {
-      let proposalDisplayName = "stay";
-
       if (isManualHotel && "hotelName" in hotel && manualHotelId != null) {
         const resolvedTripMemberId = resolveTripMemberIdForTrip(trip ?? null, user as UserWithOptionalTripMember | null);
         if (resolvedTripMemberId == null) {
@@ -317,53 +375,38 @@ export default function HotelsPage() {
         };
         proposalDisplayName = payload.displayName;
       }
-
-      await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
-        method: "POST",
-        body: requestBody,
-      });
-
-      toast({
-        title: "Added to Group Hotels!",
-        description: `${proposalDisplayName} is now ready for everyone to review and rank.`,
-      });
-
-      // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
-      await Promise.all([
-        reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] }),
-        reactQueryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
-        }),
-      ]);
     } catch (error) {
-      console.error("Proposal error:", error);
-      if (manualPayloadForLogging) {
-        console.error("Payload sent:", manualPayloadForLogging);
-      } else if (requestBody) {
-        console.error("Payload sent:", requestBody);
-      }
       const errorObj = error instanceof Error ? error : new Error(String(error));
-      if (isUnauthorizedError(errorObj)) {
-        toast({
-          title: "Unauthorized",
-          description: "You need to be logged in to propose hotels.",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/login";
-        }, 500);
-        return;
-      }
       toast({
-        title: "Error",
-        description: "Failed to propose hotel. Please try again.",
+        title: "Unable to propose stay",
+        description: errorObj.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
-    } finally {
       if (isManualHotel) {
         setProposingHotelId(null);
       }
+      return;
     }
+
+    if (!requestBody) {
+      if (isManualHotel) {
+        setProposingHotelId(null);
+      }
+      toast({
+        title: "Unable to propose stay",
+        description: "We couldn’t build the proposal. Try again in a moment.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    shareHotelMutation.mutate({
+      tripId,
+      requestBody,
+      manualPayload: manualPayloadForLogging,
+      proposalDisplayName,
+      isManualHotel,
+    });
   };
 
   // Hotel ranking functionality
