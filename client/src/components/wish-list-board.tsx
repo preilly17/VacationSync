@@ -155,7 +155,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     enabled: Number.isFinite(tripId) && tripId > 0,
     queryFn: async () => {
       const headers = getShareCodeHeaders();
-      const res = await apiRequest(`/api/trips/${tripId}/wishlist`, {
+      const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
         method: "GET",
         ...(headers ? { headers } : {}),
       });
@@ -197,7 +197,7 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   >({
     mutationFn: async (payload) => {
       const headers = getShareCodeHeaders();
-      const res = await apiRequest(`/api/trips/${tripId}/wishlist`, {
+      const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
         method: "POST",
         body: payload,
         ...(headers ? { headers } : {}),
