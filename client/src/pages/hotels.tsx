@@ -216,10 +216,15 @@ export default function HotelsPage() {
     }
 
     const manualHotelId = (() => {
-      if ("hotelName" in hotel) {
-        const parsedId = Number.parseInt(String(hotel.id ?? ""), 10);
-        return Number.isFinite(parsedId) ? parsedId : null;
+      const possibleId = Number.parseInt(String((hotel as { id?: number | string }).id ?? ""), 10);
+      if (!Number.isFinite(possibleId)) {
+        return null;
       }
+
+      if ("tripId" in hotel) {
+        return possibleId;
+      }
+
       return null;
     })();
     const isManualHotel = manualHotelId != null;
@@ -231,7 +236,7 @@ export default function HotelsPage() {
         let requestBody: Record<string, unknown>;
         let proposalDisplayName = "stay";
 
-        if (isManualHotel && "hotelName" in hotel && manualHotelId != null) {
+        if (isManualHotel && "tripId" in hotel && manualHotelId != null) {
           const manualPayload = createManualHotelProposalPayload({
             stay: hotel as HotelWithDetails,
             parsedHotelId: manualHotelId,
