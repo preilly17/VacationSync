@@ -74,7 +74,7 @@ type UserWithOptionalTripMember = User & { tripMemberId?: number | string | null
 
 type ShareHotelMutationVariables = {
   tripId: number;
-  requestBody: Record<string, unknown>;
+  payload: Record<string, unknown>;
   manualPayload?: ManualHotelProposalPayload | null;
   proposalDisplayName: string;
   isManualHotel: boolean;
@@ -174,10 +174,10 @@ export default function HotelsPage() {
   }, [focusSearchPanel]);
 
   const shareHotelMutation = useMutation<void, Error, ShareHotelMutationVariables>({
-    mutationFn: async ({ tripId: selectedTripId, requestBody }) => {
+    mutationFn: async ({ tripId: selectedTripId, payload }) => {
       await apiRequest(`/api/trips/${selectedTripId}/proposals/hotels`, {
         method: "POST",
-        body: requestBody,
+        body: payload,
       });
     },
     onSuccess: async (_, variables) => {
@@ -197,8 +197,8 @@ export default function HotelsPage() {
       console.error("Proposal error:", error);
       if (variables?.manualPayload) {
         console.error("Payload sent:", variables.manualPayload);
-      } else if (variables?.requestBody) {
-        console.error("Payload sent:", variables.requestBody);
+      } else if (variables?.payload) {
+        console.error("Payload sent:", variables.payload);
       }
 
       if (isUnauthorizedError(error)) {
@@ -305,7 +305,7 @@ export default function HotelsPage() {
     }
     let manualPayloadForLogging: ManualHotelProposalPayload | null = null;
     let proposalDisplayName = "stay";
-    let requestBody: Record<string, unknown> | null = null;
+    let payload: Record<string, unknown> | null = null;
 
     try {
       if (isManualHotel && "hotelName" in hotel && manualHotelId != null) {
@@ -345,35 +345,35 @@ export default function HotelsPage() {
           currentUserId: user.id,
           tripMemberId: resolvedTripMemberId,
         });
-        requestBody = buildHotelProposalRequestBody(manualPayloadForLogging);
+        payload = buildHotelProposalRequestBody(manualPayloadForLogging);
         proposalDisplayName = manualPayloadForLogging.hotelName;
       } else {
-        const payload = buildHotelProposalPayload(hotel);
+        const normalizedPayload = buildHotelProposalPayload(hotel);
         const overrideFields =
           isManualHotel
             ? {
-              ...(payload.address ? { address: payload.address } : {}),
-              ...(payload.city ? { city: payload.city } : {}),
-              ...(payload.country ? { country: payload.country } : {}),
-              ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
-              ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
+              ...(normalizedPayload.address ? { address: normalizedPayload.address } : {}),
+              ...(normalizedPayload.city ? { city: normalizedPayload.city } : {}),
+              ...(normalizedPayload.country ? { country: normalizedPayload.country } : {}),
+              ...(normalizedPayload.checkInDate ? { checkInDate: normalizedPayload.checkInDate } : {}),
+              ...(normalizedPayload.checkOutDate ? { checkOutDate: normalizedPayload.checkOutDate } : {}),
             }
           : {};
 
-        requestBody = {
+        payload = {
           tripId,
           ...(isManualHotel ? { hotelId: manualHotelId } : {}),
-          hotelName: payload.hotelName,
-          location: payload.location,
-          price: payload.price,
-          pricePerNight: payload.pricePerNight,
-          rating: payload.rating ?? 4,
-          amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-          platform: payload.platform,
-          bookingUrl: payload.bookingUrl,
+          hotelName: normalizedPayload.hotelName,
+          location: normalizedPayload.location,
+          price: normalizedPayload.price,
+          pricePerNight: normalizedPayload.pricePerNight,
+          rating: normalizedPayload.rating ?? 4,
+          amenities: normalizedPayload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
+          platform: normalizedPayload.platform,
+          bookingUrl: normalizedPayload.bookingUrl,
           ...overrideFields,
         };
-        proposalDisplayName = payload.displayName;
+        proposalDisplayName = normalizedPayload.displayName;
       }
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
@@ -388,7 +388,7 @@ export default function HotelsPage() {
       return;
     }
 
-    if (!requestBody) {
+    if (!payload) {
       if (isManualHotel) {
         setProposingHotelId(null);
       }
@@ -402,7 +402,7 @@ export default function HotelsPage() {
 
     shareHotelMutation.mutate({
       tripId,
-      requestBody,
+      payload,
       manualPayload: manualPayloadForLogging,
       proposalDisplayName,
       isManualHotel,
