@@ -41,6 +41,10 @@ import {
   type ProposableHotel,
 } from "@/lib/hotel-proposals";
 import {
+  buildHotelProposalRequestBody,
+  createManualHotelProposalPayload,
+} from "@/lib/manual-hotel-proposal";
+import {
   type InsertHotel,
   type HotelWithDetails,
   type TripWithDates,
@@ -223,40 +227,59 @@ export default function HotelsPage() {
       setProposingHotelId(manualHotelId);
     }
 
-    try {
-      const payload = buildHotelProposalPayload(hotel);
-      const overrideFields =
-        isManualHotel
-          ? {
-              ...(payload.address ? { address: payload.address } : {}),
-              ...(payload.city ? { city: payload.city } : {}),
-              ...(payload.country ? { country: payload.country } : {}),
-              ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
-              ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
-            }
-          : {};
+      try {
+        let requestBody: Record<string, unknown>;
+        let proposalDisplayName = "stay";
 
-      await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
-        method: "POST",
-        body: JSON.stringify({
-          tripId,
-          ...(isManualHotel ? { hotelId: manualHotelId } : {}),
-          hotelName: payload.hotelName,
-          location: payload.location,
+        if (isManualHotel && "hotelName" in hotel && manualHotelId != null) {
+          const manualPayload = createManualHotelProposalPayload({
+            stay: hotel as HotelWithDetails,
+            parsedHotelId: manualHotelId,
+            trip,
+            fallbackTripId: tripId,
+            currentUserId: user?.id ?? null,
+          });
+          console.log("Proposal payload:", manualPayload);
+          requestBody = buildHotelProposalRequestBody(manualPayload);
+          proposalDisplayName = manualPayload.hotelName;
+        } else {
+          const payload = buildHotelProposalPayload(hotel);
+          const overrideFields =
+            isManualHotel
+              ? {
+                ...(payload.address ? { address: payload.address } : {}),
+                ...(payload.city ? { city: payload.city } : {}),
+                ...(payload.country ? { country: payload.country } : {}),
+                ...(payload.checkInDate ? { checkInDate: payload.checkInDate } : {}),
+                ...(payload.checkOutDate ? { checkOutDate: payload.checkOutDate } : {}),
+              }
+            : {};
+
+          requestBody = {
+            tripId,
+            ...(isManualHotel ? { hotelId: manualHotelId } : {}),
+            hotelName: payload.hotelName,
+            location: payload.location,
           price: payload.price,
           pricePerNight: payload.pricePerNight,
           rating: payload.rating ?? 4,
           amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-          platform: payload.platform,
-          bookingUrl: payload.bookingUrl,
-          ...overrideFields,
-        }),
-      });
+            platform: payload.platform,
+            bookingUrl: payload.bookingUrl,
+            ...overrideFields,
+          };
+          proposalDisplayName = payload.displayName;
+        }
 
-      toast({
-        title: "Added to Group Hotels!",
-        description: `${payload.displayName} is now ready for everyone to review and rank.`,
-      });
+        await apiRequest(`/api/trips/${tripId}/proposals/hotels`, {
+          method: "POST",
+          body: requestBody,
+        });
+
+        toast({
+          title: "Added to Group Hotels!",
+          description: `${proposalDisplayName} is now ready for everyone to review and rank.`,
+        });
 
       // PROPOSALS FEATURE: refresh proposals so manual saves stay in sync.
       await Promise.all([
