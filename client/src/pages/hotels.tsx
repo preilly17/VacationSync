@@ -43,14 +43,15 @@ import {
 import {
   buildHotelProposalRequestBody,
   createManualHotelProposalPayload,
+  normalizeTripMemberIdValue,
 } from "@/lib/manual-hotel-proposal";
 import {
   type InsertHotel,
   type HotelWithDetails,
-  type TripWithDates,
   type TripWithDetails,
   type HotelSearchResult,
   type HotelProposalWithDetails,
+  type User,
 } from "@shared/schema";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TravelLoading } from "@/components/LoadingSpinners";
@@ -67,6 +68,22 @@ import {
 } from "@/lib/hotel-form";
 import { HotelFormFields } from "@/components/hotels/hotel-form-fields";
 import { HotelSearchPanel, type HotelSearchPanelRef } from "@/components/hotels/hotel-search-panel";
+
+type UserWithOptionalTripMember = User & { tripMemberId?: number | string | null };
+
+const resolveTripMemberIdForTrip = (
+  trip: TripWithDetails | null | undefined,
+  user: (UserWithOptionalTripMember | null) | undefined,
+): number | string | null => {
+  if (trip?.members && user?.id) {
+    const member = trip.members.find((entry) => entry.userId === user.id);
+    if (member?.id != null) {
+      return member.id;
+    }
+  }
+
+  return normalizeTripMemberIdValue(user?.tripMemberId);
+};
 
 export default function HotelsPage() {
   const params = useParams();
@@ -113,7 +130,7 @@ export default function HotelsPage() {
   // Booking confirmation system
   const { showModal, bookingData, storeBookingIntent, closeModal } = useBookingConfirmation();
 
-  const { data: trip } = useQuery<TripWithDates>({
+  const { data: trip } = useQuery<TripWithDetails | null>({
     queryKey: [`/api/trips/${tripId}`],
     enabled: hasSelectedTrip,
   });
@@ -232,12 +249,25 @@ export default function HotelsPage() {
         let proposalDisplayName = "stay";
 
         if (isManualHotel && "hotelName" in hotel && manualHotelId != null) {
+          const resolvedTripMemberId = resolveTripMemberIdForTrip(trip ?? null, user as UserWithOptionalTripMember | null);
+          if (resolvedTripMemberId == null) {
+            toast({
+              title: "Unable to propose stay",
+              description: "We couldn’t verify your trip membership. Refresh the page and try again.",
+              variant: "destructive",
+            });
+            if (isManualHotel) {
+              setProposingHotelId(null);
+            }
+            return;
+          }
           const manualPayload = createManualHotelProposalPayload({
             stay: hotel as HotelWithDetails,
             parsedHotelId: manualHotelId,
             trip,
             fallbackTripId: tripId,
             currentUserId: user?.id ?? null,
+            tripMemberId: resolvedTripMemberId,
           });
           console.log("Proposal payload:", manualPayload);
           requestBody = buildHotelProposalRequestBody(manualPayload);

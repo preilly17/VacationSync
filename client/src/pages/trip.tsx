@@ -164,6 +164,7 @@ import {
 import {
   buildHotelProposalRequestBody,
   createManualHotelProposalPayload,
+  normalizeTripMemberIdValue,
   type ManualHotelProposalPayload,
 } from "@/lib/manual-hotel-proposal";
 import { apiRequest, ApiError } from "@/lib/queryClient";
@@ -6388,7 +6389,6 @@ function HotelBooking({
     ManualHotelProposalPayload
   >({
     mutationFn: async (payload: ManualHotelProposalPayload) => {
-      console.log("Proposal payload:", payload);
       const requestBody = buildHotelProposalRequestBody(payload);
       const response = await apiRequest(`/api/trips/${payload.tripId}/proposals/hotels`, {
         method: "POST",
@@ -6461,7 +6461,11 @@ function HotelBooking({
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] }),
       ]);
     },
-    onError: (error) => {
+    onError: (error, payload) => {
+      console.error("Proposal error:", error);
+      if (payload) {
+        console.error("Payload sent:", payload);
+      }
       if (error instanceof ApiError) {
         if (error.status === 401) {
           toast({
@@ -6536,12 +6540,25 @@ function HotelBooking({
         return;
       }
 
+      const resolvedTripMemberId =
+        membership?.id ?? normalizeTripMemberIdValue((user as { tripMemberId?: number | string | null })?.tripMemberId);
+
+      if (resolvedTripMemberId == null) {
+        toast({
+          title: "Unable to propose stay",
+          description: "We couldn’t verify your trip membership. Refresh the page and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const payload = createManualHotelProposalPayload({
         stay: hotel,
         parsedHotelId,
         trip,
         fallbackTripId: tripId,
         currentUserId: user?.id ?? null,
+        tripMemberId: resolvedTripMemberId,
       });
 
       setProposingHotelId(hotel.id);
