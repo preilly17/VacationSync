@@ -290,6 +290,35 @@ export function createManualHotelProposalPayload({
 
 export function buildHotelProposalRequestBody(
   payload: ManualHotelProposalPayload,
-): ManualHotelProposalPayload {
-  return payload;
+): Record<string, unknown> {
+  const city = ensureString(payload.location.city, "City to be decided");
+  const country = ensureString(payload.location.country, "Country to be decided");
+
+  const checkInDate =
+    payload.checkIn ?? payload.checkOut ?? new Date().toISOString();
+  const checkOutDate =
+    payload.checkOut ??
+    new Date(new Date(checkInDate).getTime() + 2 * 24 * 60 * 60 * 1000).toISOString();
+
+  return {
+    hotelId: payload.hotelId,
+    tripId: payload.tripId,
+    hotelName: ensureString(payload.hotelName, "Saved stay"),
+    address:
+      ensureNullableText(payload.address) ??
+      ensureNullableText(`${payload.hotelName}, ${city}, ${country}`) ??
+      "Address to be provided",
+    city,
+    country,
+    checkInDate,
+    checkOutDate,
+    totalPrice: Number.isFinite(payload.priceTotal) ? payload.priceTotal : 0,
+    pricePerNight: payload.pricePerNight ?? null,
+    currency: ensureString(payload.currency, "USD"),
+    bookingPlatform: ensureString(payload.sourceType, "Manual"),
+    bookingSource: ensureString(payload.sourceType, "Manual"),
+    bookingUrl: ensureNullableText(payload.imageUrl),
+    amenities: null,
+    status: "proposed",
+  };
 }
