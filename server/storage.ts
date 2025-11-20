@@ -7671,13 +7671,16 @@ ${selectUserColumns("participant_user", "participant_user_")}
   // PROPOSALS FEATURE: create or update a linked hotel proposal for a manually saved hotel.
   private async syncHotelProposalFromHotelRow(
     hotel: HotelRow,
-    options: { allowCreate?: boolean; client?: PoolClient } = {},
+    options: { allowCreate?: boolean; client?: PoolClient; proposedBy?: string } = {},
   ): Promise<{ proposalId: number; wasCreated: boolean } | null> {
     const { allowCreate = true, client } = options;
     await this.ensureProposalLinkStructures();
 
     const runQuery = <T>(sql: string, params: unknown[] = []) =>
       client ? client.query<T>(sql, params) : query<T>(sql, params);
+
+    const proposerIdForRecord =
+      normalizeUserId(options.proposedBy) ?? normalizeUserId(hotel.user_id) ?? String(options.proposedBy ?? hotel.user_id ?? "");
 
     const { rows: existingLinks } = await runQuery<{
       id: number;
@@ -7753,7 +7756,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         `,
         [
           hotel.trip_id,
-          hotel.user_id,
+          proposerIdForRecord,
           hotel.hotel_name,
           location,
           priceString,
@@ -7812,7 +7815,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       `,
       [
         hotel.trip_id,
-        hotel.user_id,
+        proposerIdForRecord,
         hotel.hotel_name,
         location,
         priceString,
@@ -7939,6 +7942,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
       const normalizedRequesterId = normalizeUserId(currentUserId);
       const normalizedStayCreatorId = normalizeUserId(hotel.user_id);
       const normalizedTripOwnerId = normalizeUserId(hotel.trip_created_by);
+      const proposerIdForRecord =
+        normalizedRequesterId ?? normalizedStayCreatorId ?? String(currentUserId ?? "");
 
       const { rows: membershipRows } = await client.query<{ role: string }>(
         `
@@ -8148,6 +8153,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
       const syncResult = await this.syncHotelProposalFromHotelRow(hotel, {
         client,
+        proposedBy: currentUserId,
       });
 
       if (!syncResult) {
