@@ -51,4 +51,22 @@ describe("buildAdHocHotelProposalRequestBody", () => {
     expect(requestBody.city).toBe("Rome");
     expect(requestBody.country).toBe("Italy");
   });
+
+  it("serializes date inputs to ISO strings when building the request", () => {
+    const checkIn = new Date("2025-07-10T15:00:00Z");
+    const checkOut = new Date("2025-07-15T11:00:00Z");
+
+    const payload = buildHotelProposalPayload({
+      ...baseResult,
+      location: "Oslo, Norway",
+    });
+
+    const requestBody = buildAdHocHotelProposalRequestBody(
+      { ...payload, checkInDate: checkIn, checkOutDate: checkOut },
+      { tripId: 55 },
+    );
+
+    expect(requestBody.checkInDate).toBe(checkIn.toISOString());
+    expect(requestBody.checkOutDate).toBe(checkOut.toISOString());
+  });
 });

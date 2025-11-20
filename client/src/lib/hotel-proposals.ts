@@ -16,8 +16,8 @@ export interface HotelProposalPayload {
   address: string | null;
   city: string | null;
   country: string | null;
-  checkInDate: string | null;
-  checkOutDate: string | null;
+  checkInDate: string | Date | null;
+  checkOutDate: string | Date | null;
 }
 
 export const HOTEL_PROPOSAL_AMENITIES_FALLBACK = "WiFi, Breakfast";
@@ -349,16 +349,26 @@ const normalizePriceValue = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const fallbackIsoDate = (value?: string | null, fallback?: string | null): string => {
-  if (value && value.toString().trim().length > 0) {
-    return value as string;
+const toIsoStringOrNull = (value?: string | Date | null): string | null => {
+  if (!value) {
+    return null;
   }
 
-  if (fallback && fallback.toString().trim().length > 0) {
-    return fallback as string;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
   }
 
-  return new Date().toISOString();
+  const trimmed = value.toString().trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString();
+};
+
+const fallbackIsoDate = (value?: string | Date | null, fallback?: string | Date | null): string => {
+  return toIsoStringOrNull(value) ?? toIsoStringOrNull(fallback) ?? new Date().toISOString();
 };
 
 export const buildAdHocHotelProposalRequestBody = (
