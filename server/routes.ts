@@ -4484,6 +4484,19 @@ export function setupRoutes(app: Express) {
       }
 
       if (isPostgresConstraintViolation(error)) {
+        // In some edge cases a proposal already exists for the stay and the insert/update triggers
+        // a database constraint. Surface the existing proposal instead of forcing the user to retry.
+        try {
+          const proposals = await storage.getTripHotelProposals(tripId, userId);
+          const matching = proposals.find((proposal) => proposal.stayId === hotelId);
+
+          if (matching) {
+            return res.status(200).json(matching);
+          }
+        } catch (recoveryError) {
+          console.error("Error recovering hotel proposal after constraint violation:", recoveryError);
+        }
+
         return res.status(400).json({
           message: "Unable to share this stay with your group. Refresh the trip and try again.",
         });
