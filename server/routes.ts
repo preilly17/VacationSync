@@ -4519,6 +4519,18 @@ export function setupRoutes(app: Express) {
           if (matching) {
             return res.status(200).json(matching);
           }
+
+          const stayScopedProposals = await storage.getHotelProposalsByStayId(
+            targetStayId,
+            userId,
+          );
+          const stayMatch = stayScopedProposals.find(
+            (proposal) => normalizeId(proposal.stayId) === targetStayId && proposal.tripId === tripId,
+          );
+
+          if (stayMatch) {
+            return res.status(200).json(stayMatch);
+          }
         } catch (recoveryError) {
           console.error("Error recovering hotel proposal after constraint violation:", recoveryError);
         }

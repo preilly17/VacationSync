@@ -10079,6 +10079,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       proposalIds?: number[];
       currentUserId?: string;
       proposedBy?: string;
+      stayId?: number;
     },
   ): Promise<HotelProposalWithDetails[]> {
     const conditions: string[] = [];
@@ -10100,6 +10101,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (options.proposedBy) {
       conditions.push(`hp.proposed_by = $${index}`);
       values.push(options.proposedBy);
+      index += 1;
+    }
+
+    if (options.stayId != null) {
+      conditions.push(`psl.scheduled_id = $${index}`);
+      values.push(options.stayId);
       index += 1;
     }
 
@@ -10747,6 +10754,13 @@ ${selectUserColumns("participant_user", "participant_user_")}
       currentUserId,
       proposedBy: options.proposedBy,
     });
+  }
+
+  async getHotelProposalsByStayId(
+    stayId: number,
+    currentUserId: string,
+  ): Promise<HotelProposalWithDetails[]> {
+    return this.fetchHotelProposals({ stayId, currentUserId });
   }
 
   async getHotelProposalById(

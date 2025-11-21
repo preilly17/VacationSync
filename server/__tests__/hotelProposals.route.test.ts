@@ -19,6 +19,7 @@ let createHotelProposalMock: jest.SpyInstance;
 let getTripByIdMock: jest.SpyInstance;
 let isTripMemberMock: jest.SpyInstance;
 let getTripHotelProposalsMock: jest.SpyInstance;
+let getHotelProposalsByStayIdMock: jest.SpyInstance;
 
 const findRouteHandler = (
   app: express.Express,
@@ -129,9 +130,14 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     getTripByIdMock = jest.spyOn(storageModule.storage, "getTripById");
     isTripMemberMock = jest.spyOn(storageModule.storage, "isTripMember");
     getTripHotelProposalsMock = jest.spyOn(storageModule.storage, "getTripHotelProposals");
+    getHotelProposalsByStayIdMock = jest.spyOn(
+      storageModule.storage,
+      "getHotelProposalsByStayId",
+    );
     getTripByIdMock.mockResolvedValue({ id: 10 });
     isTripMemberMock.mockResolvedValue(true);
     getTripHotelProposalsMock.mockResolvedValue([]);
+    getHotelProposalsByStayIdMock.mockResolvedValue([]);
   });
 
   afterEach(async () => {
@@ -139,6 +145,7 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     ensureHotelProposalMock.mockRestore();
     createHotelProposalMock.mockRestore();
     getTripHotelProposalsMock.mockRestore();
+    getHotelProposalsByStayIdMock.mockRestore();
 
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
@@ -422,6 +429,39 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     await handler(req, res);
 
     expect(getTripHotelProposalsMock).toHaveBeenCalledWith(10, "test-user");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(existingProposal);
+  });
+
+  it("recovers proposals by stay id when trip-scoped lookup misses on constraint errors", async () => {
+    ensureHotelProposalMock.mockRejectedValueOnce({ code: "23505" });
+
+    const existingProposal = {
+      id: 913,
+      tripId: 10,
+      stayId: 29,
+      hotelName: "Marriot",
+    };
+
+    getTripHotelProposalsMock.mockResolvedValueOnce([]);
+    getHotelProposalsByStayIdMock.mockResolvedValueOnce([existingProposal]);
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: { hotelId: 29 },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(getTripHotelProposalsMock).toHaveBeenCalledWith(10, "test-user");
+    expect(getHotelProposalsByStayIdMock).toHaveBeenCalledWith(29, "test-user");
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(existingProposal);
   });
