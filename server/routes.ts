@@ -2623,6 +2623,7 @@ export function setupRoutes(app: Express) {
   ) => {
     let tripId: number | null = null;
     let userId: string | null = null;
+    let hotelId: number | null = null;
     let attemptedInviteeIds: string[] = [];
     const correlationId = getCorrelationIdFromRequest(req);
     res.setHeader("x-correlation-id", correlationId);
@@ -4255,16 +4256,22 @@ export function setupRoutes(app: Express) {
     }
   };
 
-  const handlePostTripHotelProposals = async (req: any, res: any) => {
-    try {
-      const tripIdParam =
-        typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
-      const tripId = Number.parseInt(String(tripIdParam ?? ''), 10);
-      if (Number.isNaN(tripId)) {
-        return res.status(400).json({ message: "Invalid trip id" });
-      }
+    const handlePostTripHotelProposals = async (req: any, res: any) => {
+      let tripId: number | null = null;
+      let userId: string | null = null;
+      let hotelId: number | null = null;
 
-      const userId = getRequestUserId(req);
+      try {
+        const tripIdParam =
+          typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
+        const parsedTripId = Number.parseInt(String(tripIdParam ?? ''), 10);
+        tripId = Number.isNaN(parsedTripId) ? null : parsedTripId;
+
+        if (!Number.isFinite(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id" });
+        }
+
+      userId = getRequestUserId(req);
       if (!userId) {
         return res.status(401).json({ message: "User ID not found" });
       }
@@ -4303,7 +4310,7 @@ export function setupRoutes(app: Express) {
 
       const parsedData = parsedRequest.data as Record<string, unknown>;
       const rawHotelId = parsedData.hotelId ?? parsedData.id;
-      let hotelId =
+      hotelId =
         typeof rawHotelId === 'number'
           ? rawHotelId
           : rawHotelId != null
@@ -4486,9 +4493,28 @@ export function setupRoutes(app: Express) {
       if (isPostgresConstraintViolation(error)) {
         // In some edge cases a proposal already exists for the stay and the insert/update triggers
         // a database constraint. Surface the existing proposal instead of forcing the user to retry.
+        if (!Number.isFinite(tripId) || !userId) {
+          return res.status(400).json({
+            message: "Unable to share this stay with your group. Refresh the trip and try again.",
+          });
+        }
+
         try {
+          const normalizeId = (value: unknown): number | null => {
+            const parsed = Number.parseInt(String(value ?? ''), 10);
+            return Number.isFinite(parsed) ? parsed : null;
+          };
+
           const proposals = await storage.getTripHotelProposals(tripId, userId);
-          const matching = proposals.find((proposal) => proposal.stayId === hotelId);
+          const targetStayId = normalizeId(hotelId);
+
+          if (!Number.isFinite(targetStayId)) {
+            return res.status(400).json({
+              message: "Unable to share this stay with your group. Refresh the trip and try again.",
+            });
+          }
+
+          const matching = proposals.find((proposal) => normalizeId(proposal.stayId) === targetStayId);
 
           if (matching) {
             return res.status(200).json(matching);
