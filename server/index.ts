@@ -7,17 +7,18 @@ const { app, server } = createApp();
 const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 5000;
 const host = "0.0.0.0";
 
-server.listen({ port, host, reusePort: true }, () => {
-  log(`🚀 Server running on http://${host}:${port}`);
-});
-
-(async () => {
+const startServer = async () => {
   try {
     await storage.initializeWishList();
     log("📝 Wish list tables ready");
   } catch (error) {
-    log(`❌ Failed to initialize wish list tables: ${error}`);
+    console.error("❌ Failed to initialize wish list tables:", error);
+    process.exit(1);
   }
+
+  server.listen({ port, host, reusePort: true }, () => {
+    log(`🚀 Server running on http://${host}:${port}`);
+  });
 
   try {
     if (app.get("env") === "development") {
@@ -28,4 +29,6 @@ server.listen({ port, host, reusePort: true }, () => {
   } catch (error) {
     log(`⚠️ Vite/static setup failed: ${error}`);
   }
-})();
+};
+
+void startServer();
