@@ -48,7 +48,6 @@ import {
 import {
   type InsertHotel,
   type HotelWithDetails,
-  type TripWithDates,
   type TripWithDetails,
   type HotelSearchResult,
   type HotelProposalWithDetails,
@@ -114,7 +113,7 @@ export default function HotelsPage() {
   // Booking confirmation system
   const { showModal, bookingData, storeBookingIntent, closeModal } = useBookingConfirmation();
 
-  const { data: trip } = useQuery<TripWithDates>({
+  const { data: trip } = useQuery<TripWithDetails>({
     queryKey: [`/api/trips/${tripId}`],
     enabled: hasSelectedTrip,
   });
@@ -242,15 +241,6 @@ export default function HotelsPage() {
           fallbackTripId: tripId,
           user,
         });
-
-        if (manualPayload.tripMemberId == null || manualPayload.tripMemberId === "") {
-          toast({
-            title: "Unable to propose stay",
-            description: "We couldn’t identify your trip membership. Refresh the trip and try again.",
-            variant: "destructive",
-          });
-          return;
-        }
 
         requestBody = buildHotelProposalRequestBody(manualPayload);
         proposalDisplayName = manualPayload.hotelName;
