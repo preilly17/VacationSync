@@ -18,6 +18,7 @@ let ensureHotelProposalMock: jest.SpyInstance;
 let createHotelProposalMock: jest.SpyInstance;
 let getTripByIdMock: jest.SpyInstance;
 let isTripMemberMock: jest.SpyInstance;
+let getTripHotelProposalsMock: jest.SpyInstance;
 
 const findRouteHandler = (
   app: express.Express,
@@ -127,14 +128,17 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     createHotelProposalMock = jest.spyOn(storageModule.storage, "createHotelProposal");
     getTripByIdMock = jest.spyOn(storageModule.storage, "getTripById");
     isTripMemberMock = jest.spyOn(storageModule.storage, "isTripMember");
+    getTripHotelProposalsMock = jest.spyOn(storageModule.storage, "getTripHotelProposals");
     getTripByIdMock.mockResolvedValue({ id: 10 });
     isTripMemberMock.mockResolvedValue(true);
+    getTripHotelProposalsMock.mockResolvedValue([]);
   });
 
   afterEach(async () => {
     createHotelMock.mockRestore();
     ensureHotelProposalMock.mockRestore();
     createHotelProposalMock.mockRestore();
+    getTripHotelProposalsMock.mockRestore();
 
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
@@ -389,5 +393,36 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     expect(res.json).toHaveBeenCalledWith({
       message: "Unable to share this stay with your group. Refresh the trip and try again.",
     });
+  });
+
+  it("recovers existing hotel proposals even when stay IDs are strings", async () => {
+    ensureHotelProposalMock.mockRejectedValueOnce({ code: "23505" });
+
+    const existingProposal = {
+      id: 512,
+      tripId: 10,
+      stayId: "77",
+      hotelName: "Historic Inn",
+    };
+
+    getTripHotelProposalsMock.mockResolvedValueOnce([existingProposal]);
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: { hotelId: 77 },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(getTripHotelProposalsMock).toHaveBeenCalledWith(10, "test-user");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(existingProposal);
   });
 });
