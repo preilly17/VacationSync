@@ -493,8 +493,8 @@ export default function HotelsPage() {
       zipCode: hotel.zipCode ?? null,
       latitude: hotel.latitude ?? null,
       longitude: hotel.longitude ?? null,
-      checkInDate: new Date(hotel.checkInDate),
-      checkOutDate: new Date(hotel.checkOutDate),
+      checkInDate: parseTripDateToLocal(hotel.checkInDate) ?? new Date(hotel.checkInDate),
+      checkOutDate: parseTripDateToLocal(hotel.checkOutDate) ?? new Date(hotel.checkOutDate),
       totalPrice: hotel.totalPrice ?? null,
       pricePerNight: hotel.pricePerNight ?? null,
       roomType: hotel.roomType ?? null,
@@ -559,8 +559,8 @@ export default function HotelsPage() {
   };
 
   const formatDateRange = (checkIn: string, checkOut: string) => {
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
+    const checkInDate = parseTripDateToLocal(checkIn) ?? new Date(checkIn);
+    const checkOutDate = parseTripDateToLocal(checkOut) ?? new Date(checkOut);
     const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
     return `${format(checkInDate, "MMM d")} - ${format(checkOutDate, "MMM d")} (${nights} nights)`;
   };
