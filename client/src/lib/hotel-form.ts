@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { z } from "zod";
+import { parseTripDateToLocal } from "@/lib/date";
 import { insertHotelSchema, type InsertHotel } from "@shared/schema";
 
 type TripDates = {
@@ -37,38 +38,44 @@ export const hotelFormSchema = insertHotelSchema
 
 export type HotelFormValues = z.infer<typeof hotelFormSchema>;
 
-export const createHotelFormDefaults = (tripId: number, tripDates?: TripDates): HotelFormValues => ({
-  tripId,
-  hotelName: "",
-  hotelChain: null,
-  hotelRating: null,
-  address: "",
-  city: "",
-  country: "",
-  zipCode: null,
-  latitude: null,
-  longitude: null,
-  checkInDate: tripDates?.startDate ? new Date(tripDates.startDate) : new Date(),
-  checkOutDate: tripDates?.endDate ? new Date(tripDates.endDate) : new Date(),
-  roomType: null,
-  roomCount: null,
-  guestCount: null,
-  bookingReference: null,
-  totalPrice: null,
-  pricePerNight: null,
-  currency: "USD",
-  status: "confirmed",
-  bookingSource: null,
-  purchaseUrl: null,
-  amenities: "",
-  images: "",
-  policies: "",
-  contactInfo: "",
-  bookingPlatform: null,
-  bookingUrl: null,
-  cancellationPolicy: null,
-  notes: "",
-});
+export const createHotelFormDefaults = (tripId: number, tripDates?: TripDates): HotelFormValues => {
+  const defaultCheckIn = parseTripDateToLocal(tripDates?.startDate) ?? new Date();
+  const defaultCheckOut =
+    parseTripDateToLocal(tripDates?.endDate) ?? parseTripDateToLocal(tripDates?.startDate) ?? new Date();
+
+  return {
+    tripId,
+    hotelName: "",
+    hotelChain: null,
+    hotelRating: null,
+    address: "",
+    city: "",
+    country: "",
+    zipCode: null,
+    latitude: null,
+    longitude: null,
+    checkInDate: defaultCheckIn,
+    checkOutDate: defaultCheckOut,
+    roomType: null,
+    roomCount: null,
+    guestCount: null,
+    bookingReference: null,
+    totalPrice: null,
+    pricePerNight: null,
+    currency: "USD",
+    status: "confirmed",
+    bookingSource: null,
+    purchaseUrl: null,
+    amenities: "",
+    images: "",
+    policies: "",
+    contactInfo: "",
+    bookingPlatform: null,
+    bookingUrl: null,
+    cancellationPolicy: null,
+    notes: "",
+  };
+};
 
 export const parseJsonInput = (value?: string | null) => {
   if (!value || value.trim() === "") {

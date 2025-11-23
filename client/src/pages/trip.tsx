@@ -6814,8 +6814,8 @@ function HotelBooking({
         zipCode: hotel.zipCode ?? null,
         latitude: hotel.latitude ?? null,
         longitude: hotel.longitude ?? null,
-        checkInDate: hotel.checkInDate ? new Date(hotel.checkInDate) : defaults.checkInDate,
-        checkOutDate: hotel.checkOutDate ? new Date(hotel.checkOutDate) : defaults.checkOutDate,
+        checkInDate: parseTripDateToLocal(hotel.checkInDate) ?? defaults.checkInDate,
+        checkOutDate: parseTripDateToLocal(hotel.checkOutDate) ?? defaults.checkOutDate,
         roomType: hotel.roomType ?? null,
         roomCount: hotel.roomCount ?? null,
         guestCount: hotel.guestCount ?? null,
@@ -6958,12 +6958,10 @@ function HotelBooking({
                 const addressLine = [hotel.address, hotel.city, hotel.country]
                   .filter(Boolean)
                   .join(", ");
-                const checkInLabel = hotel.checkInDate
-                  ? format(new Date(hotel.checkInDate), "MMM d, yyyy")
-                  : "TBD";
-                const checkOutLabel = hotel.checkOutDate
-                  ? format(new Date(hotel.checkOutDate), "MMM d, yyyy")
-                  : "TBD";
+                const parsedCheckIn = parseTripDateToLocal(hotel.checkInDate);
+                const parsedCheckOut = parseTripDateToLocal(hotel.checkOutDate);
+                const checkInLabel = parsedCheckIn ? format(parsedCheckIn, "MMM d, yyyy") : "TBD";
+                const checkOutLabel = parsedCheckOut ? format(parsedCheckOut, "MMM d, yyyy") : "TBD";
                 const totalPriceLabel = formatCurrency(hotel.totalPrice, {
                   currency: hotel.currency ?? "USD",
                   fallback: "—",
