@@ -46,6 +46,27 @@ type PostgresError = Error & {
   detail?: string;
 };
 
+const extractStayIdFromConstraintDetail = (detail?: string): number | null => {
+  if (typeof detail !== "string" || detail.trim().length === 0) {
+    return null;
+  }
+
+  const stayIdMatch = detail.match(/stay[_\s]?id[^=]*=\(([^)]+)\)/i);
+  if (stayIdMatch?.[1]) {
+    const candidates = stayIdMatch[1]
+      .split(/[,\s]+/)
+      .map((entry) => Number.parseInt(entry, 10))
+      .filter((value) => Number.isFinite(value));
+
+    const parsed = candidates.pop();
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
 const CONSTRAINT_VIOLATION_CODES = new Set(["23503", "23514", "23505", "23502"]);
 
 const isPostgresConstraintViolation = (error: unknown): error is PostgresError => {
@@ -4506,7 +4527,8 @@ export function setupRoutes(app: Express) {
           };
 
           const proposals = await storage.getTripHotelProposals(tripId, userId);
-          const targetStayId = normalizeId(hotelId);
+          const targetStayId =
+            normalizeId(hotelId) ?? normalizeId(extractStayIdFromConstraintDetail((error as PostgresError).detail));
 
           if (!Number.isFinite(targetStayId)) {
             return res.status(400).json({

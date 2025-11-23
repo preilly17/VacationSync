@@ -465,4 +465,44 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(existingProposal);
   });
+
+  it("recovers proposals using constraint detail when hotelId is missing", async () => {
+    createHotelProposalMock.mockRejectedValueOnce({
+      code: "23505",
+      detail: "Key (trip_id, stay_id)=(10, 29) already exists.",
+    });
+
+    const existingProposal = {
+      id: 304,
+      tripId: 10,
+      stayId: 29,
+      hotelName: "Lakehouse",
+    };
+
+    getTripHotelProposalsMock.mockResolvedValueOnce([existingProposal]);
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: {
+        hotelName: "Fallback",
+        location: "Anywhere",
+        price: "$100",
+        bookingUrl: "https://example.com",
+        platform: "Test",
+      },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(getTripHotelProposalsMock).toHaveBeenCalledWith(10, "test-user");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(existingProposal);
+  });
 });
