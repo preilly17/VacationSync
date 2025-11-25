@@ -1,4 +1,11 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   useMutation,
   useQuery,
@@ -11,7 +18,16 @@ import { Heart, Loader2, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, apiRequest } from "@/lib/queryClient";
@@ -43,6 +59,8 @@ interface CreateIdeaPayload {
   notes: string | null;
   tags: string[];
 }
+
+type SortOption = "newest" | "oldest" | "most_saved";
 
 const getCreatorDisplayName = (
   creator: WishListIdeaWithDetails["creator"] | null | undefined,
@@ -107,7 +125,15 @@ const getCreatedAtLabel = (
   }
 };
 
-type WishListQueryKey = ["wish-list", number];
+type WishListQueryKey = [
+  "wish-list",
+  number,
+  SortOption,
+  string | null,
+  string | null,
+  string | null,
+  string | null,
+];
 
 export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   const { toast } = useToast();
@@ -117,6 +143,13 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   const [url, setUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [tagsInput, setTagsInput] = useState("");
+  const [sort, setSort] = useState<SortOption>("newest");
+  const [selectedTag, setSelectedTag] = useState<string>("");
+  const [submittedBy, setSubmittedBy] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [minLikes, setMinLikes] = useState("");
+
+  const hasUserAdjustedSort = useRef(false);
 
   const normalizedShareCode = useMemo(() => {
     if (!shareCode) {
@@ -126,9 +159,37 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     return trimmed.length > 0 ? trimmed : null;
   }, [shareCode]);
 
+  const normalizedMinLikes = useMemo(() => {
+    const trimmed = minLikes.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      return "";
+    }
+
+    return String(parsed);
+  }, [minLikes]);
+
+  const hasActiveFilters =
+    selectedTag !== "" ||
+    submittedBy !== "" ||
+    searchTerm.trim() !== "" ||
+    normalizedMinLikes !== "";
+
   const wishListQueryKey = useMemo<WishListQueryKey>(
-    () => ["wish-list", tripId],
-    [tripId],
+    () => [
+      "wish-list",
+      tripId,
+      sort,
+      selectedTag || null,
+      submittedBy || null,
+      searchTerm.trim() || null,
+      normalizedMinLikes || null,
+    ],
+    [normalizedMinLikes, searchTerm, selectedTag, sort, submittedBy, tripId],
   );
 
   const getShareCodeHeaders = () =>
@@ -155,10 +216,33 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     enabled: Number.isFinite(tripId) && tripId > 0,
     queryFn: async () => {
       const headers = getShareCodeHeaders();
-      const res = await apiRequest(`/api/trips/${tripId}/wish-list`, {
-        method: "GET",
-        ...(headers ? { headers } : {}),
-      });
+      const params = new URLSearchParams();
+      params.set("sort", sort);
+
+      if (selectedTag) {
+        params.set("tag", selectedTag);
+      }
+
+      if (submittedBy) {
+        params.set("submittedBy", submittedBy);
+      }
+
+      if (searchTerm.trim()) {
+        params.set("search", searchTerm.trim());
+      }
+
+      if (normalizedMinLikes) {
+        params.set("minLikes", normalizedMinLikes);
+      }
+
+      const queryString = params.toString();
+      const res = await apiRequest(
+        `/api/trips/${tripId}/wish-list${queryString ? `?${queryString}` : ""}`,
+        {
+          method: "GET",
+          ...(headers ? { headers } : {}),
+        },
+      );
       return (await res.json()) as WishListIdeasResponse;
     },
     retry: (failureCount, requestError) => {
@@ -170,6 +254,12 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   };
 
   const { data, isLoading, isError, error } = useQuery(wishListQueryOptions);
+
+  useEffect(() => {
+    if (data?.meta?.sort && !hasUserAdjustedSort.current) {
+      setSort(data.meta.sort as SortOption);
+    }
+  }, [data?.meta?.sort]);
 
   useEffect(() => {
     if (!isError || !error) {
@@ -189,6 +279,38 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
   }, [error, handleUnauthorized, isError, toast]);
 
   const ideas: WishListIdeaWithDetails[] = data?.ideas ?? [];
+  const availableTags = data?.meta?.availableTags ?? [];
+  const submitters = data?.meta?.submitters ?? [];
+
+  const matchesFilters = useCallback(
+    (idea: WishListIdeaWithDetails) => {
+      if (selectedTag && !(idea.tags ?? []).includes(selectedTag)) {
+        return false;
+      }
+
+      if (submittedBy && idea.creator?.id !== submittedBy) {
+        return false;
+      }
+
+      const normalizedSearch = searchTerm.trim().toLowerCase();
+      if (normalizedSearch) {
+        const haystack = `${idea.title ?? ""} ${idea.notes ?? ""}`.toLowerCase();
+        if (!haystack.includes(normalizedSearch)) {
+          return false;
+        }
+      }
+
+      if (normalizedMinLikes) {
+        const min = Number.parseInt(normalizedMinLikes, 10);
+        if (Number.isFinite(min) && idea.saveCount < min) {
+          return false;
+        }
+      }
+
+      return true;
+    },
+    [normalizedMinLikes, searchTerm, selectedTag, submittedBy],
+  );
 
   const createIdeaMutation = useMutation<
     { idea: WishListIdeaWithDetails },
@@ -206,79 +328,85 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     },
     onSuccess: (payload) => {
       if (payload.idea) {
+        const includeIdea = matchesFilters(payload.idea);
+        const shouldUpdateMeta = !hasActiveFilters || includeIdea;
+
         queryClient.setQueryData<WishListIdeasResponse | undefined>(
           wishListQueryKey,
           (previous) => {
-            const nextMeta = (() => {
-              if (!previous?.meta) {
-                return {
-                  availableTags: Array.from(new Set(payload.idea.tags ?? [])).sort((a, b) =>
-                    a.localeCompare(b),
-                  ),
-                  submitters: [
-                    {
-                      id: payload.idea.creator.id,
-                      name: getCreatorDisplayName(payload.idea.creator),
-                    },
-                  ],
-                  sort: previous?.meta?.sort,
-                  isAdmin: previous?.meta?.isAdmin,
-                  isMember: previous?.meta?.isMember,
-                  minLikes: previous?.meta?.minLikes ?? null,
-                };
+            const computeMeta = () => {
+              if (!shouldUpdateMeta) {
+                return previous?.meta ?? data?.meta;
               }
 
-              const existingTags = new Set(previous.meta.availableTags ?? []);
+              const baseMeta = previous?.meta ?? {
+                availableTags: [],
+                submitters: [],
+                sort: sort,
+                isAdmin: data?.meta?.isAdmin,
+                isMember: data?.meta?.isMember,
+                minLikes: data?.meta?.minLikes ?? null,
+              };
+
+              const existingTags = new Set(baseMeta.availableTags ?? []);
               for (const tag of payload.idea.tags ?? []) {
                 if (tag) {
                   existingTags.add(tag);
                 }
               }
 
-              const submitters = [...(previous.meta.submitters ?? [])];
-              const hasSubmitter = submitters.some(
+              const submitterList = [...(baseMeta.submitters ?? [])];
+              const hasSubmitter = submitterList.some(
                 (submitter) => submitter.id === payload.idea.creator.id,
               );
               if (!hasSubmitter) {
-                submitters.push({
+                submitterList.push({
                   id: payload.idea.creator.id,
                   name: getCreatorDisplayName(payload.idea.creator),
                 });
               }
 
-              submitters.sort((a, b) => a.name.localeCompare(b.name));
+              submitterList.sort((a, b) => a.name.localeCompare(b.name));
 
               return {
-                ...previous.meta,
+                ...baseMeta,
                 availableTags: Array.from(existingTags).sort((a, b) => a.localeCompare(b)),
-                submitters,
+                submitters: submitterList,
               };
-            })();
+            };
+
+            const nextMeta = computeMeta();
 
             if (!previous) {
-              return { ideas: [payload.idea], meta: nextMeta };
+              return { ideas: includeIdea ? [payload.idea] : [], meta: nextMeta };
             }
 
             return {
               ...previous,
-              ideas: [payload.idea, ...previous.ideas],
+              ideas: includeIdea ? [payload.idea, ...previous.ideas] : previous.ideas,
               meta: nextMeta,
             };
           },
         );
+
+        toast({
+          title: "Idea added",
+          description: "Your idea is now on the wish list.",
+        });
+
+        setTitle("");
+        setUrl("");
+        setNotes("");
+        setTagsInput("");
+
+        queryClient.invalidateQueries({ queryKey: ["wish-list", tripId] });
       } else {
-        queryClient.invalidateQueries({ queryKey: wishListQueryKey });
+        queryClient.invalidateQueries({ queryKey: ["wish-list", tripId] });
+        toast({
+          title: "Idea added",
+          description: "Your idea is now on the wish list.",
+        });
       }
-
-      toast({
-        title: "Idea added",
-        description: "Your idea is now on the wish list.",
-      });
-
-      setTitle("");
-      setUrl("");
-      setNotes("");
-      setTagsInput("");
     },
     onError: (requestError) => {
       if (isUnauthorizedError(requestError)) {
@@ -476,6 +604,20 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     },
   });
 
+  const handleSortChange = (value: SortOption) => {
+    hasUserAdjustedSort.current = true;
+    setSort(value);
+  };
+
+  const handleClearFilters = () => {
+    setSelectedTag("");
+    setSubmittedBy("");
+    setSearchTerm("");
+    setMinLikes("");
+    hasUserAdjustedSort.current = true;
+    setSort("newest");
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -501,7 +643,6 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       notes: notes.trim() ? notes.trim() : null,
       tags,
     };
-    console.log("Wishlist payload:", payload);
 
     try {
       await createIdeaMutation.mutateAsync(payload);
@@ -608,12 +749,132 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
             />
           </div>
 
-          <div className="flex items-center justify-end gap-3">
-            <Button type="submit" disabled={createIdeaMutation.isPending}>
-              {createIdeaMutation.isPending ? "Saving..." : "Add idea"}
-            </Button>
+        <div className="flex items-center justify-end gap-3">
+          <Button type="submit" disabled={createIdeaMutation.isPending}>
+            {createIdeaMutation.isPending ? "Saving..." : "Add idea"}
+          </Button>
+        </div>
+      </form>
+    </Card>
+
+      <Card className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Filter & sort ideas</h3>
+            <p className="text-sm text-neutral-600">
+              Narrow down ideas by tags, submitters, interest, or keywords.
+            </p>
           </div>
-        </form>
+          {hasActiveFilters ? (
+            <Button variant="ghost" size="sm" onClick={handleClearFilters}>
+              Clear filters
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="wish-search">Search</Label>
+            <Input
+              id="wish-search"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Ramen, karaoke, hidden bar..."
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="wish-sort">Sort by</Label>
+            <Select value={sort} onValueChange={(value) => handleSortChange(value as SortOption)}>
+              <SelectTrigger id="wish-sort">
+                <SelectValue placeholder="Sort ideas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+                <SelectItem value="most_saved">Most interested</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="wish-tag">Tag</Label>
+            <Select
+              value={selectedTag}
+              onValueChange={(value) => setSelectedTag(value)}
+              disabled={availableTags.length === 0}
+            >
+              <SelectTrigger id="wish-tag">
+                <SelectValue
+                  placeholder={availableTags.length === 0 ? "No tags yet" : "All tags"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All tags</SelectItem>
+                {availableTags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>
+                    {tag}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="wish-submitter">Submitted by</Label>
+            <Select
+              value={submittedBy}
+              onValueChange={(value) => setSubmittedBy(value)}
+              disabled={submitters.length === 0}
+            >
+              <SelectTrigger id="wish-submitter">
+                <SelectValue
+                  placeholder={submitters.length === 0 ? "No submissions yet" : "Anyone"}
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Anyone</SelectItem>
+                {submitters.map((submitter) => (
+                  <SelectItem key={submitter.id} value={submitter.id}>
+                    {submitter.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="wish-min-likes">Minimum interests</Label>
+            <Input
+              id="wish-min-likes"
+              type="number"
+              min={1}
+              inputMode="numeric"
+              value={minLikes}
+              onChange={(event) => setMinLikes(event.target.value)}
+              placeholder="e.g. 3"
+            />
+          </div>
+        </div>
+
+        {hasActiveFilters ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {searchTerm.trim() ? <Badge variant="secondary">Search: {searchTerm.trim()}</Badge> : null}
+            {selectedTag ? <Badge variant="secondary">Tag: {selectedTag}</Badge> : null}
+            {submittedBy
+              ? submitters
+                  .filter((submitter) => submitter.id === submittedBy)
+                  .map((submitter) => (
+                    <Badge key={submitter.id} variant="secondary">
+                      Submitted by: {submitter.name}
+                    </Badge>
+                  ))
+              : null}
+            {normalizedMinLikes ? (
+              <Badge variant="secondary">At least {normalizedMinLikes} interested</Badge>
+            ) : null}
+          </div>
+        ) : null}
       </Card>
 
       {isLoading ? (
