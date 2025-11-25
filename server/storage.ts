@@ -878,6 +878,69 @@ type RestaurantWithDetailsRow = RestaurantRow &
     trip_created_at: Date | null;
   };
 
+const selectRestaurantColumn = (
+  availableColumns: Set<string>,
+  columnName: keyof RestaurantRow,
+  fallbackExpression: string,
+) =>
+  availableColumns.has(columnName)
+    ? `r.${columnName} AS ${columnName}`
+    : `${fallbackExpression} AS ${columnName}`;
+
+let restaurantColumnsCache: Set<string> | null = null;
+
+const getRestaurantColumnNames = async (): Promise<Set<string>> => {
+  if (restaurantColumnsCache) {
+    return restaurantColumnsCache;
+  }
+
+  const { rows } = await query<{ column_name: string }>(
+    `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'restaurants'
+    `,
+  );
+
+  restaurantColumnsCache = new Set(rows.map(({ column_name }) => column_name));
+  return restaurantColumnsCache;
+};
+
+const buildRestaurantSelectList = async (): Promise<string> => {
+  const availableColumns = await getRestaurantColumnNames();
+  const column = (name: keyof RestaurantRow, fallback: string) =>
+    selectRestaurantColumn(availableColumns, name, fallback);
+
+  return [
+    column("id", "NULL::integer"),
+    column("trip_id", "NULL::integer"),
+    column("user_id", "NULL::text"),
+    column("name", "NULL::text"),
+    column("cuisine_type", "NULL::text"),
+    column("address", "NULL::text"),
+    column("city", "NULL::text"),
+    column("country", "NULL::text"),
+    column("zip_code", "NULL::text"),
+    column("latitude", "NULL::text"),
+    column("longitude", "NULL::text"),
+    column("phone_number", "NULL::text"),
+    column("website", "NULL::text"),
+    column("open_table_url", "NULL::text"),
+    column("price_range", "NULL::text"),
+    column("rating", "NULL::text"),
+    column("reservation_date", "NULL::date"),
+    column("reservation_time", "NULL::text"),
+    column("party_size", "NULL::integer"),
+    column("confirmation_number", "NULL::text"),
+    column("reservation_status", "NULL::text"),
+    column("special_requests", "NULL::text"),
+    column("notes", "NULL::text"),
+    column("created_at", "NULL::timestamptz"),
+    column("updated_at", "NULL::timestamptz"),
+  ].join(",\n        ");
+};
+
 type HotelProposalRow = {
   id: number;
   trip_id: number;
@@ -9702,34 +9765,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async getTripRestaurants(
     tripId: number,
   ): Promise<RestaurantWithDetails[]> {
+    const restaurantSelect = await buildRestaurantSelectList();
+
     const { rows } = await query<RestaurantWithDetailsRow>(
       `
       SELECT
-        r.id,
-        r.trip_id,
-        r.user_id,
-        r.name,
-        r.cuisine_type,
-        r.address,
-        r.city,
-        r.country,
-        r.zip_code,
-        r.latitude,
-        r.longitude,
-        r.phone_number,
-        r.website,
-        r.open_table_url,
-        r.price_range,
-        r.rating,
-        r.reservation_date,
-        r.reservation_time,
-        r.party_size,
-        r.confirmation_number,
-        r.reservation_status,
-        r.special_requests,
-        r.notes,
-        r.created_at,
-        r.updated_at,
+        ${restaurantSelect},
         u.id AS user_id,
         u.email AS user_email,
         u.username AS user_username,
