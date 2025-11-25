@@ -72,6 +72,8 @@ function Router() {
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
         <Route path="/trip/:id" component={Trip} />
+        <Route path="/trip/:id/wish-list" component={Trip} />
+        <Route path="/trips/:id/wish-list" component={Trip} />
         <Route path="/trips/new" component={PlanTrip} />
         <Route path="/trip/:tripId/members" component={MemberSchedule} />
         <Route path="/trip/:tripId/flights" component={Flights} />
