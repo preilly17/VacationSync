@@ -2403,6 +2403,21 @@ export class DatabaseStorage implements IStorage {
       );
 
       await query(`
+        WITH duplicates AS (
+          SELECT
+            id,
+            ROW_NUMBER() OVER (PARTITION BY promoted_draft_id ORDER BY id) AS row_num
+          FROM trip_wish_list_items
+          WHERE promoted_draft_id IS NOT NULL
+        )
+        UPDATE trip_wish_list_items i
+        SET promoted_draft_id = NULL
+        FROM duplicates d
+        WHERE i.id = d.id
+          AND d.row_num > 1
+      `);
+
+      await query(`
         DO $$
         BEGIN
           IF NOT EXISTS (
