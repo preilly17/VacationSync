@@ -1,6 +1,16 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useLocation, Link } from "wouter";
-import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type KeyboardEvent,
+  Component,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -251,6 +261,51 @@ const DEFAULT_CALENDAR_FILTER_STATE: CalendarFilterState = {
     proposed: false,
   },
 };
+
+class SectionErrorBoundary extends Component<
+  {
+    children: ReactNode;
+    onRetry?: () => void;
+  },
+  { error: Error | null }
+> {
+  state = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("Trip tab render error", error, info);
+  }
+
+  handleReset = () => {
+    this.setState({ error: null });
+    this.props.onRetry?.();
+  };
+
+  render() {
+    if (this.state.error) {
+      return (
+        <Card className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-neutral-900">We hit a snag</p>
+              <p className="text-sm text-neutral-600">
+                Something went wrong while loading this section. Try again to reload it.
+              </p>
+            </div>
+            <Button onClick={this.handleReset} variant="outline">
+              Retry
+            </Button>
+          </div>
+        </Card>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const CALENDAR_FILTER_STORAGE_PREFIX = "vacationsync:trip-calendar-filters";
 
@@ -1266,6 +1321,7 @@ export default function Trip() {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showWeatherModal, setShowWeatherModal] = useState(false);
   const [activeTab, setActiveTab] = useState<TripTab>("calendar");
+  const [wishListBoundaryKey, setWishListBoundaryKey] = useState(0);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarView, setCalendarView] = useState<CalendarViewMode>("month");
   const [calendarViewDate, setCalendarViewDate] = useState<Date | null>(null);
@@ -3371,7 +3427,12 @@ export default function Trip() {
 
                 {activeTab === "wish-list" && (
                   <div className="trip-themed-section p-6" data-testid="wish-list-section">
-                    <WishListBoard tripId={numericTripId} shareCode={trip?.shareCode ?? null} />
+                    <SectionErrorBoundary
+                      key={wishListBoundaryKey}
+                      onRetry={() => setWishListBoundaryKey((value) => value + 1)}
+                    >
+                      <WishListBoard tripId={numericTripId} shareCode={trip?.shareCode ?? null} />
+                    </SectionErrorBoundary>
                   </div>
                 )}
 
