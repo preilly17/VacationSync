@@ -3514,8 +3514,9 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Trip not found" });
       }
 
+      const tripMembers = Array.isArray(trip.members) ? trip.members : [];
       const isMember =
-        trip.createdBy === userId || trip.members.some((member) => member.userId === userId);
+        trip.createdBy === userId || tripMembers.some((member) => member.userId === userId);
       if (!isMember) {
         return res.status(403).json({ message: "You are no longer a member of this trip" });
       }
@@ -3545,8 +3546,9 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Trip not found" });
       }
 
+      const tripMembers = Array.isArray(trip.members) ? trip.members : [];
       const isMember =
-        trip.createdBy === userId || trip.members.some((member) => member.userId === userId);
+        trip.createdBy === userId || tripMembers.some((member) => member.userId === userId);
       if (!isMember) {
         return res.status(403).json({ message: "You are no longer a member of this trip" });
       }
