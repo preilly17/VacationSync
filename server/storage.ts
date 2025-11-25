@@ -2403,6 +2403,25 @@ export class DatabaseStorage implements IStorage {
       );
 
       await query(`
+        CREATE TABLE IF NOT EXISTS trip_proposal_drafts (
+          id SERIAL PRIMARY KEY,
+          trip_id INTEGER NOT NULL REFERENCES trip_calendars(id) ON DELETE CASCADE,
+          item_id INTEGER UNIQUE REFERENCES trip_wish_list_items(id) ON DELETE CASCADE,
+          created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          url TEXT,
+          notes TEXT,
+          tags JSONB DEFAULT '[]'::jsonb,
+          status TEXT NOT NULL DEFAULT 'draft',
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_trip_proposal_drafts_trip ON trip_proposal_drafts(trip_id, created_at DESC)`,
+      );
+
+      await query(`
         WITH duplicates AS (
           SELECT
             i.id,
@@ -2472,25 +2491,6 @@ export class DatabaseStorage implements IStorage {
       `);
       await query(
         `CREATE INDEX IF NOT EXISTS idx_trip_wish_list_comments_item ON trip_wish_list_comments(item_id)`,
-      );
-
-      await query(`
-        CREATE TABLE IF NOT EXISTS trip_proposal_drafts (
-          id SERIAL PRIMARY KEY,
-          trip_id INTEGER NOT NULL REFERENCES trip_calendars(id) ON DELETE CASCADE,
-          item_id INTEGER UNIQUE REFERENCES trip_wish_list_items(id) ON DELETE CASCADE,
-          created_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          title TEXT NOT NULL,
-          url TEXT,
-          notes TEXT,
-          tags JSONB DEFAULT '[]'::jsonb,
-          status TEXT NOT NULL DEFAULT 'draft',
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-      `);
-      await query(
-        `CREATE INDEX IF NOT EXISTS idx_trip_proposal_drafts_trip ON trip_proposal_drafts(trip_id, created_at DESC)`,
       );
 
       await query(`
