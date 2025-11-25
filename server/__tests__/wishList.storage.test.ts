@@ -180,4 +180,29 @@ describe("DatabaseStorage wish list helpers", () => {
       ),
     ).toBe(true);
   });
+
+  it("clears duplicate promoted draft links before adding a unique constraint", async () => {
+    const executedSql: string[] = [];
+    queryMock.mockImplementation((sql: string) => {
+      executedSql.push(sql);
+      if (sql.includes("information_schema.columns") && sql.includes("column_name = 'tags'")) {
+        return Promise.resolve({ rows: [{ data_type: "jsonb", udt_name: "jsonb" }] });
+      }
+
+      if (
+        sql.includes("information_schema.table_constraints") &&
+        sql.includes("trip_wish_list_items_promoted_draft_id_key")
+      ) {
+        return Promise.resolve({ rows: [] });
+      }
+
+      return Promise.resolve({ rows: [] });
+    });
+
+    const storage = new DatabaseStorage();
+    await (storage as unknown as { ensureWishListStructures: () => Promise<void> }).ensureWishListStructures();
+
+    const dedupeSql = executedSql.find((sql) => sql.includes("ROW_NUMBER() OVER (PARTITION BY promoted_draft_id"));
+    expect(dedupeSql).toBeDefined();
+  });
 });
