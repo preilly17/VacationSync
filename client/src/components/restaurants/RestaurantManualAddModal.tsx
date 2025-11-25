@@ -10,9 +10,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { RestaurantManualAddPrefill } from "@/types/restaurants";
+import { addRestaurant } from "@/lib/restaurants";
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_REGEX = /^\d{2}:\d{2}$/;
@@ -110,10 +110,7 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
             : null,
       };
 
-      await apiRequest(`/api/trips/${normalizedTripId}/restaurants`, {
-        method: "POST",
-        body: payload,
-      });
+      await addRestaurant(normalizedTripId, payload);
     },
     onSuccess: async () => {
       if (normalizedTripId != null) {

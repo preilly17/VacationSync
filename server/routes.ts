@@ -3532,63 +3532,103 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/restaurants', isAuthenticated, async (req: any, res) => {
     try {
       const tripId = Number.parseInt(req.params.id, 10);
-      if (Number.isNaN(tripId)) {
-        return res.status(400).json({ message: "Invalid trip id" });
+      if (!Number.isFinite(tripId) || tripId <= 0) {
+        return res.status(400).json({ error: "Invalid trip id" });
       }
 
       const userId = getRequestUserId(req);
       if (!userId) {
-        return res.status(401).json({ message: "User ID not found" });
+        return res.status(401).json({ error: "User ID not found" });
       }
 
       const trip = await storage.getTripById(tripId);
       if (!trip) {
-        return res.status(404).json({ message: "Trip not found" });
+        return res.status(404).json({ error: "Trip not found" });
       }
 
       const tripMembers = Array.isArray(trip.members) ? trip.members : [];
       const isMember =
         trip.createdBy === userId || tripMembers.some((member) => member.userId === userId);
       if (!isMember) {
-        return res.status(403).json({ message: "You are no longer a member of this trip" });
+        return res.status(403).json({ error: "You are no longer a member of this trip" });
       }
 
-      const rawBody = req.body ?? {};
-      const validatedData = insertRestaurantSchema.parse({
-        ...rawBody,
-        reservationDate: rawBody.reservationDate ?? rawBody.reservation_date,
-        reservationTime: rawBody.reservationTime ?? rawBody.reservation_time,
-        partySize: rawBody.partySize ?? rawBody.party_size,
-        tripId,
+      const manualRestaurantSchema = z.object({
+        name: z.string().trim().min(1, "Restaurant name is required"),
+        address: z.string().trim().min(1, "Address is required"),
+        city: z.string().trim().optional(),
+        country: z.string().trim().optional(),
+        reservationDate: z.union([z.date(), z.string()]).optional(),
+        reservationTime: z.string().trim().optional(),
+        partySize: z.coerce.number().int().positive().optional(),
+        cuisineType: z.string().nullable().optional(),
+        zipCode: z.string().nullable().optional(),
+        latitude: nullableNumberInput("Latitude must be a number").optional(),
+        longitude: nullableNumberInput("Longitude must be a number").optional(),
+        phoneNumber: z.string().nullable().optional(),
+        website: z.string().nullable().optional(),
+        openTableUrl: z.string().nullable().optional(),
+        priceRange: z.string().nullable().optional(),
+        priceLevel: z.string().nullable().optional(),
+        rating: nullableNumberInput("Rating must be a number").optional(),
+        confirmationNumber: z.string().nullable().optional(),
+        reservationStatus: z.string().nullable().optional(),
+        specialRequests: z.string().nullable().optional(),
+        notes: z.string().nullable().optional(),
+        url: z.string().url().nullable().optional(),
       });
 
-      const reservationDateIso = toDateOnlyIsoString(validatedData.reservationDate);
-      if (!reservationDateIso) {
-        return res.status(400).json({ message: "Invalid reservation date" });
+      const rawBody = req.body ?? {};
+      const parsedBody = manualRestaurantSchema.parse(rawBody);
+
+      const reservationDateIso = parsedBody.reservationDate
+        ? toDateOnlyIsoString(parsedBody.reservationDate)
+        : null;
+      if (parsedBody.reservationDate && !reservationDateIso) {
+        return res.status(400).json({ error: "Invalid reservation date" });
       }
+
+      const normalizedCity = (parsedBody.city ?? (trip as any)?.cityName ?? "Unknown City").trim();
+      const normalizedCountry =
+        (parsedBody.country ?? (trip as any)?.countryName ?? "Unknown Country").trim();
+
+      const validatedData = insertRestaurantSchema.parse({
+        ...parsedBody,
+        city: normalizedCity.length > 0 ? normalizedCity : "Unknown City",
+        country: normalizedCountry.length > 0 ? normalizedCountry : "Unknown Country",
+        reservationDate: reservationDateIso ?? new Date().toISOString().slice(0, 10),
+        reservationTime: parsedBody.reservationTime ?? "19:00",
+        partySize: parsedBody.partySize ?? 1,
+        priceRange: parsedBody.priceLevel ?? parsedBody.priceRange ?? "$$",
+        rating: parsedBody.rating ?? null,
+        website: parsedBody.url ?? parsedBody.website ?? null,
+        tripId,
+      });
 
       const restaurant = await storage.createRestaurant(
         {
           ...validatedData,
-          reservationDate: reservationDateIso,
+          reservationDate: toDateOnlyIsoString(validatedData.reservationDate) ?? reservationDateIso ?? null,
+          notes: parsedBody.notes ?? validatedData.notes ?? null,
         },
         userId,
       );
 
+      console.log(`✅ Created restaurant ${restaurant.name} for trip ${tripId}`);
       res.status(201).json(restaurant);
     } catch (error: unknown) {
-      console.error("Error adding restaurant:", error);
+      console.error("Error creating restaurant", error);
       if (error instanceof z.ZodError) {
-        res.status(400).json({ message: "Invalid restaurant data", errors: error.errors });
+        res.status(400).json({ error: "Invalid restaurant data", details: error.errors });
         return;
       }
 
       if (isPostgresConstraintViolation(error)) {
-        res.status(400).json({ message: getErrorMessage(error) });
+        res.status(400).json({ error: getErrorMessage(error) });
         return;
       }
 
-      res.status(500).json({ message: "Failed to add restaurant" });
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
