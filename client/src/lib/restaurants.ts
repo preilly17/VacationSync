@@ -56,7 +56,11 @@ export async function addRestaurant(
         : typeof errorBody?.message === "string"
           ? errorBody.message
           : "Failed to add restaurant";
-    throw new Error(`[${response.status}] ${message}`);
+    const error = new Error(`[${response.status}] ${message}`) as Error & {
+      status?: number;
+    };
+    error.status = response.status;
+    throw error;
   }
 
   const result = await response.json();
