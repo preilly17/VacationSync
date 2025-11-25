@@ -4320,305 +4320,181 @@ export function setupRoutes(app: Express) {
   };
 
     const handlePostTripHotelProposals = async (req: any, res: any) => {
-      let tripId: number | null = null;
-      let userId: string | null = null;
-      let hotelId: number | null = null;
-      let parsedHotelPayload: InsertHotel | null = null;
-      let hotelPayloadIssues: z.ZodIssue[] | null = null;
+      const tripIdParam =
+        typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
+      const parsedTripId = Number.parseInt(String(tripIdParam ?? ''), 10);
+      const tripId = Number.isNaN(parsedTripId) ? null : parsedTripId;
 
-      try {
-        const tripIdParam =
-          typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
-        const parsedTripId = Number.parseInt(String(tripIdParam ?? ''), 10);
-        tripId = Number.isNaN(parsedTripId) ? null : parsedTripId;
-
-        if (!Number.isFinite(tripId)) {
-          return res.status(400).json({ message: "Invalid trip id" });
-        }
-
-      userId = getRequestUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "User ID not found" });
+      if (!Number.isFinite(tripId)) {
+        return res.status(400).json({ error: "tripId in path is required" });
       }
 
-      const ensureTripMembershipForAdHocProposal = async () => {
-        const isMember = await storage.isTripMember(tripId, userId);
-        if (isMember) {
-          return { allowed: true as const };
-        }
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "User ID not found" });
+      }
 
-        const trip = await storage.getTripById(tripId);
-        if (!trip) {
-          return { allowed: false as const, status: 404, message: "Trip not found" };
-        }
-
-        return {
-          allowed: false as const,
-          status: 403,
-          message: "You must be a member of this trip to share stays with the group.",
-        };
-      };
-
-      const proposeHotelRequestSchema = z
+      const requestSchema = z
         .object({
-          id: z.union([z.string(), z.number()]).optional(),
-          hotelId: z.union([z.string(), z.number()]).optional(),
+          hotelId: z.union([z.number(), z.string()]).optional(),
+          id: z.union([z.number(), z.string()]).optional(),
+          hotelName: z.string().min(1, "hotelName is required"),
+          address: z.string().min(1, "address is required"),
+          checkIn: z.string().datetime({ message: "checkIn must be an ISO date string" }),
+          checkOut: z.string().datetime({ message: "checkOut must be an ISO date string" }),
+          nightlyPrice: z.union([z.number(), z.string()]).optional(),
+          totalPrice: z.union([z.number(), z.string()]).optional(),
+          currency: z.string().min(1, "currency is required"),
+          imageUrl: z.string().url().nullable().optional(),
+          bookingUrl: z.string().url().nullable().optional(),
+          source: z.string().nullable().optional(),
         })
         .passthrough();
 
-      const parsedRequest = proposeHotelRequestSchema.safeParse(req.body ?? {});
+      const parsedRequest = requestSchema.safeParse(req.body ?? {});
       if (!parsedRequest.success) {
-        return res
-          .status(400)
-          .json({ message: "Invalid hotel proposal request", errors: parsedRequest.error.issues });
+        const firstIssue = parsedRequest.error.issues[0];
+        return res.status(400).json({ error: firstIssue?.message ?? "Invalid hotel proposal request" });
       }
 
-      const parsedData = parsedRequest.data as Record<string, unknown>;
-      const rawHotelId = parsedData.hotelId ?? parsedData.id;
-      hotelId =
+      const data = parsedRequest.data as Record<string, unknown>;
+      const rawHotelId = data.hotelId ?? data.id;
+      const hotelId =
         typeof rawHotelId === 'number'
           ? rawHotelId
           : rawHotelId != null
             ? Number.parseInt(String(rawHotelId), 10)
             : NaN;
 
-      const { hotelId: _ignoredHotelId, id: _ignoredId, ...rest } = parsedData;
-      const { tripId: rawTripId, ...hotelDetails } = rest as {
-        tripId?: number | string;
-        [key: string]: unknown;
+      if (!Number.isFinite(hotelId)) {
+        return res.status(400).json({ error: "hotelId is required" });
+      }
+
+      const parseDate = (value: unknown): Date | null => {
+        if (typeof value !== 'string') {
+          return null;
+        }
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
       };
 
-      const hasAdditionalHotelDetails = Object.keys(hotelDetails).length > 0;
-      const requiresHotelDetails =
-        !Number.isFinite(hotelId) || hasAdditionalHotelDetails || rawTripId !== undefined;
+      const checkInDate = parseDate(data.checkIn);
+      const checkOutDate = parseDate(data.checkOut);
 
-      if (requiresHotelDetails) {
-        const normalizedTripIdFromPayload =
-          typeof rawTripId === 'number'
-            ? rawTripId
-            : typeof rawTripId === 'string'
-              ? Number.parseInt(rawTripId, 10)
-              : undefined;
+      if (!checkInDate) {
+        return res.status(400).json({ error: "checkIn is required" });
+      }
 
-        if (
-          normalizedTripIdFromPayload !== undefined &&
-          !Number.isFinite(normalizedTripIdFromPayload)
-        ) {
-          return res
-            .status(400)
-            .json({ message: "Trip ID mismatch between path and payload" });
-        }
+      if (!checkOutDate) {
+        return res.status(400).json({ error: "checkOut is required" });
+      }
 
-        const parseResult = insertHotelSchema.safeParse({
-          ...(hotelDetails as Record<string, unknown>),
-          tripId: normalizedTripIdFromPayload ?? tripId,
+      if (checkInDate >= checkOutDate) {
+        return res.status(400).json({ error: "checkIn must be before checkOut" });
+      }
+
+      const trip = await storage.getTripById(tripId);
+      if (!trip) {
+        return res.status(404).json({ error: "Trip not found" });
+      }
+
+      const isMember = await storage.isTripMember(tripId, userId);
+      if (!isMember) {
+        return res.status(403).json({ error: "You are not a member of this trip" });
+      }
+
+      const normalizedNightlyPrice = parsePriceFromInput(data.nightlyPrice) ?? null;
+      const normalizedTotalPrice = parsePriceFromInput(data.totalPrice) ?? null;
+
+      try {
+        const result = await storage.ensureHotelProposalForSavedHotel({
+          hotelId,
+          tripId,
+          currentUserId: userId,
+          overrideDetails: {
+            tripId,
+            hotelName: String(data.hotelName),
+            address: String(data.address),
+            checkInDate,
+            checkOutDate,
+            pricePerNight: normalizedNightlyPrice,
+            totalPrice: normalizedTotalPrice,
+            currency: typeof data.currency === 'string' ? data.currency : 'USD',
+            bookingUrl: (data.bookingUrl as string | null | undefined) ?? null,
+          } satisfies Partial<InsertHotel>,
         });
 
-        if (!parseResult.success) {
-          hotelPayloadIssues = parseResult.error.issues;
-        } else {
-          parsedHotelPayload = { ...parseResult.data, tripId };
-        }
-      }
+        const statusCode = result.wasCreated ? 201 : 200;
 
-      if (!Number.isFinite(hotelId)) {
-        const membershipResult = await ensureTripMembershipForAdHocProposal();
-        if (!membershipResult.allowed) {
-          return res.status(membershipResult.status).json({ message: membershipResult.message });
-        }
+        res.status(statusCode).json(result.proposal);
 
-        if (parsedHotelPayload) {
-          try {
-            const createdHotel = await storage.createHotel(parsedHotelPayload, userId);
-            hotelId = createdHotel.id;
-          } catch (creationError: unknown) {
-            console.error("Error creating hotel before proposing:", creationError);
-            return res.status(500).json({ message: "Failed to prepare hotel for proposal" });
-          }
-        } else {
-          const normalizedPrice =
-            parsePriceFromInput(parsedData.price) ??
-            parsePriceFromInput(parsedData.pricePerNight) ??
-            '0';
-          const normalizedPricePerNight =
-            parsePriceFromInput(parsedData.pricePerNight) ?? normalizedPrice;
-
-          const fallbackProposalInput = {
-            tripId,
-            hotelName:
-              typeof parsedData.hotelName === 'string' && parsedData.hotelName.trim().length > 0
-                ? parsedData.hotelName
-                : 'Unknown Hotel',
-            location:
-              typeof parsedData.location === 'string' && parsedData.location.trim().length > 0
-                ? parsedData.location
-                : 'Unknown Location',
-            price: normalizedPrice,
-            pricePerNight: normalizedPricePerNight,
-            rating:
-              parsedData.rating == null ||
-              (typeof parsedData.rating !== 'string' && typeof parsedData.rating !== 'number')
-                ? null
-                : (parsedData.rating as string | number),
-            amenities:
-              typeof parsedData.amenities === 'string' && parsedData.amenities.trim().length > 0
-                ? (parsedData.amenities as string)
-                : null,
-            platform:
-              typeof parsedData.platform === 'string' && parsedData.platform.trim().length > 0
-                ? (parsedData.platform as string)
-                : 'Amadeus',
-            bookingUrl:
-              typeof parsedData.bookingUrl === 'string' && parsedData.bookingUrl.trim().length > 0
-                ? (parsedData.bookingUrl as string)
-                : '',
-            status:
-              typeof parsedData.status === 'string' && parsedData.status.trim().length > 0
-                ? (parsedData.status as string)
-                : 'proposed',
-          };
-
-          const fallbackSchema = insertHotelProposalSchema.extend({
-            bookingUrl: z.string(),
-          });
-          const fallbackParseResult = fallbackSchema.safeParse(fallbackProposalInput);
-          if (!fallbackParseResult.success) {
-            return res.status(400).json({
-              message:
-                "Provide either an existing hotelId or the required hotel details to share with the group.",
-              errors: hotelPayloadIssues ?? fallbackParseResult.error.issues,
-            });
-          }
-
-          const proposal = await storage.createHotelProposal(fallbackParseResult.data, userId);
-          res.status(201).json(proposal);
-
-          broadcastToTrip(tripId, {
-            type: "hotel_proposal_created",
-            tripId,
-            proposalId: proposal.id,
-            stayId: proposal.stayId ?? null,
-            triggeredBy: userId,
-          });
-          return;
-        }
-      }
-
-      if (!Number.isFinite(hotelId)) {
-        return res.status(400).json({
-          message:
-            "Provide either an existing hotelId or the required hotel details to share with the group.",
-          errors: hotelPayloadIssues ?? [],
+        broadcastToTrip(tripId, {
+          type: result.wasCreated ? "hotel_proposal_created" : "hotel_proposal_updated",
+          tripId,
+          proposalId: result.proposal.id,
+          stayId: result.stayId,
+          triggeredBy: userId,
         });
-      }
+      } catch (error: unknown) {
+        console.error('Error creating hotel proposal', error);
 
-      const result = await storage.ensureHotelProposalForSavedHotel({
-        hotelId,
-        tripId,
-        currentUserId: userId,
-        overrideDetails: parsedHotelPayload ?? undefined,
-      });
-
-      const statusCode = result.wasCreated ? 201 : 200;
-
-      res.status(statusCode).json(result.proposal);
-
-      broadcastToTrip(tripId, {
-        type: result.wasCreated ? "hotel_proposal_created" : "hotel_proposal_updated",
-        tripId,
-        proposalId: result.proposal.id,
-        stayId: result.stayId,
-        triggeredBy: userId,
-      });
-    } catch (error: unknown) {
-      console.error("Error proposing hotel to group:", error);
-      if (error instanceof z.ZodError) {
-        return res
-          .status(400)
-          .json({ message: "Invalid hotel proposal request", errors: error.issues });
-      }
-      if (error instanceof Error) {
-        if (error.message.includes('Hotel not found')) {
-          return res.status(404).json({ message: error.message });
-        }
-        if (error.message.includes('does not belong to this trip')) {
-          return res.status(400).json({ message: error.message });
-        }
-        if (error.message.includes('Only the stay creator') || error.message.includes('must be a member of this trip')) {
-          return res.status(403).json({ message: error.message });
-        }
-        if (error.message.includes('Saved stay is missing required details')) {
-          return res.status(400).json({ message: error.message });
-        }
-      }
-
-      if (isPostgresConstraintViolation(error)) {
-        // In some edge cases a proposal already exists for the stay and the insert/update triggers
-        // a database constraint. Surface the existing proposal instead of forcing the user to retry.
-        if (!Number.isFinite(tripId) || !userId) {
-          return res.status(400).json({
-            message: "Unable to share this stay with your group. Refresh the trip and try again.",
-          });
+        if (error instanceof Error) {
+          if (error.message.includes('not found')) {
+            return res.status(404).json({ error: error.message });
+          }
+          if (error.message.includes('does not belong to this trip')) {
+            return res.status(400).json({ error: error.message });
+          }
+          if (
+            error.message.includes('Only the stay creator') ||
+            error.message.includes('must be a member of this trip')
+          ) {
+            return res.status(403).json({ error: error.message });
+          }
+          if (error.message.includes('Saved stay is missing required details')) {
+            return res.status(400).json({ error: error.message });
+          }
         }
 
-        try {
+        if (isPostgresConstraintViolation(error)) {
           const normalizeId = (value: unknown): number | null => {
             const parsed = Number.parseInt(String(value ?? ''), 10);
             return Number.isFinite(parsed) ? parsed : null;
           };
 
-          const proposals = await storage.getTripHotelProposals(tripId, userId);
           const targetStayId =
             normalizeId(hotelId) ?? normalizeId(extractStayIdFromConstraintDetail((error as PostgresError).detail));
 
           if (!Number.isFinite(targetStayId)) {
-            return res.status(400).json({
-              message: "Unable to share this stay with your group. Refresh the trip and try again.",
-            });
-          }
-
-          const matching = proposals.find((proposal) => normalizeId(proposal.stayId) === targetStayId);
-
-          if (matching) {
-            return res.status(200).json(matching);
-          }
-
-          const stayScopedProposals = await storage.getHotelProposalsByStayId(
-            targetStayId,
-            userId,
-          );
-          const stayMatch = stayScopedProposals.find(
-            (proposal) => normalizeId(proposal.stayId) === targetStayId && proposal.tripId === tripId,
-          );
-
-          if (stayMatch) {
-            return res.status(200).json(stayMatch);
+            return res.status(409).json({ error: "This hotel is already proposed for this trip" });
           }
 
           try {
-            const recoveryResult = await storage.ensureHotelProposalForSavedHotel({
-              hotelId: targetStayId,
-              tripId,
-              currentUserId: userId,
-              overrideDetails: parsedHotelPayload ?? undefined,
-            });
+            const proposals = await storage.getTripHotelProposals(tripId, userId);
+            const matching = proposals.find((proposal) => normalizeId(proposal.stayId) === targetStayId);
 
-            return res.status(200).json(recoveryResult.proposal);
+            if (matching) {
+              return res.status(200).json(matching);
+            }
+
+            const stayScopedProposals = await storage.getHotelProposalsByStayId(targetStayId, userId);
+            const stayMatch = stayScopedProposals.find(
+              (proposal) => normalizeId(proposal.stayId) === targetStayId && proposal.tripId === tripId,
+            );
+
+            if (stayMatch) {
+              return res.status(200).json(stayMatch);
+            }
           } catch (recoveryError) {
-            console.error("Error resyncing hotel proposal after constraint violation:", recoveryError);
+            console.error('Error recovering hotel proposal after constraint violation:', recoveryError);
           }
-        } catch (recoveryError) {
-          console.error("Error recovering hotel proposal after constraint violation:", recoveryError);
+
+          return res.status(409).json({ error: "This hotel is already proposed for this trip" });
         }
 
-        return res.status(400).json({
-          message: "Unable to share this stay with your group. Refresh the trip and try again.",
-        });
+        res.status(500).json({ error: "Failed to propose hotel" });
       }
-
-      res.status(500).json({ message: "Failed to propose hotel" });
-    }
-  };
+    };
 
   app.get('/api/trips/:tripId/proposals/hotels', isAuthenticated, handleGetTripHotelProposals);
   app.get('/api/trips/:id/hotel-proposals', isAuthenticated, handleGetTripHotelProposals);

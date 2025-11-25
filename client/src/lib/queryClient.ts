@@ -68,12 +68,32 @@ async function throwIfResNotOk(res: Response) {
     console.log("Session expired - manual refresh required");
   }
 
-  const message =
-    body && typeof body === "object" && "message" in body && typeof (body as { message: unknown }).message === "string"
-      ? (body as { message: string }).message
-      : typeof body === "string" && body.trim().length > 0
-        ? body
-        : res.statusText;
+  const message = (() => {
+    if (
+      body &&
+      typeof body === "object" &&
+      "error" in body &&
+      typeof (body as { error: unknown }).error === "string" &&
+      (body as { error: string }).error.trim().length > 0
+    ) {
+      return (body as { error: string }).error;
+    }
+
+    if (
+      body &&
+      typeof body === "object" &&
+      "message" in body &&
+      typeof (body as { message: unknown }).message === "string"
+    ) {
+      return (body as { message: string }).message;
+    }
+
+    if (typeof body === "string" && body.trim().length > 0) {
+      return body;
+    }
+
+    return res.statusText;
+  })();
 
   throw new ApiError(res.status, body, message);
 }

@@ -390,25 +390,15 @@ export const buildAdHocHotelProposalRequestBody = (
     normalizePriceValue(payload.pricePerNight) ?? normalizedTotalPrice;
 
   return {
-    tripId,
     hotelName: payload.hotelName,
-    location: payload.location,
-    price: payload.price,
-    pricePerNight: normalizedPricePerNight,
-    rating: payload.rating ?? null,
-    amenities: payload.amenities ?? HOTEL_PROPOSAL_AMENITIES_FALLBACK,
-    platform: payload.platform,
-    bookingUrl: payload.bookingUrl,
-    status: "proposed",
     address,
-    city,
-    country,
-    checkInDate,
-    checkOutDate,
+    checkIn: checkInDate,
+    checkOut: checkOutDate,
+    nightlyPrice: normalizedPricePerNight,
     totalPrice: normalizedTotalPrice,
     currency: ensureNonEmptyText(options.currency) ?? "USD",
-    bookingSource: payload.platform,
-    bookingPlatform: payload.platform,
-    hotelRating: payload.rating ?? null,
+    bookingUrl: payload.bookingUrl,
+    imageUrl: null,
+    source: payload.platform,
   };
 };
