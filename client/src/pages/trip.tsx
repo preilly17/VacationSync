@@ -1236,7 +1236,7 @@ function DayView({
 
 export default function Trip() {
   const { id } = useParams();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
 
@@ -1293,12 +1293,24 @@ export default function Trip() {
     if (typeof window === "undefined") {
       return;
     }
+
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get("view");
     if (viewParam && isTripTab(viewParam)) {
       setActiveTab(viewParam);
+      return;
     }
-  }, []);
+
+    const pathWithoutQuery = (location ?? "").split("?")[0];
+    const lastSegment = pathWithoutQuery
+      .split("/")
+      .filter((segment) => segment.length > 0)
+      .pop();
+
+    if (lastSegment && isTripTab(lastSegment)) {
+      setActiveTab(lastSegment);
+    }
+  }, [location]);
 
   const evaluateExternalRedirects = useCallback(() => {
     if (typeof window === "undefined") {
