@@ -4396,6 +4396,17 @@ export function setupRoutes(app: Express) {
           return;
         }
 
+        const proposalPlatform =
+          typeof data.source === 'string' && data.source.length > 0 ? data.source : null;
+        const proposalBookingUrl =
+          typeof data.bookingUrl === 'string' && data.bookingUrl.length > 0 ? data.bookingUrl : null;
+
+        if (!proposalPlatform || !proposalBookingUrl) {
+          return res.status(400).json({
+            error: 'source and bookingUrl are required for ad-hoc hotel proposals',
+          });
+        }
+
         const proposal = await storage.createHotelProposal(
           {
             tripId,
@@ -4403,8 +4414,8 @@ export function setupRoutes(app: Express) {
             location: String(data.address),
             price: normalizedTotalPrice,
             pricePerNight: normalizedNightlyPrice,
-            platform: (data.source as string | null | undefined) ?? undefined,
-            bookingUrl: (data.bookingUrl as string | null | undefined) ?? null,
+            platform: proposalPlatform,
+            bookingUrl: proposalBookingUrl,
           },
           userId,
         );
