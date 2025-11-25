@@ -217,6 +217,12 @@ export function DashboardNotifications({
               {feedItems.map((notification) => {
                 const actor = resolveActor(notification);
                 const visual = resolveNotificationVisual(notification);
+                const isProposalNotification =
+                  notification.type.toLowerCase().includes("proposal")
+                  || notification.activity?.type === "PROPOSE";
+                const votingCountdown = isProposalNotification
+                  ? buildVotingCountdown(notification.activity?.votingDeadline)
+                  : null;
                 const tripId =
                   notification.trip?.id ??
                   notification.tripId ??
@@ -264,6 +270,22 @@ export function DashboardNotifications({
                       <p className="text-sm font-medium text-slate-800">
                         {notification.title ?? "Trip update"}
                       </p>
+                      {votingCountdown ? (
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              "border-dashed",
+                              votingCountdown.isClosed
+                                ? "border-slate-200 text-slate-600"
+                                : "border-amber-200 bg-amber-50 text-amber-700",
+                            )}
+                          >
+                            {votingCountdown.isClosed ? "Voting closed" : "Time-sensitive"}
+                          </Badge>
+                          <span className="text-slate-600">{votingCountdown.label}</span>
+                        </div>
+                      ) : null}
                       {notification.message ? (
                         <p className="text-sm text-slate-600 line-clamp-2">{notification.message}</p>
                       ) : null}
@@ -370,6 +392,30 @@ function abbreviateUnit(unit: string): string {
     return "y";
   }
   return normalized.slice(0, 1);
+}
+
+function buildVotingCountdown(deadline?: string | Date | null): { label: string; isClosed: boolean } | null {
+  if (!deadline) {
+    return null;
+  }
+
+  const date = deadline instanceof Date ? deadline : new Date(deadline);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const diffMs = date.getTime() - Date.now();
+  if (diffMs <= 0) {
+    return { label: "Voting closed", isClosed: true };
+  }
+
+  const hours = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60)));
+  if (hours < 24) {
+    return { label: `Voting ends in ${hours} hour${hours === 1 ? "" : "s"}`, isClosed: false };
+  }
+
+  const days = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+  return { label: `Voting ends in ${days} day${days === 1 ? "" : "s"}`, isClosed: false };
 }
 
 function extractLeadName(text?: string | null): string | null {

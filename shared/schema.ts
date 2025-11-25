@@ -248,6 +248,7 @@ export interface Activity {
   category: string;
   status: string;
   type: ActivityType;
+  votingDeadline?: IsoDate | null;
   createdAt: IsoDate | null;
   updatedAt: IsoDate | null;
 }
@@ -263,6 +264,7 @@ const baseInsertActivitySchema = z.object({
   maxCapacity: z.union([z.number(), z.string()]).nullable().optional(),
   category: z.string().default("other"),
   type: z.enum(["SCHEDULED", "PROPOSE"]).default("SCHEDULED"),
+  votingDeadline: z.union([z.date(), z.string()]).nullable().optional(),
 });
 
 const enforceRequiredStartTime = (

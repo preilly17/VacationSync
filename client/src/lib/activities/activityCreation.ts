@@ -27,6 +27,8 @@ export interface ActivityCreateFormValues {
   attendeeIds: string[];
   category: string;
   type: ActivityType;
+  votingDurationValue?: number | string | null;
+  votingDurationUnit?: "hours" | "days" | string | null;
 }
 
 interface ActivityFieldError {
@@ -73,6 +75,8 @@ const serverFieldMap: Partial<Record<string, keyof ActivityCreateFormValues>> = 
   startDate: "startDate",
   date: "startDate",
   mode: "type",
+  votingDurationValue: "votingDurationValue",
+  votingDurationUnit: "votingDurationUnit",
 };
 
 export class ActivitySubmissionError extends Error {
@@ -108,6 +112,8 @@ export const prepareActivitySubmission = ({
       category: values.category,
       attendeeIds: values.attendeeIds,
       type: values.type,
+      votingDurationUnit: values.votingDurationUnit,
+      votingDurationValue: values.votingDurationValue,
       timezone,
     });
 
@@ -123,6 +129,8 @@ export const prepareActivitySubmission = ({
       maxCapacity: values.maxCapacity,
       attendeeIds: payload.attendeeIds,
       category: payload.category,
+      votingDurationUnit: values.votingDurationUnit,
+      votingDurationValue: values.votingDurationValue,
     };
 
     return { payload, sanitizedValues } satisfies PreparedSubmission;

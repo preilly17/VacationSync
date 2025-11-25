@@ -28,6 +28,8 @@ interface BaseActivitySubmissionInput {
   type: ActivityType;
   timezone?: string | null;
   idempotencyKey?: string | null;
+  votingDurationUnit?: "hours" | "days" | string | null;
+  votingDurationValue?: number | string | null;
 }
 
 interface ActivitySubmissionPayload {
@@ -43,6 +45,8 @@ interface ActivitySubmissionPayload {
   category: ActivityCategoryValue;
   attendeeIds: string[];
   type: ActivityType;
+  votingDurationUnit?: "hours" | "days" | null;
+  votingDurationValue?: number | null;
 }
 
 export interface ActivitySubmissionResult {
@@ -222,6 +226,14 @@ export function buildActivitySubmission(input: BaseActivitySubmissionInput): Act
       category: categoryResult.value,
       attendeeIds: attendeeResult.value,
       type,
+      votingDurationUnit:
+        type === "PROPOSE" && (input.votingDurationUnit === "hours" || input.votingDurationUnit === "days")
+          ? input.votingDurationUnit
+          : null,
+      votingDurationValue:
+        type === "PROPOSE" && input.votingDurationValue !== undefined && input.votingDurationValue !== null
+          ? Number(input.votingDurationValue)
+          : null,
     },
     metadata: {
       startDate,

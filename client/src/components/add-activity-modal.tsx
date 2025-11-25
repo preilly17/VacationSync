@@ -159,6 +159,13 @@ const formFieldsSchema = z.object({
     .refine((value) => ACTIVITY_CATEGORY_VALUES.includes(value as (typeof ACTIVITY_CATEGORY_VALUES)[number]), {
       message: ACTIVITY_CATEGORY_MESSAGE,
     }),
+  votingDurationValue: z.union([z.string(), z.number()]).optional().transform((value) => {
+    if (typeof value === "number") {
+      return Number.isNaN(value) ? "" : String(value);
+    }
+    return value ?? "";
+  }),
+  votingDurationUnit: z.enum(["hours", "days"]).optional().or(z.literal("")).transform((value) => value ?? ""),
 });
 
 type FormValues = z.infer<typeof formFieldsSchema>;
@@ -217,6 +224,48 @@ const createFormSchema = (options: FormSchemaOptions = {}) => {
           path: ["maxCapacity"],
           message: "Max participants cannot be less than the number of selected attendees.",
         });
+      }
+    }
+
+    const hasVotingValue = (data.votingDurationValue ?? "").toString().trim().length > 0;
+    const hasVotingUnit = (data.votingDurationUnit ?? "").toString().trim().length > 0;
+    if (hasVotingValue || hasVotingUnit) {
+      const parsedValue = Number(data.votingDurationValue);
+      if (!hasVotingUnit || (data.votingDurationUnit !== "hours" && data.votingDurationUnit !== "days")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["votingDurationUnit"],
+          message: "Pick hours or days for the voting window.",
+        });
+      }
+
+      if (!Number.isFinite(parsedValue) || Number.isNaN(parsedValue)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["votingDurationValue"],
+          message: "Enter how long voting should stay open.",
+        });
+      } else {
+        const wholeNumber = Math.floor(parsedValue);
+        const isHours = data.votingDurationUnit === "hours";
+        const min = 1;
+        const max = isHours ? 72 : 30;
+
+        if (wholeNumber !== parsedValue) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["votingDurationValue"],
+            message: "Use whole hours or days for the deadline.",
+          });
+        } else if (parsedValue < min || parsedValue > max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["votingDurationValue"],
+            message: isHours
+              ? "Voting in hours must be between 1 and 72."
+              : "Voting in days must be between 1 and 30.",
+          });
+        }
       }
     }
 
@@ -566,6 +615,8 @@ export function AddActivityModal({
           ? candidate
           : "other";
       })(),
+      votingDurationUnit: "",
+      votingDurationValue: "",
     } satisfies FormValues;
 
     const initialMode = normalizeActivityTypeInput(prefill?.type, normalizedDefaultMode);
@@ -591,6 +642,8 @@ export function AddActivityModal({
 
   useEffect(() => {
     form.register("attendeeIds");
+    form.register("votingDurationUnit");
+    form.register("votingDurationValue");
   }, [form]);
 
   useEffect(() => {
@@ -661,6 +714,8 @@ export function AddActivityModal({
     typeof watchedStartTime === "string" ? watchedStartTime.trim() : "";
   const isStartTimeMissing = requireStartTime && normalizedWatchedStartTime.length === 0;
   const hasFormErrors = Object.keys(formErrors).length > 0;
+  const votingDurationUnit = form.watch("votingDurationUnit") ?? "";
+  const votingDurationValue = form.watch("votingDurationValue") ?? "";
   const isStartDateOutsideTrip = useMemo(() => {
     const candidate = typeof watchedStartDate === "string" ? watchedStartDate.trim() : "";
 
@@ -833,6 +888,66 @@ export function AddActivityModal({
     }
     const attendeeSelection = Array.from(attendeeSelectionSet);
 
+    let votingDurationUnit: ActivityCreateFormValues["votingDurationUnit"];
+    let votingDurationValue: ActivityCreateFormValues["votingDurationValue"];
+
+    if (submissionMode === "PROPOSE") {
+      const rawUnit = (values.votingDurationUnit ?? "").toString().trim();
+      const rawValue = values.votingDurationValue;
+      const hasValue =
+        typeof rawValue === "number"
+          ? !Number.isNaN(rawValue)
+          : typeof rawValue === "string" && rawValue.trim().length > 0;
+      const hasUnit = rawUnit.length > 0;
+
+      if (hasValue || hasUnit) {
+        const parsedValue = typeof rawValue === "number" ? rawValue : Number(rawValue);
+        const normalizedUnit = rawUnit === "hours" || rawUnit === "days" ? rawUnit : "";
+
+        if (!normalizedUnit) {
+          form.setError("votingDurationUnit", {
+            type: "manual",
+            message: "Pick hours or days for the voting window.",
+          });
+          return;
+        }
+
+        if (!Number.isFinite(parsedValue) || Number.isNaN(parsedValue)) {
+          form.setError("votingDurationValue", {
+            type: "manual",
+            message: "Enter how long voting should stay open.",
+          });
+          return;
+        }
+
+        const wholeNumber = Math.floor(parsedValue);
+        const min = 1;
+        const max = normalizedUnit === "hours" ? 72 : 30;
+
+        if (wholeNumber !== parsedValue) {
+          form.setError("votingDurationValue", {
+            type: "manual",
+            message: "Use whole hours or days for the deadline.",
+          });
+          return;
+        }
+
+        if (parsedValue < min || parsedValue > max) {
+          form.setError("votingDurationValue", {
+            type: "manual",
+            message:
+              normalizedUnit === "hours"
+                ? "Voting in hours must be between 1 and 72."
+                : "Voting in days must be between 1 and 30.",
+          });
+          return;
+        }
+
+        votingDurationUnit = normalizedUnit;
+        votingDurationValue = wholeNumber;
+      }
+    }
+
     const sanitized: ActivityCreateFormValues = {
       name: values.name,
       description: values.description,
@@ -845,6 +960,8 @@ export function AddActivityModal({
       attendeeIds: attendeeSelection,
       category: values.category,
       type: submissionMode,
+      votingDurationUnit,
+      votingDurationValue,
     };
 
     createActivity.submit(sanitized);
@@ -978,6 +1095,52 @@ export function AddActivityModal({
               <p className="mt-1 text-sm text-red-600">{formErrors.endTime.message}</p>
             )}
           </div>
+
+          {mode === "PROPOSE" ? (
+            <div>
+              <Label>Voting deadline (optional)</Label>
+              <div className="grid gap-3 sm:grid-cols-[1fr,160px] items-end mt-1">
+                <div>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={votingDurationUnit === "hours" ? 1 : 1}
+                    max={votingDurationUnit === "hours" ? 72 : 30}
+                    placeholder={votingDurationUnit === "hours" ? "1–72" : "1–30"}
+                    {...form.register("votingDurationValue")}
+                  />
+                  {formErrors.votingDurationValue && (
+                    <p className="mt-1 text-sm text-red-600">{formErrors.votingDurationValue.message}</p>
+                  )}
+                </div>
+                <Select
+                  value={votingDurationUnit || ""}
+                  onValueChange={(value) =>
+                    form.setValue("votingDurationUnit", value, {
+                      shouldDirty: true,
+                      shouldValidate: true,
+                    })
+                  }
+                >
+                  <SelectTrigger id="votingDurationUnit" aria-label="Voting deadline unit">
+                    <SelectValue placeholder="Choose unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="hours">Hours</SelectItem>
+                    <SelectItem value="days">Days</SelectItem>
+                  </SelectContent>
+                </Select>
+                {formErrors.votingDurationUnit && (
+                  <p className="mt-1 text-sm text-red-600 sm:col-span-2">
+                    {formErrors.votingDurationUnit.message}
+                  </p>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">
+                After this time, voting closes and people can no longer change their vote.
+              </p>
+            </div>
+          ) : null}
 
           <div>
             <Label htmlFor="location">Location</Label>
