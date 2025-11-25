@@ -294,31 +294,24 @@ export function buildHotelProposalRequestBody(
   const city = ensureString(payload.location.city, "City to be decided");
   const country = ensureString(payload.location.country, "Country to be decided");
 
-  const checkInDate =
-    payload.checkIn ?? payload.checkOut ?? new Date().toISOString();
-  const checkOutDate =
-    payload.checkOut ??
-    new Date(new Date(checkInDate).getTime() + 2 * 24 * 60 * 60 * 1000).toISOString();
-
   return {
     hotelId: payload.hotelId,
-    tripId: payload.tripId,
     hotelName: ensureString(payload.hotelName, "Saved stay"),
     address:
       ensureNullableText(payload.address) ??
       ensureNullableText(`${payload.hotelName}, ${city}, ${country}`) ??
       "Address to be provided",
-    city,
-    country,
-    checkInDate,
-    checkOutDate,
-    totalPrice: Number.isFinite(payload.priceTotal) ? payload.priceTotal : 0,
-    pricePerNight: payload.pricePerNight ?? null,
+    checkIn: payload.checkIn ?? payload.checkOut ?? new Date().toISOString(),
+    checkOut:
+      payload.checkOut ??
+      new Date(
+        new Date(payload.checkIn ?? new Date().toISOString()).getTime() + 2 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
+    nightlyPrice: payload.pricePerNight ?? payload.priceTotal ?? 0,
+    totalPrice: Number.isFinite(payload.priceTotal) ? payload.priceTotal : null,
     currency: ensureString(payload.currency, "USD"),
-    bookingPlatform: ensureString(payload.sourceType, "Manual"),
-    bookingSource: ensureString(payload.sourceType, "Manual"),
     bookingUrl: ensureNullableText(payload.imageUrl),
-    amenities: null,
-    status: "proposed",
+    imageUrl: ensureNullableText(payload.imageUrl),
+    source: ensureString(payload.sourceType, "Manual"),
   };
 }
