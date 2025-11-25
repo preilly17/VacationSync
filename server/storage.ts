@@ -509,6 +509,7 @@ type ActivityRow = {
   category: string;
   status: string;
   type: string | null;
+  voting_deadline: Date | null;
   created_at: Date | null;
   updated_at: Date | null;
 };
@@ -675,6 +676,7 @@ type NotificationWithDetailsRow = NotificationRow & {
   activity_category: string | null;
   activity_status: string | null;
   activity_type: string | null;
+  activity_voting_deadline: Date | null;
   activity_created_at: Date | null;
   activity_updated_at: Date | null;
   joined_expense_id: number | null;
@@ -1540,6 +1542,7 @@ const mapActivity = (row: ActivityRow): Activity => ({
   category: row.category,
   status: row.status,
   type: toActivityType(row.type),
+  votingDeadline: row.voting_deadline,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -2286,6 +2289,10 @@ export class DatabaseStorage implements IStorage {
 
   private activityTypeColumnInitialized = false;
 
+  private activityVotingDeadlineInitPromise: Promise<void> | null = null;
+
+  private activityVotingDeadlineInitialized = false;
+
   private activityInvitesInitPromise: Promise<void> | null = null;
 
   private activityInvitesInitialized = false;
@@ -2652,6 +2659,28 @@ export class DatabaseStorage implements IStorage {
       await this.activityTypeInitPromise;
     } finally {
       this.activityTypeInitPromise = null;
+    }
+  }
+
+  private async ensureActivityVotingDeadlineColumn(): Promise<void> {
+    if (this.activityVotingDeadlineInitialized) {
+      return;
+    }
+
+    if (this.activityVotingDeadlineInitPromise) {
+      await this.activityVotingDeadlineInitPromise;
+      return;
+    }
+
+    this.activityVotingDeadlineInitPromise = (async () => {
+      await query(`ALTER TABLE activities ADD COLUMN IF NOT EXISTS voting_deadline TIMESTAMPTZ`);
+      this.activityVotingDeadlineInitialized = true;
+    })();
+
+    try {
+      await this.activityVotingDeadlineInitPromise;
+    } finally {
+      this.activityVotingDeadlineInitPromise = null;
     }
   }
 
@@ -4091,6 +4120,7 @@ export class DatabaseStorage implements IStorage {
     inviteeIds: string[] = [],
   ): Promise<Activity> {
     await this.ensureActivityTypeColumn();
+    await this.ensureActivityVotingDeadlineColumn();
     await this.ensureActivityInviteStructures();
 
     const costValue = activity.cost ?? null;
@@ -4126,6 +4156,7 @@ export class DatabaseStorage implements IStorage {
           category,
           status,
           type,
+          voting_deadline,
           created_at,
           updated_at
         FROM activities
@@ -4164,9 +4195,10 @@ export class DatabaseStorage implements IStorage {
           max_capacity,
           category,
           status,
-          type
+          type,
+          voting_deadline
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING
           id,
           trip_calendar_id,
@@ -4181,6 +4213,7 @@ export class DatabaseStorage implements IStorage {
           category,
           status,
           type,
+          voting_deadline,
           created_at,
           updated_at
         `,
@@ -4197,6 +4230,7 @@ export class DatabaseStorage implements IStorage {
           activity.category,
           "active",
           typeValue,
+          activity.votingDeadline ?? null,
         ],
       );
 
@@ -4320,6 +4354,7 @@ export class DatabaseStorage implements IStorage {
 
   async getActivityById(activityId: number): Promise<Activity | undefined> {
     await this.ensureActivityTypeColumn();
+    await this.ensureActivityVotingDeadlineColumn();
 
     const { rows } = await query<ActivityRow>(
       `
@@ -4337,6 +4372,7 @@ export class DatabaseStorage implements IStorage {
         category,
         status,
         type,
+        voting_deadline,
         created_at,
         updated_at
       FROM activities
@@ -4355,6 +4391,7 @@ export class DatabaseStorage implements IStorage {
     userId: string,
   ): Promise<ActivityWithDetails[]> {
     await this.ensureActivityTypeColumn();
+    await this.ensureActivityVotingDeadlineColumn();
 
     const { rows: activityRows } = await query<ActivityWithPosterRow>(
       `
@@ -4372,6 +4409,7 @@ export class DatabaseStorage implements IStorage {
         a.category,
         a.status,
         a.type,
+        a.voting_deadline,
         a.created_at,
         a.updated_at,
         u.id AS poster_id,
@@ -4640,6 +4678,7 @@ export class DatabaseStorage implements IStorage {
     currentUserId: string,
   ): Promise<ActivityWithDetails> {
     await this.ensureActivityTypeColumn();
+    await this.ensureActivityVotingDeadlineColumn();
 
     const activity = await this.getActivityById(activityId);
     if (!activity) {
@@ -4677,7 +4716,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     await query(
-      `UPDATE activities SET type = 'SCHEDULED', updated_at = NOW() WHERE id = $1`,
+      `UPDATE activities SET type = 'SCHEDULED', voting_deadline = NULL, updated_at = NOW() WHERE id = $1`,
       [activityId],
     );
 
@@ -6094,6 +6133,7 @@ export class DatabaseStorage implements IStorage {
     (Notification & { trip?: TripCalendar; activity?: Activity; expense?: Expense })[]
   > {
     await this.ensureActivityTypeColumn();
+    await this.ensureActivityVotingDeadlineColumn();
 
     const { rows } = await query<NotificationWithDetailsRow>(
       `
@@ -6129,6 +6169,7 @@ export class DatabaseStorage implements IStorage {
         a.category AS activity_category,
         a.status AS activity_status,
         a.type AS activity_type,
+        a.voting_deadline AS activity_voting_deadline,
         a.created_at AS activity_created_at,
         a.updated_at AS activity_updated_at,
         e.id AS joined_expense_id,
@@ -6209,6 +6250,7 @@ export class DatabaseStorage implements IStorage {
           category: row.activity_category as string,
           status: (row.activity_status ?? "active") as string,
           type: row.activity_type ?? null,
+          voting_deadline: row.activity_voting_deadline ?? null,
           created_at: row.activity_created_at,
           updated_at: row.activity_updated_at,
         };

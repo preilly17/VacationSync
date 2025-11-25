@@ -1327,6 +1327,36 @@ function ProposalsPage({
     );
   };
 
+  const getVotingCountdown = useCallback((deadline?: string | Date | null) => {
+    if (!deadline) {
+      return null;
+    }
+
+    const date = deadline instanceof Date ? deadline : new Date(deadline);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+
+    const diffMs = date.getTime() - Date.now();
+    if (diffMs <= 0) {
+      return { label: "Voting closed", isClosed: true } as const;
+    }
+
+    const hours = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60)));
+    if (hours < 24) {
+      return {
+        label: `Voting ends in ${hours} hour${hours === 1 ? "" : "s"}`,
+        isClosed: false,
+      } as const;
+    }
+
+    const days = Math.max(1, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+    return {
+      label: `Voting ends in ${days} day${days === 1 ? "" : "s"}`,
+      isClosed: false,
+    } as const;
+  }, []);
+
   // Helper function to get proposal status badge
   const getStatusBadge = (status: string, averageRanking?: number) => {
     const normalizedStatus = (status || "active").toLowerCase();
@@ -1374,6 +1404,10 @@ function ProposalsPage({
     const startTime = proposal.startTime ? new Date(proposal.startTime) : null;
     const endTime = proposal.endTime ? new Date(proposal.endTime) : null;
     const createdAt = proposal.createdAt ? new Date(proposal.createdAt) : null;
+    const votingDeadline = proposal.votingDeadline ? new Date(proposal.votingDeadline) : null;
+    const votingCountdown = getVotingCountdown(votingDeadline);
+    const isVotingClosed = Boolean(votingCountdown?.isClosed);
+    const votingLabel = votingCountdown?.label ?? null;
     const isCanceled = isCanceledStatus(proposal.status);
     const isProposalActivityFlag = isProposalActivity(proposal);
     const canCancel = isMyProposal(proposal) && !isCanceled;
@@ -1450,6 +1484,9 @@ function ProposalsPage({
     };
 
     const handleThumbsUp = () => {
+      if (isVotingClosed) {
+        return;
+      }
       if (isAcceptedVote) {
         submitAction("MAYBE");
         return;
@@ -1458,6 +1495,9 @@ function ProposalsPage({
     };
 
     const handleThumbsDown = () => {
+      if (isVotingClosed) {
+        return;
+      }
       if (isDeclinedVote) {
         submitAction("MAYBE");
         return;
@@ -1495,6 +1535,19 @@ function ProposalsPage({
             </div>
             <div className="flex flex-col items-end gap-2">
               {getStatusBadge(proposal.status || "scheduled")}
+              {votingLabel ? (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "border-dashed",
+                    isVotingClosed
+                      ? "border-neutral-300 text-neutral-600"
+                      : "border-amber-200 bg-amber-50 text-amber-700",
+                  )}
+                >
+                  {votingLabel}
+                </Badge>
+              ) : null}
               {canConvert ? (
                 <>
                   <Button
@@ -1586,44 +1639,53 @@ function ProposalsPage({
                 <span>{responseHeading}</span>
               </div>
               {isProposalActivityFlag ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleThumbsUp}
-                    disabled={isResponding}
-                    aria-label={isAcceptedVote ? "Remove thumbs up" : "Give thumbs up"}
-                    aria-pressed={isAcceptedVote}
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
-                      isAcceptedVote
-                        ? "border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90"
-                        : "border-neutral-300 hover:border-emerald-500 hover:text-emerald-600",
-                    )}
-                    data-testid={`button-thumbs-up-activity-proposal-${proposal.id}`}
-                  >
-                    <ThumbsUp className="h-4 w-4" aria-hidden="true" />
-                    <span className="sr-only">Thumbs up</span>
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleThumbsDown}
-                    disabled={isResponding}
-                    aria-label={isDeclinedVote ? "Remove thumbs down" : "Give thumbs down"}
-                    aria-pressed={isDeclinedVote}
-                    className={cn(
-                      "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
-                      isDeclinedVote
-                        ? "border-transparent bg-red-600 text-white hover:bg-red-600/90"
-                        : "border-neutral-300 hover:border-red-500 hover:text-red-600",
-                    )}
-                    data-testid={`button-thumbs-down-activity-proposal-${proposal.id}`}
-                  >
-                    <ThumbsDown className="h-4 w-4" aria-hidden="true" />
-                    <span className="sr-only">Thumbs down</span>
-                  </Button>
-                </div>
+                isVotingClosed ? (
+                  <div className="flex flex-wrap items-center gap-2" data-testid={`voting-closed-${proposal.id}`}>
+                    <Badge variant="secondary" className="border-dashed border-neutral-300 text-neutral-700">
+                      Voting closed
+                    </Badge>
+                    <span className="text-sm text-neutral-600">No more changes allowed.</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleThumbsUp}
+                      disabled={isResponding || isVotingClosed}
+                      aria-label={isAcceptedVote ? "Remove thumbs up" : "Give thumbs up"}
+                      aria-pressed={isAcceptedVote}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+                        isAcceptedVote
+                          ? "border-transparent bg-emerald-600 text-white hover:bg-emerald-600/90"
+                          : "border-neutral-300 hover:border-emerald-500 hover:text-emerald-600",
+                      )}
+                      data-testid={`button-thumbs-up-activity-proposal-${proposal.id}`}
+                    >
+                      <ThumbsUp className="h-4 w-4" aria-hidden="true" />
+                      <span className="sr-only">Thumbs up</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleThumbsDown}
+                      disabled={isResponding || isVotingClosed}
+                      aria-label={isDeclinedVote ? "Remove thumbs down" : "Give thumbs down"}
+                      aria-pressed={isDeclinedVote}
+                      className={cn(
+                        "flex h-9 w-9 items-center justify-center p-0 text-neutral-600",
+                        isDeclinedVote
+                          ? "border-transparent bg-red-600 text-white hover:bg-red-600/90"
+                          : "border-neutral-300 hover:border-red-500 hover:text-red-600",
+                      )}
+                      data-testid={`button-thumbs-down-activity-proposal-${proposal.id}`}
+                    >
+                      <ThumbsDown className="h-4 w-4" aria-hidden="true" />
+                      <span className="sr-only">Thumbs down</span>
+                    </Button>
+                  </div>
+                )
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <Button

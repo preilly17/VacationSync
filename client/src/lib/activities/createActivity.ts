@@ -212,6 +212,10 @@ const normalizeLegacyActivity = (activity: ActivityWithDetails): ActivityWithDet
     name: resolvedName,
     startTime: resolvedStartTime ?? null,
     endTime: resolvedEndTime ?? null,
+    votingDeadline:
+      activity.votingDeadline
+      ?? (activity as { voting_deadline?: string | null }).voting_deadline
+      ?? null,
     status: normalizedStatus,
     invites,
     acceptances,

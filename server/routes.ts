@@ -396,6 +396,13 @@ const applyActivityResponse = async (
     } as const;
   }
 
+  if (activity.type === "PROPOSE" && activity.votingDeadline) {
+    const deadlineMs = new Date(activity.votingDeadline).getTime();
+    if (Number.isFinite(deadlineMs) && deadlineMs <= Date.now()) {
+      return { error: { status: 403, message: "Voting is closed for this proposal." } } as const;
+    }
+  }
+
   const updatedInvite = await storage.setActivityInviteStatus(
     activityId,
     userId,

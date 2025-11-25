@@ -44,6 +44,7 @@ export interface NormalizedActivityInput {
   maxCapacity: number | null;
   category: ActivityCategoryValue;
   type: ActivityType;
+  votingDeadline: string | null;
 }
 
 export interface ActivityValidationResult {
@@ -411,6 +412,19 @@ export const validateActivityInput = (
   const normalizedType = typeValue === "PROPOSE" ? "PROPOSE" : "SCHEDULED";
   const requiresStartTime = normalizedType !== "PROPOSE";
 
+  const votingDurationValue =
+    (rawData as { votingDurationValue?: unknown; voting_duration_value?: unknown }).votingDurationValue
+    ?? (rawData as { voting_duration_value?: unknown }).voting_duration_value
+    ?? null;
+  const votingDurationUnit =
+    (rawData as { votingDurationUnit?: unknown; voting_duration_unit?: unknown }).votingDurationUnit
+    ?? (rawData as { voting_duration_unit?: unknown }).voting_duration_unit
+    ?? null;
+  const votingDeadlineInput =
+    (rawData as { votingDeadline?: unknown; voting_deadline?: unknown }).votingDeadline
+    ?? (rawData as { voting_deadline?: unknown }).voting_deadline
+    ?? null;
+
   const startResult = normalizeDateTimeInput(rawData.startTime, "Start time", {
     required: requiresStartTime,
     requiredMessage: "Start time is required so we can place this on the calendar.",
@@ -459,6 +473,67 @@ export const validateActivityInput = (
     }
   }
 
+  let votingDeadline: string | null = null;
+  if (normalizedType === "PROPOSE") {
+    const hasDurationValue = votingDurationValue !== null && votingDurationValue !== undefined
+      && votingDurationValue !== "";
+    const hasDurationUnit = typeof votingDurationUnit === "string" && votingDurationUnit.trim().length > 0;
+
+    if (hasDurationValue || hasDurationUnit) {
+      const parsedValue = Number(votingDurationValue);
+      const normalizedUnit = typeof votingDurationUnit === "string"
+        ? votingDurationUnit.trim().toLowerCase()
+        : "";
+      const isHours = normalizedUnit === "hours";
+      const isDays = normalizedUnit === "days";
+
+      if (!isHours && !isDays) {
+        errors.push({ field: "votingDurationUnit", message: "Pick hours or days for the voting window." });
+      }
+
+      if (!Number.isFinite(parsedValue) || Number.isNaN(parsedValue)) {
+        errors.push({ field: "votingDurationValue", message: "Enter how long voting should stay open." });
+      } else {
+        const wholeValue = Math.floor(parsedValue);
+        const min = 1;
+        const max = isHours ? 72 : 30;
+
+        if (wholeValue !== parsedValue) {
+          errors.push({ field: "votingDurationValue", message: "Use whole hours or days for the deadline." });
+        } else if (parsedValue < min || parsedValue > max) {
+          errors.push({
+            field: "votingDurationValue",
+            message: isHours
+              ? "Voting in hours must be between 1 and 72."
+              : "Voting in days must be between 1 and 30.",
+          });
+        } else if (isHours || isDays) {
+          const now = Date.now();
+          const durationMs = wholeValue * (isHours ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000);
+          const deadlineMs = now + durationMs;
+
+          if (!Number.isFinite(deadlineMs) || deadlineMs <= now) {
+            errors.push({ field: "votingDurationValue", message: "Voting deadline must be in the future." });
+          } else {
+            votingDeadline = new Date(deadlineMs).toISOString();
+          }
+        }
+      }
+    } else if (votingDeadlineInput) {
+      const parsed = normalizeDateTimeInput(votingDeadlineInput, "Voting deadline", { required: false });
+      if (parsed.error) {
+        errors.push({ field: "votingDeadline", message: parsed.error });
+      } else if (parsed.value) {
+        const parsedDate = new Date(parsed.value);
+        if (Number.isNaN(parsedDate.getTime()) || parsedDate.getTime() <= Date.now()) {
+          errors.push({ field: "votingDeadline", message: "Voting deadline must be in the future." });
+        } else {
+          votingDeadline = parsed.value;
+        }
+      }
+    }
+  }
+
   const attendeeSet = new Set(attendeeResult.value ?? []);
   attendeeSet.add(userId);
 
@@ -497,6 +572,7 @@ export const validateActivityInput = (
       maxCapacity: capacityResult.value,
       category: categoryResult.value,
       type: normalizedType,
+      votingDeadline,
     },
     attendeeIds: filteredAttendees,
   };
