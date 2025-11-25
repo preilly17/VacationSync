@@ -253,7 +253,9 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
     },
   };
 
-  const { data, isLoading, isError, error } = useQuery(wishListQueryOptions);
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery(
+    wishListQueryOptions,
+  );
 
   useEffect(() => {
     if (data?.meta?.sort && !hasUserAdjustedSort.current) {
@@ -883,11 +885,19 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
         </Card>
       ) : isError ? (
         <Card className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm">
-          <p className="text-sm text-neutral-600">
-            {error instanceof Error
-              ? error.message || "We couldn't load the wish list."
-              : "We couldn't load the wish list."}
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-neutral-900">Wish list unavailable</p>
+              <p className="text-sm text-neutral-600">
+                {error instanceof Error
+                  ? error.message || "We couldn't load the wish list."
+                  : "We couldn't load the wish list."}
+              </p>
+            </div>
+            <Button onClick={() => refetch()} variant="outline" disabled={isFetching}>
+              {isFetching ? "Retrying..." : "Retry"}
+            </Button>
+          </div>
         </Card>
       ) : ideas.length === 0 ? (
         <Card className="rounded-3xl border border-dashed border-neutral-300 bg-white p-10 text-center shadow-sm">
