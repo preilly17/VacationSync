@@ -294,6 +294,27 @@ export function buildHotelProposalRequestBody(
   const city = ensureString(payload.location.city, "City to be decided");
   const country = ensureString(payload.location.country, "Country to be decided");
 
+  const normalizeUrl = (value: unknown): string | null => {
+    const text = ensureNullableText(value);
+    if (!text) {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(text);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+        return parsed.toString();
+      }
+    } catch {
+      // ignore parsing errors and fall back to null
+    }
+
+    return null;
+  };
+
+  const bookingUrl = normalizeUrl((payload as { bookingUrl?: unknown }).bookingUrl);
+  const imageUrl = normalizeUrl(payload.imageUrl);
+
   return {
     hotelId: payload.hotelId,
     hotelName: ensureString(payload.hotelName, "Saved stay"),
@@ -310,8 +331,8 @@ export function buildHotelProposalRequestBody(
     nightlyPrice: payload.pricePerNight ?? payload.priceTotal ?? 0,
     totalPrice: Number.isFinite(payload.priceTotal) ? payload.priceTotal : null,
     currency: ensureString(payload.currency, "USD"),
-    bookingUrl: ensureNullableText(payload.imageUrl),
-    imageUrl: ensureNullableText(payload.imageUrl),
+    bookingUrl,
+    imageUrl,
     source: ensureString(payload.sourceType, "Manual"),
   };
 }
