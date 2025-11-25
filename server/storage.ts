@@ -9413,88 +9413,60 @@ ${selectUserColumns("participant_user", "participant_user_")}
       restaurant.rating as string | number | null | undefined,
     );
 
+    const restaurantColumns = await getRestaurantColumnNames();
+    const insertColumns: string[] = [];
+    const values: unknown[] = [];
+    const placeholders: string[] = [];
+
+    const addColumn = (column: keyof RestaurantRow, value: unknown) => {
+      if (!restaurantColumns.has(column)) {
+        return;
+      }
+
+      insertColumns.push(column);
+      values.push(value);
+      placeholders.push(`$${values.length}`);
+    };
+
+    addColumn("trip_id", restaurant.tripId);
+    addColumn("user_id", userId);
+    addColumn("name", restaurant.name);
+    addColumn("cuisine_type", restaurant.cuisineType ?? null);
+    addColumn("address", restaurant.address);
+    addColumn("city", restaurant.city);
+    addColumn("country", restaurant.country);
+    addColumn("zip_code", restaurant.zipCode ?? null);
+    addColumn("latitude", latitudeValue);
+    addColumn("longitude", longitudeValue);
+    addColumn("phone_number", restaurant.phoneNumber ?? null);
+    addColumn("website", restaurant.website ?? null);
+    addColumn("open_table_url", restaurant.openTableUrl ?? null);
+    addColumn("price_range", restaurant.priceRange);
+    addColumn("rating", ratingValue);
+    addColumn("reservation_date", restaurant.reservationDate);
+    addColumn("reservation_time", restaurant.reservationTime);
+    addColumn("party_size", restaurant.partySize);
+    addColumn("confirmation_number", restaurant.confirmationNumber ?? null);
+    addColumn("reservation_status", restaurant.reservationStatus ?? "pending");
+    addColumn("special_requests", restaurant.specialRequests ?? null);
+    addColumn("notes", restaurant.notes ?? null);
+
+    if (insertColumns.length === 0) {
+      throw new Error("No valid restaurant columns available for insertion");
+    }
+
     const { rows } = await query<RestaurantRow>(
       `
       INSERT INTO restaurants (
-        trip_id,
-        user_id,
-        name,
-        cuisine_type,
-        address,
-        city,
-        country,
-        zip_code,
-        latitude,
-        longitude,
-        phone_number,
-        website,
-        open_table_url,
-        price_range,
-        rating,
-        reservation_date,
-        reservation_time,
-        party_size,
-        confirmation_number,
-        reservation_status,
-        special_requests,
-        notes
+        ${insertColumns.join(",\n        ")}
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22
+        ${placeholders.join(", ")}
       )
       RETURNING
-        id,
-        trip_id,
-        user_id,
-        name,
-        cuisine_type,
-        address,
-        city,
-        country,
-        zip_code,
-        latitude,
-        longitude,
-        phone_number,
-        website,
-        open_table_url,
-        price_range,
-        rating,
-        reservation_date,
-        reservation_time,
-        party_size,
-        confirmation_number,
-        reservation_status,
-        special_requests,
-        notes,
-        created_at,
-        updated_at
+        ${await buildRestaurantSelectList()}
       `,
-      [
-        restaurant.tripId,
-        userId,
-        restaurant.name,
-        restaurant.cuisineType ?? null,
-        restaurant.address,
-        restaurant.city,
-        restaurant.country,
-        restaurant.zipCode ?? null,
-        latitudeValue,
-        longitudeValue,
-        restaurant.phoneNumber ?? null,
-        restaurant.website ?? null,
-        restaurant.openTableUrl ?? null,
-        restaurant.priceRange,
-        ratingValue,
-        restaurant.reservationDate,
-        restaurant.reservationTime,
-        restaurant.partySize,
-        restaurant.confirmationNumber ?? null,
-        restaurant.reservationStatus,
-        restaurant.specialRequests ?? null,
-        restaurant.notes ?? null,
-      ],
+      values,
     );
 
     const row = rows[0];
