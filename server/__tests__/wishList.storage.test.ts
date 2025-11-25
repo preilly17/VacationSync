@@ -202,7 +202,9 @@ describe("DatabaseStorage wish list helpers", () => {
     const storage = new DatabaseStorage();
     await (storage as unknown as { ensureWishListStructures: () => Promise<void> }).ensureWishListStructures();
 
-    const dedupeSql = executedSql.find((sql) => sql.includes("ROW_NUMBER() OVER (PARTITION BY promoted_draft_id"));
+    const dedupeSql = executedSql.find((sql) => sql.includes("ROW_NUMBER() OVER"));
     expect(dedupeSql).toBeDefined();
+    expect(dedupeSql).toContain("LEFT JOIN trip_proposal_drafts");
+    expect(dedupeSql).toContain("CASE WHEN i.id = d.item_id THEN 0 ELSE 1 END");
   });
 });

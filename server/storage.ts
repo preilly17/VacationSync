@@ -2405,10 +2405,17 @@ export class DatabaseStorage implements IStorage {
       await query(`
         WITH duplicates AS (
           SELECT
-            id,
-            ROW_NUMBER() OVER (PARTITION BY promoted_draft_id ORDER BY id) AS row_num
-          FROM trip_wish_list_items
-          WHERE promoted_draft_id IS NOT NULL
+            i.id,
+            i.promoted_draft_id,
+            ROW_NUMBER() OVER (
+              PARTITION BY i.promoted_draft_id
+              ORDER BY
+                CASE WHEN i.id = d.item_id THEN 0 ELSE 1 END,
+                i.id
+            ) AS row_num
+          FROM trip_wish_list_items i
+          LEFT JOIN trip_proposal_drafts d ON d.id = i.promoted_draft_id
+          WHERE i.promoted_draft_id IS NOT NULL
         )
         UPDATE trip_wish_list_items i
         SET promoted_draft_id = NULL
