@@ -3586,7 +3586,17 @@ export function setupRoutes(app: Express) {
       });
 
       const rawBody = req.body ?? {};
-      const parsedBody = manualRestaurantSchema.parse(rawBody);
+      const parsedResult = manualRestaurantSchema.safeParse(rawBody);
+
+      if (!parsedResult.success) {
+        const firstError = parsedResult.error.issues[0];
+        return res.status(400).json({
+          error: firstError?.message ?? "Invalid restaurant data",
+          details: parsedResult.error.format(),
+        });
+      }
+
+      const parsedBody = parsedResult.data;
 
       const reservationDateIso = parsedBody.reservationDate
         ? toDateOnlyIsoString(parsedBody.reservationDate)
@@ -3609,6 +3619,7 @@ export function setupRoutes(app: Express) {
         priceRange: parsedBody.priceLevel ?? parsedBody.priceRange ?? "$$",
         rating: parsedBody.rating ?? null,
         website: parsedBody.url ?? parsedBody.website ?? null,
+        reservationStatus: parsedBody.reservationStatus ?? undefined,
         tripId,
       });
 
