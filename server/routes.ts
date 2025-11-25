@@ -4281,6 +4281,8 @@ export function setupRoutes(app: Express) {
       let tripId: number | null = null;
       let userId: string | null = null;
       let hotelId: number | null = null;
+      let parsedHotelPayload: InsertHotel | null = null;
+      let hotelPayloadIssues: z.ZodIssue[] | null = null;
 
       try {
         const tripIdParam =
@@ -4347,9 +4349,6 @@ export function setupRoutes(app: Express) {
       const hasAdditionalHotelDetails = Object.keys(hotelDetails).length > 0;
       const requiresHotelDetails =
         !Number.isFinite(hotelId) || hasAdditionalHotelDetails || rawTripId !== undefined;
-
-      let parsedHotelPayload: InsertHotel | null = null;
-      let hotelPayloadIssues: z.ZodIssue[] | null = null;
 
       if (requiresHotelDetails) {
         const normalizedTripIdFromPayload =
@@ -4552,6 +4551,19 @@ export function setupRoutes(app: Express) {
 
           if (stayMatch) {
             return res.status(200).json(stayMatch);
+          }
+
+          try {
+            const recoveryResult = await storage.ensureHotelProposalForSavedHotel({
+              hotelId: targetStayId,
+              tripId,
+              currentUserId: userId,
+              overrideDetails: parsedHotelPayload ?? undefined,
+            });
+
+            return res.status(200).json(recoveryResult.proposal);
+          } catch (recoveryError) {
+            console.error("Error resyncing hotel proposal after constraint violation:", recoveryError);
           }
         } catch (recoveryError) {
           console.error("Error recovering hotel proposal after constraint violation:", recoveryError);

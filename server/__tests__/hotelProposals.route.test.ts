@@ -505,4 +505,43 @@ describe("POST /api/trips/:tripId/proposals/hotels", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(existingProposal);
   });
+
+  it("resyncs proposals when constraint recovery lookups do not find a match", async () => {
+    const constraintError: any = new Error("duplicate key");
+    constraintError.code = "23505";
+
+    const recoveredProposal = { id: 610, tripId: 10, stayId: 29, hotelName: "Fallback" };
+
+    ensureHotelProposalMock
+      .mockRejectedValueOnce(constraintError)
+      .mockResolvedValueOnce({ proposal: recoveredProposal, wasCreated: false, stayId: 29 });
+    getTripHotelProposalsMock.mockResolvedValueOnce([]);
+    getHotelProposalsByStayIdMock.mockResolvedValueOnce([]);
+
+    const req: any = {
+      params: { tripId: "10" },
+      body: { hotelId: 29 },
+      session: { userId: "test-user" },
+      user: { id: "test-user" },
+      headers: {},
+      get: jest.fn(),
+      header: jest.fn(),
+    };
+
+    const res = createMockResponse();
+
+    await handler(req, res);
+
+    expect(ensureHotelProposalMock).toHaveBeenCalledTimes(2);
+    expect(ensureHotelProposalMock).toHaveBeenLastCalledWith({
+      hotelId: 29,
+      tripId: 10,
+      currentUserId: "test-user",
+      overrideDetails: undefined,
+    });
+    expect(getTripHotelProposalsMock).toHaveBeenCalledWith(10, "test-user");
+    expect(getHotelProposalsByStayIdMock).toHaveBeenCalledWith(29, "test-user");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith(recoveredProposal);
+  });
 });
