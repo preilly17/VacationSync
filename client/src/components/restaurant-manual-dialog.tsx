@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
+import { format, formatISO } from "date-fns";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -21,6 +21,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
 import { normalizeTimeTo24Hour } from "@/lib/time";
+import { parseTripDateToLocal } from "@/lib/date";
 import type { TripWithDetails } from "@shared/schema";
 
 const optionalUrlField = z.preprocess(
@@ -119,6 +120,53 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
     return undefined;
   }, [availableTrips, effectiveTripId, normalizedTripId, queryClient]);
 
+  const ensureValidReservationDate = (value: unknown): Date | undefined => {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value;
+    }
+
+    return undefined;
+  };
+
+  const normalizeDay = (value?: Date | null): Date | null => {
+    if (!value) {
+      return null;
+    }
+
+    const normalized = new Date(value);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  };
+
+  const buildReservationDateTime = (dateValue: Date | undefined, timeValue: string | undefined): Date | null => {
+    const safeDate = ensureValidReservationDate(dateValue);
+    if (!safeDate) {
+      return null;
+    }
+
+    const normalizedTime = normalizeTimeTo24Hour(timeValue ?? "");
+    if (!normalizedTime) {
+      return null;
+    }
+
+    const [hoursString, minutesString] = normalizedTime.split(":");
+    const hours = Number.parseInt(hoursString, 10);
+    const minutes = Number.parseInt(minutesString, 10);
+
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      return null;
+    }
+
+    const withTime = new Date(safeDate);
+    withTime.setHours(hours, minutes, 0, 0);
+    return withTime;
+  };
+
+  const tripStartDate = useMemo(() => parseTripDateToLocal(tripContext?.startDate), [tripContext]);
+  const tripEndDate = useMemo(() => parseTripDateToLocal(tripContext?.endDate), [tripContext]);
+  const normalizedTripStart = useMemo(() => normalizeDay(tripStartDate), [tripStartDate]);
+  const normalizedTripEnd = useMemo(() => normalizeDay(tripEndDate), [tripEndDate]);
+
   const getCityAndCountry = (address: string) => {
     const parts = address
       .split(",")
@@ -194,11 +242,30 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
     }
   }, [selectedTripId]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (tripStartDate) {
+      form.setValue("reservationDate", tripStartDate, { shouldDirty: false });
+      return;
+    }
+
+    const currentDate = ensureValidReservationDate(form.getValues("reservationDate"));
+    if (!currentDate) {
+      form.setValue("reservationDate", undefined as unknown as Date, { shouldDirty: false });
+    }
+  }, [form, open, tripStartDate]);
+
   const createRestaurantMutation = useMutation({
     mutationFn: async ({ data, tripId: targetTripId }: { data: RestaurantFormData; tripId: number }) => {
       const { city, country } = getCityAndCountry(data.address);
-      const reservationDate = format(data.reservationDate, "yyyy-MM-dd");
+      const reservationDateValue = ensureValidReservationDate(data.reservationDate) ?? tripStartDate ?? new Date();
+      const reservationDate = formatISO(reservationDateValue, { representation: "date" });
       const reservationTime = normalizeTimeTo24Hour(data.reservationTime) || "19:00";
+      const reservationDateTime = buildReservationDateTime(reservationDateValue, reservationTime);
+      const reservationDateTimeIso = reservationDateTime ? formatISO(reservationDateTime) : undefined;
 
       const payload = {
         tripId: Number(targetTripId),
@@ -208,6 +275,7 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         country,
         reservationDate,
         reservationTime,
+        reservationDateTime: reservationDateTimeIso,
         partySize: data.partySize,
         cuisineType: data.cuisine || null,
         zipCode: null,
@@ -437,37 +505,62 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
               <FormField
                 control={form.control}
                 name="reservationDate"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Reservation Date</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "justify-start text-left font-normal",
-                              !field.value && "text-muted-foreground",
-                            )}
-                          >
-                            {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={(date) => field.onChange(date ?? new Date())}
-                          disabled={(date) => date < new Date("1900-01-01")}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const reservationDateValue = ensureValidReservationDate(field.value);
+
+                  return (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Reservation Date</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              className={cn(
+                                "justify-start text-left font-normal",
+                                !reservationDateValue && "text-muted-foreground",
+                              )}
+                            >
+                              {reservationDateValue ? format(reservationDateValue, "PPP") : <span>Pick a date</span>}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={reservationDateValue}
+                            onSelect={(date) => {
+                              if (!date || Number.isNaN(date.getTime())) {
+                                field.onChange(undefined);
+                                return;
+                              }
+
+                              field.onChange(date);
+                            }}
+                            fromDate={normalizedTripStart ?? undefined}
+                            toDate={normalizedTripEnd ?? undefined}
+                            disabled={(date) => {
+                              const normalizedDate = normalizeDay(date);
+
+                              if (normalizedDate && normalizedTripStart && normalizedDate < normalizedTripStart) {
+                                return true;
+                              }
+
+                              if (normalizedDate && normalizedTripEnd && normalizedDate > normalizedTripEnd) {
+                                return true;
+                              }
+
+                              return normalizedDate ? normalizedDate < new Date("1900-01-01") : false;
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
 
               <FormField
