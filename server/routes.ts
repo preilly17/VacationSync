@@ -4325,10 +4325,7 @@ export function setupRoutes(app: Express) {
           : rawHotelId != null
             ? Number.parseInt(String(rawHotelId), 10)
             : NaN;
-
-      if (!Number.isFinite(hotelId)) {
-        return res.status(400).json({ error: "hotelId is required" });
-      }
+      const hasHotelId = Number.isFinite(hotelId);
 
       const parseDate = (value: unknown): Date | null => {
         if (typeof value !== 'string') {
@@ -4367,32 +4364,58 @@ export function setupRoutes(app: Express) {
       const normalizedTotalPrice = parsePriceFromInput(data.totalPrice) ?? null;
 
       try {
-        const result = await storage.ensureHotelProposalForSavedHotel({
-          hotelId,
-          tripId,
-          currentUserId: userId,
-          overrideDetails: {
+        if (hasHotelId) {
+          const result = await storage.ensureHotelProposalForSavedHotel({
+            hotelId,
+            tripId,
+            currentUserId: userId,
+            overrideDetails: {
+              tripId,
+              hotelName: String(data.hotelName),
+              address: String(data.address),
+              checkInDate,
+              checkOutDate,
+              pricePerNight: normalizedNightlyPrice,
+              totalPrice: normalizedTotalPrice,
+              currency: typeof data.currency === 'string' ? data.currency : 'USD',
+              bookingUrl: (data.bookingUrl as string | null | undefined) ?? null,
+            } satisfies Partial<InsertHotel>,
+          });
+
+          const statusCode = result.wasCreated ? 201 : 200;
+
+          res.status(statusCode).json(result.proposal);
+
+          broadcastToTrip(tripId, {
+            type: result.wasCreated ? "hotel_proposal_created" : "hotel_proposal_updated",
+            tripId,
+            proposalId: result.proposal.id,
+            stayId: result.stayId,
+            triggeredBy: userId,
+          });
+          return;
+        }
+
+        const proposal = await storage.createHotelProposal(
+          {
             tripId,
             hotelName: String(data.hotelName),
-            address: String(data.address),
-            checkInDate,
-            checkOutDate,
+            location: String(data.address),
+            price: normalizedTotalPrice,
             pricePerNight: normalizedNightlyPrice,
-            totalPrice: normalizedTotalPrice,
-            currency: typeof data.currency === 'string' ? data.currency : 'USD',
+            platform: (data.source as string | null | undefined) ?? undefined,
             bookingUrl: (data.bookingUrl as string | null | undefined) ?? null,
-          } satisfies Partial<InsertHotel>,
-        });
+          },
+          userId,
+        );
 
-        const statusCode = result.wasCreated ? 201 : 200;
-
-        res.status(statusCode).json(result.proposal);
+        res.status(201).json(proposal);
 
         broadcastToTrip(tripId, {
-          type: result.wasCreated ? "hotel_proposal_created" : "hotel_proposal_updated",
+          type: "hotel_proposal_created",
           tripId,
-          proposalId: result.proposal.id,
-          stayId: result.stayId,
+          proposalId: proposal.id,
+          stayId: undefined,
           triggeredBy: userId,
         });
       } catch (error: unknown) {
