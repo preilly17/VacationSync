@@ -3500,9 +3500,9 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.get('/api/trips/:id/restaurants', async (req: any, res) => {
+  app.get('/api/trips/:tripId/restaurants', async (req: any, res) => {
     try {
-      const tripId = Number.parseInt(req.params.id, 10);
+      const tripId = Number.parseInt(req.params.tripId ?? req.params.id, 10);
       if (Number.isNaN(tripId)) {
         return res.status(400).json({ message: "Invalid trip id" });
       }
@@ -3536,9 +3536,9 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.post('/api/trips/:id/restaurants', isAuthenticated, async (req: any, res) => {
+  app.post('/api/trips/:tripId/restaurants', isAuthenticated, async (req: any, res) => {
     try {
-      const tripId = Number.parseInt(req.params.id, 10);
+      const tripId = Number.parseInt(req.params.tripId ?? req.params.id, 10);
       if (!Number.isFinite(tripId) || tripId <= 0) {
         return res.status(400).json({ error: "Invalid trip id" });
       }
@@ -3565,6 +3565,8 @@ export function setupRoutes(app: Express) {
         address: z.string().trim().min(1, "Address is required"),
         city: z.string().trim().optional(),
         country: z.string().trim().optional(),
+        lat: nullableNumberInput("Latitude must be a number").optional(),
+        lng: nullableNumberInput("Longitude must be a number").optional(),
         reservationDate: z.union([z.date(), z.string()]).optional(),
         reservationTime: z.string().trim().optional(),
         partySize: z.coerce.number().int().positive().optional(),
@@ -3576,7 +3578,7 @@ export function setupRoutes(app: Express) {
         website: z.string().nullable().optional(),
         openTableUrl: z.string().nullable().optional(),
         priceRange: z.string().nullable().optional(),
-        priceLevel: z.string().nullable().optional(),
+        priceLevel: z.union([z.string(), z.number()]).nullable().optional(),
         rating: nullableNumberInput("Rating must be a number").optional(),
         confirmationNumber: z.string().nullable().optional(),
         reservationStatus: z.string().nullable().optional(),
@@ -3586,6 +3588,13 @@ export function setupRoutes(app: Express) {
       });
 
       const rawBody = req.body ?? {};
+      const rawName = typeof rawBody.name === "string" ? rawBody.name.trim() : "";
+      const rawAddress = typeof rawBody.address === "string" ? rawBody.address.trim() : "";
+
+      if (!rawName || !rawAddress) {
+        return res.status(400).json({ error: "Restaurant name and address are required" });
+      }
+
       const parsedBody = manualRestaurantSchema.parse(rawBody);
 
       const reservationDateIso = parsedBody.reservationDate
@@ -3599,6 +3608,26 @@ export function setupRoutes(app: Express) {
       const normalizedCountry =
         (parsedBody.country ?? (trip as any)?.countryName ?? "Unknown Country").trim();
 
+      const normalizedLatitude = parsedBody.latitude ?? parsedBody.lat ?? null;
+      const normalizedLongitude = parsedBody.longitude ?? parsedBody.lng ?? null;
+
+      const priceRangeFromLevel = (value: unknown): string | null => {
+        if (value === null || value === undefined) {
+          return null;
+        }
+
+        if (typeof value === "number" && Number.isFinite(value)) {
+          const clamped = Math.max(1, Math.min(4, Math.round(value)));
+          return "$".repeat(clamped);
+        }
+
+        if (typeof value === "string" && value.trim().length > 0) {
+          return value;
+        }
+
+        return null;
+      };
+
       const validatedData = insertRestaurantSchema.parse({
         ...parsedBody,
         city: normalizedCity.length > 0 ? normalizedCity : "Unknown City",
@@ -3606,7 +3635,10 @@ export function setupRoutes(app: Express) {
         reservationDate: reservationDateIso ?? new Date().toISOString().slice(0, 10),
         reservationTime: parsedBody.reservationTime ?? "19:00",
         partySize: parsedBody.partySize ?? 1,
-        priceRange: parsedBody.priceLevel ?? parsedBody.priceRange ?? "$$",
+        priceRange:
+          priceRangeFromLevel(parsedBody.priceLevel) ?? parsedBody.priceRange ?? "$$",
+        latitude: normalizedLatitude,
+        longitude: normalizedLongitude,
         rating: parsedBody.rating ?? null,
         website: parsedBody.url ?? parsedBody.website ?? null,
         tripId,
@@ -3635,7 +3667,8 @@ export function setupRoutes(app: Express) {
         return;
       }
 
-      res.status(500).json({ error: "Internal server error" });
+      const message = error instanceof Error ? error.message : "Unknown error";
+      res.status(500).json({ error: "Internal server error", details: message });
     }
   });
 

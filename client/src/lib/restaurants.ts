@@ -5,11 +5,13 @@ export interface AddRestaurantPayload {
   address: string;
   city?: string | null;
   country?: string | null;
+  lat?: number | null;
+  lng?: number | null;
   latitude?: number | null;
   longitude?: number | null;
   url?: string | null;
   notes?: string | null;
-  priceLevel?: string | null;
+  priceLevel?: string | number | null;
   priceRange?: string | null;
   rating?: number | null;
   reservationDate?: string | Date | null;
@@ -31,6 +33,23 @@ const sanitizePayload = (payload: AddRestaurantPayload): Record<string, unknown>
   );
 };
 
+const priceLevelToRange = (value?: string | number | null): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const clamped = Math.max(1, Math.min(4, Math.round(value)));
+    return "$".repeat(clamped);
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+
+  return undefined;
+};
+
 export async function addRestaurant(
   tripId: number | string,
   data: AddRestaurantPayload,
@@ -40,7 +59,13 @@ export async function addRestaurant(
     throw new Error("A valid trip id is required to add a restaurant.");
   }
 
-  const payload = sanitizePayload(data);
+  const payload = sanitizePayload({
+    ...data,
+    latitude: data.latitude ?? data.lat ?? null,
+    longitude: data.longitude ?? data.lng ?? null,
+    priceRange: data.priceRange ?? priceLevelToRange(data.priceLevel),
+    priceLevel: undefined,
+  });
   const response = await fetch(buildApiUrl(`/api/trips/${parsedTripId}/restaurants`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -49,13 +74,25 @@ export async function addRestaurant(
   });
 
   if (!response.ok) {
-    const errorBody = await response.json().catch(() => ({}));
-    const message =
-      typeof errorBody?.error === "string"
-        ? errorBody.error
-        : typeof errorBody?.message === "string"
-          ? errorBody.message
-          : "Failed to add restaurant";
+    const errorBody = await response.json().catch(() => undefined);
+    const message = (() => {
+      if (errorBody && typeof errorBody === "object") {
+        if (typeof (errorBody as { error?: unknown }).error === "string") {
+          return (errorBody as { error: string }).error;
+        }
+
+        if (typeof (errorBody as { message?: unknown }).message === "string") {
+          return (errorBody as { message: string }).message;
+        }
+
+        if (typeof (errorBody as { details?: unknown }).details === "string") {
+          return (errorBody as { details: string }).details;
+        }
+      }
+
+      return response.statusText || "Failed to add restaurant";
+    })();
+
     throw new Error(`[${response.status}] ${message}`);
   }
 
