@@ -293,6 +293,7 @@ export function buildHotelProposalRequestBody(
 ): Record<string, unknown> {
   const city = ensureString(payload.location.city, "City to be decided");
   const country = ensureString(payload.location.country, "Country to be decided");
+  const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
   const normalizeUrl = (value: unknown): string | null => {
     const text = ensureNullableText(value);
@@ -315,6 +316,28 @@ export function buildHotelProposalRequestBody(
   const bookingUrl = normalizeUrl((payload as { bookingUrl?: unknown }).bookingUrl);
   const imageUrl = normalizeUrl(payload.imageUrl);
 
+  const now = new Date();
+  const checkInDate = (() => {
+    const raw = payload.checkIn ?? payload.checkOut ?? now.toISOString();
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? now : parsed;
+  })();
+
+  const checkOutDate = (() => {
+    const fallback = new Date(checkInDate.getTime() + 2 * DAY_IN_MS);
+    const raw = payload.checkOut ?? fallback.toISOString();
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+      return fallback;
+    }
+
+    if (parsed > checkInDate) {
+      return parsed;
+    }
+
+    return new Date(checkInDate.getTime() + DAY_IN_MS);
+  })();
+
   return {
     hotelId: payload.hotelId,
     hotelName: ensureString(payload.hotelName, "Saved stay"),
@@ -322,12 +345,8 @@ export function buildHotelProposalRequestBody(
       ensureNullableText(payload.address) ??
       ensureNullableText(`${payload.hotelName}, ${city}, ${country}`) ??
       "Address to be provided",
-    checkIn: payload.checkIn ?? payload.checkOut ?? new Date().toISOString(),
-    checkOut:
-      payload.checkOut ??
-      new Date(
-        new Date(payload.checkIn ?? new Date().toISOString()).getTime() + 2 * 24 * 60 * 60 * 1000,
-      ).toISOString(),
+    checkIn: checkInDate.toISOString(),
+    checkOut: checkOutDate.toISOString(),
     nightlyPrice: payload.pricePerNight ?? payload.priceTotal ?? 0,
     totalPrice: Number.isFinite(payload.priceTotal) ? payload.priceTotal : null,
     currency: ensureString(payload.currency, "USD"),
