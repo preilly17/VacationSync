@@ -9,10 +9,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { RestaurantManualAddModal } from "../RestaurantManualAddModal";
 import type { RestaurantManualAddPrefill } from "@/types/restaurants";
-import { apiRequest } from "@/lib/queryClient";
+import { addRestaurant } from "@/lib/restaurants";
 
-jest.mock("@/lib/queryClient", () => ({
-  apiRequest: jest.fn(),
+jest.mock("@/lib/restaurants", () => ({
+  addRestaurant: jest.fn(),
 }));
 
 describe("RestaurantManualAddModal", () => {
@@ -22,7 +22,7 @@ describe("RestaurantManualAddModal", () => {
   };
 
   beforeEach(() => {
-    (apiRequest as jest.Mock).mockResolvedValue({});
+    (addRestaurant as jest.Mock).mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -61,23 +61,20 @@ describe("RestaurantManualAddModal", () => {
 
     await user.click(saveButton);
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledTimes(1));
-    expect(apiRequest).toHaveBeenCalledWith(
-      "/api/trips/7/restaurants",
+    await waitFor(() => expect(addRestaurant).toHaveBeenCalledTimes(1));
+    expect(addRestaurant).toHaveBeenCalledWith(
+      7,
       expect.objectContaining({
-        method: "POST",
-        body: expect.objectContaining({
-          name: "Staplehouse",
-          address: "541 Edgewood Ave",
-          city: "Atlanta",
-          country: "USA",
-          reservationDate: "2025-10-28",
-          reservationTime: "19:00",
-          partySize: 4,
-          openTableUrl: "https://www.opentable.com/s?dateTime=2025-10-28T19:00:00",
-          priceRange: "$$",
-          reservationStatus: "pending",
-        }),
+        name: "Staplehouse",
+        address: "541 Edgewood Ave",
+        city: "Atlanta",
+        country: "USA",
+        reservationDate: "2025-10-28",
+        reservationTime: "19:00",
+        partySize: 4,
+        openTableUrl: "https://www.opentable.com/s?dateTime=2025-10-28T19:00:00",
+        priceRange: "$$",
+        reservationStatus: "pending",
       }),
     );
 
@@ -116,6 +113,6 @@ describe("RestaurantManualAddModal", () => {
       expect(saveButton.disabled).toBe(true);
     });
 
-    expect(apiRequest).not.toHaveBeenCalled();
+    expect(addRestaurant).not.toHaveBeenCalled();
   });
 });
