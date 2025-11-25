@@ -882,9 +882,10 @@ const selectRestaurantColumn = (
   availableColumns: Set<string>,
   columnName: keyof RestaurantRow,
   fallbackExpression: string,
+  tableAlias: string | null = "r",
 ) =>
   availableColumns.has(columnName)
-    ? `r.${columnName} AS ${columnName}`
+    ? `${tableAlias ? `${tableAlias}.` : ""}${columnName} AS ${columnName}`
     : `${fallbackExpression} AS ${columnName}`;
 
 let restaurantColumnsCache: Set<string> | null = null;
@@ -907,10 +908,12 @@ const getRestaurantColumnNames = async (): Promise<Set<string>> => {
   return restaurantColumnsCache;
 };
 
-const buildRestaurantSelectList = async (): Promise<string> => {
+const buildRestaurantSelectList = async (
+  tableAlias: string | null = "r",
+): Promise<string> => {
   const availableColumns = await getRestaurantColumnNames();
   const column = (name: keyof RestaurantRow, fallback: string) =>
-    selectRestaurantColumn(availableColumns, name, fallback);
+    selectRestaurantColumn(availableColumns, name, fallback, tableAlias);
 
   return [
     column("id", "NULL::integer"),
@@ -9464,7 +9467,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         ${placeholders.join(", ")}
       )
       RETURNING
-        ${await buildRestaurantSelectList()}
+        ${await buildRestaurantSelectList(null)}
       `,
       values,
     );
