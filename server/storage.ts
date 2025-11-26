@@ -2561,15 +2561,17 @@ export class DatabaseStorage implements IStorage {
         BEGIN
           IF NOT EXISTS (
             SELECT 1
-            FROM information_schema.constraint_column_usage
-            WHERE table_name = 'trip_wish_list_items'
-              AND constraint_name = 'fk_trip_wish_list_items_promoted_draft'
+            FROM pg_constraint c
+            JOIN pg_class r ON r.oid = c.conrelid
+            JOIN pg_namespace n ON n.oid = r.relnamespace
+            WHERE r.relname = 'trip_wish_list_items'
+              AND c.conname = 'fk_trip_wish_list_items_promoted_draft'
           ) THEN
             ALTER TABLE trip_wish_list_items
-            ADD CONSTRAINT fk_trip_wish_list_items_promoted_draft
-            FOREIGN KEY (promoted_draft_id)
-            REFERENCES trip_proposal_drafts(id)
-            ON DELETE SET NULL;
+              ADD CONSTRAINT fk_trip_wish_list_items_promoted_draft
+              FOREIGN KEY (promoted_draft_id)
+              REFERENCES trip_proposal_drafts(id)
+              ON DELETE SET NULL;
           END IF;
         END
         $$;
