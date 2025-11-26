@@ -111,6 +111,21 @@ const toNumberOrNull = (
   return toNumber(value);
 };
 
+const toFiniteNumberOrNull = (
+  value: string | number | null | undefined,
+): number | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  return parsed;
+};
+
 const camelToSnakeCase = (value: string): string =>
   value
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
@@ -9157,13 +9172,13 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (updates.latitude !== undefined) {
       setField(
         "latitude",
-        toNumberOrNull(updates.latitude as string | number | null | undefined),
+        toFiniteNumberOrNull(updates.latitude as string | number | null | undefined),
       );
     }
     if (updates.longitude !== undefined) {
       setField(
         "longitude",
-        toNumberOrNull(updates.longitude as string | number | null | undefined),
+        toFiniteNumberOrNull(updates.longitude as string | number | null | undefined),
       );
     }
     if (updates.checkInDate !== undefined) {
@@ -9405,13 +9420,13 @@ ${selectUserColumns("participant_user", "participant_user_")}
     restaurant: InsertRestaurant,
     userId: string,
   ): Promise<Restaurant> {
-    const latitudeValue = toNumberOrNull(
+    const latitudeValue = toFiniteNumberOrNull(
       restaurant.latitude as string | number | null | undefined,
     );
-    const longitudeValue = toNumberOrNull(
+    const longitudeValue = toFiniteNumberOrNull(
       restaurant.longitude as string | number | null | undefined,
     );
-    const ratingValue = toNumberOrNull(
+    const ratingValue = toFiniteNumberOrNull(
       restaurant.rating as string | number | null | undefined,
     );
 
@@ -9879,13 +9894,13 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (updates.latitude !== undefined) {
       setField(
         "latitude",
-        toNumberOrNull(updates.latitude as string | number | null | undefined),
+        toFiniteNumberOrNull(updates.latitude as string | number | null | undefined),
       );
     }
     if (updates.longitude !== undefined) {
       setField(
         "longitude",
-        toNumberOrNull(updates.longitude as string | number | null | undefined),
+        toFiniteNumberOrNull(updates.longitude as string | number | null | undefined),
       );
     }
     if (updates.phoneNumber !== undefined) {
@@ -9903,7 +9918,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (updates.rating !== undefined) {
       setField(
         "rating",
-        toNumberOrNull(updates.rating as string | number | null | undefined),
+        toFiniteNumberOrNull(updates.rating as string | number | null | undefined),
       );
     }
     if (updates.reservationDate !== undefined) {

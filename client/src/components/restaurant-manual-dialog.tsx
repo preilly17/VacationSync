@@ -278,6 +278,11 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
       const normalizedAddress = data.address.trim();
       const normalizedCity = data.city.trim();
       const normalizedCountry = data.country.trim();
+      const normalizedPartySize = Number.isFinite(data.partySize)
+        ? Math.max(1, Math.round(data.partySize))
+        : 1;
+      const normalizedRating = Number.isFinite(data.rating) ? data.rating : null;
+      const normalizedPriceRange = data.priceRange?.trim() || "$$";
       const fallbackLocation = getCityAndCountry(normalizedAddress);
       const city = normalizedCity || fallbackLocation.city || "Unknown City";
       const country = normalizedCountry || fallbackLocation.country || "Unknown Country";
@@ -296,7 +301,7 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         reservationDate,
         reservationTime,
         reservationDateTime: reservationDateTimeIso,
-        partySize: data.partySize,
+        partySize: normalizedPartySize,
         cuisineType: normalizedCuisine || null,
         zipCode: null,
         latitude: null,
@@ -304,8 +309,8 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         phoneNumber: data.phone?.trim() ? data.phone.trim() : null,
         website: data.website ?? null,
         openTableUrl: data.openTableUrl ?? null,
-        priceRange: data.priceRange,
-        rating: data.rating,
+        priceRange: normalizedPriceRange,
+        rating: normalizedRating,
         confirmationNumber: null,
         specialRequests: data.specialRequests?.trim() ? data.specialRequests.trim() : null,
         notes: null,
