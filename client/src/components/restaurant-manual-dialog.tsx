@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -36,6 +36,8 @@ const restaurantFormSchema = z.object({
   name: z.string().min(1, "Restaurant name is required"),
   cuisine: z.string().min(1, "Cuisine type is required"),
   address: z.string().min(1, "Address is required"),
+  city: z.string().min(1, "City is required"),
+  country: z.string().min(1, "Country is required"),
   phone: z.string().optional(),
   priceRange: z.string().min(1, "Price range is required"),
   rating: z.number().min(1).max(5),
@@ -53,6 +55,8 @@ const defaultFormValues: RestaurantFormData = {
   name: "",
   cuisine: "",
   address: "",
+  city: "",
+  country: "",
   phone: "",
   priceRange: "$$",
   rating: 4.5,
@@ -167,54 +171,63 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
   const normalizedTripStart = useMemo(() => normalizeDay(tripStartDate), [tripStartDate]);
   const normalizedTripEnd = useMemo(() => normalizeDay(tripEndDate), [tripEndDate]);
 
-  const getCityAndCountry = (address: string) => {
-    const parts = address
-      .split(",")
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0);
+  const getCityAndCountry = useCallback(
+    (address: string) => {
+      const parts = address
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
 
-    let city: string | null = null;
-    let country: string | null = null;
+      const fallbackDestination = (tripContext?.destination ?? "")
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
 
-    if (parts.length >= 2) {
-      country = parts[parts.length - 1] || null;
-      city = parts[parts.length - 2] || null;
-    } else if (parts.length === 1) {
-      city = parts[0] || null;
-    }
-
-    if (!city) {
-      city = tripContext?.cityName || null;
-    }
-
-    if (!country) {
-      country =
+      const fallbackCity = tripContext?.cityName || fallbackDestination[0] || "";
+      const fallbackCountry =
         tripContext?.countryName ||
-        (() => {
-          const destination = tripContext?.destination ?? "";
-          const destinationParts = destination
-            .split(",")
-            .map((part) => part.trim())
-            .filter((part) => part.length > 0);
+        (fallbackDestination.length > 1 ? fallbackDestination[fallbackDestination.length - 1] : "");
 
-          if (destinationParts.length === 0) {
-            return null;
-          }
+      let city: string | null = null;
+      let country: string | null = null;
 
-          return destinationParts[destinationParts.length - 1] || null;
-        })();
-    }
+      if (parts.length >= 2) {
+        country = parts[parts.length - 1] || null;
+        city = parts[parts.length - 2] || null;
+      } else if (parts.length === 1) {
+        city = parts[0] || null;
+      }
 
-    return {
-      city: city ?? "Unknown City",
-      country: country ?? "Unknown Country",
-    };
-  };
+      return {
+        city: (city ?? fallbackCity ?? "").trim(),
+        country: (country ?? fallbackCountry ?? "").trim(),
+      };
+    },
+    [tripContext?.cityName, tripContext?.countryName, tripContext?.destination],
+  );
 
   const form = useForm<RestaurantFormData>({
     resolver: zodResolver(restaurantFormSchema),
     defaultValues: defaultFormValues,
   });
+
+  const addressValue = form.watch("address");
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const { city, country } = getCityAndCountry(addressValue ?? "");
+
+    if (!form.getValues("city") && city) {
+      form.setValue("city", city, { shouldDirty: false });
+    }
+
+    if (!form.getValues("country") && country) {
+      form.setValue("country", country, { shouldDirty: false });
+    }
+  }, [addressValue, form, getCityAndCountry, open]);
 
   useEffect(() => {
     if (!open) {
@@ -260,7 +273,14 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
 
   const createRestaurantMutation = useMutation({
     mutationFn: async ({ data, tripId: targetTripId }: { data: RestaurantFormData; tripId: number }) => {
-      const { city, country } = getCityAndCountry(data.address);
+      const normalizedName = data.name.trim();
+      const normalizedCuisine = data.cuisine.trim();
+      const normalizedAddress = data.address.trim();
+      const normalizedCity = data.city.trim();
+      const normalizedCountry = data.country.trim();
+      const fallbackLocation = getCityAndCountry(normalizedAddress);
+      const city = normalizedCity || fallbackLocation.city || "Unknown City";
+      const country = normalizedCountry || fallbackLocation.country || "Unknown Country";
       const reservationDateValue = ensureValidReservationDate(data.reservationDate) ?? tripStartDate ?? new Date();
       const reservationDate = formatISO(reservationDateValue, { representation: "date" });
       const reservationTime = normalizeTimeTo24Hour(data.reservationTime) || "19:00";
@@ -269,15 +289,15 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
 
       const payload = {
         tripId: Number(targetTripId),
-        name: data.name,
-        address: data.address,
+        name: normalizedName,
+        address: normalizedAddress,
         city,
         country,
         reservationDate,
         reservationTime,
         reservationDateTime: reservationDateTimeIso,
         partySize: data.partySize,
-        cuisineType: data.cuisine || null,
+        cuisineType: normalizedCuisine || null,
         zipCode: null,
         latitude: null,
         longitude: null,
@@ -461,6 +481,36 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
                 </FormItem>
               )}
             />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="city"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>City</FormLabel>
+                    <FormControl>
+                      <Input placeholder="City" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="country"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Country</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Country" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
