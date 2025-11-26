@@ -92,14 +92,13 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
       const sanitizedUrl = prefill?.url?.trim() ? prefill.url.trim() : null;
 
       const payload = {
-        tripId: normalizedTripId,
         name: values.name.trim(),
         address: values.address.trim(),
         city: values.city.trim(),
         country: values.country.trim(),
-        reservationDate: values.reservationDate,
-        reservationTime: values.reservationTime,
-        partySize: values.partySize,
+        reservationDate: values.reservationDate.trim(),
+        reservationTime: values.reservationTime.trim(),
+        partySize: Number(values.partySize),
         priceRange: "$$",
         reservationStatus: "pending",
         website: prefill?.platform === "resy" ? sanitizedUrl : null,
