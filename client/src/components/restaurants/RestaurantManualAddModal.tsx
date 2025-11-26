@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
+import { format, isValid, parse, parseISO } from "date-fns";
 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -26,6 +26,46 @@ const manualSchema = z.object({
   reservationTime: z.string().trim().refine((value) => TIME_REGEX.test(value), "Time must be HH:mm"),
   partySize: z.coerce.number({ invalid_type_error: "Party size must be a number" }).int().min(1, "Party size must be at least 1"),
 });
+
+const normalizeReservationDate = (value?: string | null): string | null => {
+  if (!value) return null;
+
+  try {
+    const parsed = parseISO(value);
+    if (isValid(parsed)) {
+      return format(parsed, "yyyy-MM-dd");
+    }
+  } catch {
+    // fall through
+  }
+
+  try {
+    const parsed = parse(value, "yyyy-MM-dd", new Date());
+    if (isValid(parsed)) {
+      return format(parsed, "yyyy-MM-dd");
+    }
+  } catch {
+    // fall through
+  }
+
+  return null;
+};
+
+const normalizeReservationTime = (value?: string | null): string | null => {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  if (TIME_REGEX.test(trimmed)) {
+    return trimmed;
+  }
+
+  const parsed12Hour = parse(trimmed, "h:mm a", new Date());
+  if (isValid(parsed12Hour)) {
+    return format(parsed12Hour, "HH:mm");
+  }
+
+  return null;
+};
 
 export type RestaurantManualAddFormValues = z.infer<typeof manualSchema>;
 
@@ -60,13 +100,15 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
   const defaultValues = useMemo<RestaurantManualAddFormValues>(() => {
     const today = format(new Date(), "yyyy-MM-dd");
     const fallbackTime = "19:00";
+    const normalizedDate = normalizeReservationDate(prefill?.date) ?? today;
+    const normalizedTime = normalizeReservationTime(prefill?.time ?? prefill?.date) ?? fallbackTime;
     return {
       name: prefill?.name ?? "",
       address: prefill?.address ?? "",
       city: prefill?.city ?? "",
       country: prefill?.country ?? "",
-      reservationDate: prefill?.date ?? today,
-      reservationTime: prefill?.time ?? fallbackTime,
+      reservationDate: normalizedDate,
+      reservationTime: normalizedTime,
       partySize: Math.max(1, prefill?.partySize ?? 2),
     };
   }, [prefill]);
@@ -91,14 +133,28 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
 
       const sanitizedUrl = prefill?.url?.trim() ? prefill.url.trim() : null;
 
+      const reservationDate = normalizeReservationDate(values.reservationDate);
+      const reservationTime = normalizeReservationTime(values.reservationTime);
+      const normalizedPartySize = Number.isFinite(Number(values.partySize))
+        ? Math.max(1, Math.round(Number(values.partySize)))
+        : 1;
+
+      if (!reservationDate) {
+        throw new Error("Reservation date is invalid. Use YYYY-MM-DD.");
+      }
+
+      if (!reservationTime) {
+        throw new Error("Reservation time is invalid. Use HH:mm.");
+      }
+
       const payload = {
         name: values.name.trim(),
         address: values.address.trim(),
-        city: values.city.trim(),
-        country: values.country.trim(),
-        reservationDate: values.reservationDate.trim(),
-        reservationTime: values.reservationTime.trim(),
-        partySize: Number(values.partySize),
+        city: values.city.trim() || "Unknown City",
+        country: values.country.trim() || "Unknown Country",
+        reservationDate,
+        reservationTime,
+        partySize: normalizedPartySize,
         priceRange: "$$",
         reservationStatus: "pending",
         website: prefill?.platform === "resy" ? sanitizedUrl : null,
