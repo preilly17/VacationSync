@@ -334,6 +334,97 @@ export default function HotelsPage() {
     }
   };
 
+  const sortHotelsByCheckIn = (list: HotelWithDetails[]) => {
+    return [...list].sort((a, b) => {
+      const aDate = a.checkInDate ? new Date(a.checkInDate) : null;
+      const bDate = b.checkInDate ? new Date(b.checkInDate) : null;
+
+      if (aDate && bDate) {
+        return aDate.getTime() - bDate.getTime();
+      }
+
+      if (aDate) return -1;
+      if (bDate) return 1;
+      return a.id - b.id;
+    });
+  };
+
+  const convertProposalMutation = useMutation<
+    HotelWithDetails,
+    unknown,
+    { proposalId: number }
+  >({
+    mutationFn: async ({ proposalId }) => {
+      const res = await apiRequest(`/api/hotel-proposals/${proposalId}/convert`, {
+        method: "POST",
+      });
+
+      if (!res.ok) {
+        const errorBody = await res.json().catch(() => ({}));
+        const errorMessage = (errorBody as { message?: string }).message;
+        throw new Error(errorMessage || "Failed to convert proposal");
+      }
+
+      return (await res.json()) as HotelWithDetails;
+    },
+    onSuccess: (hotel, variables) => {
+      if (!tripId) return;
+
+      reactQueryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/hotel-proposals`],
+        (previous) => previous?.filter((proposal) => proposal.id !== variables.proposalId),
+      );
+
+      reactQueryClient.setQueryData<HotelProposalWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`],
+        (previous) => previous?.filter((proposal) => proposal.id !== variables.proposalId),
+      );
+
+      reactQueryClient.setQueryData<HotelWithDetails[] | undefined>(
+        [`/api/trips/${tripId}/hotels`],
+        (previous) => (previous ? sortHotelsByCheckIn([...previous, hotel]) : [hotel]),
+      );
+
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotel-proposals?mineOnly=true`] });
+      reactQueryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/hotels`] });
+
+      const checkIn = hotel.checkInDate ? parseTripDateToLocal(hotel.checkInDate) : null;
+      const checkInLabel = checkIn ? format(checkIn, "MMM d") : "the calendar";
+
+      toast({
+        title: "Hotel scheduled!",
+        description: `We added ${hotel.hotelName} for ${checkInLabel}. Everyone can now see the check-in time.`,
+      });
+    },
+    onError: (error) => {
+      const parsedError = error instanceof Error ? error : new Error(String(error));
+
+      if (isUnauthorizedError(parsedError)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      toast({
+        title: "Unable to schedule hotel",
+        description: parsedError.message || "We couldn't convert this proposal. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const canConvertProposal = useCallback(
+    (proposal: HotelProposalWithDetails) => {
+      if (!user) return false;
+      if (trip?.creator?.id && trip.creator.id === user.id) {
+        return true;
+      }
+
+      return proposal.proposedBy === user.id;
+    },
+    [trip?.creator?.id, user],
+  );
+
   const formDefaults = useCallback(
     () => createHotelFormDefaults(tripId, { startDate: trip?.startDate, endDate: trip?.endDate }),
     [tripId, trip?.startDate, trip?.endDate],
@@ -822,7 +913,7 @@ export default function HotelsPage() {
                               </Button>
                             ))}
                           </div>
-                          
+
                           <div className="flex gap-2">
                             <Button
                               size="sm"
@@ -833,6 +924,30 @@ export default function HotelsPage() {
                               <ExternalLink className="h-4 w-4 mr-2" />
                               View Hotel
                             </Button>
+                            {canConvertProposal(proposal) && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                className="flex-1"
+                                onClick={() => convertProposalMutation.mutate({ proposalId: proposal.id })}
+                                disabled={
+                                  convertProposalMutation.isPending
+                                  && convertProposalMutation.variables?.proposalId === proposal.id
+                                }
+                              >
+                                {convertProposalMutation.isPending
+                                  && convertProposalMutation.variables?.proposalId === proposal.id ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    Scheduling...
+                                  </>
+                                  ) : (
+                                  <>
+                                    Convert to stay
+                                  </>
+                                  )}
+                              </Button>
+                            )}
                           </div>
                         </div>
                         

@@ -10706,6 +10706,123 @@ ${selectUserColumns("participant_user", "participant_user_")}
     }
   }
 
+  async convertHotelProposalToStay(
+    proposalId: number,
+    currentUserId: string,
+    options: { checkInDate?: string | Date | null; checkOutDate?: string | Date | null } = {},
+  ): Promise<Hotel> {
+    await this.ensureProposalLinkStructures();
+
+    const proposal = await this.getHotelProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Hotel proposal not found");
+    }
+
+    if (proposal.stayId) {
+      throw new Error("This proposal already has a linked stay");
+    }
+
+    const trip = await this.getTripById(proposal.tripId);
+    if (!trip) {
+      throw new Error("Trip not found");
+    }
+
+    const isTripCreator = normalizeUserId(trip.createdBy) === normalizeUserId(currentUserId);
+    const isProposer = normalizeUserId(proposal.proposedBy) === normalizeUserId(currentUserId);
+
+    if (!isTripCreator && !isProposer) {
+      throw new Error("Hotel proposals can only be converted by the trip creator or the proposer");
+    }
+
+    const members = trip.members ?? [];
+    const isMember = members.some((member) => normalizeUserId(member.userId) === normalizeUserId(currentUserId));
+    if (!isMember) {
+      throw new Error("You are no longer a member of this trip");
+    }
+
+    const normalizeDate = (value: string | Date | null | undefined): Date | null => {
+      if (!value) return null;
+      const date = value instanceof Date ? value : new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    };
+
+    const resolvedCheckIn =
+      normalizeDate(options.checkInDate) ||
+      normalizeDate(proposal.checkInDate ?? null) ||
+      normalizeDate(trip.startDate) ||
+      null;
+    const resolvedCheckOut =
+      normalizeDate(options.checkOutDate) ||
+      normalizeDate(proposal.checkOutDate ?? null) ||
+      normalizeDate(trip.endDate) ||
+      null;
+
+    if (!resolvedCheckIn || !resolvedCheckOut) {
+      throw new Error("Check-in and check-out dates are required to schedule this stay");
+    }
+
+    if (resolvedCheckOut <= resolvedCheckIn) {
+      resolvedCheckOut.setDate(resolvedCheckIn.getDate() + 1);
+    }
+
+    const extractLocationParts = (locationText: string | null | undefined) => {
+      const parts = (locationText ?? "")
+        .split(",")
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+
+      return {
+        city: parts[0] ?? null,
+        country: parts.length > 1 ? parts[parts.length - 1] : null,
+      };
+    };
+
+    const { city: parsedCity, country: parsedCountry } = extractLocationParts(proposal.location);
+    const tripLocationParts = extractLocationParts(trip.destination ?? null);
+
+    const city = proposal.city ?? parsedCity ?? tripLocationParts.city ?? "Unknown";
+    const country = proposal.country ?? parsedCountry ?? tripLocationParts.country ?? "Unknown";
+
+    const parsePriceNumber = (value: string | null | undefined): number | null => {
+      if (!value) return null;
+      const cleaned = value.replace(/[^0-9.\-]+/g, "");
+      const parsed = Number.parseFloat(cleaned);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const hotel = await this.createHotel(
+      {
+        tripId: proposal.tripId,
+        hotelName: proposal.hotelName,
+        address: proposal.address ?? proposal.location ?? "Address TBD",
+        city,
+        country,
+        checkInDate: resolvedCheckIn.toISOString(),
+        checkOutDate: resolvedCheckOut.toISOString(),
+        bookingPlatform: proposal.platform,
+        bookingUrl: proposal.bookingUrl,
+        pricePerNight: parsePriceNumber(proposal.pricePerNight ?? proposal.price),
+        totalPrice: parsePriceNumber(proposal.price),
+        notes: `Scheduled from proposal #${proposal.id}`,
+        status: "confirmed",
+      },
+      currentUserId,
+    );
+
+    await query(
+      `
+      INSERT INTO proposal_schedule_links (proposal_type, proposal_id, scheduled_table, scheduled_id, trip_id)
+      VALUES ('hotel', $1, 'hotels', $2, $3)
+      ON CONFLICT DO NOTHING
+      `,
+      [proposalId, hotel.id, proposal.tripId],
+    );
+
+    await this.updateHotelProposalStatus(proposalId, "selected", currentUserId);
+
+    return hotel;
+  }
+
   private async notifyProposalCancellation(options: {
     tripId: number;
     proposalType: "hotel" | "flight" | "restaurant" | "activity";
