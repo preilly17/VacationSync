@@ -115,4 +115,49 @@ describe("RestaurantManualAddModal", () => {
 
     expect(addRestaurant).not.toHaveBeenCalled();
   });
+
+  it("normalizes incoming date/time and keeps payload clean", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = jest.fn();
+    const prefill: RestaurantManualAddPrefill = {
+      platform: "resy",
+      url: "https://resy.com/table?date=2025-10-28T19:00:00Z",
+      date: "2025-10-28T00:00:00.000Z",
+      time: "7:00 PM",
+      partySize: 2,
+      city: "Paris",
+      country: "France",
+    };
+
+    renderWithClient(
+      <RestaurantManualAddModal
+        tripId={11}
+        open
+        onOpenChange={onOpenChange}
+        prefill={prefill}
+      />,
+    );
+
+    await user.clear(screen.getByLabelText(/Restaurant name/i));
+    await user.type(screen.getByLabelText(/Restaurant name/i), "Septime ");
+    await user.clear(screen.getByLabelText(/Address/i));
+    await user.type(screen.getByLabelText(/Address/i), "80 Rue de Charonne");
+
+    await user.click(screen.getByRole("button", { name: /save restaurant/i }));
+
+    await waitFor(() => expect(addRestaurant).toHaveBeenCalledTimes(1));
+    expect(addRestaurant).toHaveBeenCalledWith(
+      11,
+      expect.objectContaining({
+        name: "Septime",
+        address: "80 Rue de Charonne",
+        city: "Paris",
+        country: "France",
+        reservationDate: "2025-10-28",
+        reservationTime: "19:00",
+        partySize: 2,
+        website: "https://resy.com/table?date=2025-10-28T19:00:00Z",
+      }),
+    );
+  });
 });
