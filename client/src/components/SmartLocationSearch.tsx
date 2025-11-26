@@ -312,7 +312,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
   value = "",
   onLocationSelect,
   className = "",
-  allowedTypes,
+  allowedTypes = ['city'],
   onQueryChange,
   enrichWithNearbyAirports = false,
 }, ref) {
@@ -380,7 +380,7 @@ const SmartLocationSearch = forwardRef<HTMLInputElement, SmartLocationSearchProp
       return ['city', 'airport'] as Array<LocationResult['type']>;
     }
 
-    return allowedTypes;
+    return ['city'] as Array<LocationResult['type']>;
   }, [allowedTypes, enrichWithNearbyAirports]);
 
   const normalisedAllowedTypes = useMemo(

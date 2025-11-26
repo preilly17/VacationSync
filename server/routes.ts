@@ -3570,30 +3570,63 @@ export function setupRoutes(app: Express) {
         return res.status(403).json({ error: "You are no longer a member of this trip" });
       }
 
-      const manualRestaurantSchema = z.object({
-        name: z.string().trim().min(1, "Restaurant name is required"),
-        address: z.string().trim().min(1, "Address is required"),
-        city: z.string().trim().optional(),
-        country: z.string().trim().optional(),
-        reservationDate: z.union([z.date(), z.string()]).optional(),
-        reservationTime: z.string().trim().optional(),
-        partySize: z.coerce.number().int().positive().optional(),
-        cuisineType: z.string().nullable().optional(),
-        zipCode: z.string().nullable().optional(),
-        latitude: nullableNumberInput("Latitude must be a number").optional(),
-        longitude: nullableNumberInput("Longitude must be a number").optional(),
-        phoneNumber: z.string().nullable().optional(),
-        website: z.string().nullable().optional(),
-        openTableUrl: z.string().nullable().optional(),
-        priceRange: z.string().nullable().optional(),
-        priceLevel: z.string().nullable().optional(),
-        rating: nullableNumberInput("Rating must be a number").optional(),
-        confirmationNumber: z.string().nullable().optional(),
-        reservationStatus: z.string().nullable().optional(),
-        specialRequests: z.string().nullable().optional(),
-        notes: z.string().nullable().optional(),
-        url: z.string().url().nullable().optional(),
-      });
+      const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+      const TIME_PATTERN = /^\d{2}:\d{2}$/;
+
+      const optionalTrimmedString = z.preprocess(
+        (value) => {
+          if (typeof value === "string") {
+            const trimmed = value.trim();
+            return trimmed.length > 0 ? trimmed : null;
+          }
+
+          return value === undefined ? undefined : value;
+        },
+        z.string().nullable().optional(),
+      );
+
+      const manualRestaurantSchema = z
+        .object({
+          name: z.string().trim().min(1, "Restaurant name is required"),
+          address: z.string().trim().min(1, "Address is required"),
+          city: z.string().trim().min(1, "City is required"),
+          country: z.string().trim().min(1, "Country is required"),
+          reservationDate: z
+            .string()
+            .trim()
+            .refine((value) => ISO_DATE_PATTERN.test(value), "Reservation date must be YYYY-MM-DD"),
+          reservationTime: z
+            .string()
+            .trim()
+            .refine((value) => TIME_PATTERN.test(value), "Reservation time must be HH:mm"),
+          partySize: z
+            .coerce.number({ invalid_type_error: "Party size must be a number" })
+            .int()
+            .positive("Party size must be at least 1"),
+          cuisineType: optionalTrimmedString,
+          zipCode: optionalTrimmedString,
+          latitude: nullableNumberInput("Latitude must be a number").optional(),
+          longitude: nullableNumberInput("Longitude must be a number").optional(),
+          lat: nullableNumberInput("Latitude must be a number").optional(),
+          lng: nullableNumberInput("Longitude must be a number").optional(),
+          phoneNumber: optionalTrimmedString,
+          website: optionalTrimmedString,
+          openTableUrl: optionalTrimmedString,
+          priceRange: optionalTrimmedString,
+          priceLevel: optionalTrimmedString,
+          rating: nullableNumberInput("Rating must be a number").optional(),
+          confirmationNumber: optionalTrimmedString,
+          reservationStatus: optionalTrimmedString,
+          specialRequests: optionalTrimmedString,
+          notes: optionalTrimmedString,
+          url: optionalTrimmedString,
+        })
+        .transform((data) => ({
+          ...data,
+          latitude: data.latitude ?? data.lat ?? null,
+          longitude: data.longitude ?? data.lng ?? null,
+          priceRange: data.priceLevel ?? data.priceRange ?? undefined,
+        }));
 
       const rawBody = req.body ?? {};
       const parsedResult = manualRestaurantSchema.safeParse(rawBody);
@@ -3608,10 +3641,8 @@ export function setupRoutes(app: Express) {
 
       const parsedBody = parsedResult.data;
 
-      const reservationDateIso = parsedBody.reservationDate
-        ? toDateOnlyIsoString(parsedBody.reservationDate)
-        : null;
-      if (parsedBody.reservationDate && !reservationDateIso) {
+      const reservationDateIso = toDateOnlyIsoString(parsedBody.reservationDate);
+      if (!reservationDateIso) {
         return res.status(400).json({ error: "Invalid reservation date" });
       }
 
@@ -3623,7 +3654,7 @@ export function setupRoutes(app: Express) {
         ...parsedBody,
         city: normalizedCity.length > 0 ? normalizedCity : "Unknown City",
         country: normalizedCountry.length > 0 ? normalizedCountry : "Unknown Country",
-        reservationDate: reservationDateIso ?? new Date().toISOString().slice(0, 10),
+        reservationDate: reservationDateIso,
         reservationTime: parsedBody.reservationTime ?? "19:00",
         partySize: parsedBody.partySize ?? 1,
         priceRange: parsedBody.priceLevel ?? parsedBody.priceRange ?? "$$",
