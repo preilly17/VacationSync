@@ -3543,7 +3543,17 @@ export function setupRoutes(app: Express) {
         return res.status(400).json({ error: "Invalid trip id" });
       }
 
-      const userId = getRequestUserId(req);
+      let userId = getRequestUserId(req);
+
+      // Development bypass - allow demo user when not authenticated
+      if (
+        process.env.NODE_ENV === "development" &&
+        typeof req.isAuthenticated === "function" &&
+        !req.isAuthenticated()
+      ) {
+        userId = "demo-user";
+      }
+
       if (!userId) {
         return res.status(401).json({ error: "User ID not found" });
       }
