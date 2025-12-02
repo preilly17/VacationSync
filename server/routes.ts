@@ -40,6 +40,7 @@ import { unfurlLinkMetadata } from "./wishListService";
 import { registerCoverPhotoUploadRoutes } from "./coverPhotoUpload";
 import { logCoverPhotoFailure, logActivityCreationFailure, trackActivityCreationMetric } from "./observability";
 import { nanoid } from "nanoid";
+import { nullableNumberInput } from "./src/utils/inputs";
 
 type PostgresError = Error & {
   code?: string;
@@ -3585,6 +3586,11 @@ export function setupRoutes(app: Express) {
         z.string().nullable().optional(),
       );
 
+      const optionalNullableNumber = z.preprocess(
+        (value) => (value === undefined ? undefined : nullableNumberInput(value)),
+        z.number().nullable().optional(),
+      );
+
       const manualRestaurantSchema = z
         .object({
           name: z.string().trim().min(1, "Restaurant name is required"),
@@ -3605,16 +3611,16 @@ export function setupRoutes(app: Express) {
             .positive("Party size must be at least 1"),
           cuisineType: optionalTrimmedString,
           zipCode: optionalTrimmedString,
-          latitude: nullableNumberInput("Latitude must be a number").optional(),
-          longitude: nullableNumberInput("Longitude must be a number").optional(),
-          lat: nullableNumberInput("Latitude must be a number").optional(),
-          lng: nullableNumberInput("Longitude must be a number").optional(),
+          latitude: optionalNullableNumber,
+          longitude: optionalNullableNumber,
+          lat: optionalNullableNumber,
+          lng: optionalNullableNumber,
           phoneNumber: optionalTrimmedString,
           website: optionalTrimmedString,
           openTableUrl: optionalTrimmedString,
           priceRange: optionalTrimmedString,
           priceLevel: optionalTrimmedString,
-          rating: nullableNumberInput("Rating must be a number").optional(),
+          rating: optionalNullableNumber,
           confirmationNumber: optionalTrimmedString,
           reservationStatus: optionalTrimmedString,
           specialRequests: optionalTrimmedString,
