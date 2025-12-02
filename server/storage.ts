@@ -9474,7 +9474,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     const { rows } = await query<RestaurantRow>(
       `
-      INSERT INTO restaurants (
+      INSERT INTO restaurants AS r (
         ${insertColumns.join(",\n        ")}
       )
       VALUES (
