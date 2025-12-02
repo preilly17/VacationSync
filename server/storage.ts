@@ -1040,6 +1040,7 @@ type RestaurantProposalRow = {
   id: number;
   trip_id: number;
   proposed_by: string;
+  restaurant_id?: number | null;
   restaurant_name: string;
   address: string;
   cuisine_type: string | null;
@@ -1551,6 +1552,7 @@ const mapRestaurantProposal = (
   id: row.id,
   tripId: row.trip_id,
   proposedBy: row.proposed_by,
+  restaurantId: typeof row.restaurant_id === "number" ? row.restaurant_id : null,
   restaurantName: row.restaurant_name,
   address: row.address,
   cuisineType: row.cuisine_type,
@@ -9762,6 +9764,110 @@ ${selectUserColumns("participant_user", "participant_user_")}
     await query(`DELETE FROM restaurant_proposals WHERE id = ANY($1::int[])`, [proposalIds]);
   }
 
+  async ensureRestaurantProposalForSavedRestaurant(options: {
+    restaurantId: number;
+    tripId: number;
+    currentUserId: string;
+  }): Promise<{ proposal: RestaurantProposalWithDetails; wasCreated: boolean; restaurantId: number }> {
+    const { restaurantId, tripId, currentUserId } = options;
+    const client = await pool.connect();
+    let proposalId: number | null = null;
+    let wasCreated = false;
+
+    try {
+      await client.query("BEGIN");
+
+      const { rows } = await client.query<RestaurantRow & { trip_created_by: string | null }>(
+        `
+        SELECT r.*, tc.created_by AS trip_created_by
+        FROM restaurants r
+        JOIN trip_calendars tc ON tc.id = r.trip_id
+        WHERE r.id = $1
+        FOR UPDATE
+        `,
+        [restaurantId],
+      );
+
+      const restaurant = rows[0];
+      if (!restaurant) {
+        throw new Error("Restaurant not found");
+      }
+
+      if (restaurant.trip_id !== tripId) {
+        throw new Error("Restaurant does not belong to this trip");
+      }
+
+      const normalizedRequester = normalizeUserId(currentUserId);
+      const normalizedCreator = normalizeUserId(restaurant.user_id);
+      const normalizedTripOwner = normalizeUserId(restaurant.trip_created_by);
+
+      const { rows: membershipRows } = await client.query<{ role: string }>(
+        `
+        SELECT role
+        FROM trip_members
+        WHERE trip_calendar_id = $1
+          AND user_id = $2
+        `,
+        [tripId, currentUserId],
+      );
+
+      const isTripMember = membershipRows.length > 0;
+      const isTripEditor = membershipRows.some((row) =>
+        typeof row.role === 'string' && ['admin', 'owner', 'organizer'].includes(row.role.toLowerCase()),
+      );
+
+      if (!isTripMember) {
+        throw new Error("You must be a member of this trip to propose this restaurant");
+      }
+
+      const canPropose =
+        (normalizedRequester && normalizedCreator === normalizedRequester)
+        || (normalizedRequester && normalizedTripOwner === normalizedRequester)
+        || isTripEditor;
+
+      if (!canPropose) {
+        throw new Error("Only the restaurant creator or a trip editor can propose this restaurant");
+      }
+
+      const { rows: existingLinks } = await client.query<{ proposal_id: number }>(
+        `
+        SELECT proposal_id
+        FROM proposal_schedule_links
+        WHERE proposal_type = 'restaurant'
+          AND scheduled_table = 'restaurants'
+          AND scheduled_id = $1
+        LIMIT 1
+        `,
+        [restaurantId],
+      );
+
+      if (existingLinks[0]) {
+        proposalId = existingLinks[0].proposal_id;
+      } else {
+        proposalId = await this.syncRestaurantProposalFromRestaurantRow(restaurant, { allowCreate: true });
+        wasCreated = true;
+      }
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (!proposalId) {
+      throw new Error("Failed to create restaurant proposal");
+    }
+
+    const proposal = await this.getRestaurantProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Failed to load restaurant proposal");
+    }
+
+    return { proposal, wasCreated, restaurantId };
+  }
+
   async getTripRestaurants(
     tripId: number,
   ): Promise<RestaurantWithDetails[]> {
@@ -10590,6 +10696,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         rp.id,
         rp.trip_id,
         rp.proposed_by,
+        psl.scheduled_id AS restaurant_id,
         rp.restaurant_name,
         rp.address,
         rp.cuisine_type,
@@ -10611,6 +10718,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
         rp.updated_at,
         ${selectUserColumns("u", "proposer_")}
       FROM restaurant_proposals rp
+      LEFT JOIN proposal_schedule_links psl
+        ON psl.proposal_type = 'restaurant'
+       AND psl.proposal_id = rp.id
       JOIN users u ON u.id = rp.proposed_by
       ${whereClause}
       ORDER BY rp.created_at DESC NULLS LAST, rp.id DESC
@@ -12625,7 +12735,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'active')
+        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'proposed')
       )
       RETURNING
         id,
@@ -12669,7 +12779,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         proposal.preferredMealTime ?? null,
         toDbJson(proposal.preferredDates ?? null),
         toDbJson(proposal.features ?? null),
-        proposal.status ?? "active",
+        proposal.status ?? "proposed",
       ],
     );
 

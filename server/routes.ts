@@ -4567,11 +4567,11 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:tripId/proposals/hotels', isAuthenticated, handlePostTripHotelProposals);
   app.post('/api/trips/:id/hotel-proposals', isAuthenticated, handlePostTripHotelProposals);
 
-  app.get(
-    '/api/trips/:tripId/proposals/restaurants',
-    isAuthenticated,
-    (req: any, res) => {
-      const tripId = Number.parseInt(req.params.tripId, 10);
+  const handleGetTripRestaurantProposals = async (req: any, res: any) => {
+    try {
+      const tripIdParam =
+        typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
+      const tripId = Number.parseInt(String(tripIdParam ?? ''), 10);
       if (Number.isNaN(tripId)) {
         return res.status(400).json({ message: "Invalid trip id" });
       }
@@ -4581,7 +4581,181 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
-      res.json([]);
+      const mineOnly = parseBooleanQueryParam(req.query?.mineOnly);
+      const proposals = await storage.getTripRestaurantProposals(tripId, userId);
+
+      if (mineOnly) {
+        const normalizedUserId = normalizeUserId(userId);
+        const filtered = proposals.filter(
+          (proposal) => normalizeUserId(proposal.proposedBy) === normalizedUserId,
+        );
+        return res.json(filtered);
+      }
+
+      res.json(proposals);
+    } catch (error: unknown) {
+      console.error("Error fetching restaurant proposals:", error);
+      res.status(500).json({ message: "Failed to fetch restaurant proposals" });
+    }
+  };
+
+  const handlePostTripRestaurantProposals = async (req: any, res: any) => {
+    try {
+      const tripIdParam =
+        typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
+      const tripId = Number.parseInt(String(tripIdParam ?? ''), 10);
+      if (Number.isNaN(tripId)) {
+        return res.status(400).json({ message: "Invalid trip id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const trip = await storage.getTripById(tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const isMember = trip.members?.some((member) => member.userId === userId) ?? false;
+      if (!isMember) {
+        return res.status(403).json({ message: "You are not a member of this trip" });
+      }
+
+      const rawRestaurantId = req.body?.restaurantId ?? req.body?.id;
+      const restaurantId = Number.parseInt(String(rawRestaurantId ?? ''), 10);
+
+      if (Number.isFinite(restaurantId)) {
+        const result = await storage.ensureRestaurantProposalForSavedRestaurant({
+          restaurantId,
+          tripId,
+          currentUserId: userId,
+        });
+
+        const statusCode = result.wasCreated ? 201 : 200;
+        res.status(statusCode).json(result.proposal);
+
+        broadcastToTrip(tripId, {
+          type: result.wasCreated ? "restaurant_proposal_created" : "restaurant_proposal_updated",
+          tripId,
+          proposalId: result.proposal.id,
+          restaurantId: result.restaurantId,
+          triggeredBy: userId,
+        });
+        return;
+      }
+
+      const validatedData = insertRestaurantProposalSchema.parse({
+        tripId,
+        restaurantName: req.body.restaurantName || req.body.name || 'Unknown Restaurant',
+        address: req.body.address || 'Unknown Address',
+        cuisineType: req.body.cuisineType || req.body.cuisine,
+        priceRange: req.body.priceRange || '$$',
+        rating: req.body.rating,
+        phoneNumber: req.body.phoneNumber || req.body.phone,
+        website: req.body.website,
+        reservationUrl: req.body.reservationUrl,
+        platform: req.body.platform || 'Foursquare',
+        atmosphere: req.body.atmosphere,
+        specialties: req.body.specialties,
+        dietaryOptions: req.body.dietaryOptions || [],
+        preferredMealTime: req.body.preferredMealTime || 'dinner',
+        preferredDates: req.body.preferredDates || [],
+        features: req.body.features || [],
+        status: 'proposed'
+      });
+
+      const proposal = await storage.createRestaurantProposal(validatedData, userId);
+      res.status(201).json(proposal);
+
+      broadcastToTrip(tripId, {
+        type: "restaurant_proposal_created",
+        tripId,
+        proposalId: proposal.id,
+        restaurantId: proposal.restaurantId ?? null,
+        triggeredBy: userId,
+      });
+    } catch (error: unknown) {
+      console.error("Error creating restaurant proposal:", error);
+      if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
+        res.status(400).json({ message: "Invalid restaurant proposal data", errors: (error as any).errors });
+      } else if (error instanceof Error && error.message) {
+        if (error.message.includes('not found') || error.message.includes('does not belong')) {
+          return res.status(404).json({ message: error.message });
+        }
+        if (error.message.includes('trip') || error.message.includes('editor')) {
+          return res.status(403).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: "Failed to create restaurant proposal" });
+    }
+  };
+
+  app.get('/api/trips/:tripId/proposals/restaurants', isAuthenticated, handleGetTripRestaurantProposals);
+  app.get('/api/trips/:id/restaurant-proposals', isAuthenticated, handleGetTripRestaurantProposals);
+
+  app.post('/api/trips/:tripId/proposals/restaurants', isAuthenticated, handlePostTripRestaurantProposals);
+  app.post('/api/trips/:id/restaurant-proposals', isAuthenticated, handlePostTripRestaurantProposals);
+
+  app.patch(
+    '/api/trips/:tripId/proposals/restaurants/:proposalId',
+    isAuthenticated,
+    async (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      const proposalId = Number.parseInt(req.params.proposalId, 10);
+
+      if (Number.isNaN(tripId) || Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid trip or proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const status = typeof req.body?.status === 'string' ? req.body.status.toLowerCase() : '';
+      const allowedStatuses = new Set(['accepted', 'rejected', 'proposed']);
+      if (!allowedStatuses.has(status)) {
+        return res.status(400).json({ message: "Invalid proposal status" });
+      }
+
+      const trip = await storage.getTripById(tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const normalizedUserId = normalizeUserId(userId);
+      const isOwner = normalizeUserId(trip.createdBy) === normalizedUserId;
+      const member = trip.members?.find((entry) => normalizeUserId(entry.userId) === normalizedUserId);
+      const role = member?.role?.toLowerCase();
+      const isAdmin = role ? ['admin', 'owner', 'organizer'].includes(role) : false;
+
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ message: "Only trip admins can update proposal status" });
+      }
+
+      try {
+        const proposal = await storage.updateRestaurantProposalStatus(proposalId, status, userId);
+
+        if (!proposal || proposal.tripId !== tripId) {
+          return res.status(404).json({ message: "Restaurant proposal not found" });
+        }
+
+        broadcastToTrip(tripId, {
+          type: "restaurant_proposal_updated",
+          tripId,
+          proposalId,
+          restaurantId: proposal.restaurantId ?? null,
+          triggeredBy: userId,
+        });
+
+        res.json(proposal);
+      } catch (error: unknown) {
+        console.error("Error updating restaurant proposal status:", error);
+        res.status(500).json({ message: "Failed to update restaurant proposal" });
+      }
     },
   );
 
@@ -4894,74 +5068,6 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  // Restaurant proposal routes
-  app.get('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
-    try {
-      const tripId = Number.parseInt(req.params.id, 10);
-      if (Number.isNaN(tripId)) {
-        return res.status(400).json({ message: "Invalid trip id" });
-      }
-
-      const userId = getRequestUserId(req);
-
-      if (!userId) {
-        return res.status(401).json({ message: "User ID not found" });
-      }
-
-      const proposals = await storage.getTripRestaurantProposals(tripId, userId);
-      res.json(proposals);
-    } catch (error: unknown) {
-      console.error("Error fetching restaurant proposals:", error);
-      res.status(500).json({ message: "Failed to fetch restaurant proposals" });
-    }
-  });
-
-  app.post('/api/trips/:id/restaurant-proposals', isAuthenticated, async (req: any, res) => {
-    try {
-      const tripId = Number.parseInt(req.params.id, 10);
-      if (Number.isNaN(tripId)) {
-        return res.status(400).json({ message: "Invalid trip id" });
-      }
-
-      const userId = getRequestUserId(req);
-
-      if (!userId) {
-        return res.status(401).json({ message: "User ID not found" });
-      }
-      
-      // Use Zod validation for server-side safety
-      const validatedData = insertRestaurantProposalSchema.parse({
-        tripId,
-        restaurantName: req.body.restaurantName || req.body.name || 'Unknown Restaurant',
-        address: req.body.address || 'Unknown Address', 
-        cuisineType: req.body.cuisineType || req.body.cuisine,
-        priceRange: req.body.priceRange || '$$',
-        rating: req.body.rating,
-        phoneNumber: req.body.phoneNumber || req.body.phone,
-        website: req.body.website,
-        reservationUrl: req.body.reservationUrl,
-        platform: req.body.platform || 'Foursquare',
-        atmosphere: req.body.atmosphere,
-        specialties: req.body.specialties,
-        dietaryOptions: req.body.dietaryOptions || [],
-        preferredMealTime: req.body.preferredMealTime || 'dinner',
-        preferredDates: req.body.preferredDates || [],
-        features: req.body.features || [],
-        status: 'active'
-      });
-      
-      const proposal = await storage.createRestaurantProposal(validatedData, userId);
-      res.json(proposal);
-    } catch (error: unknown) {
-      console.error("Error creating restaurant proposal:", error);
-      if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
-        res.status(400).json({ message: "Invalid restaurant proposal data", errors: (error as any).errors });
-      } else {
-        res.status(500).json({ message: "Failed to create restaurant proposal" });
-      }
-    }
-  });
-
   app.post('/api/restaurant-proposals/:id/rank', isAuthenticated, async (req: any, res) => {
     try {
       const proposalId = Number.parseInt(req.params.id, 10);
@@ -4979,17 +5085,30 @@ export function setupRoutes(app: Express) {
         return res.status(400).json({ message: "Ranking must be a number" });
       }
 
-      const validatedData = insertRestaurantRankingSchema.parse({
+    const validatedData = insertRestaurantRankingSchema.parse({
+      proposalId,
+      ranking: rankingValue,
+      notes: req.body.notes ?? null,
+    });
+
+    await storage.rankRestaurantProposal(validatedData, userId);
+
+    const proposal = await storage.getRestaurantProposalById(proposalId, userId);
+    const tripId = proposal?.tripId;
+
+    res.json({ success: true });
+
+    if (tripId) {
+      broadcastToTrip(tripId, {
+        type: "restaurant_proposal_ranked",
+        tripId,
         proposalId,
-        ranking: rankingValue,
-        notes: req.body.notes ?? null,
+        restaurantId: proposal?.restaurantId ?? null,
+        triggeredBy: userId,
       });
-
-      await storage.rankRestaurantProposal(validatedData, userId);
-
-      res.json({ success: true });
-    } catch (error: unknown) {
-      console.error("Error ranking restaurant proposal:", error);
+    }
+  } catch (error: unknown) {
+    console.error("Error ranking restaurant proposal:", error);
       if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
         res.status(400).json({ message: "Invalid ranking data", errors: (error as any).errors });
       } else {
@@ -5012,6 +5131,14 @@ export function setupRoutes(app: Express) {
 
       const proposal = await storage.cancelRestaurantProposal(proposalId, userId);
       res.json(proposal);
+
+      broadcastToTrip(proposal.tripId, {
+        type: "restaurant_proposal_canceled",
+        tripId: proposal.tripId,
+        proposalId: proposal.id,
+        restaurantId: proposal.restaurantId ?? null,
+        triggeredBy: userId,
+      });
     } catch (error: unknown) {
       console.error("Error canceling restaurant proposal:", error);
       if (error instanceof Error) {

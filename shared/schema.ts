@@ -986,6 +986,7 @@ export interface RestaurantProposal {
   id: number;
   tripId: number;
   proposedBy: string;
+  restaurantId?: number | null;
   restaurantName: string;
   address: string;
   cuisineType: string | null;
@@ -1023,7 +1024,7 @@ export const insertRestaurantProposalSchema = z.object({
   preferredMealTime: z.string().nullable().optional(),
   preferredDates: z.any().nullable().optional(),
   features: z.any().nullable().optional(),
-  status: z.string().default("active"),
+  status: z.string().default("proposed"),
 });
 
 export type InsertRestaurantProposal = z.infer<

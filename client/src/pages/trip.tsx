@@ -130,6 +130,7 @@ import type {
   ActivityInviteStatus,
   InsertFlight,
   RestaurantWithDetails,
+  RestaurantProposalWithDetails,
   HotelProposalWithDetails,
   HotelSearchResult,
   HotelWithDetails,
@@ -7257,10 +7258,49 @@ function RestaurantBooking({
     queryKey: ["/api/trips", tripId, "restaurants"],
     enabled: !!tripId,
   });
+  const { data: restaurantProposals = [], isLoading: restaurantProposalsLoading } = useQuery<
+    RestaurantProposalWithDetails[]
+  >({
+    queryKey: [`/api/trips/${tripId}/proposals/restaurants`],
+    enabled: !!tripId,
+  });
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
   const [manualAddOpen, setManualAddOpen] = useState(false);
   const [manualAddPrefill, setManualAddPrefill] = useState<RestaurantManualAddPrefill | null>(null);
   const searchPanelRef = useRef<HTMLDivElement | null>(null);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const normalizedCurrentUserId = useMemo(
+    () => normalizeUserId(user?.id ?? null),
+    [user?.id],
+  );
+
+  const membership = useMemo(() => {
+    if (!trip || !normalizedCurrentUserId) {
+      return null;
+    }
+
+    return (
+      trip.members?.find((member) => normalizeUserId(member.userId) === normalizedCurrentUserId) ?? null
+    );
+  }, [trip, normalizedCurrentUserId]);
+
+  const isTripOwner = useMemo(() => {
+    if (!trip?.createdBy || !normalizedCurrentUserId) {
+      return false;
+    }
+
+    return normalizeUserId(trip.createdBy) === normalizedCurrentUserId;
+  }, [trip?.createdBy, normalizedCurrentUserId]);
+
+  const isTripEditor = useMemo(() => {
+    if (!membership?.role) {
+      return false;
+    }
+
+    return TRIP_ADMIN_ROLES.has(membership.role.toLowerCase());
+  }, [membership?.role]);
 
   const publishAnalytics = useCallback((eventName: string, payload: Record<string, unknown>) => {
     if (typeof window === "undefined") {
@@ -7338,6 +7378,127 @@ function RestaurantBooking({
     return undefined;
   }, [trip]);
 
+  const restaurantProposalsByRestaurantId = useMemo(() => {
+    const map = new Map<number, RestaurantProposalWithDetails>();
+    for (const proposal of restaurantProposals) {
+      const targetId = typeof proposal.restaurantId === "number" ? proposal.restaurantId : null;
+      if (targetId != null) {
+        map.set(targetId, proposal);
+      }
+    }
+    return map;
+  }, [restaurantProposals]);
+
+  const canManageRestaurant = useCallback(
+    (restaurant: RestaurantWithDetails) => {
+      if (!normalizedCurrentUserId) {
+        return false;
+      }
+
+      const creatorId = normalizeUserId(restaurant.user?.id ?? null);
+      if (creatorId && creatorId === normalizedCurrentUserId) {
+        return true;
+      }
+
+      return isTripOwner || isTripEditor;
+    },
+    [isTripEditor, isTripOwner, normalizedCurrentUserId],
+  );
+
+  const [proposingRestaurantId, setProposingRestaurantId] = useState<number | null>(null);
+  const proposeRestaurantMutation = useMutation({
+    mutationFn: async (restaurantId: number) => {
+      await apiRequest(`/api/trips/${tripId}/proposals/restaurants`, {
+        method: "POST",
+        body: { restaurantId },
+      });
+    },
+    onSuccess: async () => {
+      toast({ title: "Restaurant proposed to group." });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurants"] }),
+      ]);
+    },
+    onError: (error: unknown) => {
+      if (error instanceof ApiError) {
+        toast({
+          title: "Unable to propose restaurant",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Failed to propose restaurant",
+        description: "Please try again in a few moments.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateRestaurantProposalStatus = useMutation<
+    unknown,
+    unknown,
+    { proposalId: number; status: "accepted" | "rejected" }
+  >({
+    mutationFn: async ({ proposalId, status }) => {
+      await apiRequest(`/api/trips/${tripId}/proposals/restaurants/${proposalId}`, {
+        method: "PATCH",
+        body: { status },
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] }),
+      ]);
+      toast({ title: "Proposal updated" });
+    },
+    onError: (error: unknown) => {
+      const description = error instanceof ApiError ? error.message : "Please try again.";
+      toast({ title: "Unable to update proposal", description, variant: "destructive" });
+    },
+  });
+
+  const handleProposeRestaurant = useCallback(
+    (restaurant: RestaurantWithDetails) => {
+      if (!canManageRestaurant(restaurant)) {
+        toast({
+          title: "Not allowed",
+          description: "Only the reservation creator or a trip editor can propose this restaurant.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (restaurantProposalsByRestaurantId.has(restaurant.id)) {
+        toast({
+          title: "Already shared",
+          description: "This restaurant is already proposed to the group.",
+        });
+        return;
+      }
+
+      if (!Number.isFinite(restaurant.id)) {
+        toast({
+          title: "Unable to propose",
+          description: "We couldn’t determine which restaurant to share.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setProposingRestaurantId(restaurant.id);
+      proposeRestaurantMutation.mutate(restaurant.id, {
+        onSettled: () => setProposingRestaurantId(null),
+      });
+    },
+    [canManageRestaurant, proposeRestaurantMutation, restaurantProposalsByRestaurantId, toast],
+  );
+
   const handleBookingLinkClick = useCallback(
     (_restaurant: any, link: { text: string; url: string }) => {
       if (!link?.url) {
@@ -7405,7 +7566,7 @@ function RestaurantBooking({
             </Button>
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tracked restaurants</p>
             <p className="mt-1 text-2xl font-semibold text-neutral-900">{restaurants.length}</p>
@@ -7417,6 +7578,10 @@ function RestaurantBooking({
           <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Country</p>
             <p className="mt-1 text-lg font-semibold text-neutral-900">{resolvedCountry || "Any locale"}</p>
+          </div>
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group proposals</p>
+            <p className="mt-1 text-2xl font-semibold text-neutral-900">{restaurantProposals.length}</p>
           </div>
         </div>
       </section>
@@ -7456,20 +7621,26 @@ function RestaurantBooking({
               const displayName = (restaurant as any).restaurantName ?? restaurant.name ?? "Restaurant";
               const displayAddress = restaurant.address ?? (restaurant as any).location ?? "";
               const reservationStatusRaw = restaurant.reservationStatus ?? "pending";
-              const reservationStatusLabel = reservationStatusRaw
-                .split("_")
-                .filter(Boolean)
-                .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                .join(" ") || "Pending";
-              const reservationDate = restaurant.reservationDate
-                ? format(new Date(restaurant.reservationDate), "MMM dd")
-                : null;
-              const reservationTime = restaurant.reservationTime ?? (restaurant as any).reservation_start_time ?? "";
+            const reservationStatusLabel = reservationStatusRaw
+              .split("_")
+              .filter(Boolean)
+              .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+              .join(" ") || "Pending";
+            const reservationDate = restaurant.reservationDate
+              ? format(new Date(restaurant.reservationDate), "MMM dd")
+              : null;
+            const reservationTime = restaurant.reservationTime ?? (restaurant as any).reservation_start_time ?? "";
+            const linkedProposal = restaurantProposalsByRestaurantId.get(restaurant.id);
+            const normalizedProposalStatus = (linkedProposal?.status ?? "").toString().trim().toLowerCase();
+            const proposalStatusLabel = normalizedProposalStatus
+              ? normalizedProposalStatus.charAt(0).toUpperCase() + normalizedProposalStatus.slice(1)
+              : reservationStatusLabel;
+            const isProposing = proposeRestaurantMutation.isPending && proposingRestaurantId === restaurant.id;
 
-              return (
-                <div
-                  key={restaurant.id}
-                  className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+            return (
+              <div
+                key={restaurant.id}
+                className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
@@ -7486,13 +7657,21 @@ function RestaurantBooking({
                       )}
                     </div>
                   </div>
-                  <div className="text-left sm:text-right">
+                  <div className="flex flex-col items-start gap-2 sm:items-end sm:text-right">
                     <Badge variant="outline" className="uppercase tracking-wide">
-                      {reservationStatusLabel}
+                      {linkedProposal ? `Proposal: ${proposalStatusLabel}` : reservationStatusLabel}
                     </Badge>
                     {restaurant.partySize && (
                       <p className="mt-1 text-sm text-gray-500">{restaurant.partySize} people</p>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleProposeRestaurant(restaurant)}
+                      disabled={Boolean(linkedProposal) || isProposing}
+                    >
+                      {linkedProposal ? "Proposed" : isProposing ? "Proposing..." : "Propose to group"}
+                    </Button>
                   </div>
                 </div>
               );
@@ -7509,6 +7688,98 @@ function RestaurantBooking({
             <p className="mt-1 text-sm text-muted-foreground">
               Log reservations you’ve made so everyone knows where you’re dining.
             </p>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-border/60 bg-white p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-neutral-900">Restaurant Proposals</h3>
+            <p className="text-sm text-muted-foreground">Vote on dining ideas shared with the group.</p>
+          </div>
+        </div>
+
+        {restaurantProposalsLoading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : restaurantProposals.length > 0 ? (
+          <div className="space-y-3">
+            {restaurantProposals.map((proposal) => {
+              const proposerName = proposal.proposer?.firstName ?? proposal.proposer?.email ?? "Unknown";
+              const statusLabel = (proposal.status || "proposed").replace(/_/g, " ");
+              const isUpdating =
+                updateRestaurantProposalStatus.isPending
+                && updateRestaurantProposalStatus.variables?.proposalId === proposal.id;
+
+              return (
+                <div key={proposal.id} className="rounded-lg border p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                      <p className="text-base font-semibold text-neutral-900">{proposal.restaurantName}</p>
+                      <p className="text-sm text-neutral-600">{proposal.address}</p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
+                        {proposal.cuisineType && <Badge variant="outline">{proposal.cuisineType}</Badge>}
+                        {proposal.priceRange && <Badge variant="secondary">{proposal.priceRange}</Badge>}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-start gap-2 sm:items-end">
+                      <Badge variant="outline" className="uppercase tracking-wide">
+                        {statusLabel}
+                      </Badge>
+                      {(isTripOwner || isTripEditor) && (
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={isUpdating}
+                            onClick={() =>
+                              updateRestaurantProposalStatus.mutate({
+                                proposalId: proposal.id,
+                                status: "accepted",
+                              })
+                            }
+                          >
+                            {isUpdating && updateRestaurantProposalStatus.variables?.status === "accepted"
+                              ? "Accepting..."
+                              : "Accept"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            disabled={isUpdating}
+                            onClick={() =>
+                              updateRestaurantProposalStatus.mutate({
+                                proposalId: proposal.id,
+                                status: "rejected",
+                              })
+                            }
+                          >
+                            {isUpdating && updateRestaurantProposalStatus.variables?.status === "rejected"
+                              ? "Rejecting..."
+                              : "Reject"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-neutral-600">
+                    <span>Proposed by {proposerName}</span>
+                    {proposal.createdAt && (
+                      <span>• {formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })}</span>
+                    )}
+                    {proposal.averageRanking != null && (
+                      <span>• Avg ranking {proposal.averageRanking.toFixed(1)}</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-6 text-center text-sm text-neutral-600">
+            No restaurant proposals yet. Share a reservation to start the discussion.
           </div>
         )}
       </section>
