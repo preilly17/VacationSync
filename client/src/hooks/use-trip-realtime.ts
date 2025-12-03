@@ -86,9 +86,8 @@ export function useTripRealtime(
     };
 
     const invalidateRestaurantProposals = () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/restaurants`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurants"] });
     };
 
     const invalidateWishList = () => {

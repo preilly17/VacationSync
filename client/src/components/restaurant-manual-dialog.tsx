@@ -332,7 +332,6 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
       });
       if (targetTripId != null) {
         queryClient.invalidateQueries({ queryKey: ["/api/trips", targetTripId, "restaurants"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", String(targetTripId), "restaurants"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", targetTripId, "restaurant-proposals"] });
       }
       form.reset(defaultFormValues);

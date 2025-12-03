@@ -311,9 +311,8 @@ export const RestaurantSearchPanel = forwardRef<HTMLDivElement, RestaurantSearch
           description: "This restaurant was added to your group reservations.",
         });
         if (normalizedTripId) {
-          const queryKeyId = typeof tripId === "undefined" ? normalizedTripId : tripId;
-          queryClient.invalidateQueries({ queryKey: ["/api/trips", queryKeyId, "restaurants"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/trips", queryKeyId, "restaurant-proposals"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurants"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurant-proposals"] });
         }
       },
       onError: (error) => {

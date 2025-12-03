@@ -175,7 +175,6 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
     onSuccess: async () => {
       if (normalizedTripId != null) {
         queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurants"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", String(normalizedTripId), "restaurants"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurant-proposals"] });
       }
 
