@@ -4621,9 +4621,13 @@ export function setupRoutes(app: Express) {
   };
 
   const handlePostTripRestaurantProposals = async (req: any, res: any) => {
+    const tripIdParam =
+      typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
+    const rawRestaurantId = req.body?.restaurantId ?? req.body?.id;
+
+    console.log('[POST /proposals/restaurants] start', { tripId: tripIdParam, restaurantId: rawRestaurantId });
+
     try {
-      const tripIdParam =
-        typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
       const tripId = Number.parseInt(String(tripIdParam ?? ''), 10);
       if (Number.isNaN(tripId)) {
         return res.status(400).json({ message: "Invalid trip id" });
@@ -4644,7 +4648,6 @@ export function setupRoutes(app: Express) {
         return res.status(403).json({ message: "You are not a member of this trip" });
       }
 
-      const rawRestaurantId = req.body?.restaurantId ?? req.body?.id;
       const restaurantId = Number.parseInt(String(rawRestaurantId ?? ''), 10);
 
       if (Number.isFinite(restaurantId)) {
@@ -4655,6 +4658,12 @@ export function setupRoutes(app: Express) {
         });
 
         const statusCode = result.wasCreated ? 201 : 200;
+        console.log('[POST /proposals/restaurants] success', {
+          tripId,
+          restaurantId: result.restaurantId,
+          proposalId: result.proposal.id,
+          created: result.wasCreated,
+        });
         res.status(statusCode).json(result.proposal);
 
         broadcastToTrip(tripId, {
@@ -4688,6 +4697,11 @@ export function setupRoutes(app: Express) {
       });
 
       const proposal = await storage.createRestaurantProposal(validatedData, userId);
+      console.log('[POST /proposals/restaurants] success', {
+        tripId,
+        proposalId: proposal.id,
+        restaurantId: proposal.restaurantId ?? null,
+      });
       res.status(201).json(proposal);
 
       broadcastToTrip(tripId, {
@@ -4698,9 +4712,11 @@ export function setupRoutes(app: Express) {
         triggeredBy: userId,
       });
     } catch (error: unknown) {
-      console.error("Error creating restaurant proposal:", error);
+      console.error('[POST /proposals/restaurants] error', error);
       if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
-        res.status(400).json({ message: "Invalid restaurant proposal data", errors: (error as any).errors });
+        return res
+          .status(400)
+          .json({ message: "Invalid restaurant proposal data", errors: (error as any).errors });
       } else if (error instanceof Error && error.message) {
         if (error.message.includes('not found') || error.message.includes('does not belong')) {
           return res.status(404).json({ message: error.message });
@@ -4710,7 +4726,7 @@ export function setupRoutes(app: Express) {
         }
       }
 
-      res.status(500).json({ message: "Failed to create restaurant proposal" });
+      return res.status(500).json({ message: "Failed to create restaurant proposal" });
     }
   };
 
