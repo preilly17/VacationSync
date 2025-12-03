@@ -7372,6 +7372,40 @@ function RestaurantBooking({
     return map;
   }, [restaurantProposals]);
 
+  const deleteRestaurantMutation = useMutation({
+    mutationFn: async ({
+      tripId: currentTripId,
+      restaurantId,
+    }: {
+      tripId: number;
+      restaurantId: number;
+    }) => {
+      return apiRequest(`/api/trips/${currentTripId}/restaurants/${restaurantId}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurants"] });
+      toast({ title: "Restaurant deleted" });
+    },
+    onError: (error: unknown) => {
+      if (error instanceof ApiError) {
+        toast({
+          title: "Unable to delete restaurant",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Failed to delete restaurant",
+        description: "Please try again in a few moments.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const canManageRestaurant = useCallback(
     (restaurant: RestaurantWithDetails) => {
       if (!normalizedCurrentUserId) {
@@ -7389,6 +7423,7 @@ function RestaurantBooking({
   );
 
   const [proposingRestaurantId, setProposingRestaurantId] = useState<number | null>(null);
+  const [deletingRestaurantId, setDeletingRestaurantId] = useState<number | null>(null);
   const [showAllRestaurants, setShowAllRestaurants] = useState(false);
   const proposeRestaurantMutation = useMutation({
     mutationFn: async (restaurantId: number) => {
@@ -7531,6 +7566,39 @@ function RestaurantBooking({
     [publishAnalytics, resolvedCity, resolvedCountry],
   );
 
+  const handleDeleteRestaurant = useCallback(
+    async (restaurant: RestaurantWithDetails) => {
+      if (!restaurant?.id) {
+        toast({ title: "Unable to delete", description: "Missing restaurant identifier." });
+        return;
+      }
+
+      if (!canManageRestaurant(restaurant)) {
+        toast({
+          title: "Not allowed",
+          description: "Only the reservation creator or a trip editor can delete this restaurant.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const confirmed = window.confirm("Are you sure you want to delete this restaurant?");
+      if (!confirmed) {
+        return;
+      }
+
+      setDeletingRestaurantId(restaurant.id);
+      try {
+        await deleteRestaurantMutation.mutateAsync({ tripId, restaurantId: restaurant.id });
+      } catch (error) {
+        console.error("Error deleting restaurant", error);
+      } finally {
+        setDeletingRestaurantId(null);
+      }
+    },
+    [canManageRestaurant, deleteRestaurantMutation, toast, tripId],
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -7635,6 +7703,13 @@ function RestaurantBooking({
                 ? normalizedProposalStatus.charAt(0).toUpperCase() + normalizedProposalStatus.slice(1)
                 : reservationStatusLabel;
               const isProposing = proposeRestaurantMutation.isPending && proposingRestaurantId === restaurant.id;
+              const isManualRestaurant = Boolean(
+                (restaurant as any).isManual ??
+                  ((restaurant as any).source
+                    ? String((restaurant as any).source).toLowerCase() === "manual"
+                    : true),
+              );
+              const isDeleting = deleteRestaurantMutation.isPending && deletingRestaurantId === restaurant.id;
 
               return (
                 <div
@@ -7663,14 +7738,27 @@ function RestaurantBooking({
                     {restaurant.partySize && (
                       <p className="mt-1 text-sm text-gray-500">{restaurant.partySize} people</p>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleProposeRestaurant(restaurant)}
-                      disabled={Boolean(linkedProposal) || isProposing}
-                    >
-                      {linkedProposal ? "Proposed" : isProposing ? "Proposing..." : "Propose to group"}
-                    </Button>
+                    <div className="flex flex-wrap gap-2 justify-start sm:justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleProposeRestaurant(restaurant)}
+                        disabled={Boolean(linkedProposal) || isProposing}
+                      >
+                        {linkedProposal ? "Proposed" : isProposing ? "Proposing..." : "Propose to group"}
+                      </Button>
+                      {isManualRestaurant ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => handleDeleteRestaurant(restaurant)}
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? "Deleting..." : "Delete"}
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               );
