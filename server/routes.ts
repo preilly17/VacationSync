@@ -3718,6 +3718,39 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.delete('/api/trips/:tripId/restaurants/:restaurantId', isAuthenticated, async (req: any, res) => {
+    const tripId = Number.parseInt(req.params.tripId, 10);
+    const restaurantId = Number.parseInt(req.params.restaurantId, 10);
+
+    if (!Number.isFinite(tripId) || !Number.isFinite(restaurantId)) {
+      return res.status(400).json({ message: "Invalid trip or restaurant id" });
+    }
+
+    const userId = getRequestUserId(req);
+    if (!userId) {
+      return res.status(401).json({ message: "User ID not found" });
+    }
+
+    try {
+      await storage.deleteRestaurant(restaurantId, userId);
+      res.json({ success: true });
+    } catch (error: unknown) {
+      console.error("Error deleting restaurant:", error);
+
+      if (error instanceof Error) {
+        if (error.message.includes("Restaurant not found")) {
+          return res.status(404).json({ message: "Restaurant not found" });
+        }
+
+        if (error.message.includes("Only the creator")) {
+          return res.status(403).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: "Failed to delete restaurant" });
+    }
+  });
+
   // Packing list routes
   app.get('/api/trips/:id/packing', async (req: any, res) => {
     try {
