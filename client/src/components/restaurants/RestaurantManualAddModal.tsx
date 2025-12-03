@@ -165,6 +165,11 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
             : null,
       };
 
+      console.log(
+        "Mutation request",
+        `/api/trips/${normalizedTripId}/restaurants`,
+        payload,
+      );
       await addRestaurant(normalizedTripId, payload);
     },
     onSuccess: async () => {

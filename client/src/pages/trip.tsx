@@ -4880,6 +4880,7 @@ function FlightCoordination({
 
   const createFlightMutation = useMutation({
     mutationFn: async (flightData: InsertFlight) => {
+      console.log("Mutation request", `/api/trips/${tripId}/flights`, flightData);
       return apiRequest(`/api/trips/${tripId}/flights`, {
         method: "POST",
         body: flightData,
@@ -4999,39 +5000,13 @@ function FlightCoordination({
   const [proposingFlightId, setProposingFlightId] = useState<number | null>(null);
   const proposeFlightMutation = useMutation({
     mutationFn: async (flight: FlightWithDetails) => {
-      const payload: InsertFlight = {
-        tripId: flight.tripId,
-        flightNumber: flight.flightNumber,
-        airline: flight.airline,
-        airlineCode: flight.airlineCode,
-        departureAirport: flight.departureAirport,
-        departureCode: flight.departureCode,
-        departureTime: flight.departureTime,
-        arrivalAirport: flight.arrivalAirport,
-        arrivalCode: flight.arrivalCode,
-        arrivalTime: flight.arrivalTime,
-        flightType: flight.flightType || "outbound",
-        status: flight.status ?? "confirmed",
-        currency: flight.currency ?? "USD",
-        bookingReference: flight.bookingReference ?? null,
-        departureTerminal: flight.departureTerminal ?? null,
-        departureGate: flight.departureGate ?? null,
-        arrivalTerminal: flight.arrivalTerminal ?? null,
-        arrivalGate: flight.arrivalGate ?? null,
-        seatNumber: flight.seatNumber ?? null,
-        seatClass: flight.seatClass ?? null,
-        price: typeof flight.price === "number" ? flight.price : null,
-        layovers: flight.layovers ?? null,
-        bookingSource: flight.bookingSource ?? null,
-        purchaseUrl: flight.purchaseUrl ?? null,
-        aircraft: flight.aircraft ?? null,
-        flightDuration: flight.flightDuration ?? null,
-        baggage: flight.baggage ?? null,
-      };
+      const endpoint = `/api/trips/${tripId}/proposals/flights`;
+      const payload = { flightId: flight.id };
+      console.log("Mutation request", endpoint, payload);
 
-      return apiRequest(`/api/trips/${tripId}/proposals/flights`, {
+      return apiRequest(endpoint, {
         method: "POST",
-        body: { ...payload, id: flight.id },
+        body: payload,
       });
     },
     onSuccess: async () => {
@@ -6465,12 +6440,13 @@ function HotelBooking({
   >({
     mutationFn: async (payload: ManualHotelProposalPayload) => {
       const requestBody = buildHotelProposalRequestBody(payload);
-      const response = await apiRequest(`/api/trips/${payload.tripId}/proposals/hotels`, {
+      const endpoint = `/api/trips/${payload.tripId}/proposals/hotels`;
+      console.log("Mutation request", endpoint, requestBody);
+
+      return apiRequest<HotelProposalWithDetails>(endpoint, {
         method: "POST",
         body: requestBody,
       });
-
-      return (await response.json()) as HotelProposalWithDetails;
     },
     onSuccess: async (proposal, payload) => {
       toast({ title: "Hotel proposed to group." });
@@ -6735,9 +6711,12 @@ function HotelBooking({
 
   const createHotelMutation = useMutation({
     mutationFn: async (payload: InsertHotel) => {
-      return await apiRequest(`/api/trips/${tripId}/hotels`, {
+      const endpoint = `/api/trips/${tripId}/hotels`;
+      console.log("Mutation request", endpoint, payload);
+
+      return await apiRequest(endpoint, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: payload,
       });
     },
     onSuccess: async () => {
@@ -7412,9 +7391,13 @@ function RestaurantBooking({
   const [proposingRestaurantId, setProposingRestaurantId] = useState<number | null>(null);
   const proposeRestaurantMutation = useMutation({
     mutationFn: async (restaurantId: number) => {
-      await apiRequest(`/api/trips/${tripId}/proposals/restaurants`, {
+      const endpoint = `/api/trips/${tripId}/proposals/restaurants`;
+      const payload = { restaurantId };
+      console.log("Mutation request", endpoint, payload);
+
+      await apiRequest(endpoint, {
         method: "POST",
-        body: { restaurantId },
+        body: payload,
       });
     },
     onSuccess: async () => {

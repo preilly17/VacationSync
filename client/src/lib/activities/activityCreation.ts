@@ -227,37 +227,19 @@ export const submitActivityRequest = async <T extends ActivityWithDetails>({
   });
 
   try {
-    const response = await apiRequest(endpoint, {
+    console.log("Mutation request", endpoint, payload);
+    const response = await apiRequest<T>(endpoint, {
       method: "POST",
       body: payload,
     });
 
-    const responseClone = response.clone();
-    let preview: unknown = null;
-    try {
-      preview = await responseClone.json();
-    } catch {
-      try {
-        preview = await responseClone.text();
-      } catch {
-        preview = null;
-      }
-    }
-
-    const correlationId =
-      response.headers.get("x-correlation-id")
-      ?? response.headers.get("X-Correlation-ID")
-      ?? null;
-
     console.info("[activity:create] success", {
       tripId,
       endpoint,
-      status: response.status,
-      correlationId,
-      response: redactDates(preview),
+      response: redactDates(response),
     });
 
-    return (await response.json()) as T;
+    return response;
   } catch (error) {
     if (error instanceof ApiError) {
       const correlationId =
