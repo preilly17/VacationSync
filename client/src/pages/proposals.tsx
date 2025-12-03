@@ -816,8 +816,7 @@ function ProposalsPage({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/restaurant-proposals`] }),
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] }),
       ]);
       toast({ title: "Proposal updated" });
     },

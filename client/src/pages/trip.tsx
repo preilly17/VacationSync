@@ -7244,7 +7244,7 @@ function RestaurantBooking({
   const { data: restaurantProposals = [], isLoading: restaurantProposalsLoading } = useQuery<
     RestaurantProposalWithDetails[]
   >({
-    queryKey: [`/api/trips/${tripId}/proposals/restaurants`],
+    queryKey: ["/api/trips", tripId, "restaurant-proposals"],
     enabled: !!tripId,
   });
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
@@ -7403,7 +7403,6 @@ function RestaurantBooking({
     onSuccess: async () => {
       toast({ title: "Restaurant proposed to group." });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] }),
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurants"] }),
       ]);
@@ -7439,7 +7438,6 @@ function RestaurantBooking({
     },
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] }),
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] }),
       ]);
       toast({ title: "Proposal updated" });
