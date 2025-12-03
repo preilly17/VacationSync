@@ -5053,17 +5053,19 @@ function FlightCoordination({
   });
 
   const handleProposeFlight = useCallback(
-    (flight: FlightWithDetails) => {
+    async (flight: FlightWithDetails) => {
       if (flight.proposalId) {
         return;
       }
 
       setProposingFlightId(flight.id);
-      proposeFlightMutation.mutate(flight, {
-        onSettled: () => {
-          setProposingFlightId(null);
-        },
-      });
+      try {
+        await proposeFlightMutation.mutateAsync(flight);
+      } catch (error) {
+        console.error("Error proposing flight", error);
+      } finally {
+        setProposingFlightId(null);
+      }
     },
     [proposeFlightMutation],
   );
@@ -6583,7 +6585,7 @@ function HotelBooking({
   });
 
   const handleProposeHotel = useCallback(
-    (hotel: HotelWithDetails) => {
+    async (hotel: HotelWithDetails) => {
       if (!canManageHotel(hotel)) {
         toast({
           title: "Not allowed",
@@ -6629,11 +6631,13 @@ function HotelBooking({
       }
 
       setProposingHotelId(hotel.id);
-      proposeHotelMutation.mutate(payload, {
-        onSettled: () => {
-          setProposingHotelId(null);
-        },
-      });
+      try {
+        await proposeHotelMutation.mutateAsync(payload);
+      } catch (error) {
+        console.error("Error proposing hotel", error);
+      } finally {
+        setProposingHotelId(null);
+      }
     },
     [
       canManageHotel,

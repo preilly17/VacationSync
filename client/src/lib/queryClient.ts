@@ -120,6 +120,7 @@ export async function apiRequest(
   }
 
   try {
+    console.log("HTTP request", options.method, url, options.body);
     const res = await fetch(buildApiUrl(url), {
       method: options.method,
       headers,
@@ -149,8 +150,10 @@ export async function apiRequest(
       );
     }
 
+    console.log("HTTP response", options.method, url, res.status);
     return res;
   } catch (error) {
+    console.error("HTTP error", options.method, url, error);
     if (error instanceof ApiError) {
       throw error;
     }
