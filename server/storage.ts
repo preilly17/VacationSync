@@ -9422,6 +9422,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
     restaurant: InsertRestaurant,
     userId: string,
   ): Promise<Restaurant> {
+    console.log('[storage.createRestaurant] start', {
+      tripId: restaurant.tripId,
+      userId,
+      name: restaurant.name,
+    });
+
     const latitudeValue = toFiniteNumberOrNull(
       restaurant.latitude as string | number | null | undefined,
     );
@@ -9493,7 +9499,13 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to create restaurant");
     }
 
-    return mapRestaurant(row);
+    const mapped = mapRestaurant(row);
+    console.log('[storage.createRestaurant] success', {
+      tripId: mapped.tripId,
+      userId,
+      restaurantId: mapped.id,
+    });
+    return mapped;
   }
 
   private async syncRestaurantProposalFromRestaurantRow(

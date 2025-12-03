@@ -3537,10 +3537,16 @@ export function setupRoutes(app: Express) {
     }
   });
 
-  app.post('/api/trips/:id/restaurants', isAuthenticated, async (req: any, res) => {
+  app.post('/api/trips/:id/restaurants', isAuthenticated, async (req: any, res, next) => {
+    const tripId = Number.parseInt(req.params.id, 10);
+    console.log('[POST /api/trips/:id/restaurants] start', {
+      tripId,
+      body: req.body,
+    });
+
     try {
-      const tripId = Number.parseInt(req.params.id, 10);
       if (!Number.isFinite(tripId) || tripId <= 0) {
+        console.warn('[POST /api/trips/:id/restaurants] invalid trip id', { tripId });
         return res.status(400).json({ error: "Invalid trip id" });
       }
 
@@ -3556,11 +3562,13 @@ export function setupRoutes(app: Express) {
       }
 
       if (!userId) {
+        console.warn('[POST /api/trips/:id/restaurants] missing user id', { tripId });
         return res.status(401).json({ error: "User ID not found" });
       }
 
       const trip = await storage.getTripById(tripId);
       if (!trip) {
+        console.warn('[POST /api/trips/:id/restaurants] trip not found', { tripId, userId });
         return res.status(404).json({ error: "Trip not found" });
       }
 
@@ -3568,6 +3576,7 @@ export function setupRoutes(app: Express) {
       const isMember =
         trip.createdBy === userId || tripMembers.some((member) => member.userId === userId);
       if (!isMember) {
+        console.warn('[POST /api/trips/:id/restaurants] user not member', { tripId, userId });
         return res.status(403).json({ error: "You are no longer a member of this trip" });
       }
 
@@ -3639,6 +3648,11 @@ export function setupRoutes(app: Express) {
 
       if (!parsedResult.success) {
         const firstError = parsedResult.error.issues[0];
+        console.warn('[POST /api/trips/:id/restaurants] validation failed', {
+          tripId,
+          userId,
+          issues: parsedResult.error.issues,
+        });
         return res.status(400).json({
           error: firstError?.message ?? "Invalid restaurant data",
           details: parsedResult.error.format(),
@@ -3649,6 +3663,11 @@ export function setupRoutes(app: Express) {
 
       const reservationDateIso = toDateOnlyIsoString(parsedBody.reservationDate);
       if (!reservationDateIso) {
+        console.warn('[POST /api/trips/:id/restaurants] invalid reservation date', {
+          tripId,
+          userId,
+          reservationDate: parsedBody.reservationDate,
+        });
         return res.status(400).json({ error: "Invalid reservation date" });
       }
 
@@ -3679,21 +3698,23 @@ export function setupRoutes(app: Express) {
         userId,
       );
 
-      console.log(`✅ Created restaurant ${restaurant.name} for trip ${tripId}`);
-      res.status(201).json(restaurant);
+      console.log('[POST /api/trips/:id/restaurants] success', {
+        tripId,
+        userId,
+        restaurantId: restaurant.id,
+      });
+      return res.status(201).json(restaurant);
     } catch (error: unknown) {
-      console.error("Error creating restaurant", error);
+      console.error('[POST /api/trips/:id/restaurants] error', { tripId }, error);
       if (error instanceof z.ZodError) {
-        res.status(400).json({ error: "Invalid restaurant data", details: error.errors });
-        return;
+        return res.status(400).json({ error: "Invalid restaurant data", details: error.errors });
       }
 
       if (isPostgresConstraintViolation(error)) {
-        res.status(400).json({ error: getErrorMessage(error) });
-        return;
+        return res.status(400).json({ error: getErrorMessage(error) });
       }
 
-      res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({ error: "Internal server error" });
     }
   });
 
