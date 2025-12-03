@@ -7389,6 +7389,7 @@ function RestaurantBooking({
   );
 
   const [proposingRestaurantId, setProposingRestaurantId] = useState<number | null>(null);
+  const [showAllRestaurants, setShowAllRestaurants] = useState(false);
   const proposeRestaurantMutation = useMutation({
     mutationFn: async (restaurantId: number) => {
       const endpoint = `/api/trips/${tripId}/proposals/restaurants`;
@@ -7538,7 +7539,14 @@ function RestaurantBooking({
     );
   }
 
-  const hasRestaurants = Array.isArray(restaurants) && restaurants.length > 0;
+  const restaurantList = Array.isArray(restaurants) ? restaurants : [];
+  const hasRestaurants = restaurantList.length > 0;
+  const previewRestaurantCount = 3;
+  const hasMoreRestaurants = restaurantList.length > previewRestaurantCount;
+  const remainingRestaurantsCount = Math.max(restaurantList.length - previewRestaurantCount, 0);
+  const displayedRestaurants = showAllRestaurants
+    ? restaurantList
+    : restaurantList.slice(0, previewRestaurantCount);
 
   return (
     <div className="space-y-6">
@@ -7607,30 +7615,31 @@ function RestaurantBooking({
 
         {hasRestaurants ? (
           <div className="space-y-4">
-            {restaurants.slice(0, 3).map((restaurant) => {
+            {displayedRestaurants.map((restaurant) => {
               const displayName = (restaurant as any).restaurantName ?? restaurant.name ?? "Restaurant";
               const displayAddress = restaurant.address ?? (restaurant as any).location ?? "";
               const reservationStatusRaw = restaurant.reservationStatus ?? "pending";
-            const reservationStatusLabel = reservationStatusRaw
-              .split("_")
-              .filter(Boolean)
-              .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-              .join(" ") || "Pending";
-            const reservationDate = restaurant.reservationDate
-              ? format(new Date(restaurant.reservationDate), "MMM dd")
-              : null;
-            const reservationTime = restaurant.reservationTime ?? (restaurant as any).reservation_start_time ?? "";
-            const linkedProposal = restaurantProposalsByRestaurantId.get(restaurant.id);
-            const normalizedProposalStatus = (linkedProposal?.status ?? "").toString().trim().toLowerCase();
-            const proposalStatusLabel = normalizedProposalStatus
-              ? normalizedProposalStatus.charAt(0).toUpperCase() + normalizedProposalStatus.slice(1)
-              : reservationStatusLabel;
-            const isProposing = proposeRestaurantMutation.isPending && proposingRestaurantId === restaurant.id;
+              const reservationStatusLabel =
+                reservationStatusRaw
+                  .split("_")
+                  .filter(Boolean)
+                  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                  .join(" ") || "Pending";
+              const reservationDate = restaurant.reservationDate
+                ? format(new Date(restaurant.reservationDate), "MMM dd")
+                : null;
+              const reservationTime = restaurant.reservationTime ?? (restaurant as any).reservation_start_time ?? "";
+              const linkedProposal = restaurantProposalsByRestaurantId.get(restaurant.id);
+              const normalizedProposalStatus = (linkedProposal?.status ?? "").toString().trim().toLowerCase();
+              const proposalStatusLabel = normalizedProposalStatus
+                ? normalizedProposalStatus.charAt(0).toUpperCase() + normalizedProposalStatus.slice(1)
+                : reservationStatusLabel;
+              const isProposing = proposeRestaurantMutation.isPending && proposingRestaurantId === restaurant.id;
 
-            return (
-              <div
-                key={restaurant.id}
-                className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+              return (
+                <div
+                  key={restaurant.id}
+                  className="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
@@ -7666,10 +7675,18 @@ function RestaurantBooking({
                 </div>
               );
             })}
-            {restaurants.length > 3 && (
-              <p className="text-sm text-gray-500 text-center">
-                +{restaurants.length - 3} more restaurants
-              </p>
+            {hasMoreRestaurants && (
+              <div className="flex justify-center">
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowAllRestaurants((previous) => !previous)}
+                  className="text-sm"
+                >
+                  {showAllRestaurants
+                    ? "Show less"
+                    : `Show all restaurants${remainingRestaurantsCount > 0 ? ` (+${remainingRestaurantsCount})` : ""}`}
+                </Button>
+              </div>
             )}
           </div>
         ) : (
