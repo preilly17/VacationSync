@@ -4700,7 +4700,7 @@ export function setupRoutes(app: Express) {
     } catch (error: unknown) {
       console.error("Error creating restaurant proposal:", error);
       if (error instanceof Error && 'name' in error && error.name === 'ZodError' && 'errors' in error) {
-        res.status(400).json({ message: "Invalid restaurant proposal data", errors: (error as any).errors });
+        return res.status(400).json({ message: "Invalid restaurant proposal data", errors: (error as any).errors });
       } else if (error instanceof Error && error.message) {
         if (error.message.includes('not found') || error.message.includes('does not belong')) {
           return res.status(404).json({ message: error.message });
@@ -4710,7 +4710,7 @@ export function setupRoutes(app: Express) {
         }
       }
 
-      res.status(500).json({ message: "Failed to create restaurant proposal" });
+      return res.status(500).json({ message: "Failed to create restaurant proposal" });
     }
   };
 
@@ -4772,10 +4772,10 @@ export function setupRoutes(app: Express) {
           triggeredBy: userId,
         });
 
-        res.json(proposal);
+        return res.json(proposal);
       } catch (error: unknown) {
         console.error("Error updating restaurant proposal status:", error);
-        res.status(500).json({ message: "Failed to update restaurant proposal" });
+        return res.status(500).json({ message: "Failed to update restaurant proposal" });
       }
     },
   );
@@ -5171,7 +5171,7 @@ export function setupRoutes(app: Express) {
         }
       }
 
-      res.status(500).json({ message: "Failed to cancel restaurant proposal" });
+      return res.status(500).json({ message: "Failed to cancel restaurant proposal" });
     }
   });
 
