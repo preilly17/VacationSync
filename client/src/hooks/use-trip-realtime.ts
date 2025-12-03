@@ -85,6 +85,12 @@ export function useTripRealtime(
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
     };
 
+    const invalidateRestaurantProposals = () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/restaurants`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
+    };
+
     const invalidateWishList = () => {
       queryClient.invalidateQueries({ queryKey: ["wish-list", tripId] });
     };
@@ -119,6 +125,14 @@ export function useTripRealtime(
           case "flight_proposal_ranked":
             if (!isSelfEvent) {
               invalidateFlightProposals();
+            }
+            break;
+          case "restaurant_proposal_created":
+          case "restaurant_proposal_updated":
+          case "restaurant_proposal_canceled":
+          case "restaurant_proposal_ranked":
+            if (!isSelfEvent) {
+              invalidateRestaurantProposals();
             }
             break;
           case "wish_list_idea_created":
