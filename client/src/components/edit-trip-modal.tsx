@@ -120,9 +120,9 @@ export function EditTripModal({ open, onOpenChange, trip }: EditTripModalProps) 
     mutationFn: async (data: FormData) => {
       const response = await apiRequest(`/api/trips/${trip.id}`, {
         method: "PUT",
-        body: JSON.stringify(data),
+        body: data,
       });
-      return response.json();
+      return response;
     },
     onSuccess: async (updatedTrip) => {
       const version = Date.now();

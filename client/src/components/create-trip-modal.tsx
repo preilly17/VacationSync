@@ -151,7 +151,7 @@ export function CreateTripModal({ open, onOpenChange }: CreateTripModalProps) {
           destination: data.destination.trim(),
         },
       });
-      return response.json();
+      return response;
     },
     onSuccess: async (trip) => {
       // Invalidate and refetch trips query to show new trip on home page
