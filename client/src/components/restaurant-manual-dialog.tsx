@@ -316,7 +316,10 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         notes: null,
       };
 
-      return apiRequest(`/api/trips/${targetTripId}/restaurants`, {
+      const endpoint = `/api/trips/${targetTripId}/restaurants`;
+      console.log("Mutation request", endpoint, payload);
+
+      return apiRequest(endpoint, {
         method: "POST",
         body: payload,
       });
