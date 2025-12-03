@@ -57,9 +57,9 @@ export default function Login() {
     mutationFn: async (data: LoginFormData) => {
       const response = await apiRequest("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: data,
       });
-      return response.json();
+      return response;
     },
     onSuccess: (_data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
@@ -89,6 +89,7 @@ export default function Login() {
   });
 
   const onSubmit = (data: LoginFormData) => {
+    console.log("Submitting login form");
     loginMutation.mutate(data);
   };
 

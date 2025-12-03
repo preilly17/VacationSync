@@ -98,14 +98,14 @@ async function throwIfResNotOk(res: Response) {
   throw new ApiError(res.status, body, message);
 }
 
-export async function apiRequest(
+export async function apiRequest<T = any>(
   url: string,
   options: {
     method: string;
     body?: any;
     headers?: Record<string, string>;
   } = { method: "GET" },
-): Promise<Response> {
+): Promise<T> {
   const body =
     options.body !== undefined
       ? typeof options.body === "string"
@@ -120,7 +120,6 @@ export async function apiRequest(
   }
 
   try {
-    console.log("HTTP request", options.method, url, options.body);
     const res = await fetch(buildApiUrl(url), {
       method: options.method,
       headers,
@@ -150,8 +149,16 @@ export async function apiRequest(
       );
     }
 
+    const hasJson = contentType.includes("application/json");
+    const isEmptyResponse = res.status === 204;
+    const parsedBody = isEmptyResponse
+      ? (undefined as T)
+      : hasJson
+        ? ((await res.json()) as T)
+        : ((await res.text()) as unknown as T);
+
     console.log("HTTP response", options.method, url, res.status);
-    return res;
+    return parsedBody;
   } catch (error) {
     console.error("HTTP error", options.method, url, error);
     if (error instanceof ApiError) {
