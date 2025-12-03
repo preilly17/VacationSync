@@ -9493,19 +9493,6 @@ ${selectUserColumns("participant_user", "participant_user_")}
       throw new Error("Failed to create restaurant");
     }
 
-    try {
-      await this.syncRestaurantProposalFromRestaurantRow(row);
-    } catch (error) {
-      const code = typeof error === "object" && error ? (error as { code?: string }).code : undefined;
-      const isMissingRelation = code === "42P01" || code === "42703";
-
-      console.error("Failed to sync restaurant proposal", error);
-
-      if (!isMissingRelation) {
-        throw error;
-      }
-    }
-
     return mapRestaurant(row);
   }
 
@@ -12805,7 +12792,6 @@ ${selectUserColumns("participant_user", "participant_user_")}
     tripId: number,
     currentUserId: string,
   ): Promise<RestaurantProposalWithDetails[]> {
-    await this.ensureManualRestaurantsHaveProposals(tripId);
     await this.ensureUniqueRestaurantRankingsForTrip(tripId);
     return this.fetchRestaurantProposals({ tripId, currentUserId });
   }

@@ -100,6 +100,17 @@ type RankingMutationContext<T> = {
 const createOptimisticRankingId = (proposalId: number, ranking: number) =>
   -Math.abs(proposalId * 100 + ranking);
 
+const TRIP_ADMIN_ROLES = new Set(["admin", "owner", "organizer"]);
+
+const normalizeUserId = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    const trimmed = value.trim().toLowerCase();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  return null;
+};
+
 function applyOptimisticRankingUpdate<
   TRanking extends RankingBase,
   TProposal extends ProposalWithRankings<TRanking>,
@@ -469,18 +480,6 @@ function ProposalsPage({
     );
   }, [flightProposals, userId]);
 
-  const restaurantRankingsUsed = useMemo(() => {
-    if (!userId) {
-      return new Set<number>();
-    }
-
-    return new Set(
-      filterActiveProposals(restaurantProposals)
-        .map((proposal) => proposal.currentUserRanking?.ranking)
-        .filter((value): value is number => typeof value === "number"),
-    );
-  }, [restaurantProposals, userId]);
-
   const hotelProposalsHasError = Boolean(hotelProposalsError) || hotelProposalsInvalid;
   const flightProposalsHasError = Boolean(flightProposalsError) || flightProposalsInvalid;
   const activityProposalsHasError = Boolean(activityProposalsError) || activityProposalsInvalid;
@@ -506,6 +505,39 @@ function ProposalsPage({
     restaurantProposalsInvalid,
     "We couldn't load the restaurant proposals. Please try again.",
   );
+
+  const normalizedCurrentUserId = useMemo(
+    () => normalizeUserId(user?.id),
+    [user?.id],
+  );
+
+  const membership = useMemo(() => {
+    if (!trip || !normalizedCurrentUserId) {
+      return null;
+    }
+
+    return (
+      trip.members?.find(
+        (member) => normalizeUserId(member.userId) === normalizedCurrentUserId,
+      ) ?? null
+    );
+  }, [trip, normalizedCurrentUserId]);
+
+  const isTripOwner = useMemo(() => {
+    if (!trip?.createdBy || !normalizedCurrentUserId) {
+      return false;
+    }
+
+    return normalizeUserId(trip.createdBy) === normalizedCurrentUserId;
+  }, [trip?.createdBy, normalizedCurrentUserId]);
+
+  const isTripEditor = useMemo(() => {
+    if (!membership?.role) {
+      return false;
+    }
+
+    return TRIP_ADMIN_ROLES.has(membership.role.toLowerCase());
+  }, [membership?.role]);
 
   // Hotel ranking mutation
   const rankHotelMutation = useMutation<
@@ -666,76 +698,6 @@ function ProposalsPage({
     },
   });
 
-  // Restaurant ranking mutation
-  const rankRestaurantMutation = useMutation<
-    unknown,
-    unknown,
-    { proposalId: number; ranking: number },
-    RankingMutationContext<RestaurantProposalWithDetails[]>
-  >({
-    mutationFn: ({ proposalId, ranking }: { proposalId: number; ranking: number }) => {
-      return apiRequest(`/api/restaurant-proposals/${proposalId}/rank`, {
-        method: "POST",
-        body: { ranking },
-      });
-    },
-    onMutate: async ({ proposalId, ranking }) => {
-      const context: RankingMutationContext<RestaurantProposalWithDetails[]> = {
-        previousData: [],
-      };
-
-      if (!tripId || !user) {
-        return context;
-      }
-
-      const now = new Date().toISOString();
-      const key: readonly unknown[] = ["/api/trips", tripId, "restaurant-proposals"];
-
-      context.previousData = [
-        {
-          key,
-          data: queryClient.getQueryData<RestaurantProposalWithDetails[] | undefined>(key),
-        },
-      ];
-
-      queryClient.setQueryData<RestaurantProposalWithDetails[] | undefined>(key, (previous) => {
-        if (!previous) {
-          return previous;
-        }
-
-        return previous.map((proposal) =>
-          applyOptimisticRankingUpdate(proposal, user, proposalId, ranking, now),
-        );
-      });
-
-      return context;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
-      toast({
-        title: "Vote Recorded",
-        description: "Your restaurant preference has been saved.",
-      });
-    },
-    onError: (error, _variables, context) => {
-      if (context?.previousData) {
-        for (const { key, data } of context.previousData) {
-          queryClient.setQueryData(key, data);
-        }
-      }
-
-      if (isUnauthorizedError(error)) {
-        window.location.href = "/login";
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to record your vote. Please try again.",
-        variant: "destructive",
-      });
-    },
-  });
-
   const cancelProposalMutation = useMutation({
     mutationFn: async ({
       type,
@@ -838,6 +800,30 @@ function ProposalsPage({
         description,
         variant: "destructive",
       });
+    },
+  });
+
+  const updateRestaurantProposalStatus = useMutation<
+    unknown,
+    unknown,
+    { proposalId: number; status: "accepted" | "rejected" }
+  >({
+    mutationFn: async ({ proposalId, status }) => {
+      await apiRequest(`/api/trips/${tripId}/proposals/restaurants/${proposalId}`, {
+        method: "PATCH",
+        body: { status },
+      });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/restaurant-proposals`] }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/restaurants`] }),
+      ]);
+      toast({ title: "Proposal updated" });
+    },
+    onError: (error: unknown) => {
+      const description = error instanceof ApiError ? error.message : "Please try again.";
+      toast({ title: "Unable to update proposal", description, variant: "destructive" });
     },
   });
 
@@ -1728,16 +1714,16 @@ function ProposalsPage({
 
   // Restaurant proposal card component
   const RestaurantProposalCard = ({ proposal }: { proposal: RestaurantProposalWithDetails }) => {
-    const userRanking =
-      proposal.currentUserRanking?.ranking ??
-      getUserRanking(proposal.rankings || [], user?.id || "");
-    
     const isCanceled = isCanceledStatus(proposal.status);
     const canCancel = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
       cancelProposalMutation.variables?.type === "restaurant";
+    const isUpdatingStatus =
+      updateRestaurantProposalStatus.isPending &&
+      updateRestaurantProposalStatus.variables?.proposalId === proposal.id;
+    const canManageStatus = isTripOwner || isTripEditor;
 
     return (
       <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-restaurant-proposal-${proposal.id}`}>
@@ -1758,10 +1744,7 @@ function ProposalsPage({
               </CardDescription>
             </div>
             <div className="flex flex-col items-end gap-2">
-              {getStatusBadge(
-                proposal.status || "active",
-                proposal.averageRanking ?? undefined,
-              )}
+              {getStatusBadge(proposal.status || "active")}
               {canCancel && (
                 <CancelProposalButton
                   type="restaurant"
@@ -1775,8 +1758,6 @@ function ProposalsPage({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-4">{renderRankingPreview(proposal.rankings ?? [])}</div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-blue-600" />
@@ -1812,7 +1793,7 @@ function ProposalsPage({
             )}
           </div>
 
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2 text-sm text-neutral-600">
               <UserIcon className="w-4 h-4" />
               <span>Proposed by {proposal.proposer?.firstName || 'Unknown'}</span>
@@ -1821,76 +1802,47 @@ function ProposalsPage({
                 {proposal.createdAt ? formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true }) : 'Unknown'}
               </span>
             </div>
-            {proposal.averageRanking != null && (
-              <div className="flex items-center gap-1 text-sm">
-                <TrendingUp className="w-4 h-4 text-blue-600" />
-                <span data-testid={`text-restaurant-avg-ranking-${proposal.id}`}>
-                  Avg: {proposal.averageRanking.toFixed(1)}
-                </span>
+
+            {canManageStatus && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isUpdatingStatus}
+                  onClick={() =>
+                    updateRestaurantProposalStatus.mutate({
+                      proposalId: proposal.id,
+                      status: "accepted",
+                    })
+                  }
+                  data-testid={`button-accept-restaurant-proposal-${proposal.id}`}
+                >
+                  {isUpdatingStatus && updateRestaurantProposalStatus.variables?.status === "accepted"
+                    ? "Accepting..."
+                    : "Accept"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={isUpdatingStatus}
+                  onClick={() =>
+                    updateRestaurantProposalStatus.mutate({
+                      proposalId: proposal.id,
+                      status: "rejected",
+                    })
+                  }
+                  data-testid={`button-decline-restaurant-proposal-${proposal.id}`}
+                >
+                  {isUpdatingStatus && updateRestaurantProposalStatus.variables?.status === "rejected"
+                    ? "Declining..."
+                    : "Decline"}
+                </Button>
               </div>
             )}
           </div>
 
-          <div className="flex gap-3 items-center">
-            <Select
-              value={userRanking?.toString() || ""}
-              onValueChange={(value) => {
-                rankRestaurantMutation.mutate({ 
-                  proposalId: proposal.id, 
-                  ranking: parseInt(value) 
-                });
-              }}
-              data-testid={`select-restaurant-ranking-${proposal.id}`}
-            >
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Rank this option" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem
-                  value="1"
-                  data-testid={`option-ranking-1-${proposal.id}`}
-                  disabled={restaurantRankingsUsed.has(1) && userRanking !== 1}
-                >
-                  🥇 1st Choice
-                </SelectItem>
-                <SelectItem
-                  value="2"
-                  data-testid={`option-ranking-2-${proposal.id}`}
-                  disabled={restaurantRankingsUsed.has(2) && userRanking !== 2}
-                >
-                  🥈 2nd Choice
-                </SelectItem>
-                <SelectItem
-                  value="3"
-                  data-testid={`option-ranking-3-${proposal.id}`}
-                  disabled={restaurantRankingsUsed.has(3) && userRanking !== 3}
-                >
-                  🥉 3rd Choice
-                </SelectItem>
-                <SelectItem
-                  value="4"
-                  data-testid={`option-ranking-4-${proposal.id}`}
-                  disabled={restaurantRankingsUsed.has(4) && userRanking !== 4}
-                >
-                  4th Choice
-                </SelectItem>
-                <SelectItem
-                  value="5"
-                  data-testid={`option-ranking-5-${proposal.id}`}
-                  disabled={restaurantRankingsUsed.has(5) && userRanking !== 5}
-                >
-                  5th Choice
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            
-            {userRanking && (
-              <Badge className={getRankingColor(userRanking)} data-testid={`badge-user-ranking-${proposal.id}`}>
-                Your choice: #{userRanking}
-              </Badge>
-            )}
-            
-            {proposal.website && (
+          {proposal.website && (
+            <div className="mt-4">
               <Button
                 variant="outline"
                 size="sm"
@@ -1900,8 +1852,8 @@ function ProposalsPage({
                 <ExternalLink className="w-4 h-4 mr-1" />
                 View Restaurant
               </Button>
-            )}
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
