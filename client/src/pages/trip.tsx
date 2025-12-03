@@ -7464,7 +7464,7 @@ function RestaurantBooking({
   });
 
   const handleProposeRestaurant = useCallback(
-    (restaurant: RestaurantWithDetails) => {
+    async (restaurant: RestaurantWithDetails) => {
       if (!canManageRestaurant(restaurant)) {
         toast({
           title: "Not allowed",
@@ -7492,9 +7492,14 @@ function RestaurantBooking({
       }
 
       setProposingRestaurantId(restaurant.id);
-      proposeRestaurantMutation.mutate(restaurant.id, {
-        onSettled: () => setProposingRestaurantId(null),
-      });
+      try {
+        console.log("Proposing restaurant", restaurant.id);
+        await proposeRestaurantMutation.mutateAsync(restaurant.id);
+      } catch (error) {
+        console.error("Error proposing restaurant", error);
+      } finally {
+        setProposingRestaurantId(null);
+      }
     },
     [canManageRestaurant, proposeRestaurantMutation, restaurantProposalsByRestaurantId, toast],
   );
