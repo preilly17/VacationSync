@@ -1148,22 +1148,16 @@ function ProposalsPage({
         return true;
       }
 
-      const viewerId = user?.id?.trim();
+      const viewerId = normalizeUserId(user?.id);
       if (!viewerId) {
         return false;
       }
 
-      const proposedById =
-        typeof proposal.proposedBy === "string" && proposal.proposedBy.trim().length > 0
-          ? proposal.proposedBy.trim()
-          : undefined;
-      const proposerFallbackId =
-        typeof proposal.proposer?.id === "string" && proposal.proposer.id.trim().length > 0
-          ? proposal.proposer.id.trim()
-          : undefined;
+      const proposedById = normalizeUserId(proposal.proposedBy);
+      const proposerFallbackId = normalizeUserId(proposal.proposer?.id);
 
       const proposerId = proposedById ?? proposerFallbackId ?? null;
-      return proposerId === viewerId;
+      return proposerId !== null && proposerId === viewerId;
     },
     [user?.id],
   );
