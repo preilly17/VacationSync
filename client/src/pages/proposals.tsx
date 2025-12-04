@@ -19,6 +19,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useTripRealtime } from "@/hooks/use-trip-realtime";
@@ -331,6 +334,10 @@ function ProposalsPage({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
+  const [editingRestaurantProposal, setEditingRestaurantProposal] = useState<RestaurantProposalWithDetails | null>(null);
+  const [isRestaurantEditOpen, setIsRestaurantEditOpen] = useState(false);
+  const [restaurantEditDate, setRestaurantEditDate] = useState<Date | undefined>(undefined);
+  const [restaurantEditMealTime, setRestaurantEditMealTime] = useState<string | null>(null);
 
   useTripRealtime(tripId, { enabled: !!tripId && isAuthenticated, userId: user?.id ?? null });
 
@@ -819,6 +826,33 @@ function ProposalsPage({
         queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] }),
       ]);
       toast({ title: "Proposal updated" });
+    },
+    onError: (error: unknown) => {
+      const description = error instanceof ApiError ? error.message : "Please try again.";
+      toast({ title: "Unable to update proposal", description, variant: "destructive" });
+    },
+  });
+
+  const updateRestaurantProposalDetails = useMutation<
+    unknown,
+    unknown,
+    { proposalId: number; preferredMealTime?: string | null; preferredDate?: string | null }
+  >({
+    mutationFn: async ({ proposalId, preferredMealTime, preferredDate }) => {
+      await apiRequest(`/api/trips/${tripId}/restaurant-proposals/${proposalId}`, {
+        method: "PATCH",
+        body: {
+          preferredMealTime,
+          preferredDate,
+        },
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
+      toast({ title: "Proposal updated" });
+      setIsRestaurantEditOpen(false);
+      setEditingRestaurantProposal(null);
+      setRestaurantEditDate(undefined);
     },
     onError: (error: unknown) => {
       const description = error instanceof ApiError ? error.message : "Please try again.";
@@ -1385,6 +1419,46 @@ function ProposalsPage({
     return <Badge className="bg-blue-100 text-blue-800"><Vote className="w-3 h-3 mr-1" />Active Voting</Badge>;
   };
 
+  const openRestaurantEditDialog = (proposal: RestaurantProposalWithDetails) => {
+    setEditingRestaurantProposal(proposal);
+    setIsRestaurantEditOpen(true);
+
+    const firstDate = Array.isArray(proposal.preferredDates)
+      ? proposal.preferredDates[0]
+      : null;
+    const parsed = typeof firstDate === "string" ? new Date(firstDate) : null;
+
+    setRestaurantEditDate(parsed && !Number.isNaN(parsed.getTime()) ? parsed : undefined);
+    setRestaurantEditMealTime(proposal.preferredMealTime ?? "dinner");
+  };
+
+  const closeRestaurantEditDialog = () => {
+    setIsRestaurantEditOpen(false);
+    setEditingRestaurantProposal(null);
+    setRestaurantEditDate(undefined);
+  };
+
+  const handleRestaurantEditSave = () => {
+    if (!editingRestaurantProposal) {
+      return;
+    }
+
+    if (!restaurantEditDate) {
+      toast({
+        title: "Date required",
+        description: "Please pick a preferred dining date before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    updateRestaurantProposalDetails.mutate({
+      proposalId: editingRestaurantProposal.id,
+      preferredMealTime: restaurantEditMealTime ?? undefined,
+      preferredDate: format(restaurantEditDate, "yyyy-MM-dd"),
+    });
+  };
+
   const ActivityProposalCard = ({ proposal }: { proposal: NormalizedActivityProposal }) => {
     const startTime = proposal.startTime ? new Date(proposal.startTime) : null;
     const endTime = proposal.endTime ? new Date(proposal.endTime) : null;
@@ -1715,6 +1789,7 @@ function ProposalsPage({
   const RestaurantProposalCard = ({ proposal }: { proposal: RestaurantProposalWithDetails }) => {
     const isCanceled = isCanceledStatus(proposal.status);
     const canCancel = isMyProposal(proposal) && !isCanceled;
+    const canEditProposal = isMyProposal(proposal) && !isCanceled;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
@@ -1744,6 +1819,16 @@ function ProposalsPage({
             </div>
             <div className="flex flex-col items-end gap-2">
               {getStatusBadge(proposal.status || "active")}
+              {canEditProposal && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openRestaurantEditDialog(proposal)}
+                  data-testid={`button-edit-restaurant-proposal-${proposal.id}`}
+                >
+                  Edit
+                </Button>
+              )}
               {canCancel && (
                 <CancelProposalButton
                   type="restaurant"
@@ -2988,10 +3073,103 @@ function ProposalsPage({
       </div>
   );
 
+  const restaurantEditDialog = (
+    <Dialog
+      open={isRestaurantEditOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          closeRestaurantEditDialog();
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Edit restaurant proposal{editingRestaurantProposal ? `: ${editingRestaurantProposal.restaurantName}` : ""}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="text-sm text-neutral-600">
+            Add or update the preferred dining date so your group knows when you want to go.
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Preferred dining date *</div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className={cn(
+                    "w-full justify-start text-left font-normal",
+                    !restaurantEditDate && "text-muted-foreground",
+                  )}
+                  data-testid="button-edit-restaurant-date"
+                >
+                  <Calendar className="mr-2 h-4 w-4" />
+                  {restaurantEditDate ? format(restaurantEditDate, "PPP") : "Pick a date"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={restaurantEditDate}
+                  onSelect={(value) => setRestaurantEditDate(value ?? undefined)}
+                  disabled={(date) => date < new Date()}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Preferred meal time</div>
+            <Select
+              value={restaurantEditMealTime ?? "dinner"}
+              onValueChange={(value) => setRestaurantEditMealTime(value)}
+            >
+              <SelectTrigger data-testid="select-edit-restaurant-meal-time">
+                <SelectValue placeholder="Select meal time" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="breakfast">Breakfast</SelectItem>
+                <SelectItem value="brunch">Brunch</SelectItem>
+                <SelectItem value="lunch">Lunch</SelectItem>
+                <SelectItem value="dinner">Dinner</SelectItem>
+                <SelectItem value="late_night">Late Night</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={closeRestaurantEditDialog}
+              data-testid="button-cancel-restaurant-edit"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleRestaurantEditSave}
+              disabled={updateRestaurantProposalDetails.isPending}
+              data-testid="button-save-restaurant-edit"
+            >
+              {updateRestaurantProposalDetails.isPending ? "Saving..." : "Save changes"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (embedded) {
     return (
       <div className="space-y-6">
         <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">{mainContent}</div>
+        {restaurantEditDialog}
       </div>
     );
   }
@@ -3022,6 +3200,7 @@ function ProposalsPage({
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{mainContent}</div>
+      {restaurantEditDialog}
     </div>
   );
 }

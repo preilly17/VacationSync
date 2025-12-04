@@ -13094,6 +13094,78 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return detailed;
   }
 
+  async updateRestaurantProposalDetails(
+    proposalId: number,
+    updates: { preferredMealTime?: string | null; preferredDates?: string[] | null },
+    currentUserId: string,
+  ): Promise<RestaurantProposalWithDetails> {
+    const proposal = await this.getRestaurantProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Restaurant proposal not found");
+    }
+
+    const normalizedPreferredDates = (() => {
+      if (Array.isArray(updates.preferredDates)) {
+        return updates.preferredDates;
+      }
+
+      if (Array.isArray(proposal.preferredDates)) {
+        return proposal.preferredDates as string[];
+      }
+
+      return null;
+    })();
+
+    const preferredDatesJson = normalizedPreferredDates?.length ? toDbJson(normalizedPreferredDates) : null;
+
+    const { rows } = await query<RestaurantProposalRow>(
+      `
+      UPDATE restaurant_proposals
+      SET
+        preferred_meal_time = COALESCE($1, preferred_meal_time),
+        preferred_dates = $2,
+        updated_at = NOW()
+      WHERE id = $3
+      RETURNING
+        id,
+        trip_id,
+        proposed_by,
+        restaurant_name,
+        address,
+        cuisine_type,
+        price_range,
+        rating,
+        phone_number,
+        website,
+        reservation_url,
+        platform,
+        atmosphere,
+        specialties,
+        dietary_options,
+        preferred_meal_time,
+        preferred_dates,
+        features,
+        status,
+        average_ranking,
+        created_at,
+        updated_at
+      `,
+      [updates.preferredMealTime ?? proposal.preferredMealTime, preferredDatesJson, proposalId],
+    );
+
+    const updatedRow = rows[0];
+    if (!updatedRow) {
+      throw new Error("Failed to update restaurant proposal");
+    }
+
+    const updated = await this.getRestaurantProposalById(proposalId, currentUserId);
+    if (!updated) {
+      throw new Error("Failed to load restaurant proposal");
+    }
+
+    return updated;
+  }
+
   async cancelRestaurantProposal(
     proposalId: number,
     currentUserId: string,
