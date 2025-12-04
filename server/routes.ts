@@ -4676,8 +4676,11 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Trip not found" });
       }
 
-      const isMember = trip.members?.some((member) => member.userId === userId) ?? false;
-      if (!isMember) {
+      const normalizedUserId = normalizeUserId(userId);
+      const isOwner = normalizedUserId && normalizeUserId(trip.createdBy) === normalizedUserId;
+      const isMember =
+        trip.members?.some((member) => normalizeUserId(member.userId) === normalizedUserId) ?? false;
+      if (!isOwner && !isMember) {
         return res.status(403).json({ message: "You are not a member of this trip" });
       }
 
