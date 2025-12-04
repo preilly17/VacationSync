@@ -4773,6 +4773,85 @@ export function setupRoutes(app: Express) {
   app.post('/api/trips/:id/restaurant-proposals', isAuthenticated, handlePostTripRestaurantProposals);
 
   app.patch(
+    '/api/trips/:tripId/restaurant-proposals/:proposalId',
+    isAuthenticated,
+    async (req: any, res) => {
+      const tripIdParam =
+        typeof req.params.tripId === 'string' ? req.params.tripId : (req.params.id as string | undefined);
+      const tripId = Number.parseInt(String(tripIdParam ?? ''), 10);
+      const proposalId = Number.parseInt(String(req.params.proposalId ?? ''), 10);
+
+      if (Number.isNaN(tripId) || Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid trip or proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const trip = await storage.getTripById(tripId);
+      if (!trip) {
+        return res.status(404).json({ message: "Trip not found" });
+      }
+
+      const proposal = await storage.getRestaurantProposalById(proposalId, userId);
+      if (!proposal || proposal.tripId !== tripId) {
+        return res.status(404).json({ message: "Restaurant proposal not found" });
+      }
+
+      const normalizedUserId = normalizeUserId(userId);
+      const isOwner = normalizedUserId && normalizeUserId(trip.createdBy) === normalizedUserId;
+      const member = trip.members?.find((entry) => normalizeUserId(entry.userId) === normalizedUserId);
+      const role = member?.role?.toLowerCase();
+      const isAdmin = role ? ['admin', 'owner', 'organizer'].includes(role) : false;
+      const isProposer = normalizeUserId(proposal.proposedBy) === normalizedUserId;
+
+      if (!isOwner && !isAdmin && !isProposer) {
+        return res.status(403).json({ message: "Only the proposer or trip admins can update this proposal" });
+      }
+
+      const updateSchema = z.object({
+        preferredMealTime: z.string().trim().min(1).optional(),
+        preferredDates: z.array(z.string().trim().min(1)).optional(),
+        preferredDate: z.string().trim().min(1).optional(),
+      });
+
+      const parsed = updateSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid update payload", errors: parsed.error.errors });
+      }
+
+      const preferredDates = parsed.data.preferredDates
+        ?? (parsed.data.preferredDate ? [parsed.data.preferredDate] : undefined);
+
+      try {
+        const updated = await storage.updateRestaurantProposalDetails(
+          proposalId,
+          {
+            preferredMealTime: parsed.data.preferredMealTime,
+            preferredDates,
+          },
+          userId,
+        );
+
+        broadcastToTrip(tripId, {
+          type: "restaurant_proposal_updated",
+          tripId,
+          proposalId,
+          restaurantId: updated.restaurantId ?? null,
+          triggeredBy: userId,
+        });
+
+        res.json(updated);
+      } catch (error: unknown) {
+        console.error('[PATCH /restaurant-proposals] error', error);
+        res.status(500).json({ message: "Failed to update restaurant proposal" });
+      }
+    },
+  );
+
+  app.patch(
     '/api/trips/:tripId/proposals/restaurants/:proposalId',
     isAuthenticated,
     async (req: any, res) => {
