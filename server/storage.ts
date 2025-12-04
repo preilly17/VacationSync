@@ -9510,9 +9510,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
   private async syncRestaurantProposalFromRestaurantRow(
     restaurant: RestaurantRow,
-    options: { allowCreate?: boolean } = {},
+    options: { allowCreate?: boolean; proposedByUserId?: string } = {},
   ): Promise<number | null> {
-    const { allowCreate = true } = options;
+    const { allowCreate = true, proposedByUserId } = options;
     await this.ensureProposalLinkStructures();
 
     const { rows: existingLinks } = await query<{
@@ -9631,7 +9631,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         `,
         [
           restaurant.trip_id,
-          restaurant.user_id,
+          proposedByUserId ?? restaurant.user_id,
           restaurant.name,
           normalizedAddress,
           restaurant.cuisine_type ?? null,
@@ -9682,7 +9682,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         features: features.length > 0 ? features : null,
         status: proposalStatus,
       },
-      restaurant.user_id,
+      proposedByUserId ?? restaurant.user_id,
     );
 
     await query(
@@ -9841,9 +9841,15 @@ ${selectUserColumns("participant_user", "participant_user_")}
       );
 
       if (existingLinks[0]) {
-        proposalId = existingLinks[0].proposal_id;
+        proposalId = await this.syncRestaurantProposalFromRestaurantRow(restaurant, {
+          allowCreate: false,
+          proposedByUserId: currentUserId,
+        });
       } else {
-        proposalId = await this.syncRestaurantProposalFromRestaurantRow(restaurant, { allowCreate: true });
+        proposalId = await this.syncRestaurantProposalFromRestaurantRow(restaurant, {
+          allowCreate: true,
+          proposedByUserId: currentUserId,
+        });
         wasCreated = true;
       }
 
