@@ -4985,6 +4985,60 @@ export function setupRoutes(app: Express) {
     }
   });
 
+  app.post('/api/hotel-proposals/:id/convert', isAuthenticated, async (req: any, res) => {
+    try {
+      const proposalId = Number.parseInt(req.params.id, 10);
+      if (Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const hotel = await storage.convertHotelProposalToStay(proposalId, userId, {
+        checkInDate: req.body?.checkInDate,
+        checkOutDate: req.body?.checkOutDate,
+      });
+
+      broadcastToTrip(hotel.tripId, {
+        type: "hotel_proposal_converted",
+        tripId: hotel.tripId,
+        proposalId,
+        hotelId: hotel.id,
+        triggeredBy: userId,
+      });
+
+      res.json(hotel);
+    } catch (error: unknown) {
+      console.error("Error converting hotel proposal:", error);
+
+      if (error instanceof Error) {
+        const message = error.message.toLowerCase();
+        if (
+          message.includes('trip creator') ||
+          message.includes('no longer a member of this trip')
+        ) {
+          return res.status(403).json({ message: error.message });
+        }
+
+        if (
+          error.message.includes('Hotel proposal not found') ||
+          error.message.includes('already has a linked stay')
+        ) {
+          return res.status(400).json({ message: error.message });
+        }
+
+        if (error.message.includes('Check-in and check-out dates are required')) {
+          return res.status(400).json({ message: error.message });
+        }
+      }
+
+      res.status(500).json({ message: "Failed to convert hotel proposal" });
+    }
+  });
+
   // Flight proposal routes
   app.get('/api/trips/:id/flight-proposals', isAuthenticated, async (req: any, res) => {
     try {
