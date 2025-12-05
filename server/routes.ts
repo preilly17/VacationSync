@@ -22,6 +22,7 @@ import {
   insertRestaurantProposalSchema,
   insertRestaurantRankingSchema,
   insertRestaurantSchema,
+  nullableNumberInput,
   insertWishListIdeaSchema,
   insertWishListCommentSchema,
   activityInviteStatusSchema,
