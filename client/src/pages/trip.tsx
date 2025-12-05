@@ -1321,7 +1321,34 @@ export default function Trip() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [showWeatherModal, setShowWeatherModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<TripTab>("calendar");
+  const getInitialTabFromLocation = useCallback(
+    (currentLocation: string | null): TripTab => {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const viewParam = params.get("view");
+        if (viewParam && isTripTab(viewParam)) {
+          return viewParam;
+        }
+      }
+
+      if (currentLocation) {
+        const pathWithoutQuery = currentLocation.split("?")[0];
+        const lastSegment = pathWithoutQuery
+          .split("/")
+          .filter((segment) => segment.length > 0)
+          .pop();
+
+        if (lastSegment && isTripTab(lastSegment)) {
+          return lastSegment;
+        }
+      }
+
+      return "calendar";
+    },
+    [],
+  );
+
+  const [activeTab, setActiveTab] = useState<TripTab>(() => getInitialTabFromLocation(location));
   const [wishListBoundaryKey, setWishListBoundaryKey] = useState(0);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [calendarView, setCalendarView] = useState<CalendarViewMode>("month");
@@ -1347,27 +1374,8 @@ export default function Trip() {
   const filtersHydratedRef = useRef(false);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    const viewParam = params.get("view");
-    if (viewParam && isTripTab(viewParam)) {
-      setActiveTab(viewParam);
-      return;
-    }
-
-    const pathWithoutQuery = (location ?? "").split("?")[0];
-    const lastSegment = pathWithoutQuery
-      .split("/")
-      .filter((segment) => segment.length > 0)
-      .pop();
-
-    if (lastSegment && isTripTab(lastSegment)) {
-      setActiveTab(lastSegment);
-    }
-  }, [location]);
+    setActiveTab(getInitialTabFromLocation(location));
+  }, [getInitialTabFromLocation, location]);
 
   const evaluateExternalRedirects = useCallback(() => {
     if (typeof window === "undefined") {
