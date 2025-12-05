@@ -236,14 +236,13 @@ export function WishListBoard({ tripId, shareCode }: WishListBoardProps) {
       }
 
       const queryString = params.toString();
-      const res = await apiRequest(
+      return await apiRequest<WishListIdeasResponse>(
         `/api/trips/${tripId}/wish-list${queryString ? `?${queryString}` : ""}`,
         {
           method: "GET",
           ...(headers ? { headers } : {}),
         },
       );
-      return (await res.json()) as WishListIdeasResponse;
     },
     retry: (failureCount, requestError) => {
       if (isUnauthorizedError(requestError)) {
