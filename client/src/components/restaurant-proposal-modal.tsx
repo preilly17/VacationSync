@@ -5,7 +5,6 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -16,16 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { insertRestaurantProposalSchema } from "@shared/schema";
 import { useState } from "react";
 import { format } from "date-fns";
-import { 
-  CalendarIcon, 
-  Clock, 
-  MapPin, 
-  Star, 
-  DollarSign, 
-  ChefHat,
-  Users,
-  MessageSquare
-} from "lucide-react";
+import { CalendarIcon, MapPin, Star, ChefHat, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface RestaurantProposalModalProps {
@@ -35,16 +25,10 @@ interface RestaurantProposalModalProps {
   tripId: number;
 }
 
-const formSchema = insertRestaurantProposalSchema
-  .omit({
-    tripId: true,
-    status: true,
-  } as const)
-  .extend({
-    preferredDate: z.date({
-      required_error: "Please select a preferred date for dining",
-    }),
-  });
+const formSchema = insertRestaurantProposalSchema.omit({
+  tripId: true,
+  status: true,
+} as const);
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -88,8 +72,8 @@ export function RestaurantProposalModal({
       const proposalData = {
         ...data,
         tripId,
-        preferredDates: selectedDate ? [format(selectedDate, 'yyyy-MM-dd')] : [],
-        rating: data.rating ? data.rating.toString() : '4.0',
+        preferredDates: selectedDate ? [format(selectedDate, "yyyy-MM-dd")] : data.preferredDates ?? [],
+        rating: data.rating ? data.rating.toString() : "4.0",
       };
       return apiRequest(`/api/trips/${tripId}/restaurant-proposals`, {
         method: "POST",
@@ -116,15 +100,7 @@ export function RestaurantProposalModal({
   });
 
   const onSubmit = (data: FormData) => {
-    if (!selectedDate) {
-      toast({
-        title: "Date Required",
-        description: "Please select a preferred date for dining.",
-        variant: "destructive",
-      });
-      return;
-    }
-    createProposalMutation.mutate({ ...data, preferredDate: selectedDate });
+    createProposalMutation.mutate(data);
   };
 
   return (
@@ -169,7 +145,7 @@ export function RestaurantProposalModal({
             {/* Date Selection */}
             <div className="space-y-2">
               <FormLabel className="text-base font-medium">
-                Preferred Dining Date *
+                Preferred Dining Date (optional)
               </FormLabel>
               <Popover>
                 <PopoverTrigger asChild>
