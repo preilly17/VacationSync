@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { insertRestaurantProposalSchema } from "@shared/schema";
+import { buildRestaurantProposalRequestBody } from "@/lib/restaurant-proposals";
 import { useState } from "react";
 import { format } from "date-fns";
 import { CalendarIcon, MapPin, Star, ChefHat, Users } from "lucide-react";
@@ -25,10 +25,9 @@ interface RestaurantProposalModalProps {
   tripId: number;
 }
 
-const formSchema = insertRestaurantProposalSchema.omit({
-  tripId: true,
-  status: true,
-} as const);
+const formSchema = z.object({
+  preferredMealTime: z.string().nullable().optional(),
+});
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -53,37 +52,29 @@ export function RestaurantProposalModal({
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      restaurantName: restaurant?.name || "",
-      address: restaurant?.address || "",
-      cuisineType: restaurant?.cuisine || restaurant?.cuisineType || "",
-      priceRange: restaurant?.priceRange || "$$",
-      rating: restaurant?.rating ?? "4.0",
-      phoneNumber: restaurant?.phone || restaurant?.phoneNumber || "",
-      website: restaurant?.website || "",
-      reservationUrl: restaurant?.reservationUrl || "",
-      platform: restaurant?.platform || "Foursquare",
       preferredMealTime: "dinner",
-      preferredDates: [],
     },
   });
 
   const createProposalMutation = useMutation({
     mutationFn: (data: FormData) => {
-      const proposalData = {
-        ...data,
-        tripId,
-        preferredDates: selectedDate ? [format(selectedDate, "yyyy-MM-dd")] : data.preferredDates ?? [],
-        rating: data.rating ? data.rating.toString() : "4.0",
-      };
-      return apiRequest(`/api/trips/${tripId}/restaurant-proposals`, {
+      const proposalData = buildRestaurantProposalRequestBody(restaurant, {
+        preferredMealTime: data.preferredMealTime ?? "dinner",
+        preferredDates: selectedDate ? [format(selectedDate, "yyyy-MM-dd")] : [],
+      });
+      return apiRequest(`/api/trips/${tripId}/proposals/restaurants`, {
         method: "POST",
         body: proposalData,
       });
     },
     onSuccess: () => {
+      const proposalName =
+        restaurant?.name ||
+        restaurant?.restaurantName ||
+        "This restaurant";
       toast({
         title: "Restaurant Proposed",
-        description: `${restaurant.name} has been proposed to your group for voting.`,
+        description: `${proposalName} has been proposed to your group for voting.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] });
       onOpenChange(false);
