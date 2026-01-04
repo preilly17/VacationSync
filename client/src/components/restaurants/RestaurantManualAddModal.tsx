@@ -30,8 +30,17 @@ const manualSchema = z.object({
 const normalizeReservationDate = (value?: string | null): string | null => {
   if (!value) return null;
 
+  const trimmed = value.trim();
+  const dateMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (dateMatch) {
+    const parsed = parse(dateMatch[1], "yyyy-MM-dd", new Date());
+    if (isValid(parsed)) {
+      return format(parsed, "yyyy-MM-dd");
+    }
+  }
+
   try {
-    const parsed = parseISO(value);
+    const parsed = parseISO(trimmed);
     if (isValid(parsed)) {
       return format(parsed, "yyyy-MM-dd");
     }
@@ -40,7 +49,7 @@ const normalizeReservationDate = (value?: string | null): string | null => {
   }
 
   try {
-    const parsed = parse(value, "yyyy-MM-dd", new Date());
+    const parsed = parse(trimmed, "yyyy-MM-dd", new Date());
     if (isValid(parsed)) {
       return format(parsed, "yyyy-MM-dd");
     }
