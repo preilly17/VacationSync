@@ -4718,7 +4718,7 @@ export function setupRoutes(app: Express) {
         address: req.body.address || 'Unknown Address',
         cuisineType: req.body.cuisineType || req.body.cuisine,
         priceRange: req.body.priceRange || '$$',
-        rating: req.body.rating,
+        rating: nullableNumberInput(req.body.rating),
         phoneNumber: req.body.phoneNumber || req.body.phone,
         website: req.body.website,
         reservationUrl: req.body.reservationUrl,
@@ -6456,4 +6456,3 @@ export function setupRoutes(app: Express) {
 
   return httpServer;
 }
-
