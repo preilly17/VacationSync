@@ -100,6 +100,42 @@ const extractInviteeIdsFromDetail = (detail?: string): string[] => {
   return Array.from(matches);
 };
 
+const normalizeUserId = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const toCandidateString = (): string => {
+    if (typeof value === "string") {
+      return value.trim();
+    }
+
+    return String(value).trim();
+  };
+
+  let candidate = toCandidateString();
+  if (candidate.length === 0) {
+    return null;
+  }
+
+  if (
+    (candidate.startsWith("\"") && candidate.endsWith("\"")) ||
+    (candidate.startsWith("'") && candidate.endsWith("'"))
+  ) {
+    candidate = candidate.slice(1, -1).trim();
+  }
+
+  if (candidate.length === 0) {
+    return null;
+  }
+
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate)) {
+    return candidate.toLowerCase();
+  }
+
+  return candidate;
+};
+
 const CORRELATION_HEADER_CANDIDATES = ["x-correlation-id", "x-request-id", "x-idempotency-key"];
 
 const ACTIVITY_LOG_DATE_KEYS = new Set([
@@ -6377,4 +6413,3 @@ export function setupRoutes(app: Express) {
 
   return httpServer;
 }
-
