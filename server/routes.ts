@@ -2,7 +2,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import { ActivityInviteMembershipError, ActivityDuplicateError, storage } from "./storage";
+import { ActivityInviteMembershipError, ActivityDuplicateError, normalizeUserId, storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./sessionAuth";
 import { AuthService } from "./auth";
 import { query } from "./db";
