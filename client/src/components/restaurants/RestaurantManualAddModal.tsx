@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { RestaurantManualAddPrefill } from "@/types/restaurants";
-import { addRestaurant } from "@/lib/restaurants";
+import { apiRequest } from "@/lib/queryClient";
+import { buildRestaurantProposalRequestBody } from "@/lib/restaurant-proposals";
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_REGEX = /^\d{2}:\d{2}$/;
@@ -147,40 +148,42 @@ export function RestaurantManualAddModal({ tripId, open, onOpenChange, prefill, 
         throw new Error("Reservation time is invalid. Use HH:mm.");
       }
 
-      const payload = {
-        name: values.name.trim(),
-        address: values.address.trim(),
-        city: values.city.trim() || "Unknown City",
-        country: values.country.trim() || "Unknown Country",
-        reservationDate,
-        reservationTime,
-        partySize: normalizedPartySize,
-        priceRange: "$$",
-        reservationStatus: "pending",
-        website: prefill?.platform === "resy" ? sanitizedUrl : null,
-        openTableUrl: prefill?.platform === "open_table" ? sanitizedUrl : null,
-        notes:
-          prefill?.platform
-            ? `Saved from ${prefill.platform === "resy" ? "Resy" : "OpenTable"} link builder`
-            : null,
-      };
+      const payload = buildRestaurantProposalRequestBody(
+        {
+          name: values.name.trim(),
+          address: values.address.trim(),
+          city: values.city.trim(),
+          country: values.country.trim(),
+          priceRange: "$$",
+          reservationDate,
+          reservationTime,
+          cuisineType: null,
+          reservationUrl: sanitizedUrl,
+        },
+        {
+          preferredDates: reservationDate ? [reservationDate] : [],
+          preferredMealTime: "dinner",
+        },
+      );
 
       console.log(
         "Mutation request",
-        `/api/trips/${normalizedTripId}/restaurants`,
+        `/api/trips/${normalizedTripId}/restaurant-proposals`,
         payload,
       );
-      await addRestaurant(normalizedTripId, payload);
+      await apiRequest(`/api/trips/${normalizedTripId}/restaurant-proposals`, {
+        method: "POST",
+        body: payload,
+      });
     },
     onSuccess: async () => {
       if (normalizedTripId != null) {
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurants"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", normalizedTripId, "restaurant-proposals"] });
       }
 
       toast({
-        title: "Restaurant saved",
-        description: "We've added this reservation to your trip.",
+        title: "Restaurant proposed",
+        description: "We've shared this restaurant with your group for voting.",
       });
       onSuccess?.();
       form.reset(defaultValues);
