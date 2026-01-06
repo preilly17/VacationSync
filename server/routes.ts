@@ -176,6 +176,58 @@ const toDateOnlyIsoString = (value: unknown): string | null => {
   return null;
 };
 
+const normalizeTimeTo24Hour = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+
+    const hours = value.getHours().toString().padStart(2, "0");
+    const minutes = value.getMinutes().toString().padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (/^\d{2}:\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    const twelveHourMatch = trimmed.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])$/);
+    if (twelveHourMatch) {
+      const hoursRaw = Number.parseInt(twelveHourMatch[1], 10);
+      const minutesRaw = Number.parseInt(twelveHourMatch[2], 10);
+      if (!Number.isNaN(hoursRaw) && !Number.isNaN(minutesRaw)) {
+        const isPm = twelveHourMatch[3].toLowerCase() === "pm";
+        const hours =
+          hoursRaw === 12 ? (isPm ? 12 : 0) : isPm ? hoursRaw + 12 : hoursRaw;
+        if (hours >= 0 && hours <= 23 && minutesRaw >= 0 && minutesRaw <= 59) {
+          return `${hours.toString().padStart(2, "0")}:${minutesRaw
+            .toString()
+            .padStart(2, "0")}`;
+        }
+      }
+    }
+
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      const hours = parsed.getHours().toString().padStart(2, "0");
+      const minutes = parsed.getMinutes().toString().padStart(2, "0");
+      return `${hours}:${minutes}`;
+    }
+  }
+
+  return null;
+};
+
 const formatTripDateLabel = (value: string): string => {
   try {
     const [yearStr, monthStr, dayStr] = value.split("-");
@@ -3644,7 +3696,25 @@ export function setupRoutes(app: Express) {
         }));
 
       const rawBody = req.body ?? {};
-      const parsedResult = manualRestaurantSchema.safeParse(rawBody);
+      const normalizedReservationDate = toDateOnlyIsoString(
+        rawBody.reservationDate ??
+          rawBody.reservationDateTime ??
+          rawBody.reservation_date ??
+          rawBody.reservation_date_time,
+      );
+      const normalizedReservationTime = normalizeTimeTo24Hour(
+        rawBody.reservationTime ??
+          rawBody.reservationDateTime ??
+          rawBody.reservation_time ??
+          rawBody.reservation_date_time,
+      );
+
+      const bodyForValidation = {
+        ...rawBody,
+        reservationDate: normalizedReservationDate ?? rawBody.reservationDate,
+        reservationTime: normalizedReservationTime ?? rawBody.reservationTime,
+      };
+      const parsedResult = manualRestaurantSchema.safeParse(bodyForValidation);
 
       if (!parsedResult.success) {
         const firstError = parsedResult.error.issues[0];

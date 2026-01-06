@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format, formatISO } from "date-fns";
+import { format } from "date-fns";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -17,11 +17,11 @@ import { Label } from "@/components/ui/label";
 import { CalendarIcon } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
 import { normalizeTimeTo24Hour } from "@/lib/time";
 import { parseTripDateToLocal } from "@/lib/date";
+import { addRestaurant } from "@/lib/restaurants";
 import type { TripWithDetails } from "@shared/schema";
 
 const optionalUrlField = z.preprocess(
@@ -140,30 +140,6 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
     const normalized = new Date(value);
     normalized.setHours(0, 0, 0, 0);
     return normalized;
-  };
-
-  const buildReservationDateTime = (dateValue: Date | undefined, timeValue: string | undefined): Date | null => {
-    const safeDate = ensureValidReservationDate(dateValue);
-    if (!safeDate) {
-      return null;
-    }
-
-    const normalizedTime = normalizeTimeTo24Hour(timeValue ?? "");
-    if (!normalizedTime) {
-      return null;
-    }
-
-    const [hoursString, minutesString] = normalizedTime.split(":");
-    const hours = Number.parseInt(hoursString, 10);
-    const minutes = Number.parseInt(minutesString, 10);
-
-    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-      return null;
-    }
-
-    const withTime = new Date(safeDate);
-    withTime.setHours(hours, minutes, 0, 0);
-    return withTime;
   };
 
   const tripStartDate = useMemo(() => parseTripDateToLocal(tripContext?.startDate), [tripContext]);
@@ -289,18 +265,13 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
       const reservationDateValue = ensureValidReservationDate(data.reservationDate) ?? tripStartDate ?? new Date();
       const reservationDate = formatISO(reservationDateValue, { representation: "date" });
       const reservationTime = normalizeTimeTo24Hour(data.reservationTime) || "19:00";
-      const reservationDateTime = buildReservationDateTime(reservationDateValue, reservationTime);
-      const reservationDateTimeIso = reservationDateTime ? formatISO(reservationDateTime) : undefined;
-
       const payload = {
-        tripId: Number(targetTripId),
         name: normalizedName,
         address: normalizedAddress,
         city,
         country,
         reservationDate,
         reservationTime,
-        reservationDateTime: reservationDateTimeIso,
         partySize: normalizedPartySize,
         cuisineType: normalizedCuisine || null,
         zipCode: null,
@@ -319,10 +290,7 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
       const endpoint = `/api/trips/${targetTripId}/restaurants`;
       console.log("Mutation request", endpoint, payload);
 
-      return apiRequest(endpoint, {
-        method: "POST",
-        body: payload,
-      });
+      return addRestaurant(targetTripId, payload);
     },
     onSuccess: (_, variables) => {
       const targetTripId = variables?.tripId;
