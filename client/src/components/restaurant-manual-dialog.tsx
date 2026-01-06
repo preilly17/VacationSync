@@ -21,7 +21,8 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
 import { normalizeTimeTo24Hour } from "@/lib/time";
 import { parseTripDateToLocal } from "@/lib/date";
-import { addRestaurant } from "@/lib/restaurants";
+import { apiRequest } from "@/lib/queryClient";
+import { buildRestaurantProposalRequestBody } from "@/lib/restaurant-proposals";
 import type { TripWithDetails } from "@shared/schema";
 
 const optionalUrlField = z.preprocess(
@@ -287,19 +288,39 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         notes: null,
       };
 
-      const endpoint = `/api/trips/${targetTripId}/restaurants`;
-      console.log("Mutation request", endpoint, payload);
+      const endpoint = `/api/trips/${targetTripId}/restaurant-proposals`;
+      const requestBody = buildRestaurantProposalRequestBody(
+        {
+          name: normalizedName,
+          address: normalizedAddress,
+          cuisineType: normalizedCuisine,
+          priceRange: normalizedPriceRange,
+          rating: normalizedRating,
+          phoneNumber: data.phone,
+          website: data.website,
+          openTableUrl: data.openTableUrl,
+          reservationUrl: data.openTableUrl ?? data.website ?? null,
+        },
+        {
+          preferredDates: [reservationDate],
+          preferredMealTime: "dinner",
+        },
+      );
 
-      return addRestaurant(targetTripId, payload);
+      console.log("Mutation request", endpoint, requestBody);
+
+      return apiRequest(endpoint, {
+        method: "POST",
+        body: requestBody,
+      });
     },
     onSuccess: (_, variables) => {
       const targetTripId = variables?.tripId;
       toast({
-        title: "Restaurant Added",
-        description: "Restaurant reservation has been added to your trip.",
+        title: "Restaurant Proposed",
+        description: "Restaurant proposal has been shared with your group.",
       });
       if (targetTripId != null) {
-        queryClient.invalidateQueries({ queryKey: ["/api/trips", targetTripId, "restaurants"] });
         queryClient.invalidateQueries({ queryKey: ["/api/trips", targetTripId, "restaurant-proposals"] });
       }
       form.reset(defaultFormValues);
