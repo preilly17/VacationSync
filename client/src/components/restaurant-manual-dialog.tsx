@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
+import { format, formatISO } from "date-fns";
 
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -21,7 +21,7 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { cn } from "@/lib/utils";
 import { normalizeTimeTo24Hour } from "@/lib/time";
 import { parseTripDateToLocal } from "@/lib/date";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { buildRestaurantProposalRequestBody } from "@/lib/restaurant-proposals";
 import type { TripWithDetails } from "@shared/schema";
 
@@ -340,9 +340,15 @@ export function RestaurantManualDialog({ tripId, open, onOpenChange, onSuccess }
         return;
       }
 
+      const errorMessage =
+        error instanceof ApiError && typeof error.message === "string"
+          ? error.message
+          : "Failed to add restaurant. Please try again.";
+
+      console.error("Failed to add restaurant", error);
       toast({
         title: "Error",
-        description: "Failed to add restaurant. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     },
