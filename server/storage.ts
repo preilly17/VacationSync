@@ -165,7 +165,7 @@ const toStringArray = (value: unknown): string[] => {
   return [];
 };
 
-const normalizeUserId = (value: unknown): string | null => {
+export const normalizeUserId = (value: unknown): string | null => {
   if (value === null || value === undefined) {
     return null;
   }
