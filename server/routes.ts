@@ -102,6 +102,16 @@ const extractInviteeIdsFromDetail = (detail?: string): string[] => {
 
 const CORRELATION_HEADER_CANDIDATES = ["x-correlation-id", "x-request-id", "x-idempotency-key"];
 
+const flightProposalRequestSchema = z
+  .object({
+    flightId: z.union([z.number(), z.string()]).optional(),
+    id: z.union([z.number(), z.string()]).optional(),
+  })
+  .refine((value) => value.flightId != null || value.id != null, {
+    message: "Flight ID is required to propose to the group",
+    path: ["flightId"],
+  });
+
 const ACTIVITY_LOG_DATE_KEYS = new Set([
   "startTime",
   "endTime",
@@ -4403,31 +4413,49 @@ export function setupRoutes(app: Express) {
     '/api/trips/:tripId/proposals/flights',
     isAuthenticated,
     async (req: any, res) => {
+      const correlationId = getCorrelationIdFromRequest(req);
+      res.setHeader("x-correlation-id", correlationId);
+
       try {
         const tripId = Number.parseInt(req.params.tripId, 10);
         if (Number.isNaN(tripId)) {
-          return res.status(400).json({ message: "Invalid trip id" });
+          return res.status(400).json({ message: "Invalid trip id", correlationId });
         }
 
         const userId = getRequestUserId(req);
         if (!userId) {
-          return res.status(401).json({ message: "User ID not found" });
+          return res.status(401).json({ message: "User ID not found", correlationId });
         }
 
-        const parsedFlight = insertFlightSchema.safeParse(req.body);
+        console.info("[POST /proposals/flights] request", {
+          correlationId,
+          tripId,
+          userId,
+          body: req.body,
+        });
+
+        const parsedFlight = flightProposalRequestSchema.safeParse(req.body ?? {});
         if (!parsedFlight.success) {
+          console.warn("[POST /proposals/flights] validation failed", {
+            correlationId,
+            tripId,
+            userId,
+            issues: parsedFlight.error.issues,
+            body: req.body,
+          });
           return res
             .status(400)
-            .json({ message: "Invalid flight data", errors: parsedFlight.error.issues });
+            .json({
+              message: "Invalid flight data",
+              correlationId,
+              issues: parsedFlight.error.issues,
+              received: {
+                flightId: req.body?.flightId ?? req.body?.id ?? null,
+              },
+            });
         }
 
-        if (parsedFlight.data.tripId !== tripId) {
-          return res
-            .status(400)
-            .json({ message: "Trip ID mismatch between path and payload" });
-        }
-
-        const rawFlightId = req.body?.id ?? req.body?.flightId;
+        const rawFlightId = parsedFlight.data.flightId ?? parsedFlight.data.id;
         const flightId =
           typeof rawFlightId === 'number'
             ? rawFlightId
@@ -4438,7 +4466,13 @@ export function setupRoutes(app: Express) {
         if (!Number.isFinite(flightId)) {
           return res
             .status(400)
-            .json({ message: "Flight ID is required to propose to the group" });
+            .json({
+              message: "Flight ID is required to propose to the group",
+              correlationId,
+              received: {
+                flightId: rawFlightId ?? null,
+              },
+            });
         }
 
         const result = await storage.ensureFlightProposalForSavedFlight({
@@ -4461,21 +4495,28 @@ export function setupRoutes(app: Express) {
       } catch (error: unknown) {
         console.error("Error proposing flight to group:", error);
         if (error instanceof z.ZodError) {
-          return res.status(400).json({ message: "Invalid flight data", errors: error.issues });
+          return res.status(400).json({
+            message: "Invalid flight data",
+            correlationId,
+            issues: error.issues,
+            received: {
+              flightId: req.body?.flightId ?? req.body?.id ?? null,
+            },
+          });
         }
         if (error instanceof Error) {
           if (error.message.includes('Flight not found')) {
-            return res.status(404).json({ message: error.message });
+            return res.status(404).json({ message: error.message, correlationId });
           }
           if (error.message.includes('does not belong to this trip')) {
-            return res.status(400).json({ message: error.message });
+            return res.status(400).json({ message: error.message, correlationId });
           }
           if (error.message.includes('Only the flight creator') || error.message.includes('must be a member of this trip')) {
-            return res.status(403).json({ message: error.message });
+            return res.status(403).json({ message: error.message, correlationId });
           }
         }
 
-        res.status(500).json({ message: "Failed to propose flight" });
+        res.status(500).json({ message: "Failed to propose flight", correlationId });
       }
     },
   );
