@@ -5052,6 +5052,73 @@ export function setupRoutes(app: Express) {
     },
   );
 
+  app.post(
+    '/api/trips/:tripId/proposals/restaurants/:proposalId/accept',
+    isAuthenticated,
+    async (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      const proposalId = Number.parseInt(req.params.proposalId, 10);
+
+      if (Number.isNaN(tripId) || Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid trip or proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      try {
+        const result = await storage.acceptRestaurantProposal(proposalId, userId);
+
+        if (result.proposal.tripId !== tripId) {
+          return res.status(404).json({ message: "Restaurant proposal not found" });
+        }
+
+        broadcastToTrip(tripId, {
+          type: "restaurant_proposal_updated",
+          tripId,
+          proposalId,
+          restaurantId: result.proposal.restaurantId ?? null,
+          triggeredBy: userId,
+        });
+
+        if (result.activity) {
+          broadcastToTrip(tripId, {
+            type: "calendar_event_created",
+            tripId,
+            proposalId,
+            activityId: result.activity.id,
+            triggeredBy: userId,
+          });
+
+          broadcastToTrip(tripId, {
+            type: "activity_created",
+            activityId: result.activity.id,
+            activityType: "SCHEDULED",
+          });
+        }
+
+        return res.json(result);
+      } catch (error: unknown) {
+        console.error("Error accepting restaurant proposal:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("not found")) {
+            return res.status(404).json({ message: error.message });
+          }
+          if (error.message.includes("member")) {
+            return res.status(403).json({ message: error.message });
+          }
+          if (error.message.includes("canceled")) {
+            return res.status(409).json({ message: error.message });
+          }
+        }
+
+        return res.status(500).json({ message: "Failed to accept restaurant proposal" });
+      }
+    },
+  );
+
   app.get(
     '/api/trips/:tripId/proposals/activities',
     isAuthenticated,

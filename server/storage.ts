@@ -1,6 +1,7 @@
 import { pool, query } from "./db";
 import type { PoolClient } from "pg";
 import { buildCoverPhotoPublicUrlFromStorageKey } from "./coverPhotoShared";
+import { combineDateAndTimeInUtc, resolveTripTimezone } from "./src/utils/timezone";
 import {
   computeSplits,
   minorUnitsToAmount,
@@ -292,6 +293,37 @@ const inferRestaurantMealTime = (value: string | null | undefined): string | nul
   }
 
   return "drinks";
+};
+
+const DEFAULT_RESTAURANT_TIME_BY_MEAL: Record<string, string> = {
+  breakfast: "08:00",
+  brunch: "11:00",
+  lunch: "12:00",
+  dinner: "19:00",
+  late_night: "22:00",
+  "late-night": "22:00",
+  drinks: "20:00",
+};
+
+const minutesToTimeString = (minutes: number): string => {
+  const normalized = ((minutes % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+};
+
+const resolveRestaurantTime = (value: string | null | undefined): string => {
+  const directMinutes = parseTimeStringToMinutes(value);
+  if (directMinutes !== null) {
+    return minutesToTimeString(directMinutes);
+  }
+
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized && DEFAULT_RESTAURANT_TIME_BY_MEAL[normalized]) {
+    return DEFAULT_RESTAURANT_TIME_BY_MEAL[normalized];
+  }
+
+  return DEFAULT_RESTAURANT_TIME_BY_MEAL.dinner;
 };
 
 const parseAverageRanking = (value: unknown): number | null => {
@@ -1041,6 +1073,9 @@ type RestaurantProposalRow = {
   trip_id: number;
   proposed_by: string;
   restaurant_id?: number | null;
+  accepted_restaurant_id?: number | null;
+  accepted_by_user_id?: string | null;
+  accepted_at?: Date | string | null;
   restaurant_name: string;
   address: string;
   cuisine_type: string | null;
@@ -1554,6 +1589,10 @@ const mapRestaurantProposal = (
   tripId: row.trip_id,
   proposedBy: row.proposed_by,
   restaurantId: typeof row.restaurant_id === "number" ? row.restaurant_id : null,
+  acceptedRestaurantId:
+    typeof row.accepted_restaurant_id === "number" ? row.accepted_restaurant_id : null,
+  acceptedByUserId: row.accepted_by_user_id ?? null,
+  acceptedAt: row.accepted_at ?? null,
   restaurantName: row.restaurant_name,
   address: row.address,
   cuisineType: row.cuisine_type,
@@ -2655,6 +2694,15 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  private async ensureRestaurantProposalAcceptanceColumns(): Promise<void> {
+    await query(`
+      ALTER TABLE restaurant_proposals
+        ADD COLUMN IF NOT EXISTS accepted_restaurant_id INTEGER,
+        ADD COLUMN IF NOT EXISTS accepted_by_user_id TEXT,
+        ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ
+    `);
+  }
+
   private async ensureActivityStatusColumn(): Promise<void> {
     if (this.activityStatusColumnInitialized) {
       return;
@@ -2968,6 +3016,10 @@ export class DatabaseStorage implements IStorage {
     })();
 
     await this.coverPhotoInitPromise;
+  }
+
+  private async ensureTripTimezoneColumn(): Promise<void> {
+    await query(`ALTER TABLE trip_calendars ADD COLUMN IF NOT EXISTS timezone TEXT`);
   }
 
   private async ensureFlightDeletionAuditTable(): Promise<void> {
@@ -5207,6 +5259,336 @@ export class DatabaseStorage implements IStorage {
     }
 
     return updated;
+  }
+
+  async acceptRestaurantProposal(
+    proposalId: number,
+    currentUserId: string,
+  ): Promise<{ proposal: RestaurantProposalWithDetails; activity: ActivityWithDetails | null }> {
+    await this.ensureRestaurantProposalAcceptanceColumns();
+    await this.ensureProposalLinkStructures();
+    await this.ensureActivityTypeColumn();
+    await this.ensureActivityVotingDeadlineColumn();
+    await this.ensureActivityInviteStructures();
+    await this.ensureTripTimezoneColumn();
+
+    const client = await pool.connect();
+    let activityId: number | null = null;
+    let tripId: number | null = null;
+    let acceptedRestaurantId: number | null = null;
+
+    try {
+      await client.query("BEGIN");
+
+      const { rows: proposalRows } = await client.query<RestaurantProposalRow>(
+        `
+        SELECT
+          id,
+          trip_id,
+          proposed_by,
+          restaurant_name,
+          address,
+          cuisine_type,
+          price_range,
+          rating,
+          phone_number,
+          website,
+          reservation_url,
+          platform,
+          atmosphere,
+          specialties,
+          dietary_options,
+          preferred_meal_time,
+          preferred_dates,
+          features,
+          status,
+          average_ranking,
+          accepted_restaurant_id,
+          accepted_by_user_id,
+          accepted_at,
+          created_at,
+          updated_at
+        FROM restaurant_proposals
+        WHERE id = $1
+        FOR UPDATE
+        `,
+        [proposalId],
+      );
+
+      const proposalRow = proposalRows[0];
+      if (!proposalRow) {
+        throw new Error("Restaurant proposal not found");
+      }
+
+      const normalizedStatus = (proposalRow.status ?? "").toLowerCase();
+      if (["canceled", "cancelled", "void", "voided", "archived"].includes(normalizedStatus)) {
+        throw new Error("Cannot accept a canceled restaurant proposal");
+      }
+
+      tripId = proposalRow.trip_id;
+
+      const { rows: tripRows } = await client.query<{
+        created_by: string | null;
+        start_date: Date | string | null;
+        timezone?: string | null;
+      }>(
+        `
+        SELECT created_by, start_date, timezone
+        FROM trip_calendars
+        WHERE id = $1
+        `,
+        [tripId],
+      );
+
+      const tripRow = tripRows[0];
+      if (!tripRow) {
+        throw new Error("Trip not found");
+      }
+
+      const { rows: memberRows } = await client.query<{ user_id: string }>(
+        `
+        SELECT user_id
+        FROM trip_members
+        WHERE trip_calendar_id = $1
+        `,
+        [tripId],
+      );
+
+      const memberIds = new Set(
+        memberRows
+          .map((row) => row.user_id)
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+          .map((id) => id.trim()),
+      );
+      if (tripRow.created_by) {
+        memberIds.add(String(tripRow.created_by));
+      }
+
+      if (!memberIds.has(currentUserId)) {
+        throw new Error("You are no longer a member of this trip");
+      }
+
+      const { rows: restaurantLinkRows } = await client.query<{
+        scheduled_id: number;
+      }>(
+        `
+        SELECT scheduled_id
+        FROM proposal_schedule_links
+        WHERE proposal_type = 'restaurant'
+          AND proposal_id = $1
+          AND scheduled_table = 'restaurants'
+        LIMIT 1
+        `,
+        [proposalId],
+      );
+
+      acceptedRestaurantId = restaurantLinkRows[0]?.scheduled_id ?? null;
+
+      const { rows: activityLinkRows } = await client.query<{
+        id: number;
+        scheduled_id: number;
+      }>(
+        `
+        SELECT id, scheduled_id
+        FROM proposal_schedule_links
+        WHERE proposal_type = 'restaurant'
+          AND proposal_id = $1
+          AND scheduled_table = 'activities'
+        LIMIT 1
+        FOR UPDATE
+        `,
+        [proposalId],
+      );
+
+      activityId = activityLinkRows[0]?.scheduled_id ?? null;
+
+      if (!activityId) {
+        const preferredDatesRaw = proposalRow.preferred_dates;
+        const preferredDates = Array.isArray(preferredDatesRaw)
+          ? preferredDatesRaw
+          : preferredDatesRaw
+            ? [preferredDatesRaw]
+            : [];
+
+        const resolvedDate =
+          preferredDates
+            .map((value) => toDateOnlyIso(value as string | Date | null))
+            .find((value): value is string => Boolean(value))
+          ?? toDateOnlyIso(tripRow.start_date)
+          ?? toDateOnlyIso(new Date());
+
+        const resolvedTime = resolveRestaurantTime(proposalRow.preferred_meal_time);
+
+        const { rows: userRows } = await client.query<{ timezone: string | null }>(
+          `
+          SELECT timezone
+          FROM users
+          WHERE id = $1
+          LIMIT 1
+          `,
+          [currentUserId],
+        );
+
+        const timeZone = resolveTripTimezone({
+          tripTimezone: (tripRow as { timezone?: string | null }).timezone ?? null,
+          userTimezone: userRows[0]?.timezone ?? null,
+        });
+
+        const startTimeIso = combineDateAndTimeInUtc(resolvedDate, resolvedTime, timeZone);
+        if (!startTimeIso) {
+          throw new Error("Unable to resolve a reservation time for this proposal");
+        }
+
+        const endTime = new Date(startTimeIso);
+        endTime.setHours(endTime.getHours() + 2);
+
+        const { rows: activityRows } = await client.query<ActivityRow>(
+          `
+          INSERT INTO activities (
+            trip_calendar_id,
+            posted_by,
+            name,
+            description,
+            start_time,
+            end_time,
+            location,
+            cost,
+            max_capacity,
+            category,
+            status,
+            type,
+            voting_deadline
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          RETURNING
+            id,
+            trip_calendar_id,
+            posted_by,
+            name,
+            description,
+            start_time,
+            end_time,
+            location,
+            cost,
+            max_capacity,
+            category,
+            status,
+            type,
+            voting_deadline,
+            created_at,
+            updated_at
+          `,
+          [
+            tripId,
+            currentUserId,
+            proposalRow.restaurant_name,
+            `Restaurant reservation at ${proposalRow.restaurant_name}.`,
+            startTimeIso,
+            endTime.toISOString(),
+            proposalRow.address ?? null,
+            null,
+            null,
+            "restaurant",
+            "active",
+            "SCHEDULED",
+            null,
+          ],
+        );
+
+        const createdActivity = activityRows[0];
+        if (!createdActivity) {
+          throw new Error("Failed to create calendar event for the restaurant proposal");
+        }
+
+        activityId = createdActivity.id;
+
+        const inviteeIds = Array.from(memberIds).filter((id) => id !== currentUserId);
+        if (inviteeIds.length > 0) {
+          await client.query(
+            `
+            INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
+            SELECT
+              $1,
+              uid,
+              $2,
+              CASE WHEN $2 = 'pending' THEN NULL ELSE NOW() END
+            FROM UNNEST($3::text[]) AS uid
+            ON CONFLICT (activity_id, user_id) DO UPDATE
+              SET status = EXCLUDED.status,
+                  responded_at = EXCLUDED.responded_at,
+                  updated_at = NOW()
+            `,
+            [activityId, "pending", inviteeIds],
+          );
+        }
+
+        await client.query(
+          `
+          INSERT INTO activity_invites (activity_id, user_id, status, responded_at)
+          VALUES ($1, $2, $3, CASE WHEN $3 = 'pending' THEN NULL ELSE NOW() END)
+          ON CONFLICT (activity_id, user_id) DO UPDATE
+            SET status = EXCLUDED.status,
+                responded_at = EXCLUDED.responded_at,
+                updated_at = NOW()
+          `,
+          [activityId, currentUserId, "accepted"],
+        );
+
+        await client.query(
+          `
+          INSERT INTO proposal_schedule_links (
+            proposal_type,
+            proposal_id,
+            scheduled_table,
+            scheduled_id,
+            trip_id,
+            created_from_proposal
+          )
+          VALUES ('restaurant', $1, 'activities', $2, $3, TRUE)
+          ON CONFLICT DO NOTHING
+          `,
+          [proposalId, activityId, tripId],
+        );
+      }
+
+      await client.query(
+        `
+        UPDATE restaurant_proposals
+        SET
+          status = 'accepted',
+          accepted_restaurant_id = COALESCE(accepted_restaurant_id, $2),
+          accepted_by_user_id = COALESCE(accepted_by_user_id, $3),
+          accepted_at = COALESCE(accepted_at, NOW()),
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [proposalId, acceptedRestaurantId, currentUserId],
+      );
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (!tripId) {
+      throw new Error("Trip not found");
+    }
+
+    const proposal = await this.getRestaurantProposalById(proposalId, currentUserId);
+    if (!proposal) {
+      throw new Error("Failed to load accepted restaurant proposal");
+    }
+
+    let activity: ActivityWithDetails | null = null;
+    if (activityId) {
+      const activities = await this.getTripActivities(tripId, currentUserId);
+      activity = activities.find((item) => item.id === activityId) ?? null;
+    }
+
+    return { proposal, activity };
   }
 
   async markGroupItemUnhandled(
@@ -10808,6 +11190,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       currentUserId?: string;
     },
   ): Promise<RestaurantProposalWithDetails[]> {
+    await this.ensureRestaurantProposalAcceptanceColumns();
     const conditions: string[] = [];
     const values: unknown[] = [];
     let index = 1;
@@ -10833,6 +11216,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
         rp.trip_id,
         rp.proposed_by,
         psl.scheduled_id AS restaurant_id,
+        rp.accepted_restaurant_id,
+        rp.accepted_by_user_id,
+        rp.accepted_at,
         rp.restaurant_name,
         rp.address,
         rp.cuisine_type,
@@ -10857,6 +11243,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       LEFT JOIN proposal_schedule_links psl
         ON psl.proposal_type = 'restaurant'
        AND psl.proposal_id = rp.id
+       AND psl.scheduled_table = 'restaurants'
       JOIN users u ON u.id = rp.proposed_by
       ${whereClause}
       ORDER BY rp.created_at DESC NULLS LAST, rp.id DESC
@@ -13026,6 +13413,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     proposal: InsertRestaurantProposal,
     userId: string,
   ): Promise<RestaurantProposalWithDetails> {
+    await this.ensureRestaurantProposalAcceptanceColumns();
     const { rows } = await query<RestaurantProposalRow>(
       `
       INSERT INTO restaurant_proposals (
@@ -13073,6 +13461,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
         features,
         status,
         average_ranking,
+        accepted_restaurant_id,
+        accepted_by_user_id,
+        accepted_at,
         created_at,
         updated_at
       `,
@@ -13237,6 +13628,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     status: string,
     currentUserId: string,
   ): Promise<RestaurantProposalWithDetails> {
+    await this.ensureRestaurantProposalAcceptanceColumns();
     const { rows } = await query<RestaurantProposalRow>(
       `
       UPDATE restaurant_proposals
@@ -13263,6 +13655,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
         features,
         status,
         average_ranking,
+        accepted_restaurant_id,
+        accepted_by_user_id,
+        accepted_at,
         created_at,
         updated_at
       `,
@@ -13292,6 +13687,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
     updates: { preferredMealTime?: string | null; preferredDates?: string[] | null },
     currentUserId: string,
   ): Promise<RestaurantProposalWithDetails> {
+    await this.ensureRestaurantProposalAcceptanceColumns();
     const proposal = await this.getRestaurantProposalById(proposalId, currentUserId);
     if (!proposal) {
       throw new Error("Restaurant proposal not found");
@@ -13340,6 +13736,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
         features,
         status,
         average_ranking,
+        accepted_restaurant_id,
+        accepted_by_user_id,
+        accepted_at,
         created_at,
         updated_at
       `,

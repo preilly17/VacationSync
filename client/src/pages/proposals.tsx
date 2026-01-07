@@ -833,6 +833,30 @@ function ProposalsPage({
     },
   });
 
+  const acceptRestaurantProposal = useMutation<
+    { proposal: RestaurantProposalWithDetails; activity: ActivityWithDetails | null },
+    unknown,
+    { proposalId: number }
+  >({
+    mutationFn: async ({ proposalId }) => {
+      const res = await apiRequest(`/api/trips/${tripId}/proposals/restaurants/${proposalId}/accept`, {
+        method: "POST",
+      });
+      return (await res.json()) as { proposal: RestaurantProposalWithDetails; activity: ActivityWithDetails | null };
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "restaurant-proposals"] }),
+        queryClient.invalidateQueries({ queryKey: buildScheduledActivitiesKey(tripId) }),
+      ]);
+      toast({ title: "Restaurant accepted", description: "Added to the group calendar." });
+    },
+    onError: (error: unknown) => {
+      const description = error instanceof ApiError ? error.message : "Please try again.";
+      toast({ title: "Unable to accept proposal", description, variant: "destructive" });
+    },
+  });
+
   const updateRestaurantProposalDetails = useMutation<
     unknown,
     unknown,
@@ -1788,10 +1812,16 @@ function ProposalsPage({
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
       cancelProposalMutation.variables?.type === "restaurant";
-    const isUpdatingStatus =
+    const isAccepting =
+      acceptRestaurantProposal.isPending &&
+      acceptRestaurantProposal.variables?.proposalId === proposal.id;
+    const isRejecting =
       updateRestaurantProposalStatus.isPending &&
-      updateRestaurantProposalStatus.variables?.proposalId === proposal.id;
-    const canManageStatus = isTripOwner || isTripEditor;
+      updateRestaurantProposalStatus.variables?.proposalId === proposal.id &&
+      updateRestaurantProposalStatus.variables?.status === "rejected";
+    const canAccept = Boolean(isTripOwner || membership);
+    const canReject = isTripOwner || isTripEditor;
+    const isAlreadyAccepted = normalizeProposalStatus(proposal.status) === "accepted";
 
     return (
       <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-restaurant-proposal-${proposal.id}`}>
@@ -1881,40 +1911,39 @@ function ProposalsPage({
               </span>
             </div>
 
-            {canManageStatus && (
+            {(canAccept || canReject) && (
               <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={isUpdatingStatus}
-                  onClick={() =>
-                    updateRestaurantProposalStatus.mutate({
-                      proposalId: proposal.id,
-                      status: "accepted",
-                    })
-                  }
-                  data-testid={`button-accept-restaurant-proposal-${proposal.id}`}
-                >
-                  {isUpdatingStatus && updateRestaurantProposalStatus.variables?.status === "accepted"
-                    ? "Accepting..."
-                    : "Accept"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={isUpdatingStatus}
-                  onClick={() =>
-                    updateRestaurantProposalStatus.mutate({
-                      proposalId: proposal.id,
-                      status: "rejected",
-                    })
-                  }
-                  data-testid={`button-decline-restaurant-proposal-${proposal.id}`}
-                >
-                  {isUpdatingStatus && updateRestaurantProposalStatus.variables?.status === "rejected"
-                    ? "Declining..."
-                    : "Decline"}
-                </Button>
+                {canAccept && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isAccepting || isAlreadyAccepted}
+                    onClick={() =>
+                      acceptRestaurantProposal.mutate({
+                        proposalId: proposal.id,
+                      })
+                    }
+                    data-testid={`button-accept-restaurant-proposal-${proposal.id}`}
+                  >
+                    {isAccepting ? "Accepting..." : isAlreadyAccepted ? "Accepted" : "Accept"}
+                  </Button>
+                )}
+                {canReject && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={isRejecting}
+                    onClick={() =>
+                      updateRestaurantProposalStatus.mutate({
+                        proposalId: proposal.id,
+                        status: "rejected",
+                      })
+                    }
+                    data-testid={`button-decline-restaurant-proposal-${proposal.id}`}
+                  >
+                    {isRejecting ? "Declining..." : "Decline"}
+                  </Button>
+                )}
               </div>
             )}
           </div>
