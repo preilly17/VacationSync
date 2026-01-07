@@ -5006,15 +5006,69 @@ function FlightCoordination({
   });
 
   const [proposingFlightId, setProposingFlightId] = useState<number | null>(null);
+  const generateCorrelationId = () => {
+    try {
+      if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+      }
+    } catch {
+      // ignore
+    }
+
+    return `flight_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  };
+
+  const formatFlightProposalError = (error: ApiError) => {
+    const data = error.data;
+    let details = "";
+    let correlationId: string | null = null;
+
+    if (data && typeof data === "object") {
+      const rawCorrelationId =
+        "correlationId" in data && typeof (data as { correlationId?: unknown }).correlationId === "string"
+          ? (data as { correlationId: string }).correlationId
+          : null;
+      correlationId = rawCorrelationId?.trim() || null;
+
+      const issues = "issues" in data && Array.isArray((data as { issues?: unknown }).issues)
+        ? (data as { issues: Array<{ path?: (string | number)[]; message?: string }> }).issues
+        : null;
+
+      if (issues && issues.length > 0) {
+        details = issues
+          .map((issue) => {
+            const path = issue.path?.length ? issue.path.join(".") : "field";
+            return `${path}: ${issue.message ?? "invalid"}`;
+          })
+          .join("; ");
+      }
+    }
+
+    const detailText = details ? ` (${details})` : "";
+    const correlationText = correlationId ? ` (Ref: ${correlationId})` : "";
+    return `${error.message}${detailText}${correlationText}`;
+  };
+
   const proposeFlightMutation = useMutation({
     mutationFn: async (flight: FlightWithDetails) => {
       const endpoint = `/api/trips/${tripId}/proposals/flights`;
       const payload = { flightId: flight.id };
-      console.log("Mutation request", endpoint, payload);
+      const correlationId = generateCorrelationId();
+
+      if (import.meta.env?.DEV) {
+        console.info("[flight:proposal] submitting", {
+          endpoint,
+          payload,
+          correlationId,
+        });
+      }
 
       return apiRequest(endpoint, {
         method: "POST",
         body: payload,
+        headers: {
+          "x-correlation-id": correlationId,
+        },
       });
     },
     onSuccess: async () => {
@@ -5027,9 +5081,16 @@ function FlightCoordination({
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
       ]);
     },
-    onError: () => {
+    onError: (error) => {
+      let description = "Please try again.";
+      if (error instanceof ApiError) {
+        description = formatFlightProposalError(error);
+      } else if (error instanceof Error && error.message) {
+        description = error.message;
+      }
       toast({
         title: "Failed to propose flight.",
+        description,
         variant: "destructive",
       });
     },
