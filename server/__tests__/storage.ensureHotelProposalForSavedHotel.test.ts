@@ -99,6 +99,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       .mockResolvedValueOnce({ rows: [] })
       // ensureProposalLinkStructures -> CREATE INDEX
       .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> ADD COLUMN
+      .mockResolvedValueOnce({ rows: [] })
       // Fetch proposal with proposer details
       .mockResolvedValueOnce({
         rows: [
@@ -244,6 +246,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       .mockResolvedValueOnce({ rows: [] })
       // ensureProposalLinkStructures -> CREATE INDEX
       .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> ADD COLUMN
+      .mockResolvedValueOnce({ rows: [] })
       // Fetch proposal with proposer details
       .mockResolvedValueOnce({
         rows: [
@@ -383,6 +387,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       // ensureProposalLinkStructures -> CREATE TABLE
       .mockResolvedValueOnce({ rows: [] })
       // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> ADD COLUMN
       .mockResolvedValueOnce({ rows: [] })
       // Fetch proposal with proposer details
       .mockResolvedValueOnce({
@@ -538,6 +544,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       // ensureProposalLinkStructures -> CREATE TABLE
       .mockResolvedValueOnce({ rows: [] })
       // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> ADD COLUMN
       .mockResolvedValueOnce({ rows: [] })
       // Fetch proposal with proposer details
       .mockResolvedValueOnce({
@@ -725,6 +733,8 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
       // ensureProposalLinkStructures -> CREATE TABLE
       .mockResolvedValueOnce({ rows: [] })
       // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({ rows: [] })
+      // ensureProposalLinkStructures -> ADD COLUMN
       .mockResolvedValueOnce({ rows: [] })
       // Fetch proposal with proposer details
       .mockResolvedValueOnce({
@@ -1226,6 +1236,7 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
     queryMock
       .mockResolvedValueOnce({ rows: [] }) // ensureProposalLinkStructures -> CREATE TABLE
       .mockResolvedValueOnce({ rows: [] }) // ensureProposalLinkStructures -> CREATE INDEX
+      .mockResolvedValueOnce({ rows: [] }) // ensureProposalLinkStructures -> ADD COLUMN
       .mockResolvedValueOnce({
         rows: [
           {
@@ -1301,4 +1312,3 @@ describe("DatabaseStorage.ensureHotelProposalForSavedHotel", () => {
     consoleErrorSpy.mockRestore();
   });
 });
-
