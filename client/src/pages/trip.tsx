@@ -5295,11 +5295,15 @@ function FlightCoordination({
   return (
     <div className="space-y-6">
       <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-neutral-900">Flight Coordination</h2>
             <p className="text-gray-600">Coordinate flights with your group</p>
           </div>
+          <Button className="inline-flex items-center gap-2 px-4" onClick={openManualFlightForm}>
+            <Plus className="h-4 w-4" />
+            Add flight
+          </Button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-lg border border-dashed border-border/60 bg-neutral-50 p-4">
@@ -5655,9 +5659,6 @@ function FlightCoordination({
               Log flights you've booked elsewhere so the group can stay in sync.
             </p>
           </div>
-          <Button variant="outline" onClick={openManualFlightForm} className="sm:w-auto">
-            Add flight
-          </Button>
         </div>
 
         {manualFlights.length === 0 ? (
@@ -7635,8 +7636,9 @@ function RestaurantBooking({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" onClick={() => setManualDialogOpen(true)}>
-              Log restaurant manually
+            <Button type="button" className="inline-flex items-center gap-2 px-4" onClick={() => setManualDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Restaurant
             </Button>
           </div>
         </div>
@@ -7685,7 +7687,7 @@ function RestaurantBooking({
             </p>
           </div>
           <Button type="button" variant="outline" onClick={() => setManualDialogOpen(true)} className="sm:w-auto">
-            Log restaurant manually
+            Add Restaurant
           </Button>
         </div>
 
@@ -8426,4 +8428,3 @@ function WeatherReport({ trip }: { trip: TripWithDetails }) {
     </div>
   );
 }
-
