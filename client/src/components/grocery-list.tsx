@@ -43,7 +43,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import type {
   GroceryItemParticipant,
@@ -99,6 +99,8 @@ type MealAction =
   | { type: "SET_MEAL_STATUS"; payload: { id: string; status: GroupMealRecord["status"] } }
   | { type: "TOGGLE_MEAL_UPVOTE"; payload: { id: string; userId?: string } }
   | { type: "ADD_MEAL_COMMENT"; payload: { id: string; comment: MealCommentRecord } };
+
+const CREATOR_ONLY_MESSAGE = "Only the creator can edit or cancel this.";
 
 interface GroceryListProps {
   tripId: number;
@@ -292,6 +294,15 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
       return;
     }
 
+    if (error instanceof ApiError && error.status === 403) {
+      toast({
+        title: "Not allowed",
+        description: CREATOR_ONLY_MESSAGE,
+        variant: "destructive",
+      });
+      return;
+    }
+
     toast({
       title: "Something went wrong",
       description: fallbackMessage,
@@ -451,7 +462,21 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
     return map;
   }, [members]);
 
+  const currentMembership = useMemo(
+    () => (user ? members.find((member) => member.userId === user.id) : undefined),
+    [members, user],
+  );
+
+  const isTripAdmin = useMemo(() => {
+    const role = currentMembership?.role?.toLowerCase();
+    return role ? ["admin", "owner", "organizer"].includes(role) : false;
+  }, [currentMembership]);
+
   const currentUserName = useMemo(() => getUserDisplayName(user ?? null), [user]);
+
+  const canEditItem = (item: GroceryItemRecord) => item.addedByUserId === user?.id;
+  const canDeleteItem = (item: GroceryItemRecord) =>
+    item.addedByUserId === user?.id || isTripAdmin;
 
   const canDecideMeals = useMemo(() => {
     if (!user) {
@@ -570,11 +595,13 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
   };
 
   const handleClearPurchased = async () => {
-    const purchasedItemsToClear = groceryItems.filter((item) => item.purchased);
+    const purchasedItemsToClear = groceryItems.filter(
+      (item) => item.purchased && canDeleteItem(item),
+    );
     if (purchasedItemsToClear.length === 0) {
       toast({
         title: "No purchased items",
-        description: "There are no purchased items to clear.",
+        description: "There are no purchased items you can remove.",
       });
       return;
     }
@@ -752,9 +779,15 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
       >
         <Checkbox
           checked={item.purchased}
-          onCheckedChange={(checked) => handleTogglePurchased(item, Boolean(checked))}
+          onCheckedChange={(checked) => {
+            if (!canEditItem(item)) {
+              return;
+            }
+            handleTogglePurchased(item, Boolean(checked));
+          }}
           aria-label={`Mark ${item.name} as ${item.purchased ? "not purchased" : "purchased"}`}
           className="mt-1"
+          disabled={!canEditItem(item)}
         />
         <div className="flex flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -790,36 +823,40 @@ export function GroceryList({ tripId, user, members = [] }: GroceryListProps) {
           </div>
         </div>
         <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2 text-xs"
-            onClick={() => {
-              setEditingItem(item);
-              setIsEditDialogOpen(true);
-            }}
-          >
-            <Edit2 className="mr-1 h-3.5 w-3.5" /> Edit
-          </Button>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-destructive">
-                <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Remove item</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to remove “{item.name}” from the grocery list?
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleDeleteItem(item.id)}>Delete</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {canEditItem(item) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs"
+              onClick={() => {
+                setEditingItem(item);
+                setIsEditDialogOpen(true);
+              }}
+            >
+              <Edit2 className="mr-1 h-3.5 w-3.5" /> Edit
+            </Button>
+          )}
+          {canDeleteItem(item) && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 px-2 text-xs text-destructive">
+                  <Trash2 className="mr-1 h-3.5 w-3.5" /> Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove item</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to remove “{item.name}” from the grocery list?
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => handleDeleteItem(item.id)}>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </div>
     );
@@ -1451,4 +1488,3 @@ const GroupMealCard = ({
     </Card>
   );
 };
-

@@ -2343,6 +2343,9 @@ const toDbJson = (value: unknown): string | null =>
 
 const SHARE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
+const CREATOR_ONLY_ERROR = "Only the creator can edit or cancel this.";
+const TRIP_MEMBERSHIP_REQUIRED_ERROR = "Trip membership required";
+
 const generateShareCode = (): string => {
   let code = "";
   for (let i = 0; i < 6; i += 1) {
@@ -2380,6 +2383,10 @@ export class DatabaseStorage implements IStorage {
   private packingInitPromise: Promise<void> | null = null;
 
   private packingInitialized = false;
+
+  private groceryInitPromise: Promise<void> | null = null;
+
+  private groceryInitialized = false;
 
   private coverPhotoInitPromise: Promise<void> | null = null;
 
@@ -2855,6 +2862,12 @@ export class DatabaseStorage implements IStorage {
     }
 
     this.packingInitPromise = (async () => {
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_packing_items_trip ON packing_items(trip_id)`,
+      );
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_packing_items_user ON packing_items(user_id)`,
+      );
       await query(`
         CREATE TABLE IF NOT EXISTS packing_item_statuses (
           id SERIAL PRIMARY KEY,
@@ -2881,6 +2894,43 @@ export class DatabaseStorage implements IStorage {
       await this.packingInitPromise;
     } finally {
       this.packingInitPromise = null;
+    }
+  }
+
+  private async ensureGroceryStructures(): Promise<void> {
+    if (this.groceryInitialized) {
+      return;
+    }
+
+    if (this.groceryInitPromise) {
+      await this.groceryInitPromise;
+      return;
+    }
+
+    this.groceryInitPromise = (async () => {
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_grocery_items_trip ON grocery_items(trip_id)`,
+      );
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_grocery_items_added_by ON grocery_items(added_by)`,
+      );
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_grocery_item_participants_item ON grocery_item_participants(grocery_item_id)`,
+      );
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_grocery_item_participants_user ON grocery_item_participants(user_id)`,
+      );
+      await query(
+        `CREATE INDEX IF NOT EXISTS idx_grocery_receipts_trip ON grocery_receipts(trip_id)`,
+      );
+
+      this.groceryInitialized = true;
+    })();
+
+    try {
+      await this.groceryInitPromise;
+    } finally {
+      this.groceryInitPromise = null;
     }
   }
 
@@ -5700,7 +5750,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (existing.paid_by !== userId) {
-      throw new Error("Only the payer can update this expense");
+      throw new Error(CREATOR_ONLY_ERROR);
     }
 
     await query("BEGIN");
@@ -5969,6 +6019,7 @@ export class DatabaseStorage implements IStorage {
       `
       SELECT
         id,
+        trip_id,
         paid_by
       FROM expenses
       WHERE id = $1
@@ -5981,8 +6032,14 @@ export class DatabaseStorage implements IStorage {
       throw new Error("Expense not found");
     }
 
-    if (expense.paid_by !== userId) {
-      throw new Error("Only the payer can delete this expense");
+    const isMember = await this.isTripMember(expense.trip_id, userId);
+    if (!isMember) {
+      throw new Error(TRIP_MEMBERSHIP_REQUIRED_ERROR);
+    }
+
+    const isAdmin = await this.isTripAdmin(expense.trip_id, userId);
+    if (expense.paid_by !== userId && !isAdmin) {
+      throw new Error(CREATOR_ONLY_ERROR);
     }
 
     await query("BEGIN");
@@ -6410,10 +6467,34 @@ export class DatabaseStorage implements IStorage {
 
     return rows[0] ? Number(rows[0].count ?? 0) : 0;
   }
+
+  private async getGroceryItemAccess(itemId: number): Promise<{
+    tripId: number;
+    addedBy: string;
+  }> {
+    await this.ensureGroceryStructures();
+
+    const { rows } = await query<{ trip_id: number; added_by: string }>(
+      `
+      SELECT trip_id, added_by
+      FROM grocery_items
+      WHERE id = $1
+      `,
+      [itemId],
+    );
+
+    const row = rows[0];
+    if (!row) {
+      throw new Error("Grocery item not found");
+    }
+
+    return { tripId: row.trip_id, addedBy: row.added_by };
+  }
   async createGroceryItem(
     item: InsertGroceryItem,
     userId: string,
   ): Promise<GroceryItem> {
+    await this.ensureGroceryStructures();
     const estimatedCostValue =
       item.estimatedCost === undefined ? null : item.estimatedCost;
 
@@ -6487,6 +6568,7 @@ export class DatabaseStorage implements IStorage {
   async getTripGroceryItems(
     tripId: number,
   ): Promise<GroceryItemWithDetails[]> {
+    await this.ensureGroceryStructures();
     const { rows } = await query<GroceryItemWithAddedByRow>(
       `
       SELECT
@@ -6592,6 +6674,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
   }
 
   async getGroceryItemTripId(itemId: number): Promise<number> {
+    await this.ensureGroceryStructures();
     const { rows } = await query<{ trip_id: number }>(
       `
       SELECT trip_id
@@ -6626,7 +6709,18 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async updateGroceryItem(
     itemId: number,
     updates: Partial<InsertGroceryItem>,
+    userId: string,
   ): Promise<GroceryItem> {
+    const { tripId, addedBy } = await this.getGroceryItemAccess(itemId);
+    const isMember = await this.isTripMember(tripId, userId);
+    if (!isMember) {
+      throw new Error(TRIP_MEMBERSHIP_REQUIRED_ERROR);
+    }
+
+    if (addedBy !== userId) {
+      throw new Error(CREATOR_ONLY_ERROR);
+    }
+
     const setClauses: string[] = [];
     const values: unknown[] = [];
     let paramIndex = 2;
@@ -6696,7 +6790,18 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return mapGroceryItem(row);
   }
 
-  async deleteGroceryItem(itemId: number): Promise<void> {
+  async deleteGroceryItem(itemId: number, userId: string): Promise<void> {
+    const { tripId, addedBy } = await this.getGroceryItemAccess(itemId);
+    const isMember = await this.isTripMember(tripId, userId);
+    if (!isMember) {
+      throw new Error(TRIP_MEMBERSHIP_REQUIRED_ERROR);
+    }
+
+    const isAdmin = await this.isTripAdmin(tripId, userId);
+    if (addedBy !== userId && !isAdmin) {
+      throw new Error(CREATOR_ONLY_ERROR);
+    }
+
     await query(
       `
       DELETE FROM grocery_item_participants
@@ -6724,6 +6829,12 @@ ${selectUserColumns("participant_user", "participant_user_")}
     userId: string,
     willConsume = true,
   ): Promise<void> {
+    const { tripId } = await this.getGroceryItemAccess(groceryItemId);
+    const isMember = await this.isTripMember(tripId, userId);
+    if (!isMember) {
+      throw new Error(TRIP_MEMBERSHIP_REQUIRED_ERROR);
+    }
+
     const { rows } = await query<{ id: number }>(
       `
       SELECT id
@@ -6761,7 +6872,18 @@ ${selectUserColumns("participant_user", "participant_user_")}
     itemId: number,
     actualCost?: string | number | null,
     isPurchased = true,
+    userId: string,
   ): Promise<void> {
+    const { tripId, addedBy } = await this.getGroceryItemAccess(itemId);
+    const isMember = await this.isTripMember(tripId, userId);
+    if (!isMember) {
+      throw new Error(TRIP_MEMBERSHIP_REQUIRED_ERROR);
+    }
+
+    if (addedBy !== userId) {
+      throw new Error(CREATOR_ONLY_ERROR);
+    }
+
     if (actualCost === undefined) {
       const { rows } = await query<{ id: number }>(
         `
@@ -12279,6 +12401,57 @@ ${selectUserColumns("participant_user", "participant_user_")}
     return rows.map(mapWishListCommentWithUser);
   }
 
+  async deleteWishListComment(
+    ideaId: number,
+    commentId: number,
+    userId: string,
+  ): Promise<void> {
+    await this.ensureWishListStructures();
+
+    const { rows } = await query<{
+      id: number;
+      item_id: number;
+      user_id: string;
+      trip_id: number;
+    }>(
+      `
+      SELECT c.id, c.item_id, c.user_id, i.trip_id
+      FROM trip_wish_list_comments c
+      JOIN trip_wish_list_items i ON i.id = c.item_id
+      WHERE c.id = $1
+      `,
+      [commentId],
+    );
+
+    const comment = rows[0];
+    if (!comment || comment.item_id !== ideaId) {
+      throw new Error("Wish list comment not found");
+    }
+
+    const isMember = await this.isTripMember(comment.trip_id, userId);
+    if (!isMember) {
+      throw new Error(TRIP_MEMBERSHIP_REQUIRED_ERROR);
+    }
+
+    const isAdmin = await this.isTripAdmin(comment.trip_id, userId);
+    if (comment.user_id !== userId && !isAdmin) {
+      throw new Error(CREATOR_ONLY_ERROR);
+    }
+
+    const { rows: deleted } = await query<{ id: number }>(
+      `
+      DELETE FROM trip_wish_list_comments
+      WHERE id = $1
+      RETURNING id
+      `,
+      [commentId],
+    );
+
+    if (!deleted[0]) {
+      throw new Error("Wish list comment not found");
+    }
+  }
+
   async deleteWishListIdea(ideaId: number): Promise<void> {
     await this.ensureWishListStructures();
 
@@ -13219,5 +13392,3 @@ export const __testables = {
 };
 
 export const storage = new DatabaseStorage();
-
-

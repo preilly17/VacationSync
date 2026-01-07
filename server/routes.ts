@@ -69,6 +69,8 @@ const extractStayIdFromConstraintDetail = (detail?: string): number | null => {
 };
 
 const CONSTRAINT_VIOLATION_CODES = new Set(["23503", "23514", "23505", "23502"]);
+const CREATOR_ONLY_MESSAGE = "Only the creator can edit or cancel this.";
+const TRIP_ACCESS_DENIED_MESSAGE = "Trip not found";
 
 const isPostgresConstraintViolation = (error: unknown): error is PostgresError => {
   if (!error || typeof error !== "object") {
@@ -3904,8 +3906,13 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Packing item not found" });
       }
 
+      const isMember = await storage.isTripMember(packingItem.tripId, userId);
+      if (!isMember) {
+        return res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
+      }
+
       if (packingItem.itemType === "personal" && packingItem.userId !== userId) {
-        return res.status(403).json({ message: "You are not allowed to update this item" });
+        return res.status(403).json({ message: CREATOR_ONLY_MESSAGE });
       }
 
       await storage.togglePackingItem(itemId, userId, packingItem.itemType);
@@ -3947,7 +3954,7 @@ export function setupRoutes(app: Express) {
 
         const isMember = await storage.isTripMember(tripId, userId);
         if (!isMember) {
-          return res.status(403).json({ message: "You are not allowed to update this item" });
+          return res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
         }
 
         const updatedItem = await storage.markGroupItemHandled(
@@ -3994,7 +4001,7 @@ export function setupRoutes(app: Express) {
 
         const isMember = await storage.isTripMember(tripId, userId);
         if (!isMember) {
-          return res.status(403).json({ message: "You are not allowed to update this item" });
+          return res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
         }
 
         const updatedItem = await storage.markGroupItemUnhandled(
@@ -4029,8 +4036,14 @@ export function setupRoutes(app: Express) {
         return res.status(404).json({ message: "Packing item not found" });
       }
 
-      if (packingItem.userId !== userId) {
-        return res.status(403).json({ message: "You are not allowed to delete this item" });
+      const isMember = await storage.isTripMember(packingItem.tripId, userId);
+      if (!isMember) {
+        return res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
+      }
+
+      const isAdmin = await storage.isTripAdmin(packingItem.tripId, userId);
+      if (packingItem.userId !== userId && !isAdmin) {
+        return res.status(403).json({ message: CREATOR_ONLY_MESSAGE });
       }
 
       await storage.deletePackingItem(itemId, userId);
@@ -4145,7 +4158,10 @@ export function setupRoutes(app: Express) {
         if (error.message === "Expense not found") {
           return res.status(404).json({ message: error.message });
         }
-        if (error.message === "Only the payer can delete this expense") {
+        if (error.message === "Trip membership required") {
+          return res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
+        }
+        if (error.message === CREATOR_ONLY_MESSAGE) {
           return res.status(403).json({ message: error.message });
         }
       }
@@ -4253,7 +4269,7 @@ export function setupRoutes(app: Express) {
       }
 
       const updates = updateGroceryItemSchema.parse(req.body ?? {});
-      await storage.updateGroceryItem(itemId, updates);
+      await storage.updateGroceryItem(itemId, updates, userId);
       const groceryItem = await storage.getGroceryItemWithDetails(itemId);
       res.json(groceryItem);
     } catch (error: unknown) {
@@ -4262,6 +4278,10 @@ export function setupRoutes(app: Express) {
         res.status(400).json({ message: "Invalid grocery item data", errors: (error as any).errors });
       } else if (error instanceof Error && error.message === "Grocery item not found") {
         res.status(404).json({ message: "Grocery item not found" });
+      } else if (error instanceof Error && error.message === "Trip membership required") {
+        res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
+      } else if (error instanceof Error && error.message === CREATOR_ONLY_MESSAGE) {
+        res.status(403).json({ message: error.message });
       } else {
         res.status(500).json({ message: "Failed to update grocery item" });
       }
@@ -4293,6 +4313,8 @@ export function setupRoutes(app: Express) {
       console.error("Error updating grocery participation:", error);
       if (error instanceof Error && error.message === "Grocery item not found") {
         res.status(404).json({ message: "Grocery item not found" });
+      } else if (error instanceof Error && error.message === "Trip membership required") {
+        res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
       } else {
         res.status(500).json({ message: "Failed to update grocery participation" });
       }
@@ -4325,13 +4347,17 @@ export function setupRoutes(app: Express) {
 
       const purchaseState = typeof isPurchased === "boolean" ? isPurchased : true;
 
-      await storage.markGroceryItemPurchased(itemId, parsedActualCost, purchaseState);
+      await storage.markGroceryItemPurchased(itemId, parsedActualCost, purchaseState, userId);
       const groceryItem = await storage.getGroceryItemWithDetails(itemId);
       res.json(groceryItem);
     } catch (error: unknown) {
       console.error("Error marking grocery item purchased:", error);
       if (error instanceof Error && error.message === "Grocery item not found") {
         res.status(404).json({ message: "Grocery item not found" });
+      } else if (error instanceof Error && error.message === "Trip membership required") {
+        res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
+      } else if (error instanceof Error && error.message === CREATOR_ONLY_MESSAGE) {
+        res.status(403).json({ message: error.message });
       } else {
         res.status(500).json({ message: "Failed to update grocery item" });
       }
@@ -4350,12 +4376,16 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
-      await storage.deleteGroceryItem(itemId);
+      await storage.deleteGroceryItem(itemId, userId);
       res.status(204).send();
     } catch (error: unknown) {
       console.error("Error deleting grocery item:", error);
       if (error instanceof Error && error.message === "Grocery item not found") {
         res.status(404).json({ message: "Grocery item not found" });
+      } else if (error instanceof Error && error.message === "Trip membership required") {
+        res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
+      } else if (error instanceof Error && error.message === CREATOR_ONLY_MESSAGE) {
+        res.status(403).json({ message: error.message });
       } else {
         res.status(500).json({ message: "Failed to delete grocery item" });
       }
@@ -6427,6 +6457,43 @@ export function setupRoutes(app: Express) {
 
       console.error("Error adding wish list comment:", error);
       res.status(500).json({ message: "Failed to add comment" });
+    }
+  });
+
+  app.delete("/api/wish-list/:ideaId/comments/:commentId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = getRequestUserId(req);
+      const ideaId = parseInt(req.params.ideaId, 10);
+      const commentId = parseInt(req.params.commentId, 10);
+
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      if (userId === DEMO_USER_ID) {
+        await ensureDemoUserExists();
+      }
+
+      if (Number.isNaN(ideaId) || Number.isNaN(commentId)) {
+        return res.status(400).json({ message: "Invalid comment ID" });
+      }
+
+      await storage.deleteWishListComment(ideaId, commentId, userId);
+      res.status(204).send();
+    } catch (error: unknown) {
+      console.error("Error deleting wish list comment:", error);
+      if (error instanceof Error) {
+        if (error.message === "Wish list comment not found") {
+          return res.status(404).json({ message: "Wish list comment not found" });
+        }
+        if (error.message === "Trip membership required") {
+          return res.status(404).json({ message: TRIP_ACCESS_DENIED_MESSAGE });
+        }
+        if (error.message === CREATOR_ONLY_MESSAGE) {
+          return res.status(403).json({ message: error.message });
+        }
+      }
+      res.status(500).json({ message: "Failed to delete comment" });
     }
   });
 
