@@ -17,6 +17,7 @@ import {
   Star,
   Clock,
   MapPin,
+  Plus,
   DollarSign,
   ExternalLink,
   Loader2,
@@ -595,14 +596,15 @@ export default function ActivitySearch({ tripId, trip, user: _user, manualFormOp
     <>
       <div className="space-y-6">
         <section className="space-y-6 rounded-lg border border-border/60 bg-white p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-neutral-900">Discover Activities</h2>
               <p className="text-sm text-muted-foreground">
                 Search for activities and experiences at your destination
               </p>
             </div>
-            <Button variant="outline" onClick={openManualForm} className="w-full sm:w-auto">
+            <Button onClick={openManualForm} className="inline-flex items-center gap-2 px-4">
+              <Plus className="h-4 w-4" />
               Add activity
             </Button>
           </div>
