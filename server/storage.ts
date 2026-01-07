@@ -1083,6 +1083,7 @@ type ProposalScheduleLinkRow = {
   scheduled_table: string;
   scheduled_id: number;
   trip_id: number | null;
+  created_from_proposal: boolean | null;
   created_at: Date | null;
 };
 
@@ -2623,6 +2624,7 @@ export class DatabaseStorage implements IStorage {
           scheduled_table TEXT NOT NULL,
           scheduled_id INTEGER NOT NULL,
           trip_id INTEGER,
+          created_from_proposal BOOLEAN NOT NULL DEFAULT FALSE,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
           UNIQUE (proposal_type, proposal_id, scheduled_table, scheduled_id)
         )
@@ -2630,6 +2632,10 @@ export class DatabaseStorage implements IStorage {
 
       await query(
         `CREATE INDEX IF NOT EXISTS idx_proposal_schedule_links_lookup ON proposal_schedule_links (proposal_type, proposal_id)`,
+      );
+
+      await query(
+        `ALTER TABLE proposal_schedule_links ADD COLUMN IF NOT EXISTS created_from_proposal BOOLEAN NOT NULL DEFAULT FALSE`,
       );
 
       this.proposalLinksInitialized = true;
@@ -7979,9 +7985,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
         proposal_id,
         scheduled_table,
         scheduled_id,
-        trip_id
+        trip_id,
+        created_from_proposal
       )
-      VALUES ('hotel', $1, 'hotels', $2, $3)
+      VALUES ('hotel', $1, 'hotels', $2, $3, FALSE)
       ON CONFLICT DO NOTHING
       `,
       [insertedProposal.id, hotel.id, hotel.trip_id],
@@ -8674,9 +8681,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
         proposal_id,
         scheduled_table,
         scheduled_id,
-        trip_id
+        trip_id,
+        created_from_proposal
       )
-      VALUES ('flight', $1, 'flights', $2, $3)
+      VALUES ('flight', $1, 'flights', $2, $3, FALSE)
       ON CONFLICT DO NOTHING
       `,
       [insertedProposal.id, flight.id, flight.trip_id],
@@ -9692,9 +9700,10 @@ ${selectUserColumns("participant_user", "participant_user_")}
         proposal_id,
         scheduled_table,
         scheduled_id,
-        trip_id
+        trip_id,
+        created_from_proposal
       )
-      VALUES ('restaurant', $1, 'restaurants', $2, $3)
+      VALUES ('restaurant', $1, 'restaurants', $2, $3, FALSE)
       ON CONFLICT DO NOTHING
       `,
       [created.id, restaurant.id, restaurant.trip_id],
@@ -10786,7 +10795,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     const { rows } = await query<ProposalScheduleLinkRow>(
       `
-      SELECT id, scheduled_table, scheduled_id
+      SELECT id, scheduled_table, scheduled_id, created_from_proposal
       FROM proposal_schedule_links
       WHERE proposal_type = $1 AND proposal_id = $2
       `,
@@ -10798,23 +10807,27 @@ ${selectUserColumns("participant_user", "participant_user_")}
     }
 
     for (const link of rows) {
-      switch (link.scheduled_table) {
-        case "activities":
-          await query(`DELETE FROM activity_invites WHERE activity_id = $1`, [link.scheduled_id]);
-          await query(`DELETE FROM activity_comments WHERE activity_id = $1`, [link.scheduled_id]);
-          await query(`DELETE FROM activities WHERE id = $1`, [link.scheduled_id]);
-          break;
-        case "hotels":
-          await query(`DELETE FROM hotels WHERE id = $1`, [link.scheduled_id]);
-          break;
-        case "flights":
-          await query(`DELETE FROM flights WHERE id = $1`, [link.scheduled_id]);
-          break;
-        case "restaurants":
-          await query(`DELETE FROM restaurants WHERE id = $1`, [link.scheduled_id]);
-          break;
-        default:
-          break;
+      const shouldDeleteScheduled = Boolean(link.created_from_proposal);
+
+      if (shouldDeleteScheduled) {
+        switch (link.scheduled_table) {
+          case "activities":
+            await query(`DELETE FROM activity_invites WHERE activity_id = $1`, [link.scheduled_id]);
+            await query(`DELETE FROM activity_comments WHERE activity_id = $1`, [link.scheduled_id]);
+            await query(`DELETE FROM activities WHERE id = $1`, [link.scheduled_id]);
+            break;
+          case "hotels":
+            await query(`DELETE FROM hotels WHERE id = $1`, [link.scheduled_id]);
+            break;
+          case "flights":
+            await query(`DELETE FROM flights WHERE id = $1`, [link.scheduled_id]);
+            break;
+          case "restaurants":
+            await query(`DELETE FROM restaurants WHERE id = $1`, [link.scheduled_id]);
+            break;
+          default:
+            break;
+        }
       }
 
       await query(`DELETE FROM proposal_schedule_links WHERE id = $1`, [link.id]);
@@ -10926,8 +10939,15 @@ ${selectUserColumns("participant_user", "participant_user_")}
 
     await query(
       `
-      INSERT INTO proposal_schedule_links (proposal_type, proposal_id, scheduled_table, scheduled_id, trip_id)
-      VALUES ('hotel', $1, 'hotels', $2, $3)
+      INSERT INTO proposal_schedule_links (
+        proposal_type,
+        proposal_id,
+        scheduled_table,
+        scheduled_id,
+        trip_id,
+        created_from_proposal
+      )
+      VALUES ('hotel', $1, 'hotels', $2, $3, TRUE)
       ON CONFLICT DO NOTHING
       `,
       [proposalId, hotel.id, proposal.tripId],
@@ -13219,5 +13239,3 @@ export const __testables = {
 };
 
 export const storage = new DatabaseStorage();
-
-
