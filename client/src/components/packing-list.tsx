@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trash2, Plus, Package, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
+import { ApiError, apiRequest } from "@/lib/queryClient";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import type { PackingItem, User } from "@shared/schema";
 interface PackingListProps {
@@ -17,6 +17,8 @@ interface PackingListProps {
 
 type PackingListItem = PackingItem & { user: User };
 type PackingListData = PackingListItem[];
+
+const CREATOR_ONLY_MESSAGE = "Only the creator can edit or cancel this.";
 
 const categories = [
   { value: "general", label: "General", color: "bg-gray-100 text-gray-800" },
@@ -45,6 +47,18 @@ export function PackingList({ tripId }: PackingListProps) {
     queryKey: packingQueryKey,
     retry: false,
   });
+
+  const handleForbidden = (error: unknown) => {
+    if (error instanceof ApiError && error.status === 403) {
+      toast({
+        title: "Not allowed",
+        description: CREATOR_ONLY_MESSAGE,
+        variant: "destructive",
+      });
+      return true;
+    }
+    return false;
+  };
 
   const addItemMutation = useMutation({
     mutationFn: async (data: { item: string; category: string; itemType: "personal" | "group" }) => {
@@ -104,6 +118,11 @@ export function PackingList({ tripId }: PackingListProps) {
         }, 500);
         return;
       }
+
+      if (handleForbidden(error)) {
+        return;
+      }
+
       toast({
         title: "Error",
         description: "Failed to update item. Please try again.",
@@ -183,6 +202,10 @@ export function PackingList({ tripId }: PackingListProps) {
         return;
       }
 
+      if (handleForbidden(error)) {
+        return;
+      }
+
       toast({
         title: "Status not updated",
         description: "Couldn't update your status. Please try again.",
@@ -228,6 +251,9 @@ export function PackingList({ tripId }: PackingListProps) {
         setTimeout(() => {
           window.location.href = "/login";
         }, 500);
+        return;
+      }
+      if (handleForbidden(error)) {
         return;
       }
       toast({
