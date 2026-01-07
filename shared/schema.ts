@@ -987,6 +987,9 @@ export interface RestaurantProposal {
   tripId: number;
   proposedBy: string;
   restaurantId?: number | null;
+  acceptedRestaurantId?: number | null;
+  acceptedByUserId?: string | null;
+  acceptedAt?: IsoDate | null;
   restaurantName: string;
   address: string;
   cuisineType: string | null;
