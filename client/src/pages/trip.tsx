@@ -1822,7 +1822,7 @@ export default function Trip() {
   const handleActivityClick = useCallback((activity: ActivityWithDetails) => {
     setSelectedActivityId(activity.id);
     setExpandedActivityId((previous) => (previous === activity.id ? null : activity.id));
-    setIsActivityDialogOpen(false);
+    setIsActivityDialogOpen(true);
   }, []);
 
   const submitRsvpAction = useCallback(
