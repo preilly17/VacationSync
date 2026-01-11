@@ -3,6 +3,7 @@ import type { CorsOptions } from "cors";
 export const CORS_ALLOWED_HEADERS = [
   "Content-Type",
   "Authorization",
+  "X-Correlation-ID",
   "X-Request-ID",
   "X-Filename",
   "X-Content-Type",
@@ -28,4 +29,3 @@ export const createCorsOptions = (
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   optionsSuccessStatus: 204,
 });
-
