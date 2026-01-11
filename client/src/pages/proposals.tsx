@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from "react";
 import { useParams, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,6 +74,64 @@ import { updateActivityInviteStatus } from "@/lib/activities/updateInviteStatus"
 import { getNormalizedActivityType, isProposalActivity } from "@/lib/activities/activityType";
 
 type CancelableProposalType = "hotel" | "flight" | "restaurant" | "activity";
+
+type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
+
+type MobileProposalTabsProps = {
+  activeTab: ProposalTab;
+  onSelect: (tab: ProposalTab) => void;
+  tabs: { value: ProposalTab; label: ReactNode }[];
+};
+
+const MobileProposalTabs = ({ activeTab, onSelect, tabs }: MobileProposalTabsProps) => {
+  const tabRefs = useRef<Record<ProposalTab, HTMLButtonElement | null>>({
+    "my-proposals": null,
+    hotels: null,
+    flights: null,
+    activities: null,
+    restaurants: null,
+  });
+
+  useEffect(() => {
+    const activeButton = tabRefs.current[activeTab];
+    activeButton?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [activeTab]);
+
+  return (
+    <div className="md:hidden -mx-4 px-4">
+      <div
+        className="flex gap-2 overflow-x-auto whitespace-nowrap pb-1"
+        role="tablist"
+        aria-label="Proposal categories"
+      >
+        {tabs.map((tab) => {
+          const isActive = tab.value === activeTab;
+
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              className={cn(
+                "shrink-0 px-3 py-2 h-10 rounded-full border text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-neutral-900 text-white border-neutral-900"
+                  : "bg-white text-neutral-700 border-neutral-300 hover:bg-neutral-50"
+              )}
+              ref={(node) => {
+                tabRefs.current[tab.value] = node;
+              }}
+              onClick={() => onSelect(tab.value)}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 type ParsedApiError = {
   status?: number;
@@ -275,7 +333,6 @@ interface ProposalsPageProps {
   formatFlightDateTime?: (value?: string | Date | null) => string;
 }
 
-type ProposalTab = "my-proposals" | "hotels" | "flights" | "activities" | "restaurants";
 
 const normalizeArrayData = <T,>(value: unknown): { items: T[]; isInvalid: boolean } => {
   if (Array.isArray(value)) {
@@ -3106,6 +3163,26 @@ function ProposalsPage({
     );
   }
 
+  const mobileTabs = [
+    { value: "my-proposals" as const, label: `My Proposals${totalMyProposals > 0 ? ` (${totalMyProposals})` : ""}` },
+    {
+      value: "hotels" as const,
+      label: `Hotels${filteredHotelProposals.length > 0 ? ` (${filteredHotelProposals.length})` : ""}`,
+    },
+    {
+      value: "flights" as const,
+      label: `Flights${filteredFlightProposals.length > 0 ? ` (${filteredFlightProposals.length})` : ""}`,
+    },
+    {
+      value: "activities" as const,
+      label: `Activities${actionableActivityProposalCount > 0 ? ` (${actionableActivityProposalCount})` : ""}`,
+    },
+    {
+      value: "restaurants" as const,
+      label: `Restaurants${filteredRestaurantProposals.length > 0 ? ` (${filteredRestaurantProposals.length})` : ""}`,
+    },
+  ];
+
   const mainContent = (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -3120,7 +3197,8 @@ function ProposalsPage({
         onValueChange={(value) => setActiveTab(value as ProposalTab)}
         className="space-y-6"
       >
-          <TabsList className="grid w-full grid-cols-5">
+          <MobileProposalTabs activeTab={activeTab} onSelect={setActiveTab} tabs={mobileTabs} />
+          <TabsList className="hidden md:grid w-full grid-cols-5">
             <TabsTrigger
               value="my-proposals"
               className="flex items-center gap-2"
