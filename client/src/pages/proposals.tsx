@@ -80,6 +80,25 @@ type ParsedApiError = {
   message: string;
 };
 
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() =>
+    typeof window === "undefined" ? false : window.matchMedia(query).matches,
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const mediaQuery = window.matchMedia(query);
+    const handler = (event: MediaQueryListEvent) => setMatches(event.matches);
+    mediaQuery.addEventListener("change", handler);
+    setMatches(mediaQuery.matches);
+    return () => mediaQuery.removeEventListener("change", handler);
+  }, [query]);
+
+  return matches;
+}
+
 type RankingBase = {
   id: number;
   proposalId: number;
@@ -338,6 +357,7 @@ function ProposalsPage({
   const [isRestaurantEditOpen, setIsRestaurantEditOpen] = useState(false);
   const [restaurantEditDate, setRestaurantEditDate] = useState<Date | undefined>(undefined);
   const [restaurantEditMealTime, setRestaurantEditMealTime] = useState<string | null>(null);
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   useTripRealtime(tripId, { enabled: !!tripId && isAuthenticated, userId: user?.id ?? null });
 
@@ -1044,6 +1064,7 @@ function ProposalsPage({
     isCancelling,
     triggerTestId,
     disabled,
+    className,
   }: {
     type: CancelableProposalType;
     proposalId: number;
@@ -1051,6 +1072,7 @@ function ProposalsPage({
     isCancelling: boolean;
     triggerTestId: string;
     disabled?: boolean;
+    className?: string;
   }) => {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -1086,7 +1108,7 @@ function ProposalsPage({
           <Button
             variant="ghost"
             size="sm"
-            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+            className={cn("text-rose-600 hover:text-rose-700 hover:bg-rose-50", className)}
             disabled={disabled || isCancelling}
             data-testid={triggerTestId}
           >
@@ -2293,7 +2315,233 @@ function ProposalsPage({
   );
 
   // Flight proposal card component
-  const FlightProposalCard = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
+  const FlightProposalCardMobile = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const userRanking =
+      proposal.currentUserRanking?.ranking ??
+      getUserRanking(proposal.rankings || [], user?.id || "");
+    const isCanceled = isCanceledStatus(proposal.status);
+    const canCancel = Boolean(proposal.permissions?.canCancel && !isCanceled);
+    const pointsCostLabel =
+      typeof proposal.pointsCost === "number"
+        ? formatWholeNumber(proposal.pointsCost)
+        : null;
+    const cashValue = Number.parseFloat(proposal.price?.toString() ?? "");
+    const cashLabel =
+      Number.isFinite(cashValue) && cashValue > 0 ? `$${cashValue.toFixed(2)}` : null;
+    const priceLine = pointsCostLabel && cashLabel
+      ? `Points: ${pointsCostLabel} · ${cashLabel}`
+      : pointsCostLabel
+        ? `Points: ${pointsCostLabel}`
+        : cashLabel;
+    const isTopChoice =
+      typeof proposal.averageRanking === "number" && proposal.averageRanking <= 1.5;
+    const isCancelling =
+      cancelProposalMutation.isPending &&
+      cancelProposalMutation.variables?.proposalId === proposal.id &&
+      cancelProposalMutation.variables?.type === "flight";
+    const airlineLabel =
+      [proposal.airline, proposal.flightNumber].filter(Boolean).join(" ") || "Flight";
+    const extractAirportCode = (value?: string | null) => {
+      if (!value) {
+        return null;
+      }
+      const match = value.toUpperCase().match(/\b[A-Z]{3}\b/);
+      return match ? match[0] : null;
+    };
+    const getAirportShortLabel = (airport: string, code?: string | null) => {
+      const trimmedCode = code?.trim().toUpperCase();
+      if (trimmedCode) {
+        return trimmedCode;
+      }
+      const extracted = extractAirportCode(airport);
+      if (extracted) {
+        return extracted;
+      }
+      return airport.split(",")[0]?.trim() || airport;
+    };
+    const departureLabel = getAirportShortLabel(proposal.departureAirport, proposal.departureCode);
+    const arrivalLabel = getAirportShortLabel(proposal.arrivalAirport, proposal.arrivalCode);
+
+    return (
+      <Card className="mb-4 hover:shadow-md transition-shadow" data-testid={`card-flight-proposal-${proposal.id}`}>
+        <CardContent className="pt-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-base font-semibold">
+                <Plane className="w-4 h-4 text-blue-600" />
+                <span className="truncate" data-testid={`text-flight-number-${proposal.id}`}>
+                  {airlineLabel}
+                </span>
+              </div>
+              <div
+                className="mt-1 text-sm text-neutral-600 truncate"
+                data-testid={`text-flight-route-${proposal.id}`}
+              >
+                {departureLabel} → {arrivalLabel}
+              </div>
+              {priceLine ? (
+                <div className="mt-1 text-sm font-medium text-neutral-900" data-testid={`text-flight-price-${proposal.id}`}>
+                  {priceLine}
+                </div>
+              ) : null}
+            </div>
+            {isTopChoice && (
+              <Badge className="bg-yellow-100 text-yellow-800 shrink-0" data-testid={`badge-flight-top-choice-${proposal.id}`}>
+                <Crown className="w-3 h-3 mr-1" />
+                Top Choice
+              </Badge>
+            )}
+          </div>
+
+          <div className="mt-4 space-y-2">
+            <Select
+              value={userRanking?.toString() || ""}
+              onValueChange={(value) => {
+                rankFlightMutation.mutate({
+                  proposalId: proposal.id,
+                  ranking: parseInt(value),
+                });
+              }}
+              data-testid={`select-flight-ranking-${proposal.id}`}
+            >
+              <SelectTrigger className="w-full h-10">
+                <SelectValue placeholder="Rank this option" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  value="1"
+                  data-testid={`option-ranking-1-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(1) && userRanking !== 1}
+                >
+                  🥇 1st Choice
+                </SelectItem>
+                <SelectItem
+                  value="2"
+                  data-testid={`option-ranking-2-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(2) && userRanking !== 2}
+                >
+                  🥈 2nd Choice
+                </SelectItem>
+                <SelectItem
+                  value="3"
+                  data-testid={`option-ranking-3-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(3) && userRanking !== 3}
+                >
+                  🥉 3rd Choice
+                </SelectItem>
+                <SelectItem
+                  value="4"
+                  data-testid={`option-ranking-4-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(4) && userRanking !== 4}
+                >
+                  4th Choice
+                </SelectItem>
+                <SelectItem
+                  value="5"
+                  data-testid={`option-ranking-5-${proposal.id}`}
+                  disabled={flightRankingsUsed.has(5) && userRanking !== 5}
+                >
+                  5th Choice
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            {userRanking && (
+              <Badge className={cn(getRankingColor(userRanking), "w-fit")} data-testid={`badge-user-ranking-${proposal.id}`}>
+                Your choice: #{userRanking}
+              </Badge>
+            )}
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-3 h-10 w-full text-sm"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            data-testid={`button-toggle-flight-details-${proposal.id}`}
+          >
+            {isExpanded ? "Hide details" : "View details"}
+          </Button>
+
+          {isExpanded && (
+            <div className="mt-4 space-y-3 border-t border-neutral-200 pt-4 text-sm">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-neutral-600">Departs</span>
+                  <span className="text-right font-medium" data-testid={`text-flight-departure-${proposal.id}`}>
+                    {getFlightDateLabel(proposal.departureTime)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-neutral-600">Arrives</span>
+                  <span className="text-right font-medium" data-testid={`text-flight-arrival-${proposal.id}`}>
+                    {getFlightDateLabel(proposal.arrivalTime)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-neutral-600">Duration</span>
+                  <span className="text-right font-medium" data-testid={`text-flight-duration-${proposal.id}`}>
+                    {proposal.duration}
+                    {proposal.stops > 0 && (
+                      <span className="text-xs text-neutral-500 ml-1">
+                        ({proposal.stops} stop{proposal.stops > 1 ? "s" : ""})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 text-neutral-600">
+                <span>Proposed by {proposal.proposer?.firstName || "Unknown"}</span>
+                <span data-testid={`text-flight-created-${proposal.id}`}>
+                  {proposal.createdAt
+                    ? formatDistanceToNow(new Date(proposal.createdAt), { addSuffix: true })
+                    : "Unknown"}
+                </span>
+              </div>
+
+              {proposal.averageRanking != null && (
+                <div className="flex items-center justify-between gap-3 text-neutral-600">
+                  <span>Avg score</span>
+                  <span data-testid={`text-flight-avg-ranking-${proposal.id}`}>
+                    {proposal.averageRanking.toFixed(1)}
+                  </span>
+                </div>
+              )}
+
+              <div>{renderRankingPreview(proposal.rankings ?? [])}</div>
+
+              <div className="flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 w-full"
+                  onClick={() => window.open(proposal.bookingUrl, "_blank")}
+                  data-testid={`button-view-flight-${proposal.id}`}
+                >
+                  <ExternalLink className="w-4 h-4 mr-1" />
+                  View Flight
+                </Button>
+                {canCancel && (
+                  <CancelProposalButton
+                    type="flight"
+                    proposalId={proposal.id}
+                    proposalName={airlineLabel}
+                    isCancelling={isCancelling}
+                    triggerTestId={`button-cancel-flight-proposal-${proposal.id}`}
+                    className="h-10 w-full justify-center"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const FlightProposalCardDesktop = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
     const userRanking =
       proposal.currentUserRanking?.ranking ??
       getUserRanking(proposal.rankings || [], user?.id || "");
@@ -2473,6 +2721,14 @@ function ProposalsPage({
         </CardContent>
       </Card>
     );
+  };
+
+  const FlightProposalCard = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
+    if (isMobile) {
+      return <FlightProposalCardMobile proposal={proposal} />;
+    }
+
+    return <FlightProposalCardDesktop proposal={proposal} />;
   };
 
   const InlineErrorState = ({
