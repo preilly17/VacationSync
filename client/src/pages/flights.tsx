@@ -2731,7 +2731,7 @@ export default function FlightsPage() {
       return;
     }
 
-    const pointsCostValue = trimmed ? Number.parseInt(trimmed, 10) : null;
+    const pointsCostValue = trimmed ? Math.max(0, Number.parseInt(trimmed, 10)) : null;
     const success = await shareFlightWithGroup(proposedFlight, pointsCostValue);
     if (success) {
       setIsProposeFlightOpen(false);
@@ -3037,7 +3037,9 @@ export default function FlightsPage() {
       manualFlightForm.direction === 'RETURN' ? 'RETURN' : 'OUTBOUND';
     const seatClassValue = manualFlightForm.cabin.toUpperCase() as CabinClass;
     const airlineDetails = parsedAirline!;
-    const pointsCostValue = pointsCostInput ? Number.parseInt(pointsCostInput, 10) : null;
+    const pointsCostValue = pointsCostInput
+      ? Math.max(0, Number.parseInt(pointsCostInput, 10))
+      : null;
 
     const insertPayload: InsertFlight = {
       tripId: Number.parseInt(tripId, 10),
@@ -3573,17 +3575,15 @@ export default function FlightsPage() {
             <Label htmlFor="manual-points-cost">Points cost (optional)</Label>
             <Input
               id="manual-points-cost"
+              type="text"
               inputMode="numeric"
-              pattern="\\d*"
               placeholder="e.g., 45000"
               value={manualFlightForm.pointsCost}
               aria-invalid={manualFlightErrors.pointsCost ? 'true' : 'false'}
               onChange={(event) => {
-                const value = event.target.value;
-                if (value === "" || /^\d+$/.test(value)) {
-                  setManualFlightForm((prev) => ({ ...prev, pointsCost: value }));
-                  setManualFlightErrors((prev) => ({ ...prev, pointsCost: undefined }));
-                }
+                const value = event.target.value.replace(/\D/g, "");
+                setManualFlightForm((prev) => ({ ...prev, pointsCost: value }));
+                setManualFlightErrors((prev) => ({ ...prev, pointsCost: undefined }));
               }}
             />
             {manualFlightErrors.pointsCost && (
@@ -3646,15 +3646,13 @@ export default function FlightsPage() {
             <Label htmlFor="propose-points-cost">Points cost (optional)</Label>
             <Input
               id="propose-points-cost"
+              type="text"
               inputMode="numeric"
-              pattern="\\d*"
               placeholder="e.g., 45000"
               value={proposedPointsCost}
               onChange={(event) => {
-                const value = event.target.value;
-                if (value === "" || /^\d+$/.test(value)) {
-                  setProposedPointsCost(value);
-                }
+                const value = event.target.value.replace(/\D/g, "");
+                setProposedPointsCost(value);
               }}
             />
           </div>

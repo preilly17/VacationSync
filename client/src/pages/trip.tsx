@@ -5247,7 +5247,9 @@ function FlightCoordination({
       });
       return;
     }
-    const pointsCostValue = pointsCostInput ? Number.parseInt(pointsCostInput, 10) : null;
+    const pointsCostValue = pointsCostInput
+      ? Math.max(0, Number.parseInt(pointsCostInput, 10))
+      : null;
 
     const basePayload: InsertFlight = {
       tripId,
@@ -6074,15 +6076,13 @@ function FlightCoordination({
                 <Label htmlFor="manual-points-cost">Points cost (optional)</Label>
                 <Input
                   id="manual-points-cost"
+                  type="text"
                   inputMode="numeric"
-                  pattern="\\d*"
                   placeholder="e.g., 45000"
                   value={manualFlightData.pointsCost}
                   onChange={(event) => {
-                    const value = event.target.value;
-                    if (value === "" || /^\d+$/.test(value)) {
-                      setManualFlightData((prev) => ({ ...prev, pointsCost: value }));
-                    }
+                    const value = event.target.value.replace(/\D/g, "");
+                    setManualFlightData((prev) => ({ ...prev, pointsCost: value }));
                   }}
                 />
               </div>
