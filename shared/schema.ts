@@ -46,6 +46,33 @@ const numberInput = (message = "Value must be a number") =>
 const nullableNumberInput = (message = "Value must be a number") =>
   z.union([numberInput(message), z.null()]).optional();
 
+const integerInput = (message = "Value must be a whole number") =>
+  z
+    .union([
+      z.number().int(),
+      z.string().transform((value, ctx) => {
+        const trimmed = value.trim();
+        if (trimmed === "") {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+          return z.NEVER;
+        }
+        if (!/^\d+$/.test(trimmed)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+          return z.NEVER;
+        }
+        const parsed = Number.parseInt(trimmed, 10);
+        if (!Number.isFinite(parsed)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+          return z.NEVER;
+        }
+        return parsed;
+      }),
+    ])
+    .transform((value) => value as number);
+
+const nullableIntegerInput = (message = "Value must be a whole number") =>
+  z.union([integerInput(message), z.null()]).optional();
+
 type JsonValue =
   | null
   | string
@@ -597,6 +624,7 @@ export interface Flight {
   seatNumber: string | null;
   seatClass: string | null;
   price: number | null;
+  pointsCost: number | null;
   currency: string;
   flightType: string;
   status: string;
@@ -634,6 +662,7 @@ export const insertFlightSchema = z.object({
   seatNumber: z.string().nullable().optional(),
   seatClass: z.string().nullable().optional(),
   price: nullableNumberInput("Price must be a number"),
+  pointsCost: nullableIntegerInput("Points cost must be a whole number"),
   layovers: z.any().nullable().optional(),
   bookingSource: z.string().nullable().optional(),
   purchaseUrl: z.string().nullable().optional(),
@@ -844,6 +873,7 @@ export interface FlightProposal {
   stops: number;
   aircraft: string | null;
   price: string;
+  pointsCost?: number | null;
   currency: string;
   bookingUrl: string;
   platform: string;
@@ -871,6 +901,7 @@ export const insertFlightProposalSchema = z.object({
   price: z.union([z.number(), z.string()]).transform((value) =>
     typeof value === "number" ? value.toFixed(2) : value
   ),
+  pointsCost: nullableIntegerInput("Points cost must be a whole number"),
   currency: z.string().default("USD"),
   bookingUrl: z.string().min(1, "Booking URL is required"),
   platform: z.string().default("Amadeus"),

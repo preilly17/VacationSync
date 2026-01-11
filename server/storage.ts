@@ -810,6 +810,7 @@ type FlightRow = {
   seat_number: string | null;
   seat_class: string | null;
   price: string | null;
+  points_cost: number | null;
   currency: string;
   flight_type: string;
   status: string;
@@ -1045,6 +1046,7 @@ type FlightProposalRow = {
   stops: number | string;
   aircraft: string | null;
   price: string | number | null;
+  points_cost: number | null;
   currency: string;
   booking_url: string;
   platform: string;
@@ -1533,6 +1535,7 @@ const mapFlightProposal = (row: FlightProposalRow): FlightProposal => {
     stops: typeof row.stops === "string" ? Number(row.stops) : Number(row.stops ?? 0),
     aircraft: row.aircraft,
     price: toOptionalString(row.price) ?? "",
+    pointsCost: toNumberOrNull(row.points_cost),
     currency: row.currency,
     bookingUrl: row.booking_url,
     platform: row.platform,
@@ -2057,6 +2060,7 @@ const mapFlight = (row: FlightRow): Flight => ({
   seatNumber: row.seat_number,
   seatClass: row.seat_class,
   price: toNumberOrNull(row.price),
+  pointsCost: toNumberOrNull(row.points_cost),
   currency: row.currency,
   flightType: row.flight_type,
   status: row.status,
@@ -7625,6 +7629,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         seat_number,
         seat_class,
         price,
+        points_cost,
         currency,
         flight_type,
         status,
@@ -7638,7 +7643,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28
+        $21, $22, $23, $24, $25, $26, $27, $28, $29
       )
       RETURNING
         id,
@@ -7661,6 +7666,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         seat_number,
         seat_class,
         price,
+        points_cost,
         currency,
         flight_type,
         status,
@@ -7693,6 +7699,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         flight.seatNumber ?? null,
         flight.seatClass ?? null,
         priceValue,
+        flight.pointsCost ?? null,
         flight.currency,
         flight.flightType,
         flight.status,
@@ -7737,6 +7744,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         f.seat_number,
         f.seat_class,
         f.price,
+        f.points_cost,
         f.currency,
         f.flight_type,
         f.status,
@@ -7827,6 +7835,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         seat_number,
         seat_class,
         price,
+        points_cost,
         currency,
         flight_type,
         status,
@@ -7914,6 +7923,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
     if (updates.price !== undefined) {
       setField("price", updates.price ?? null);
     }
+    if (updates.pointsCost !== undefined) {
+      setField("points_cost", updates.pointsCost ?? null);
+    }
     if (updates.currency !== undefined) {
       setField("currency", updates.currency);
     }
@@ -7973,6 +7985,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         seat_number,
         seat_class,
         price,
+        points_cost,
         currency,
         flight_type,
         status,
@@ -8080,6 +8093,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         f.seat_number,
         f.seat_class,
         f.price,
+        f.points_cost,
         f.currency,
         f.flight_type,
         f.status,
@@ -9065,12 +9079,13 @@ ${selectUserColumns("participant_user", "participant_user_")}
           stops = $12,
           aircraft = $13,
           price = $14,
-          currency = $15,
-          booking_url = $16,
-          platform = $17,
-          status = $18,
+          points_cost = $15,
+          currency = $16,
+          booking_url = $17,
+          platform = $18,
+          status = $19,
           updated_at = NOW()
-        WHERE id = $19
+        WHERE id = $20
         `,
         [
           flight.trip_id,
@@ -9087,6 +9102,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           stopsCount,
           toOptionalString(flight.aircraft),
           priceString,
+          flight.points_cost ?? null,
           currency,
           bookingUrl,
           platform,
@@ -9118,6 +9134,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         stops,
         aircraft,
         price,
+        points_cost,
         currency,
         booking_url,
         platform,
@@ -9125,7 +9142,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'proposed')
+        $11, $12, $13, $14, $15, $16, $17, $18, COALESCE($19, 'proposed')
       )
       RETURNING
         id,
@@ -9143,6 +9160,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         stops,
         aircraft,
         price,
+        points_cost,
         currency,
         booking_url,
         platform,
@@ -9166,6 +9184,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         stopsCount,
         toOptionalString(flight.aircraft),
         priceString,
+        flight.points_cost ?? null,
         currency,
         bookingUrl,
         platform,
@@ -11038,6 +11057,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         fp.stops,
         fp.aircraft,
         fp.price,
+        fp.points_cost,
         fp.currency,
         fp.booking_url,
         fp.platform,
@@ -11982,6 +12002,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         seat_number,
         seat_class,
         price,
+        points_cost,
         currency,
         flight_type,
         status,
@@ -11997,7 +12018,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20,
-        $21, $22, $23, $24, $25, $26, $27, $28, NOW(), NOW()
+        $21, $22, $23, $24, $25, $26, $27, $28, $29, NOW(), NOW()
       )
       RETURNING
         id,
@@ -12020,6 +12041,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         seat_number,
         seat_class,
         price,
+        points_cost,
         currency,
         flight_type,
         status,
@@ -12052,6 +12074,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         optionalTrimmedString("seatNumber"),
         optionalTrimmedString("seatClass"),
         priceValue,
+        toNumberOrNull(getValue("pointsCost") as string | number | null | undefined),
         optionalTrimmedString("currency") ?? "USD",
         flightType,
         optionalTrimmedString("status") ?? "confirmed",
@@ -12099,6 +12122,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         stops,
         aircraft,
         price,
+        points_cost,
         currency,
         booking_url,
         platform,
@@ -12106,7 +12130,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       )
       VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, COALESCE($18, 'active')
+        $11, $12, $13, $14, $15, $16, $17, $18, COALESCE($19, 'active')
       )
       RETURNING
         id,
@@ -12124,6 +12148,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         stops,
         aircraft,
         price,
+        points_cost,
         currency,
         booking_url,
         platform,
@@ -12147,6 +12172,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         proposal.stops,
         proposal.aircraft ?? null,
         proposal.price,
+        proposal.pointsCost ?? null,
         proposal.currency,
         proposal.bookingUrl,
         proposal.platform,

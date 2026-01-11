@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useTripRealtime } from "@/hooks/use-trip-realtime";
 import { ApiError, apiRequest } from "@/lib/queryClient";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatWholeNumber } from "@/lib/utils";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInCalendarDays, differenceInMinutes, format, formatDistanceToNow } from "date-fns";
 import { filterActiveProposals, isCanceledStatus, normalizeProposalStatus } from "./proposalStatusFilters";
@@ -2299,6 +2299,10 @@ function ProposalsPage({
       getUserRanking(proposal.rankings || [], user?.id || "");
     const isCanceled = isCanceledStatus(proposal.status);
     const canCancel = Boolean(proposal.permissions?.canCancel && !isCanceled);
+    const pointsCostLabel =
+      typeof proposal.pointsCost === "number"
+        ? formatWholeNumber(proposal.pointsCost)
+        : null;
     const isCancelling =
       cancelProposalMutation.isPending &&
       cancelProposalMutation.variables?.proposalId === proposal.id &&
@@ -2357,6 +2361,14 @@ function ProposalsPage({
                 ${parseFloat(proposal.price.toString()).toFixed(2)}
               </span>
             </div>
+            {pointsCostLabel ? (
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-purple-600" />
+                <span className="font-medium" data-testid={`text-flight-points-${proposal.id}`}>
+                  Points: {pointsCostLabel}
+                </span>
+              </div>
+            ) : null}
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-orange-600" />
               <span className="font-medium" data-testid={`text-flight-duration-${proposal.id}`}>

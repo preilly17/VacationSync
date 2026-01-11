@@ -5362,6 +5362,15 @@ export function setupRoutes(app: Express) {
         return res.status(401).json({ message: "User ID not found" });
       }
 
+      const rawPointsCost = req.body.pointsCost ?? req.body.points_cost ?? null;
+      const parsedPointsCost =
+        typeof rawPointsCost === 'number'
+          ? rawPointsCost
+          : typeof rawPointsCost === 'string' && rawPointsCost.trim() !== ''
+          ? Number.parseInt(rawPointsCost, 10)
+          : null;
+      const pointsCostValue = Number.isFinite(parsedPointsCost) ? parsedPointsCost : null;
+
       const proposalData = {
         tripId,
         airline: req.body.airline || 'Unknown Airline',
@@ -5374,6 +5383,7 @@ export function setupRoutes(app: Express) {
         stops: Number.isFinite(Number(req.body.stops)) ? Number(req.body.stops) : 0,
         aircraft: req.body.aircraft || null,
         price: typeof req.body.price === 'number' ? req.body.price.toFixed(2) : (req.body.price?.toString() || '0'),
+        pointsCost: pointsCostValue,
         currency: req.body.currency || 'USD',
         bookingUrl: req.body.bookingUrl || 'https://example.com',
         platform: req.body.platform || 'Amadeus',
