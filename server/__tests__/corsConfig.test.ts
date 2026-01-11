@@ -10,9 +10,12 @@ describe("CORS configuration", () => {
     const expectedHeaders = [
       "content-type",
       "authorization",
+      "x-correlation-id",
       "x-request-id",
       "x-filename",
       "x-content-type",
+      "x-trip-share-code",
+      "x-activities-version",
     ];
 
     expect(toLowerSet(CORS_ALLOWED_HEADERS)).toEqual(new Set(expectedHeaders));
@@ -27,4 +30,3 @@ describe("CORS configuration", () => {
     expect(toLowerSet(allowedHeaders as string[])).toEqual(new Set(expectedHeaders));
   });
 });
-
