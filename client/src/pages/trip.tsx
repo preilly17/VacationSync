@@ -2770,7 +2770,7 @@ export default function Trip() {
 
             {/* Main Content */}
             <main className="flex-1 min-w-0 md:h-screen md:overflow-x-auto md:overflow-y-auto">
-              <div className="p-4 lg:p-8">
+              <div className="p-4 pt-[calc(env(safe-area-inset-top)+4.5rem)] md:pt-4 lg:p-8">
                 {/* Back to Dashboard Button */}
                 <Link href="/">
                   <Button
@@ -3513,8 +3513,8 @@ export default function Trip() {
             <Plus className="h-6 w-6 text-white" />
           </button>
 
-          {/* // MOBILE-ONLY bottom tab bar */}
-          <nav className="md:hidden trip-themed-nav fixed inset-x-0 bottom-0 z-40 border-t border-white/20 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2">
+          {/* // MOBILE-ONLY top tab bar */}
+          <nav className="md:hidden trip-themed-nav fixed inset-x-0 top-0 z-50 border-b border-white/20 pb-2 pt-[calc(env(safe-area-inset-top)+0.75rem)] shadow-sm">
             <div className="flex items-stretch gap-1 overflow-x-auto px-3">
               {MOBILE_TAB_ITEMS.map((item) => {
                 const Icon = item.icon;
