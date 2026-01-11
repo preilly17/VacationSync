@@ -66,7 +66,7 @@ import {
   scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
   proposalActivitiesQueryKey as buildProposalActivitiesKey,
 } from "@/lib/activities/queryKeys";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatWholeNumber } from "@/lib/utils";
 import {
   buildAdHocHotelProposalRequestBody,
   buildHotelProposalPayload,
@@ -4281,6 +4281,7 @@ function FlightCoordination({
     arrivalCode: "",
     arrivalTime: "",
     price: "",
+    pointsCost: "",
     seatClass: "economy",
     flightType: "outbound",
     bookingReference: "",
@@ -4829,6 +4830,7 @@ function FlightCoordination({
       arrivalCode: "",
       arrivalTime: "",
       price: "",
+      pointsCost: "",
       seatClass: "economy",
       flightType: "outbound",
       bookingReference: "",
@@ -4872,6 +4874,10 @@ function FlightCoordination({
         price:
           typeof flight.price === "number" && Number.isFinite(flight.price)
             ? flight.price.toString()
+            : "",
+        pointsCost:
+          typeof flight.pointsCost === "number" && Number.isFinite(flight.pointsCost)
+            ? Math.trunc(flight.pointsCost).toString()
             : "",
         seatClass: flight.seatClass ?? "economy",
         flightType: flight.flightType ?? "outbound",
@@ -5232,6 +5238,17 @@ function FlightCoordination({
     const parsedPrice = manualFlightData.price ? Number(manualFlightData.price) : null;
     const normalizedPrice = parsedPrice !== null && Number.isFinite(parsedPrice) ? parsedPrice : null;
 
+    const pointsCostInput = manualFlightData.pointsCost.trim();
+    if (pointsCostInput && !/^\d+$/.test(pointsCostInput)) {
+      toast({
+        title: "Invalid points cost",
+        description: "Points cost must be a whole number.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const pointsCostValue = pointsCostInput ? Number.parseInt(pointsCostInput, 10) : null;
+
     const basePayload: InsertFlight = {
       tripId,
       flightNumber: normalizedFlightNumber,
@@ -5248,6 +5265,7 @@ function FlightCoordination({
       bookingReference: manualFlightData.bookingReference?.trim() || null,
       seatClass: manualFlightData.seatClass?.trim() || null,
       price: normalizedPrice,
+      pointsCost: pointsCostValue,
       currency: "USD",
       aircraft: manualFlightData.aircraft?.trim() || null,
       departureGate: null,
@@ -5744,6 +5762,10 @@ function FlightCoordination({
               currency: flight.currency ?? "USD",
               fallback: "—",
             });
+            const pointsLabel =
+              typeof flight.pointsCost === "number"
+                ? formatWholeNumber(flight.pointsCost)
+                : null;
             const permissions = getFlightPermissions(flight);
             const isProposing = proposeFlightMutation.isPending && proposingFlightId === flight.id;
 
@@ -5866,6 +5888,12 @@ function FlightCoordination({
                       <p className="text-xs font-semibold uppercase text-muted-foreground">Price</p>
                       <p className="text-sm font-medium text-neutral-900">{priceLabel}</p>
                     </div>
+                    {pointsLabel ? (
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Points</p>
+                        <p className="text-sm font-medium text-neutral-900">{pointsLabel}</p>
+                      </div>
+                    ) : null}
                     {flight.bookingReference ? (
                       <div>
                         <p className="text-xs font-semibold uppercase text-muted-foreground">Booking ref</p>
@@ -6043,6 +6071,24 @@ function FlightCoordination({
                 />
               </div>
               <div>
+                <Label htmlFor="manual-points-cost">Points cost (optional)</Label>
+                <Input
+                  id="manual-points-cost"
+                  inputMode="numeric"
+                  pattern="\\d*"
+                  placeholder="e.g., 45000"
+                  value={manualFlightData.pointsCost}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    if (value === "" || /^\d+$/.test(value)) {
+                      setManualFlightData((prev) => ({ ...prev, pointsCost: value }));
+                    }
+                  }}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
                 <Label htmlFor="manual-seat-class">Seat Class</Label>
                 <Select
                   value={manualFlightData.seatClass}
@@ -6059,8 +6105,6 @@ function FlightCoordination({
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="manual-flight-type">Flight Type</Label>
                 <Select
@@ -6077,17 +6121,17 @@ function FlightCoordination({
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="manual-booking-reference">Booking Reference</Label>
-                <Input
-                  id="manual-booking-reference"
-                  placeholder="e.g., ABC123"
-                  value={manualFlightData.bookingReference}
-                  onChange={(event) =>
-                    setManualFlightData((prev) => ({ ...prev, bookingReference: event.target.value }))
-                  }
-                />
-              </div>
+            </div>
+            <div>
+              <Label htmlFor="manual-booking-reference">Booking Reference</Label>
+              <Input
+                id="manual-booking-reference"
+                placeholder="e.g., ABC123"
+                value={manualFlightData.bookingReference}
+                onChange={(event) =>
+                  setManualFlightData((prev) => ({ ...prev, bookingReference: event.target.value }))
+                }
+              />
             </div>
             <DialogFooter className="gap-2 sm:flex-row">
               <Button variant="outline" type="button" onClick={closeManualFlightForm}>

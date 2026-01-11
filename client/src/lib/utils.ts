@@ -52,3 +52,20 @@ export function formatCurrency(
     return `${currency} ${amount.toFixed(fractionDigits)}`;
   }
 }
+
+export function formatWholeNumber(
+  value: number | null | undefined,
+  { locale, fallback = "" }: { locale?: string; fallback?: string } = {},
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return fallback;
+  }
+
+  const normalized = Math.round(value);
+
+  try {
+    return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(normalized);
+  } catch {
+    return normalized.toString();
+  }
+}

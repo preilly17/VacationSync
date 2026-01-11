@@ -27,7 +27,7 @@ import type {
   User,
 } from "@shared/schema";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatWholeNumber } from "@/lib/utils";
 import { fetchNearestAirportsForLocation, type NearbyAirport, extractCoordinates } from "@/lib/nearestAirports";
 
 // Helper function to format duration in minutes to "Xh Ym" format
@@ -609,7 +609,7 @@ interface FlightSearchPanelProps {
   searchResults: any[];
   onFilterChange: (filter: FlightFilterKey) => void;
   cachedSearchParams: CachedFlightSearchParams | null;
-  onShareFlight: (flight: any) => Promise<void>;
+  onShareFlight: (flight: any) => void | Promise<void>;
   onQuickAddFlight: (flight: any) => Promise<void>;
   user?: User | null;
   trip?: TripWithDetails | null;
@@ -634,6 +634,7 @@ interface ManualFlightFormState {
   departure: string;
   arrival: string;
   cabin: CabinClass;
+  pointsCost: string;
   notes: string;
 }
 
@@ -643,6 +644,7 @@ interface ManualFlightFormErrors {
   to?: string;
   departure?: string;
   arrival?: string;
+  pointsCost?: string;
 }
 
 function FlightSearchPanel({
@@ -1905,6 +1907,9 @@ export default function FlightsPage() {
   const [autoSearchRequested, setAutoSearchRequested] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isProposeFlightOpen, setIsProposeFlightOpen] = useState(false);
+  const [proposedFlight, setProposedFlight] = useState<any | null>(null);
+  const [proposedPointsCost, setProposedPointsCost] = useState("");
   const [searchFormData, setSearchFormData] = useState<FlightSearchFormState>({
     departure: '',
     departureCity: '',
@@ -1948,6 +1953,7 @@ export default function FlightsPage() {
     departure: '',
     arrival: '',
     cabin: 'ECONOMY',
+    pointsCost: '',
     notes: '',
   };
   const [manualFlightForm, setManualFlightForm] = useState<ManualFlightFormState>(defaultManualFlightForm);
@@ -2548,7 +2554,8 @@ export default function FlightsPage() {
 
   // Flight ranking functionality
   // Share flight with group as a proposal
-  const shareFlightWithGroup = async (flight: any) => {
+  const shareFlightWithGroup = async (flight: any, pointsCost?: number | null) => {
+    let succeeded = false;
     try {
       const departureAirportName =
         flight.departure?.airport ||
@@ -2650,6 +2657,7 @@ export default function FlightsPage() {
         stops: stopsValue,
         aircraft: aircraftValue || "Unknown Aircraft",
         price: priceValue,
+        pointsCost: pointsCost ?? null,
         bookingClass: bookingClassValue,
         platform: flight.provider || flight.source || flight.bookingSource || "Trip",
         bookingUrl: bookingUrlValue,
@@ -2672,6 +2680,8 @@ export default function FlightsPage() {
         title: "Flight Proposed to Group!",
         description: `${proposalData.airline} flight ${proposalData.flightNumber} has been proposed to your group for ranking and voting.`,
       });
+
+      succeeded = true;
       
     } catch (error) {
       if (error instanceof Error && isUnauthorizedError(error)) {
@@ -2695,6 +2705,38 @@ export default function FlightsPage() {
         description,
         variant: "destructive",
       });
+    }
+
+    return succeeded;
+  };
+
+  const openProposeFlightDialog = (flight: any) => {
+    setProposedFlight(flight);
+    setProposedPointsCost("");
+    setIsProposeFlightOpen(true);
+  };
+
+  const handleSubmitProposeFlight = async () => {
+    if (!proposedFlight) {
+      return;
+    }
+
+    const trimmed = proposedPointsCost.trim();
+    if (trimmed && !/^\d+$/.test(trimmed)) {
+      toast({
+        title: "Invalid points cost",
+        description: "Points cost must be a whole number.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const pointsCostValue = trimmed ? Number.parseInt(trimmed, 10) : null;
+    const success = await shareFlightWithGroup(proposedFlight, pointsCostValue);
+    if (success) {
+      setIsProposeFlightOpen(false);
+      setProposedFlight(null);
+      setProposedPointsCost("");
     }
   };
 
@@ -2934,6 +2976,10 @@ export default function FlightsPage() {
       departure: departureValue,
       arrival: arrivalValue,
       cabin: cabinValue,
+      pointsCost:
+        typeof flight.pointsCost === "number" && Number.isFinite(flight.pointsCost)
+          ? Math.trunc(flight.pointsCost).toString()
+          : '',
       notes: extractFlightNotes(flight),
     });
   };
@@ -2973,6 +3019,11 @@ export default function FlightsPage() {
       errors.arrival = "Arrival date & time is required.";
     }
 
+    const pointsCostInput = manualFlightForm.pointsCost.trim();
+    if (pointsCostInput && !/^\d+$/.test(pointsCostInput)) {
+      errors.pointsCost = "Points cost must be a whole number.";
+    }
+
     if (Object.keys(errors).length > 0) {
       setManualFlightErrors(errors);
       return;
@@ -2986,6 +3037,7 @@ export default function FlightsPage() {
       manualFlightForm.direction === 'RETURN' ? 'RETURN' : 'OUTBOUND';
     const seatClassValue = manualFlightForm.cabin.toUpperCase() as CabinClass;
     const airlineDetails = parsedAirline!;
+    const pointsCostValue = pointsCostInput ? Number.parseInt(pointsCostInput, 10) : null;
 
     const insertPayload: InsertFlight = {
       tripId: Number.parseInt(tripId, 10),
@@ -3000,6 +3052,7 @@ export default function FlightsPage() {
       arrivalTime: arrivalTimeIso,
       seatClass: seatClassValue,
       price: null,
+      pointsCost: pointsCostValue,
       currency: 'USD',
       flightType: direction.toLowerCase(),
       status: editingFlight?.status || 'proposed',
@@ -3084,7 +3137,7 @@ export default function FlightsPage() {
           searchResults={searchResults}
           onFilterChange={handleFilterChange}
           cachedSearchParams={cachedSearchParams}
-          onShareFlight={shareFlightWithGroup}
+          onShareFlight={openProposeFlightDialog}
           onQuickAddFlight={handleQuickAddFlight}
           user={user}
           trip={trip as TripWithDetails | null}
@@ -3285,6 +3338,9 @@ export default function FlightsPage() {
                         {stopsLabel && <div>Stops: {stopsLabel}</div>}
                         {flight.seatNumber && <div>Seat: {flight.seatNumber}</div>}
                         {priceLabel && <div>Price: {priceLabel}</div>}
+                        {typeof flight.pointsCost === "number" && (
+                          <div>Points: {formatWholeNumber(flight.pointsCost)}</div>
+                        )}
                         {flight.bookingReference && <div>Reference: {flight.bookingReference}</div>}
                         {flight.bookingSource && <div>Source: {flight.bookingSource}</div>}
                         {flight.aircraft && <div>Aircraft: {flight.aircraft}</div>}
@@ -3514,6 +3570,27 @@ export default function FlightsPage() {
             </div>
           </div>
           <div>
+            <Label htmlFor="manual-points-cost">Points cost (optional)</Label>
+            <Input
+              id="manual-points-cost"
+              inputMode="numeric"
+              pattern="\\d*"
+              placeholder="e.g., 45000"
+              value={manualFlightForm.pointsCost}
+              aria-invalid={manualFlightErrors.pointsCost ? 'true' : 'false'}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === "" || /^\d+$/.test(value)) {
+                  setManualFlightForm((prev) => ({ ...prev, pointsCost: value }));
+                  setManualFlightErrors((prev) => ({ ...prev, pointsCost: undefined }));
+                }
+              }}
+            />
+            {manualFlightErrors.pointsCost && (
+              <p className="mt-1 text-sm text-destructive">{manualFlightErrors.pointsCost}</p>
+            )}
+          </div>
+          <div>
             <Label htmlFor="manual-notes">Notes</Label>
             <Textarea
               id="manual-notes"
@@ -3541,6 +3618,58 @@ export default function FlightsPage() {
                 editingFlight ? "Update Flight" : "Save Flight"
               )}
             </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    <Dialog
+      open={isProposeFlightOpen}
+      onOpenChange={(open) => {
+        setIsProposeFlightOpen(open);
+        if (!open) {
+          setProposedFlight(null);
+          setProposedPointsCost("");
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Propose flight to group</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {proposedFlight && (
+            <div className="text-sm text-muted-foreground">
+              {getFlightAirlineName(proposedFlight)} {proposedFlight.flightNumber || ''}
+            </div>
+          )}
+          <div>
+            <Label htmlFor="propose-points-cost">Points cost (optional)</Label>
+            <Input
+              id="propose-points-cost"
+              inputMode="numeric"
+              pattern="\\d*"
+              placeholder="e.g., 45000"
+              value={proposedPointsCost}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === "" || /^\d+$/.test(value)) {
+                  setProposedPointsCost(value);
+                }
+              }}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsProposeFlightOpen(false);
+                setProposedFlight(null);
+                setProposedPointsCost("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSubmitProposeFlight}>Propose</Button>
           </div>
         </div>
       </DialogContent>
