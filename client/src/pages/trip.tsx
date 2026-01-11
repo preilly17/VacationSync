@@ -2637,8 +2637,41 @@ export default function Trip() {
         />
 
         {/* Main Content Container */}
-        {/* // MOBILE-ONLY: Provide breathing room for bottom nav & safe area. */}
-        <div className="relative pb-[calc(env(safe-area-inset-bottom)+6rem)] md:pb-0">
+        <div className="relative">
+          {/* // MOBILE-ONLY top tab bar */}
+          <nav className="md:hidden trip-themed-nav sticky top-0 z-50 border-b border-white/20 pb-2 pt-[calc(env(safe-area-inset-top)+0.75rem)] shadow-sm">
+            <div className="flex items-stretch gap-1 overflow-x-auto px-3">
+              {MOBILE_TAB_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.key;
+
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setActiveTab(item.key)}
+                    className={cn(
+                      "relative flex min-h-[44px] flex-none basis-24 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70",
+                      isActive
+                        ? "text-white"
+                        : "text-white/70 hover:text-white hover:bg-white/10"
+                    )}
+                    data-testid={item.key === "proposals" ? "mobile-button-proposals" : item.key === "wish-list" ? "mobile-button-wish-list" : undefined}
+                  >
+                    <Icon className="h-5 w-5" aria-hidden="true" />
+                    <span className="w-full truncate text-[11px]">{item.label}</span>
+                    <span
+                      className={cn(
+                        "mt-1 h-0.5 w-12 rounded-full transition-colors",
+                        isActive ? "bg-white/80" : "bg-white/20"
+                      )}
+                      aria-hidden="true"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
           <div className="md:flex md:h-screen">
             {/* Vertical Tab Navigation */}
             <aside
@@ -3513,40 +3546,6 @@ export default function Trip() {
             <Plus className="h-6 w-6 text-white" />
           </button>
 
-          {/* // MOBILE-ONLY bottom tab bar */}
-          <nav className="md:hidden trip-themed-nav fixed inset-x-0 bottom-0 z-40 border-t border-white/20 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2">
-            <div className="flex items-stretch gap-1 overflow-x-auto px-3">
-              {MOBILE_TAB_ITEMS.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.key;
-
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => setActiveTab(item.key)}
-                    className={cn(
-                      "relative flex min-h-[44px] flex-none basis-24 flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70",
-                      isActive
-                        ? "text-white"
-                        : "text-white/70 hover:text-white hover:bg-white/10"
-                    )}
-                    data-testid={item.key === "proposals" ? "mobile-button-proposals" : item.key === "wish-list" ? "mobile-button-wish-list" : undefined}
-                  >
-                    <Icon className="h-5 w-5" aria-hidden="true" />
-                    <span className="w-full truncate text-[11px]">{item.label}</span>
-                    <span
-                      className={cn(
-                        "mt-1 h-0.5 w-12 rounded-full transition-colors",
-                        isActive ? "bg-white/80" : "bg-white/20"
-                      )}
-                      aria-hidden="true"
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
         </div>
 
         <Dialog open={summaryPanel !== null} onOpenChange={(open) => !open && closeSummaryPanel()}>
