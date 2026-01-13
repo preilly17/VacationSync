@@ -1,6 +1,11 @@
 import React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardDescription, CardTitle } from "@/components/ui/card";
+import {
+  ProfileSectionCard,
+  ProfileSectionContent,
+  ProfileSectionHeader,
+} from "@/components/profile-section-card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,7 +30,11 @@ interface NotificationWithDetails extends Notification {
   };
 }
 
-export function NotificationsSection() {
+interface NotificationsSectionProps {
+  className?: string;
+}
+
+export function NotificationsSection({ className }: NotificationsSectionProps) {
   const queryClient = useQueryClient();
 
   const { data: notifications = [] } = useQuery<NotificationWithDetails[]>({
@@ -86,8 +95,8 @@ export function NotificationsSection() {
   const readNotifications = notifications.filter(n => n.isRead);
 
   return (
-    <Card>
-      <CardHeader>
+    <ProfileSectionCard className={cn(className)}>
+      <ProfileSectionHeader>
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
@@ -110,8 +119,8 @@ export function NotificationsSection() {
             </Button>
           )}
         </div>
-      </CardHeader>
-      <CardContent>
+      </ProfileSectionHeader>
+      <ProfileSectionContent>
         <ScrollArea className="h-96">
           {notifications.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
@@ -120,14 +129,14 @@ export function NotificationsSection() {
               <p className="text-sm">We'll let you know when something happens!</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {/* Unread Notifications */}
               {unreadNotifications.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">
+                  <h4 className="text-sm font-medium text-gray-900 mb-4">
                     Unread ({unreadNotifications.length})
                   </h4>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {unreadNotifications.map((notification) => (
                       <div
                         key={notification.id}
@@ -179,16 +188,16 @@ export function NotificationsSection() {
               {readNotifications.length > 0 && (
                 <div>
                   {unreadNotifications.length > 0 && (
-                    <div className="border-t border-gray-200 my-4" />
+                    <div className="border-t border-gray-200 my-5" />
                   )}
-                  <h4 className="text-sm font-medium text-gray-900 mb-3">
+                  <h4 className="text-sm font-medium text-gray-900 mb-4">
                     Recent Activity
                   </h4>
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {readNotifications.slice(0, 10).map((notification) => (
                       <div
                         key={notification.id}
-                        className="p-3 bg-gray-50 rounded-lg"
+                        className="p-4 bg-gray-50 rounded-lg"
                       >
                         <div className="flex items-start gap-3">
                           <div className="flex-shrink-0">
@@ -221,7 +230,7 @@ export function NotificationsSection() {
             </div>
           )}
         </ScrollArea>
-      </CardContent>
-    </Card>
+      </ProfileSectionContent>
+    </ProfileSectionCard>
   );
 }

@@ -3,7 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardDescription, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,12 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { NotificationsSection } from "@/components/notifications-section";
+import {
+  ProfileSectionCard,
+  ProfileSectionContent,
+  ProfileSectionFooter,
+  ProfileSectionHeader,
+} from "@/components/profile-section-card";
 import { Smartphone, Settings, MapPin, Plane, PlayCircle, ArrowLeft, Search, Loader2, LogOut } from "lucide-react";
 import { useState, useEffect, useMemo, type KeyboardEvent } from "react";
 import { Link, useLocation } from "wouter";
@@ -473,8 +479,8 @@ export default function Profile() {
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
+      <ProfileSectionCard>
+        <ProfileSectionHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
@@ -496,10 +502,14 @@ export default function Profile() {
               </Button>
             </Link>
           </div>
-        </CardHeader>
-        <CardContent>
+        </ProfileSectionHeader>
+        <ProfileSectionContent>
           <Form {...form}>
-            <form onSubmit={handleSubmit("profile")} className="space-y-6">
+            <form
+              id="profile-settings-form"
+              onSubmit={handleSubmit("profile")}
+              className="space-y-6"
+            >
               <div className="space-y-4">
                 <h3 className="text-lg font-medium flex items-center gap-2">
                   <Smartphone className="w-5 h-5" />
@@ -579,25 +589,25 @@ export default function Profile() {
                 )}
               </div>
 
-              <Separator />
-
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  disabled={updateProfileMutation.isPending}
-                  className="min-w-32"
-                >
-                  {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
+                <Separator />
             </form>
           </Form>
-        </CardContent>
-      </Card>
+        </ProfileSectionContent>
+        <ProfileSectionFooter>
+          <Button
+            type="submit"
+            form="profile-settings-form"
+            disabled={updateProfileMutation.isPending}
+            className="min-w-32"
+          >
+            {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+        </ProfileSectionFooter>
+      </ProfileSectionCard>
 
       {/* Location Management Card */}
-      <Card className="mt-6">
-        <CardHeader>
+      <ProfileSectionCard className="mt-8">
+        <ProfileSectionHeader>
           <CardTitle className="flex items-center gap-2">
             <MapPin className="w-5 h-5" />
             Default Location Settings
@@ -605,13 +615,17 @@ export default function Profile() {
           <CardDescription>
             Set your default departure location for flight searches and group coordination
           </CardDescription>
-        </CardHeader>
-        <CardContent>
+        </ProfileSectionHeader>
+        <ProfileSectionContent>
           <Form {...form}>
-            <form onSubmit={handleSubmit("location")} className="space-y-6">
+            <form
+              id="location-settings-form"
+              onSubmit={handleSubmit("location")}
+              className="space-y-4"
+            >
               <div className="space-y-4">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <h4 className="font-medium text-blue-800 mb-2 flex items-center gap-2">
+                <div className="rounded-lg bg-blue-50 p-4 my-4">
+                  <h4 className="font-medium text-blue-800 mb-3 flex items-center gap-2">
                     <Plane className="w-4 h-4" />
                     How this helps
                   </h4>
@@ -622,7 +636,7 @@ export default function Profile() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <Label className="text-sm font-medium">Search Your Location</Label>
                     <div className="relative">
                       <div className="flex">
@@ -767,22 +781,23 @@ export default function Profile() {
                 )}
               </div>
 
-              <div className="flex justify-end">
-                <Button
-                  type="submit"
-                  disabled={isLocationSaveDisabled}
-                  className="min-w-32"
-                >
-                  {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
-                </Button>
-              </div>
             </form>
           </Form>
-        </CardContent>
-      </Card>
+        </ProfileSectionContent>
+        <ProfileSectionFooter>
+          <Button
+            type="submit"
+            form="location-settings-form"
+            disabled={isLocationSaveDisabled}
+            className="min-w-32"
+          >
+            {updateProfileMutation.isPending ? "Saving..." : "Save Changes"}
+          </Button>
+        </ProfileSectionFooter>
+      </ProfileSectionCard>
 
       {/* Notifications Section */}
-      <NotificationsSection />
+      <NotificationsSection className="mt-8" />
     </div>
   );
 }
