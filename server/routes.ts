@@ -114,6 +114,15 @@ const flightProposalRequestSchema = z
     path: ["flightId"],
   });
 
+const flightConfirmationSchema = z.object({
+  attendeeUserIds: z.array(z.string()).default([]),
+  notify: z.boolean().optional(),
+});
+
+const flightAttendeeUpdateSchema = z.object({
+  attendeeUserIds: z.array(z.string()),
+});
+
 const ACTIVITY_LOG_DATE_KEYS = new Set([
   "startTime",
   "endTime",
@@ -5617,6 +5626,210 @@ export function setupRoutes(app: Express) {
       }
     }
   });
+
+  app.post(
+    "/api/trips/:tripId/flights/:flightId/confirm",
+    isAuthenticated,
+    async (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      const flightId = Number.parseInt(req.params.flightId, 10);
+
+      if (Number.isNaN(tripId) || Number.isNaN(flightId)) {
+        return res.status(400).json({ message: "Invalid trip or flight id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const parsedBody = flightConfirmationSchema.safeParse(req.body ?? {});
+      if (!parsedBody.success) {
+        return res.status(400).json({
+          message: "Invalid confirmation data",
+          issues: parsedBody.error.issues,
+        });
+      }
+
+      try {
+        const result = await storage.confirmFlightWithAttendees({
+          tripId,
+          flightId,
+          attendeeUserIds: parsedBody.data.attendeeUserIds ?? [],
+          currentUserId: userId,
+          notify: parsedBody.data.notify ?? true,
+        });
+
+        if (parsedBody.data.notify ?? true) {
+          const confirmer = await storage.getUser(userId);
+          const confirmerName =
+            confirmer?.firstName || confirmer?.username || confirmer?.email || "Someone";
+          const airlineLabel =
+            [result.flight.airline, result.flight.flightNumber]
+              .filter(Boolean)
+              .join(" ")
+              .trim() || "a flight";
+          const routeLabel = `${result.flight.departureCode ?? ""} → ${result.flight.arrivalCode ?? ""}`
+            .trim()
+            .replace(/^→\s*/, "")
+            .replace(/\s*→$/, "");
+
+          const notificationMessage = `${confirmerName} confirmed a flight for you: ${airlineLabel}${
+            routeLabel ? ` (${routeLabel})` : ""
+          }.`;
+
+          await Promise.all(
+            result.attendees
+              .map((attendee) => attendee.userId)
+              .filter((attendeeId) => attendeeId && attendeeId !== userId)
+              .map((attendeeId) =>
+                storage.createNotification({
+                  userId: attendeeId,
+                  type: "flight_confirmed",
+                  title: "Flight confirmed",
+                  message: notificationMessage,
+                  tripId,
+                }),
+              ),
+          );
+        }
+
+        return res.json({
+          flight: result.flight,
+          attendees: result.attendees,
+          isConfirmed: result.isConfirmed,
+        });
+      } catch (error: unknown) {
+        console.error("Error confirming flight:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("not found")) {
+            return res.status(404).json({ message: error.message });
+          }
+          if (error.message.includes("Only the creator")) {
+            return res.status(403).json({ message: error.message });
+          }
+          if (error.message.includes("member")) {
+            return res.status(403).json({ message: error.message });
+          }
+        }
+        return res.status(500).json({ message: "Failed to confirm flight" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/trips/:tripId/flights/:flightId/attendees",
+    isAuthenticated,
+    async (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      const flightId = Number.parseInt(req.params.flightId, 10);
+
+      if (Number.isNaN(tripId) || Number.isNaN(flightId)) {
+        return res.status(400).json({ message: "Invalid trip or flight id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const parsedBody = flightAttendeeUpdateSchema.safeParse(req.body ?? {});
+      if (!parsedBody.success) {
+        return res.status(400).json({
+          message: "Invalid attendee data",
+          issues: parsedBody.error.issues,
+        });
+      }
+
+      try {
+        const result = await storage.updateFlightAttendees({
+          tripId,
+          flightId,
+          attendeeUserIds: parsedBody.data.attendeeUserIds ?? [],
+          currentUserId: userId,
+        });
+
+        return res.json({
+          flight: result.flight,
+          attendees: result.attendees,
+        });
+      } catch (error: unknown) {
+        console.error("Error updating flight attendees:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("not found")) {
+            return res.status(404).json({ message: error.message });
+          }
+          if (error.message.includes("Only the creator")) {
+            return res.status(403).json({ message: error.message });
+          }
+          if (error.message.includes("member")) {
+            return res.status(403).json({ message: error.message });
+          }
+        }
+        return res.status(500).json({ message: "Failed to update attendees" });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/trips/:tripId/flights/:flightId/attendees/me",
+    isAuthenticated,
+    async (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      const flightId = Number.parseInt(req.params.flightId, 10);
+
+      if (Number.isNaN(tripId) || Number.isNaN(flightId)) {
+        return res.status(400).json({ message: "Invalid trip or flight id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      try {
+        const result = await storage.removeSelfFromFlight(tripId, flightId, userId);
+
+        const remover = await storage.getUser(userId);
+        const removerName =
+          remover?.firstName || remover?.username || remover?.email || "A traveler";
+        const airlineLabel =
+          [result.flight.airline, result.flight.flightNumber]
+            .filter(Boolean)
+            .join(" ")
+            .trim() || "a flight";
+
+        if (result.creatorId && result.creatorId !== userId) {
+          await storage.createNotification({
+            userId: result.creatorId,
+            type: "flight_attendee_removed",
+            title: "Traveler removed",
+            message: `${removerName} removed themselves from ${airlineLabel}.`,
+            tripId,
+          });
+        }
+
+        return res.json({
+          flight: result.flight,
+          attendees: result.attendees,
+        });
+      } catch (error: unknown) {
+        console.error("Error removing flight attendee:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("not found")) {
+            return res.status(404).json({ message: error.message });
+          }
+          if (error.message.includes("not an attendee")) {
+            return res.status(403).json({ message: error.message });
+          }
+          if (error.message.includes("member")) {
+            return res.status(403).json({ message: error.message });
+          }
+        }
+        return res.status(500).json({ message: "Failed to remove attendee" });
+      }
+    },
+  );
 
   app.put('/api/flights/:id', isAuthenticated, async (req: any, res) => {
     const flightId = Number.parseInt(req.params.id, 10);

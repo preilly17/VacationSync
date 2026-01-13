@@ -678,6 +678,12 @@ const deriveCalendarEventType = (
   return "activities";
 };
 
+const isFlightCalendarActivity = (activity: ActivityWithDetails): boolean => {
+  const category = (activity.category ?? "").toLowerCase();
+  const entityType = (activity as ActivityWithDetails & { entityType?: string }).entityType;
+  return entityType === "flight" || category.includes("flight");
+};
+
 const activityMatchesAnySelectedPerson = (
   activity: ActivityWithDetails,
   selectedPeople: string[],
@@ -1820,6 +1826,9 @@ export default function Trip() {
   });
 
   const handleActivityClick = useCallback((activity: ActivityWithDetails) => {
+    if (isFlightCalendarActivity(activity)) {
+      return;
+    }
     setSelectedActivityId(activity.id);
     setExpandedActivityId((previous) => (previous === activity.id ? null : activity.id));
     setIsActivityDialogOpen(true);
