@@ -19,7 +19,16 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useToast } from "@/hooks/use-toast";
@@ -623,6 +632,49 @@ function ProposalsPage({
     return TRIP_ADMIN_ROLES.has(membership.role.toLowerCase());
   }, [membership?.role]);
 
+  const formatMemberLabel = useCallback((memberUser?: User | null) => {
+    if (!memberUser) {
+      return "Trip member";
+    }
+
+    const name = [memberUser.firstName, memberUser.lastName]
+      .filter((part): part is string => Boolean(part && part.trim()))
+      .join(" ");
+    if (name) {
+      return name;
+    }
+
+    return memberUser.username || memberUser.email || "Trip member";
+  }, []);
+
+  const tripMemberOptions = useMemo(() => {
+    if (!trip) {
+      return [];
+    }
+
+    const options = new Map<string, { id: string; label: string; user?: User | null }>();
+
+    const addMember = (userId: string | null, user?: User | null) => {
+      const normalizedId = normalizeUserId(userId);
+      if (!normalizedId) {
+        return;
+      }
+
+      if (!options.has(normalizedId)) {
+        options.set(normalizedId, {
+          id: normalizedId,
+          label: formatMemberLabel(user),
+          user,
+        });
+      }
+    };
+
+    trip.members?.forEach((member) => addMember(member.userId, member.user));
+    addMember(trip.creator?.id ?? trip.createdBy, trip.creator);
+
+    return Array.from(options.values());
+  }, [formatMemberLabel, trip]);
+
   // Hotel ranking mutation
   const rankHotelMutation = useMutation<
     unknown,
@@ -877,6 +929,63 @@ function ProposalsPage({
         if (!parsedError.message) {
           description = "This proposal may have already been removed.";
         }
+      }
+
+      toast({
+        title,
+        description,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const confirmFlightProposalMutation = useMutation<
+    { proposal: FlightProposalWithDetails; confirmedFlightId: number },
+    unknown,
+    { proposalId: number; attendeeUserIds: string[]; notify: boolean }
+  >({
+    mutationFn: async ({ proposalId, attendeeUserIds, notify }) => {
+      const res = await apiRequest(`/api/trips/${tripId}/proposals/${proposalId}/confirm`, {
+        method: "POST",
+        body: { attendeeUserIds, notify },
+      });
+      return (await res.json()) as { proposal: FlightProposalWithDetails; confirmedFlightId: number };
+    },
+    onSuccess: () => {
+      if (!tripId) {
+        return;
+      }
+
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+
+      toast({
+        title: "Flight confirmed and added to calendars.",
+      });
+    },
+    onError: (error: unknown) => {
+      if (isUnauthorizedError(error)) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const parsedError = parseApiError(error);
+      let title = "Unable to confirm flight";
+      let description =
+        parsedError.message || "We couldn’t confirm this flight. Please try again.";
+
+      if (parsedError.status === 403) {
+        title = "You can't confirm this flight";
+        description = parsedError.message || "Only the proposer or a trip admin can confirm.";
+      } else if (parsedError.status === 409) {
+        title = "Flight already confirmed";
+        description = parsedError.message || "This proposal has already been confirmed.";
       }
 
       toast({
@@ -1485,6 +1594,10 @@ function ProposalsPage({
       return <Badge className="bg-emerald-100 text-emerald-700"><CheckCircle className="w-3 h-3 mr-1" />Booked</Badge>;
     }
 
+    if (normalizedStatus === "confirmed") {
+      return <Badge className="bg-emerald-100 text-emerald-700"><CheckCircle className="w-3 h-3 mr-1" />Confirmed</Badge>;
+    }
+
     if (normalizedStatus === "scheduled") {
       return <Badge className="bg-emerald-100 text-emerald-700"><Calendar className="w-3 h-3 mr-1" />Scheduled</Badge>;
     }
@@ -1499,6 +1612,10 @@ function ProposalsPage({
 
     if (normalizedStatus === "rejected") {
       return <Badge className="bg-red-100 text-red-800"><XCircle className="w-3 h-3 mr-1" />Rejected</Badge>;
+    }
+
+    if (normalizedStatus === "closed") {
+      return <Badge className="bg-slate-100 text-slate-700"><AlertCircle className="w-3 h-3 mr-1" />Voting Closed</Badge>;
     }
 
     if (isCanceledStatus(status)) {
@@ -2330,7 +2447,7 @@ function ProposalsPage({
                 Your choice: #{userRanking}
               </Badge>
             )}
-            
+
             <Button
               variant="outline"
               size="sm"
@@ -2370,6 +2487,165 @@ function ProposalsPage({
     },
     [formatFlightDateTime],
   );
+
+  const ConfirmFlightProposalDialog = ({
+    proposal,
+    buttonClassName,
+    buttonFullWidth,
+  }: {
+    proposal: FlightProposalWithDetails;
+    buttonClassName?: string;
+    buttonFullWidth?: boolean;
+  }) => {
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [selectedAttendees, setSelectedAttendees] = useState<string[]>([]);
+    const [notifyMembers, setNotifyMembers] = useState(true);
+
+    const proposerId =
+      normalizeUserId(proposal.proposedBy) ?? normalizeUserId(proposal.proposer?.id);
+    const normalizedStatus = normalizeProposalStatus(proposal.status);
+    const canConfirm =
+      !isCanceledStatus(proposal.status) &&
+      ["active", "open", "proposed"].includes(normalizedStatus) &&
+      Boolean(
+        normalizedCurrentUserId &&
+          (normalizedCurrentUserId === proposerId || isTripEditor || isTripOwner),
+      );
+
+    const memberOptions = useMemo(() => {
+      const options = new Map(tripMemberOptions.map((member) => [member.id, member]));
+
+      if (proposerId && !options.has(proposerId)) {
+        options.set(proposerId, {
+          id: proposerId,
+          label: formatMemberLabel(proposal.proposer),
+          user: proposal.proposer,
+        });
+      }
+
+      return Array.from(options.values());
+    }, [formatMemberLabel, proposal.proposer, proposerId, tripMemberOptions]);
+
+    useEffect(() => {
+      if (!isDialogOpen) {
+        return;
+      }
+
+      const defaultAttendee = proposerId ?? normalizedCurrentUserId ?? null;
+      setSelectedAttendees(defaultAttendee ? [defaultAttendee] : []);
+      setNotifyMembers(true);
+    }, [isDialogOpen, normalizedCurrentUserId, proposerId]);
+
+    if (!canConfirm) {
+      return null;
+    }
+
+    const isConfirming =
+      confirmFlightProposalMutation.isPending &&
+      confirmFlightProposalMutation.variables?.proposalId === proposal.id;
+
+    const toggleAttendee = (userId: string, nextChecked: boolean) => {
+      setSelectedAttendees((previous) => {
+        if (nextChecked) {
+          return previous.includes(userId) ? previous : [...previous, userId];
+        }
+
+        return previous.filter((id) => id !== userId);
+      });
+    };
+
+    const handleConfirm = async () => {
+      try {
+        await confirmFlightProposalMutation.mutateAsync({
+          proposalId: proposal.id,
+          attendeeUserIds: selectedAttendees,
+          notify: notifyMembers,
+        });
+        setIsDialogOpen(false);
+      } catch {
+        // Errors handled in mutation callbacks.
+      }
+    };
+
+    return (
+      <Dialog
+        open={isDialogOpen}
+        onOpenChange={(open) => {
+          if (!isConfirming) {
+            setIsDialogOpen(open);
+          }
+        }}
+      >
+        <DialogTrigger asChild>
+          <Button
+            className={cn(buttonFullWidth && "w-full", buttonClassName)}
+            data-testid={`button-confirm-flight-proposal-${proposal.id}`}
+          >
+            Confirm & Add to Calendar
+          </Button>
+        </DialogTrigger>
+        <DialogContent ariaDescriptionFallback="Confirm flight proposal">
+          <DialogHeader>
+            <DialogTitle>Confirm & Add to Calendar</DialogTitle>
+            <DialogDescription>
+              Choose which trip members should be added to this flight.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Who is on this flight?</div>
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-md border border-neutral-200 p-3">
+                {memberOptions.map((member) => {
+                  const isChecked = selectedAttendees.includes(member.id);
+                  return (
+                    <label
+                      key={member.id}
+                      className="flex items-center gap-2 text-sm text-neutral-700"
+                    >
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={(checked) =>
+                          toggleAttendee(member.id, checked === true)
+                        }
+                        data-testid={`checkbox-flight-attendee-${proposal.id}-${member.id}`}
+                      />
+                      <span>{member.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <Checkbox
+                checked={notifyMembers}
+                onCheckedChange={(checked) => setNotifyMembers(checked === true)}
+                data-testid={`checkbox-flight-notify-${proposal.id}`}
+              />
+              Notify selected members
+            </label>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsDialogOpen(false)}
+              disabled={isConfirming}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={isConfirming || selectedAttendees.length === 0}
+            >
+              {isConfirming ? "Confirming..." : "Confirm & Add"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  };
 
   // Flight proposal card component
   const FlightProposalCardMobile = ({ proposal }: { proposal: FlightProposalWithDetails }) => {
@@ -2504,14 +2780,20 @@ function ProposalsPage({
               </SelectContent>
             </Select>
 
-            {userRanking && (
-              <Badge className={cn(getRankingColor(userRanking), "w-fit")} data-testid={`badge-user-ranking-${proposal.id}`}>
-                Your choice: #{userRanking}
-              </Badge>
-            )}
-          </div>
+          {userRanking && (
+            <Badge className={cn(getRankingColor(userRanking), "w-fit")} data-testid={`badge-user-ranking-${proposal.id}`}>
+              Your choice: #{userRanking}
+            </Badge>
+          )}
 
-          <Button
+          <ConfirmFlightProposalDialog
+            proposal={proposal}
+            buttonFullWidth
+            buttonClassName="h-10"
+          />
+        </div>
+
+        <Button
             variant="ghost"
             size="sm"
             className="mt-3 h-10 w-full text-sm"
@@ -2764,6 +3046,8 @@ function ProposalsPage({
                 Your choice: #{userRanking}
               </Badge>
             )}
+
+            <ConfirmFlightProposalDialog proposal={proposal} />
             
             <Button
               variant="outline"

@@ -912,6 +912,9 @@ export interface FlightProposal {
   averageRanking: number | null;
   createdAt: IsoDate | null;
   flightId?: number | null;
+  confirmedAt?: IsoDate | null;
+  confirmedByUserId?: string | null;
+  confirmedFlightId?: number | null;
   seatClass?: string | null;
   seatNumber?: string | null;
   bookingSource?: string | null;
