@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
@@ -105,6 +106,8 @@ const parseApiErrorResponse = (
 function getFlightStatusColor(status: string): string {
   switch (status) {
     case "confirmed": return "bg-green-100 text-green-800";
+    case "draft": return "bg-slate-100 text-slate-700";
+    case "proposed": return "bg-blue-100 text-blue-800";
     case "cancelled": return "bg-red-100 text-red-800";
     case "delayed": return "bg-yellow-100 text-yellow-800";
     case "completed": return "bg-blue-100 text-blue-800";
@@ -517,6 +520,29 @@ const AIRLINE_IATA_MAP: Record<string, string> = {
 function getAirlineName(airlineCode: string): string {
   return AIRLINE_IATA_MAP[airlineCode] || airlineCode;
 }
+
+const getUserDisplayName = (user?: User | null): string => {
+  if (!user) {
+    return "Traveler";
+  }
+
+  const first = user.firstName?.trim();
+  const last = user.lastName?.trim();
+
+  if (first && last) {
+    return `${first} ${last}`;
+  }
+
+  if (first) {
+    return first;
+  }
+
+  if (user.username && user.username.trim()) {
+    return user.username;
+  }
+
+  return user.email ?? "Traveler";
+};
 
 type TripType = "oneway" | "roundtrip";
 type CabinClass = "ECONOMY" | "PREMIUM_ECONOMY" | "BUSINESS" | "FIRST";
@@ -1958,6 +1984,12 @@ export default function FlightsPage() {
   };
   const [manualFlightForm, setManualFlightForm] = useState<ManualFlightFormState>(defaultManualFlightForm);
   const [manualFlightErrors, setManualFlightErrors] = useState<ManualFlightFormErrors>({});
+  const [confirmDialogState, setConfirmDialogState] = useState<{
+    flight: FlightWithDetails;
+    mode: "confirm" | "update";
+  } | null>(null);
+  const [selectedAttendeeIds, setSelectedAttendeeIds] = useState<string[]>([]);
+  const [notifyAttendees, setNotifyAttendees] = useState(true);
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -2291,6 +2323,28 @@ export default function FlightsPage() {
     enabled: !!tripId,
   });
 
+  const tripMemberOptions = useMemo(() => {
+    const members = (trip?.members ?? [])
+      .map((member) => member.user)
+      .filter((member): member is User => Boolean(member));
+
+    if (trip?.creator) {
+      const hasCreator = members.some((member) => member.id === trip.creator?.id);
+      if (!hasCreator) {
+        members.push(trip.creator);
+      }
+    }
+
+    const seen = new Set<string>();
+    return members.filter((member) => {
+      if (!member.id || seen.has(member.id)) {
+        return false;
+      }
+      seen.add(member.id);
+      return true;
+    });
+  }, [trip]);
+
   // Flight proposals for group voting
   // State to track if we've already prefilled to avoid overriding user changes
   const [hasPrefilledSearch, setHasPrefilledSearch] = useState(false);
@@ -2542,13 +2596,123 @@ export default function FlightsPage() {
     },
   });
 
-  const handleToggleFlightStatus = (flight: FlightWithDetails) => {
-    const currentStatus = (flight.status ?? 'proposed').toLowerCase();
-    const nextStatus = currentStatus === 'confirmed' ? 'proposed' : 'confirmed';
+  const confirmFlightMutation = useMutation({
+    mutationFn: async (payload: { flightId: number; attendeeUserIds: string[]; notify: boolean }) => {
+      return apiRequest(`/api/trips/${tripId}/flights/${payload.flightId}/confirm`, {
+        method: "POST",
+        body: {
+          attendeeUserIds: payload.attendeeUserIds,
+          notify: payload.notify,
+        },
+      });
+    },
+    onSuccess: async () => {
+      if (tripId) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] }),
+          queryClient.invalidateQueries({
+            queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          }),
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] }),
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+        ]);
+      }
+      setConfirmDialogState(null);
+      toast({
+        title: "Flight confirmed",
+        description: "Selected travelers have been added to the calendar.",
+      });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to confirm flight";
+      toast({
+        title: "Unable to confirm flight",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
 
-    updateFlightMutation.mutate({
-      id: flight.id,
-      updates: { status: nextStatus },
+  const updateAttendeesMutation = useMutation({
+    mutationFn: async (payload: { flightId: number; attendeeUserIds: string[] }) => {
+      return apiRequest(`/api/trips/${tripId}/flights/${payload.flightId}/attendees`, {
+        method: "PATCH",
+        body: {
+          attendeeUserIds: payload.attendeeUserIds,
+        },
+      });
+    },
+    onSuccess: async () => {
+      if (tripId) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] }),
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+        ]);
+      }
+      setConfirmDialogState(null);
+      toast({
+        title: "Travelers updated",
+        description: "The flight attendees have been refreshed.",
+      });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to update attendees";
+      toast({
+        title: "Unable to update travelers",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const removeSelfMutation = useMutation({
+    mutationFn: async (flightId: number) => {
+      return apiRequest(`/api/trips/${tripId}/flights/${flightId}/attendees/me`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: async () => {
+      if (tripId) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
+          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] }),
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
+        ]);
+      }
+      toast({
+        title: "Removed from flight",
+        description: "You are no longer assigned to this flight.",
+      });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Failed to remove you from flight";
+      toast({
+        title: "Unable to remove",
+        description: message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const openConfirmDialog = (flight: FlightWithDetails, mode: "confirm" | "update") => {
+    const fallbackSelection = currentUserId ? [currentUserId] : [];
+    const existingAttendees = (flight.attendees ?? [])
+      .map((attendee) => attendee.userId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+    setConfirmDialogState({ flight, mode });
+    setNotifyAttendees(true);
+    setSelectedAttendeeIds(existingAttendees.length > 0 ? existingAttendees : fallbackSelection);
+  };
+
+  const toggleAttendeeSelection = (userId: string, checked: boolean) => {
+    setSelectedAttendeeIds((previous) => {
+      if (checked) {
+        return Array.from(new Set([...previous, userId]));
+      }
+      return previous.filter((id) => id !== userId);
     });
   };
 
@@ -3057,7 +3221,7 @@ export default function FlightsPage() {
       pointsCost: pointsCostValue,
       currency: 'USD',
       flightType: direction.toLowerCase(),
-      status: editingFlight?.status || 'proposed',
+      status: editingFlight?.status || 'draft',
       bookingReference: editingFlight?.bookingReference ?? null,
       aircraft: editingFlight?.aircraft ?? null,
       baggage: buildBaggageWithNotes(editingFlight?.baggage ?? null, manualFlightForm.notes),
@@ -3181,7 +3345,7 @@ export default function FlightsPage() {
               const itemId = flight.id ? flight.id.toString() : `${flight.flightNumber}-${flight.departureTime}`;
               const directionLabel =
                 (flight.flightType || "").toLowerCase() === "return" ? "Return" : "Outbound";
-              const statusValue = (flight.status ?? "proposed").toLowerCase();
+              const statusValue = (flight.status ?? "draft").toLowerCase();
               const statusLabel = statusValue.charAt(0).toUpperCase() + statusValue.slice(1);
               const statusBadgeClass = getFlightStatusColor(statusValue);
               const departureLabel = formatAirportDisplay(flight.departureAirport, flight.departureCode);
@@ -3246,6 +3410,12 @@ export default function FlightsPage() {
               const permissions = getFlightPermissions(flight, trip as TripWithDetails | null, currentUserId);
               const isManualEntry =
                 !(flight.bookingSource ?? "") || (flight.bookingSource ?? "").toString().toLowerCase() === "manual";
+              const attendees = flight.attendees ?? [];
+              const isConfirmed = statusValue === "confirmed";
+              const hasAttendees = attendees.length > 0;
+              const isCurrentUserAttendee = Boolean(
+                currentUserId && attendees.some((attendee) => attendee.userId === currentUserId),
+              );
               const notesLabel = notes ? `Notes: ${notes}` : null;
               const summaryDepartureCode =
                 extractAirportCode(departureLabel) ?? flight.departureCode?.toUpperCase() ?? null;
@@ -3368,14 +3538,38 @@ export default function FlightsPage() {
                         {notesLabel}
                       </div>
                     )}
+                    {isConfirmed && (
+                      <div className="mt-4 rounded-lg border border-dashed border-muted-foreground/40 bg-muted/20 p-3">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Travelers
+                        </div>
+                        {hasAttendees ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {attendees.map((attendee) => (
+                              <div
+                                key={attendee.id}
+                                className="flex items-center gap-2 rounded-full bg-muted/60 px-2 py-1 text-xs font-medium text-muted-foreground"
+                              >
+                                <Avatar className="h-6 w-6">
+                                  <AvatarImage src={attendee.user.profileImageUrl ?? undefined} />
+                                  <AvatarFallback>
+                                    {getUserDisplayName(attendee.user).slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{getUserDisplayName(attendee.user)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-sm text-muted-foreground">
+                            No attendees assigned.
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                        <Switch
-                          checked={statusValue === 'confirmed'}
-                          onCheckedChange={() => handleToggleFlightStatus(flight)}
-                          disabled={!permissions.canManageStatus}
-                        />
-                        <span>{statusValue === 'confirmed' ? 'Confirmed' : 'Proposed'}</span>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        {isConfirmed ? "Confirmed" : "Not confirmed"}
                         {permissions.isAdminOverride && (
                           <Badge variant="outline" className="text-xs">
                             Admin override
@@ -3394,16 +3588,38 @@ export default function FlightsPage() {
                             Edit
                           </Button>
                         )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            void shareFlightWithGroup(flight);
-                          }}
-                        >
-                          <Users className="mr-2 h-4 w-4" />
-                          Propose
-                        </Button>
+                        {permissions.isCreator && (
+                          <Button
+                            variant={isConfirmed ? "outline" : "default"}
+                            size="sm"
+                            onClick={() => openConfirmDialog(flight, isConfirmed ? "update" : "confirm")}
+                          >
+                            <Plane className="mr-2 h-4 w-4" />
+                            {isConfirmed ? "Update travelers" : "Confirm"}
+                          </Button>
+                        )}
+                        {!isConfirmed && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              void shareFlightWithGroup(flight);
+                            }}
+                            disabled={Boolean(flight.proposalId) || isProposing}
+                          >
+                            <Users className="mr-2 h-4 w-4" />
+                            Propose
+                          </Button>
+                        )}
+                        {isConfirmed && isCurrentUserAttendee && (
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => removeSelfMutation.mutate(flight.id)}
+                          >
+                            Remove me
+                          </Button>
+                        )}
                         {permissions.isCreator && (
                           <Button
                             variant="destructive"
@@ -3619,6 +3835,103 @@ export default function FlightsPage() {
               )}
             </Button>
           </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
+      open={Boolean(confirmDialogState)}
+      onOpenChange={(open) => {
+        if (!open) {
+          setConfirmDialogState(null);
+        }
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {confirmDialogState?.mode === "update" ? "Update travelers" : "Confirm flight"}
+          </DialogTitle>
+          <DialogDescription>
+            Choose which trip members are on this flight.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-3">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Trip members
+            </div>
+            <div className="space-y-2">
+              {tripMemberOptions.length > 0 ? (
+                tripMemberOptions.map((member) => {
+                  const checked = selectedAttendeeIds.includes(member.id);
+                  return (
+                    <label
+                      key={member.id}
+                      className="flex items-center gap-3 rounded-lg border border-muted/60 p-2 text-sm text-foreground"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(value) => toggleAttendeeSelection(member.id, Boolean(value))}
+                      />
+                      <Avatar className="h-7 w-7">
+                        <AvatarImage src={member.profileImageUrl ?? undefined} />
+                        <AvatarFallback>
+                          {getUserDisplayName(member).slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="font-medium">{getUserDisplayName(member)}</span>
+                    </label>
+                  );
+                })
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Add trip members to assign attendees.
+                </div>
+              )}
+            </div>
+          </div>
+          <label className="flex items-center gap-3 text-sm text-muted-foreground">
+            <Checkbox
+              checked={notifyAttendees}
+              onCheckedChange={(value) => setNotifyAttendees(Boolean(value))}
+            />
+            Notify selected members
+          </label>
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setConfirmDialogState(null)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              const flightId = confirmDialogState?.flight.id;
+              if (!flightId) {
+                return;
+              }
+
+              if (confirmDialogState?.mode === "update") {
+                updateAttendeesMutation.mutate({
+                  flightId,
+                  attendeeUserIds: selectedAttendeeIds,
+                });
+                return;
+              }
+
+              confirmFlightMutation.mutate({
+                flightId,
+                attendeeUserIds: selectedAttendeeIds,
+                notify: notifyAttendees,
+              });
+            }}
+            disabled={confirmFlightMutation.isPending || updateAttendeesMutation.isPending}
+          >
+            {(confirmFlightMutation.isPending || updateAttendeesMutation.isPending)
+              ? "Saving..."
+              : confirmDialogState?.mode === "update"
+              ? "Update travelers"
+              : "Confirm flight"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

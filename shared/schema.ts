@@ -607,6 +607,8 @@ export interface Flight {
   id: number;
   tripId: number;
   userId: string;
+  confirmedAt?: IsoDate | null;
+  confirmedByUserId?: string | null;
   flightNumber: string;
   airline: string;
   airlineCode: string;
@@ -640,6 +642,35 @@ export interface Flight {
   updatedAt: IsoDate | null;
 }
 
+export interface FlightAttendee {
+  id: number;
+  tripId: number;
+  flightId: number;
+  userId: string;
+  addedAt: IsoDate | null;
+  addedByUserId: string;
+}
+
+export type FlightAttendeeWithUser = FlightAttendee & {
+  user: User;
+};
+
+export interface CalendarEvent {
+  id: number;
+  tripId: number;
+  userId: string;
+  entityType: "flight";
+  entityId: number;
+  startAt: IsoDate;
+  endAt: IsoDate;
+  timezone: string;
+  title: string;
+  metadata: JsonValue | null;
+  status: "CONFIRMED";
+  createdAt: IsoDate | null;
+  updatedAt: IsoDate | null;
+}
+
 export const insertFlightSchema = z.object({
   tripId: z.number(),
   flightNumber: z.string().min(1, "Flight number is required"),
@@ -652,7 +683,7 @@ export const insertFlightSchema = z.object({
   arrivalCode: z.string().min(1, "Arrival code is required"),
   arrivalTime: z.union([z.date(), z.string()]),
   flightType: z.string().min(1, "Flight type is required"),
-  status: z.string().default("confirmed"),
+  status: z.string().default("draft"),
   currency: z.string().default("USD"),
   bookingReference: z.string().nullable().optional(),
   departureTerminal: z.string().nullable().optional(),
@@ -1134,6 +1165,7 @@ export type GroceryReceiptWithDetails = GroceryReceipt & {
 export type FlightWithDetails = Flight & {
   user: User;
   trip: TripCalendar;
+  attendees?: FlightAttendeeWithUser[];
 };
 
 export interface Restaurant {
