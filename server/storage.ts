@@ -1084,6 +1084,9 @@ type FlightProposalRow = {
   average_ranking: string | number | null;
   created_at: Date | null;
   updated_at: Date | null;
+  confirmed_at?: Date | null;
+  confirmed_by_user_id?: string | null;
+  confirmed_flight_id?: number | null;
 };
 
 type FlightProposalWithProposerRow = FlightProposalRow & PrefixedUserRow<"proposer_">;
@@ -1573,6 +1576,9 @@ const mapFlightProposal = (row: FlightProposalRow): FlightProposal => {
     averageRanking: parseAverageRanking(row.average_ranking),
     createdAt: row.created_at,
     flightId: linkedFlightId,
+    confirmedAt: row.confirmed_at ?? null,
+    confirmedByUserId: row.confirmed_by_user_id ?? null,
+    confirmedFlightId: row.confirmed_flight_id ?? null,
     seatClass: linkedSeatClass ?? undefined,
     seatNumber: linkedSeatNumber ?? undefined,
     bookingSource: linkedBookingSource ?? undefined,
@@ -3111,6 +3117,15 @@ export class DatabaseStorage implements IStorage {
     } finally {
       this.flightConfirmationInitPromise = null;
     }
+  }
+
+  private async ensureFlightProposalConfirmationColumns(): Promise<void> {
+    await query(`
+      ALTER TABLE flight_proposals
+        ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS confirmed_by_user_id TEXT,
+        ADD COLUMN IF NOT EXISTS confirmed_flight_id INTEGER
+    `);
   }
 
   private async ensureFlightAttendanceStructures(): Promise<void> {
@@ -11891,6 +11906,9 @@ ${selectUserColumns("participant_user", "participant_user_")}
         fp.average_ranking,
         fp.created_at,
         fp.updated_at,
+        fp.confirmed_at,
+        fp.confirmed_by_user_id,
+        fp.confirmed_flight_id,
         psl.scheduled_id AS linked_flight_id,
         f.departure_code AS linked_departure_code,
         f.arrival_code AS linked_arrival_code,
@@ -13260,6 +13278,559 @@ ${selectUserColumns("participant_user", "participant_user_")}
     });
 
     return updated;
+  }
+
+  async confirmFlightProposal(options: {
+    tripId: number;
+    proposalId: number;
+    attendeeUserIds: string[];
+    currentUserId: string;
+  }): Promise<{
+    proposal: FlightProposalWithDetails;
+    flight: FlightWithDetails;
+    attendees: FlightAttendeeWithUser[];
+    confirmedFlightId: number;
+  }> {
+    await this.ensureFlightProposalConfirmationColumns();
+    await this.ensureProposalLinkStructures();
+    await this.ensureFlightConfirmationColumns();
+    await this.ensureFlightAttendanceStructures();
+    await this.ensureCalendarEventStructures();
+    await this.ensureTripTimezoneColumn();
+
+    const client = await pool.connect();
+    let confirmedFlightId: number | null = null;
+    let updatedFlight: FlightWithDetails | null = null;
+    try {
+      await client.query("BEGIN");
+
+      const { rows: proposalRows } = await client.query<
+        FlightProposalRow & { linked_flight_id: number | null }
+      >(
+        `
+        SELECT
+          fp.id,
+          fp.trip_id,
+          fp.proposed_by,
+          fp.airline,
+          fp.flight_number,
+          fp.departure_airport,
+          fp.departure_time,
+          fp.departure_terminal,
+          fp.arrival_airport,
+          fp.arrival_time,
+          fp.arrival_terminal,
+          fp.duration,
+          fp.stops,
+          fp.aircraft,
+          fp.price,
+          fp.points_cost,
+          fp.currency,
+          fp.booking_url,
+          fp.platform,
+          fp.status,
+          fp.average_ranking,
+          fp.created_at,
+          fp.updated_at,
+          fp.confirmed_at,
+          fp.confirmed_by_user_id,
+          fp.confirmed_flight_id,
+          psl.scheduled_id AS linked_flight_id
+        FROM flight_proposals fp
+        LEFT JOIN proposal_schedule_links psl
+          ON psl.proposal_type = 'flight'
+         AND psl.proposal_id = fp.id
+         AND psl.scheduled_table = 'flights'
+        WHERE fp.id = $1
+        FOR UPDATE
+        `,
+        [options.proposalId],
+      );
+
+      const proposalRow = proposalRows[0];
+      if (!proposalRow) {
+        throw new Error("Flight proposal not found");
+      }
+
+      if (proposalRow.trip_id !== options.tripId) {
+        throw new Error("Flight proposal does not belong to this trip");
+      }
+
+      const normalizedStatus = (proposalRow.status ?? "active").toLowerCase();
+      if (["canceled", "cancelled", "void", "voided", "archived"].includes(normalizedStatus)) {
+        throw new Error("Flight proposal is canceled");
+      }
+
+      const isAlreadyConfirmed = ["confirmed", "closed"].includes(normalizedStatus);
+      const isOpen = ["active", "open", "proposed"].includes(normalizedStatus);
+      if (!isOpen && !isAlreadyConfirmed) {
+        throw new Error("Flight proposal is not open");
+      }
+
+      const { rows: tripRows } = await client.query<{
+        created_by: string | null;
+        timezone: string | null;
+      }>(
+        `
+        SELECT created_by, timezone
+        FROM trip_calendars
+        WHERE id = $1
+        `,
+        [options.tripId],
+      );
+      const tripRow = tripRows[0];
+
+      const { rows: memberRows } = await client.query<{ user_id: string; role: string | null }>(
+        `
+        SELECT user_id, role
+        FROM trip_members
+        WHERE trip_calendar_id = $1
+        `,
+        [options.tripId],
+      );
+
+      const normalizedRequesterId = normalizeUserId(options.currentUserId);
+      const normalizedProposerId = normalizeUserId(proposalRow.proposed_by);
+      const normalizedTripOwnerId = normalizeUserId(tripRow?.created_by);
+
+      const memberIds = new Set(
+        memberRows
+          .map((row) => row.user_id)
+          .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+          .map((id) => id.trim()),
+      );
+      if (normalizedTripOwnerId) {
+        memberIds.add(normalizedTripOwnerId);
+      }
+
+      if (!normalizedRequesterId || !memberIds.has(normalizedRequesterId)) {
+        throw new Error("You are no longer a member of this trip");
+      }
+
+      const isTripEditor = memberRows.some((row) =>
+        typeof row.role === "string" &&
+        ["admin", "owner", "organizer"].includes(row.role.toLowerCase()),
+      );
+      const isTripOwner =
+        normalizedTripOwnerId != null && normalizedRequesterId === normalizedTripOwnerId;
+      const isProposer =
+        normalizedRequesterId != null &&
+        normalizedProposerId != null &&
+        normalizedRequesterId === normalizedProposerId;
+
+      if (!isProposer && !isTripOwner && !isTripEditor) {
+        throw new Error("Only the proposer or a trip admin can confirm this flight");
+      }
+
+      const ensureCode = (value: string | null | undefined, fallback: string) => {
+        const trimmed = toOptionalString(value)?.trim().toUpperCase();
+        if (trimmed && trimmed.length >= 2) {
+          return trimmed.length > 3 ? trimmed.slice(0, 3) : trimmed;
+        }
+        return fallback;
+      };
+
+      const extractAirportCode = (value: string | null | undefined): string | null => {
+        if (!value) {
+          return null;
+        }
+        const match = value.toUpperCase().match(/\b[A-Z]{3}\b/);
+        return match ? match[0] : null;
+      };
+
+      const extractAirlineCode = (value: string | null | undefined): string | null => {
+        if (!value) {
+          return null;
+        }
+        const match = value.toUpperCase().match(/\b[A-Z]{2,3}(?=\d|\s)/);
+        return match ? match[0] : null;
+      };
+
+      let flightId = proposalRow.linked_flight_id ?? proposalRow.confirmed_flight_id ?? null;
+      let flightRow: FlightRow | null = null;
+
+      if (!flightId) {
+        const airlineCode =
+          extractAirlineCode(proposalRow.flight_number) ??
+          extractAirlineCode(proposalRow.airline) ??
+          ensureCode(proposalRow.airline, "UNK");
+        const departureCode =
+          extractAirportCode(proposalRow.departure_airport) ??
+          ensureCode(proposalRow.departure_airport, "TBD");
+        const arrivalCode =
+          extractAirportCode(proposalRow.arrival_airport) ??
+          ensureCode(proposalRow.arrival_airport, "TBD");
+
+        const { rows: flightRows } = await client.query<FlightRow>(
+          `
+          INSERT INTO flights (
+            trip_id,
+            user_id,
+            flight_number,
+            airline,
+            airline_code,
+            departure_airport,
+            departure_code,
+            departure_time,
+            departure_terminal,
+            arrival_airport,
+            arrival_code,
+            arrival_time,
+            arrival_terminal,
+            price,
+            points_cost,
+            currency,
+            flight_type,
+            status,
+            booking_source,
+            purchase_url,
+            aircraft,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW()
+          )
+          RETURNING
+            id,
+            trip_id,
+            user_id,
+            confirmed_at,
+            confirmed_by_user_id,
+            flight_number,
+            airline,
+            airline_code,
+            departure_airport,
+            departure_code,
+            departure_time,
+            departure_terminal,
+            departure_gate,
+            arrival_airport,
+            arrival_code,
+            arrival_time,
+            arrival_terminal,
+            arrival_gate,
+            booking_reference,
+            seat_number,
+            seat_class,
+            price,
+            points_cost,
+            currency,
+            flight_type,
+            status,
+            layovers,
+            booking_source,
+            purchase_url,
+            aircraft,
+            flight_duration,
+            baggage,
+            created_at,
+            updated_at
+          `,
+          [
+            proposalRow.trip_id,
+            proposalRow.proposed_by,
+            proposalRow.flight_number,
+            proposalRow.airline,
+            airlineCode,
+            proposalRow.departure_airport,
+            departureCode,
+            proposalRow.departure_time,
+            proposalRow.departure_terminal,
+            proposalRow.arrival_airport,
+            arrivalCode,
+            proposalRow.arrival_time,
+            proposalRow.arrival_terminal,
+            toNumberOrNull(proposalRow.price),
+            proposalRow.points_cost ?? null,
+            proposalRow.currency ?? "USD",
+            "outbound",
+            "draft",
+            proposalRow.platform ?? null,
+            proposalRow.booking_url ?? null,
+            proposalRow.aircraft ?? null,
+          ],
+        );
+
+        flightRow = flightRows[0] ?? null;
+        if (!flightRow) {
+          throw new Error("Failed to create confirmed flight");
+        }
+
+        flightId = flightRow.id;
+
+        await client.query(
+          `
+          INSERT INTO proposal_schedule_links (
+            proposal_type,
+            proposal_id,
+            scheduled_table,
+            scheduled_id,
+            trip_id,
+            created_from_proposal
+          )
+          VALUES ('flight', $1, 'flights', $2, $3, TRUE)
+          ON CONFLICT DO NOTHING
+          `,
+          [proposalRow.id, flightId, proposalRow.trip_id],
+        );
+      }
+
+      if (!flightId) {
+        throw new Error("Failed to locate a flight for confirmation");
+      }
+
+      if (!proposalRow.linked_flight_id) {
+        await client.query(
+          `
+          INSERT INTO proposal_schedule_links (
+            proposal_type,
+            proposal_id,
+            scheduled_table,
+            scheduled_id,
+            trip_id,
+            created_from_proposal
+          )
+          VALUES ('flight', $1, 'flights', $2, $3, TRUE)
+          ON CONFLICT DO NOTHING
+          `,
+          [proposalRow.id, flightId, proposalRow.trip_id],
+        );
+      }
+
+      if (!flightRow) {
+        const { rows: flightRows } = await client.query<FlightRow>(
+          `
+          SELECT
+            id,
+            trip_id,
+            user_id,
+            confirmed_at,
+            confirmed_by_user_id,
+            flight_number,
+            airline,
+            airline_code,
+            departure_airport,
+            departure_code,
+            departure_time,
+            departure_terminal,
+            departure_gate,
+            arrival_airport,
+            arrival_code,
+            arrival_time,
+            arrival_terminal,
+            arrival_gate,
+            booking_reference,
+            seat_number,
+            seat_class,
+            price,
+            points_cost,
+            currency,
+            flight_type,
+            status,
+            layovers,
+            booking_source,
+            purchase_url,
+            aircraft,
+            flight_duration,
+            baggage,
+            created_at,
+            updated_at
+          FROM flights
+          WHERE id = $1
+          FOR UPDATE
+          `,
+          [flightId],
+        );
+        flightRow = flightRows[0] ?? null;
+      }
+
+      if (!flightRow || flightRow.trip_id !== options.tripId) {
+        throw new Error("Flight not found");
+      }
+
+      const normalizedAttendees = options.attendeeUserIds
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0);
+      const invalidAttendees = normalizedAttendees.filter((id) => !memberIds.has(id));
+      if (invalidAttendees.length > 0) {
+        throw new Error("Attendees must be members of this trip");
+      }
+
+      const attendeeIds = Array.from(
+        new Set([flightRow.user_id, ...normalizedAttendees]),
+      );
+
+      const { rows: existingAttendeeRows } = await client.query<{ user_id: string }>(
+        `
+        SELECT user_id
+        FROM flight_attendees
+        WHERE flight_id = $1
+        `,
+        [flightId],
+      );
+
+      const existingIds = new Set(existingAttendeeRows.map((row) => row.user_id));
+      const removedUserIds = Array.from(existingIds).filter(
+        (userId) => !attendeeIds.includes(userId),
+      );
+
+      await client.query(
+        `
+        UPDATE flights
+        SET
+          status = 'confirmed',
+          confirmed_at = NOW(),
+          confirmed_by_user_id = $2,
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [flightId, options.currentUserId],
+      );
+
+      await client.query(
+        `
+        DELETE FROM flight_attendees
+        WHERE flight_id = $1
+        `,
+        [flightId],
+      );
+
+      if (attendeeIds.length > 0) {
+        await client.query(
+          `
+          INSERT INTO flight_attendees (trip_id, flight_id, user_id, added_by_user_id)
+          SELECT $1, $2, uid, $3
+          FROM UNNEST($4::text[]) AS uid
+          `,
+          [options.tripId, flightId, options.currentUserId, attendeeIds],
+        );
+      }
+
+      const title =
+        [flightRow.airline, flightRow.flight_number].filter(Boolean).join(" ") ||
+        "Confirmed flight";
+      const metadata = {
+        airline: flightRow.airline,
+        flightNumber: flightRow.flight_number,
+        departureAirport: flightRow.departure_airport,
+        departureCode: flightRow.departure_code,
+        arrivalAirport: flightRow.arrival_airport,
+        arrivalCode: flightRow.arrival_code,
+      };
+
+      if (attendeeIds.length > 0) {
+        await client.query(
+          `
+          INSERT INTO calendar_events (
+            trip_id,
+            user_id,
+            entity_type,
+            entity_id,
+            start_at,
+            end_at,
+            timezone,
+            title,
+            metadata,
+            status
+          )
+          SELECT
+            $1,
+            uid,
+            'flight',
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            'CONFIRMED'
+          FROM UNNEST($8::text[]) AS uid
+          ON CONFLICT (trip_id, user_id, entity_type, entity_id) DO UPDATE
+            SET start_at = EXCLUDED.start_at,
+                end_at = EXCLUDED.end_at,
+                timezone = EXCLUDED.timezone,
+                title = EXCLUDED.title,
+                metadata = EXCLUDED.metadata,
+                status = EXCLUDED.status,
+                updated_at = NOW()
+          `,
+          [
+            options.tripId,
+            flightId,
+            flightRow.departure_time,
+            flightRow.arrival_time,
+            tripRow?.timezone ?? "UTC",
+            title,
+            metadata,
+            attendeeIds,
+          ],
+        );
+      }
+
+      if (removedUserIds.length > 0) {
+        await client.query(
+          `
+          DELETE FROM calendar_events
+          WHERE trip_id = $1
+            AND entity_type = 'flight'
+            AND entity_id = $2
+            AND user_id = ANY($3::text[])
+          `,
+          [options.tripId, flightId, removedUserIds],
+        );
+      }
+
+      await client.query(
+        `
+        UPDATE flight_proposals
+        SET
+          status = 'confirmed',
+          confirmed_at = NOW(),
+          confirmed_by_user_id = $2,
+          confirmed_flight_id = $3,
+          updated_at = NOW()
+        WHERE id = $1
+        `,
+        [proposalRow.id, options.currentUserId, flightId],
+      );
+
+      confirmedFlightId = flightId;
+
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (!confirmedFlightId) {
+      throw new Error("Failed to confirm flight proposal");
+    }
+
+    const proposals = await this.fetchFlightProposals({
+      proposalIds: [options.proposalId],
+      currentUserId: options.currentUserId,
+    });
+    const proposal = proposals[0];
+    if (!proposal) {
+      throw new Error("Failed to load flight proposal");
+    }
+
+    const flights = await this.getTripFlights(options.tripId);
+    updatedFlight = flights.find((flight) => flight.id === confirmedFlightId) ?? null;
+    if (!updatedFlight) {
+      throw new Error("Failed to load confirmed flight");
+    }
+
+    return {
+      proposal,
+      flight: updatedFlight,
+      attendees: updatedFlight.attendees ?? [],
+      confirmedFlightId,
+    };
   }
 
   // Wish List / Ideas board methods

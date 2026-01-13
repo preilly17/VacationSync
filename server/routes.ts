@@ -4560,6 +4560,107 @@ export function setupRoutes(app: Express) {
     },
   );
 
+  app.post(
+    "/api/trips/:tripId/proposals/:proposalId/confirm",
+    isAuthenticated,
+    async (req: any, res) => {
+      const tripId = Number.parseInt(req.params.tripId, 10);
+      const proposalId = Number.parseInt(req.params.proposalId, 10);
+
+      if (Number.isNaN(tripId) || Number.isNaN(proposalId)) {
+        return res.status(400).json({ message: "Invalid trip or proposal id" });
+      }
+
+      const userId = getRequestUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User ID not found" });
+      }
+
+      const parsedBody = flightConfirmationSchema.safeParse(req.body ?? {});
+      if (!parsedBody.success) {
+        return res.status(400).json({
+          message: "Invalid confirmation data",
+          issues: parsedBody.error.issues,
+        });
+      }
+
+      try {
+        const result = await storage.confirmFlightProposal({
+          tripId,
+          proposalId,
+          attendeeUserIds: parsedBody.data.attendeeUserIds ?? [],
+          currentUserId: userId,
+        });
+
+        if (parsedBody.data.notify ?? true) {
+          const confirmer = await storage.getUser(userId);
+          const confirmerName =
+            confirmer?.firstName || confirmer?.username || confirmer?.email || "Someone";
+          const airlineLabel =
+            [result.flight.airline, result.flight.flightNumber]
+              .filter(Boolean)
+              .join(" ")
+              .trim() || "a flight";
+          const routeLabel = `${result.flight.departureCode ?? ""} → ${result.flight.arrivalCode ?? ""}`
+            .trim()
+            .replace(/^→\s*/, "")
+            .replace(/\s*→$/, "");
+
+          const notificationMessage = `${confirmerName} confirmed a flight proposal: ${airlineLabel}${
+            routeLabel ? ` (${routeLabel})` : ""
+          }.`;
+
+          await Promise.all(
+            result.attendees
+              .map((attendee) => attendee.userId)
+              .filter((attendeeId) => attendeeId && attendeeId !== userId)
+              .map((attendeeId) =>
+                storage.createNotification({
+                  userId: attendeeId,
+                  type: "flight_confirmed",
+                  title: "Flight confirmed",
+                  message: notificationMessage,
+                  tripId,
+                }),
+              ),
+          );
+        }
+
+        res.json({
+          proposal: result.proposal,
+          confirmedFlightId: result.confirmedFlightId,
+          attendees: result.attendees,
+        });
+
+        broadcastToTrip(tripId, {
+          type: "flight_proposal_updated",
+          tripId,
+          proposalId,
+          flightId: result.confirmedFlightId,
+          triggeredBy: userId,
+        });
+      } catch (error: unknown) {
+        console.error("Error confirming flight proposal:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("not found")) {
+            return res.status(404).json({ message: error.message });
+          }
+          if (
+            error.message.includes("proposer") ||
+            error.message.includes("admin") ||
+            error.message.includes("member")
+          ) {
+            return res.status(403).json({ message: error.message });
+          }
+          if (error.message.includes("not open")) {
+            return res.status(409).json({ message: error.message });
+          }
+        }
+        return res.status(500).json({ message: "Failed to confirm flight proposal" });
+      }
+    },
+  );
+
   const handleGetTripHotelProposals = async (req: any, res: any) => {
     try {
       const tripIdParam =
