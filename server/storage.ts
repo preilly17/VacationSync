@@ -11856,6 +11856,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       proposedBy?: string;
     },
   ): Promise<FlightProposalWithDetails[]> {
+    await this.ensureFlightProposalConfirmationColumns();
     const conditions: string[] = [];
     const values: unknown[] = [];
     let index = 1;
