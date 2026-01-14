@@ -5,11 +5,26 @@ const globalEnv =
     : undefined;
 
 const rawApiBaseUrl = globalEnv?.VITE_API_URL ?? "";
+const DEFAULT_PROD_API_BASE_URL = "https://vacationsync-api.onrender.com";
+const PROD_DOMAIN_SUFFIX = ".tripsyncbeta.com";
 
 const API_BASE_URL = (() => {
   const sanitized = rawApiBaseUrl.replace(/\/+$/, "");
 
   if (typeof window === "undefined" || sanitized.length === 0) {
+    if (typeof window === "undefined") {
+      return sanitized;
+    }
+
+    const currentHostname = window.location.hostname?.toLowerCase();
+    if (!currentHostname) {
+      return sanitized;
+    }
+
+    if (currentHostname === "tripsyncbeta.com" || currentHostname.endsWith(PROD_DOMAIN_SUFFIX)) {
+      return DEFAULT_PROD_API_BASE_URL;
+    }
+
     return sanitized;
   }
 
