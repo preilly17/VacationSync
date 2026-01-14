@@ -9885,16 +9885,8 @@ ${selectUserColumns("participant_user", "participant_user_")}
     const platform = toOptionalString(flight.booking_source) ?? "Manual Save";
 
     const normalizedFlightStatus = (toOptionalString(flight.status) || "").toLowerCase();
-    let proposalStatus = "proposed";
-    if (normalizedFlightStatus.includes("cancel")) {
-      proposalStatus = "canceled";
-    } else if (
-      ["selected", "booked", "scheduled", "active", "proposed", "confirmed"].includes(
-        normalizedFlightStatus,
-      )
-    ) {
-      proposalStatus = normalizedFlightStatus;
-    }
+    const proposalStatusForUpdate = normalizedFlightStatus.includes("cancel") ? "canceled" : null;
+    const proposalStatusForInsert = normalizedFlightStatus.includes("cancel") ? "canceled" : "open";
 
     const departureIso = departureTime.toISOString();
     const arrivalIso = arrivalTime.toISOString();
@@ -9924,7 +9916,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           currency = $16,
           booking_url = $17,
           platform = $18,
-          status = $19,
+          status = COALESCE($19, status),
           updated_at = NOW()
         WHERE id = $20
         `,
@@ -9947,7 +9939,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
           currency,
           bookingUrl,
           platform,
-          proposalStatus,
+          proposalStatusForUpdate,
           proposalId,
         ],
       );
@@ -10029,7 +10021,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
         currency,
         bookingUrl,
         platform,
-        proposalStatus,
+        proposalStatusForInsert,
       ],
     );
 
@@ -11854,6 +11846,7 @@ ${selectUserColumns("participant_user", "participant_user_")}
       proposalIds?: number[];
       currentUserId?: string;
       proposedBy?: string;
+      status?: string;
     },
   ): Promise<FlightProposalWithDetails[]> {
     await this.ensureFlightProposalConfirmationColumns();
@@ -11877,6 +11870,17 @@ ${selectUserColumns("participant_user", "participant_user_")}
       conditions.push(`fp.proposed_by = $${index}`);
       values.push(options.proposedBy);
       index += 1;
+    }
+
+    if (options.status) {
+      const normalizedStatus = options.status.trim().toLowerCase();
+      if (normalizedStatus === "open") {
+        conditions.push(`LOWER(fp.status) IN ('open', 'active', 'proposed')`);
+      } else {
+        conditions.push(`LOWER(fp.status) = $${index}`);
+        values.push(normalizedStatus);
+        index += 1;
+      }
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -13050,13 +13054,14 @@ ${selectUserColumns("participant_user", "participant_user_")}
   async getTripFlightProposals(
     tripId: number,
     currentUserId: string,
-    options: { proposedBy?: string } = {},
+    options: { proposedBy?: string; status?: string } = {},
   ): Promise<FlightProposalWithDetails[]> {
     await this.ensureUniqueFlightRankingsForTrip(tripId);
     return this.fetchFlightProposals({
       tripId,
       currentUserId,
       proposedBy: options.proposedBy,
+      status: options.status,
     });
   }
 

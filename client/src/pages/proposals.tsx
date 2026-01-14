@@ -500,7 +500,7 @@ function ProposalsPage({
     error: flightProposalsError,
     refetch: refetchFlightProposals,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/proposals/flights`],
+    queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -509,7 +509,7 @@ function ProposalsPage({
     isLoading: myFlightProposalsLoading,
     error: myFlightProposalsError,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+    queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -792,8 +792,8 @@ function ProposalsPage({
 
       const now = new Date().toISOString();
       const queryKeys: Array<readonly unknown[]> = [
-        [`/api/trips/${tripId}/proposals/flights`],
-        [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+        [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
       ];
 
       context.previousData = queryKeys.map((key) => ({
@@ -819,9 +819,11 @@ function ProposalsPage({
       if (!tripId) {
         return;
       }
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
       });
       toast({
         title: "Vote Recorded",
@@ -891,16 +893,18 @@ function ProposalsPage({
         });
       } else if (type === "flight") {
         queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/proposals/flights`],
+          [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
         queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
         });
       } else if (type === "restaurant") {
         queryClient.setQueryData<RestaurantProposalWithDetails[] | undefined>(
@@ -969,9 +973,11 @@ function ProposalsPage({
         return;
       }
 
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] });
