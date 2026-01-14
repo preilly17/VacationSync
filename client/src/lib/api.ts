@@ -5,11 +5,31 @@ const globalEnv =
     : undefined;
 
 const rawApiBaseUrl = globalEnv?.VITE_API_URL ?? "";
+const DEFAULT_PROD_API_BASE_URL = "https://vacationsync-api.onrender.com";
+const PROD_DOMAIN_SUFFIX = ".tripsyncbeta.com";
+
+const normalizeBaseUrl = (value: string): string => value.replace(/\/+$/, "");
+
+const isTripsyncBetaHost = (hostname: string): boolean =>
+  hostname === "tripsyncbeta.com" || hostname.endsWith(PROD_DOMAIN_SUFFIX);
 
 const API_BASE_URL = (() => {
-  const sanitized = rawApiBaseUrl.replace(/\/+$/, "");
+  const sanitized = normalizeBaseUrl(rawApiBaseUrl);
 
   if (typeof window === "undefined" || sanitized.length === 0) {
+    if (typeof window === "undefined") {
+      return sanitized;
+    }
+
+    const currentHostname = window.location.hostname?.toLowerCase();
+    if (!currentHostname) {
+      return sanitized;
+    }
+
+    if (isTripsyncBetaHost(currentHostname)) {
+      return DEFAULT_PROD_API_BASE_URL;
+    }
+
     return sanitized;
   }
 
@@ -31,6 +51,10 @@ const API_BASE_URL = (() => {
     ) {
       url.hostname = currentHostname;
       return url.toString().replace(/\/+$/, "");
+    }
+
+    if (isTripsyncBetaHost(url.hostname)) {
+      return DEFAULT_PROD_API_BASE_URL;
     }
   } catch {
     // ignore invalid URL values – treat them as relative paths
