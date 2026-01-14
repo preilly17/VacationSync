@@ -1,5 +1,10 @@
 // client/src/lib/api.ts
-const rawApiBaseUrl = import.meta.env.VITE_API_URL ?? "";
+const globalEnv =
+  typeof globalThis !== "undefined"
+    ? (globalThis as { __VITE_ENV__?: Record<string, string> }).__VITE_ENV__
+    : undefined;
+
+const rawApiBaseUrl = globalEnv?.VITE_API_URL ?? "";
 
 const API_BASE_URL = (() => {
   const sanitized = rawApiBaseUrl.replace(/\/+$/, "");
@@ -48,7 +53,7 @@ export function buildApiUrl(path: string) {
 }
 
 export function buildWebSocketUrl(path: string) {
-  const explicitWsUrl = import.meta.env.VITE_WS_URL;
+  const explicitWsUrl = globalEnv?.VITE_WS_URL;
 
   const normalisePath = (target: string) =>
     target.startsWith("/") ? target : `/${target}`;

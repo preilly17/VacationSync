@@ -358,6 +358,10 @@ const getInlineErrorMessage = (error: unknown, invalid: boolean, fallback: strin
 
   if (error) {
     const parsed = parseApiError(error);
+    const isDev = typeof globalThis !== "undefined" && Boolean((globalThis as { __DEV__?: boolean }).__DEV__);
+    if (isDev && parsed.status) {
+      return `${parsed.status} — ${parsed.message || fallback}`;
+    }
     return parsed.message || fallback;
   }
 
@@ -471,6 +475,7 @@ function ProposalsPage({
   const {
     data: hotelProposalsData,
     isLoading: hotelProposalsLoading,
+    isSuccess: hotelProposalsSuccess,
     error: hotelProposalsError,
     refetch: refetchHotelProposals,
   } = useQuery<unknown>({
@@ -491,6 +496,7 @@ function ProposalsPage({
   const {
     data: flightProposalsData,
     isLoading: flightProposalsLoading,
+    isSuccess: flightProposalsSuccess,
     error: flightProposalsError,
     refetch: refetchFlightProposals,
   } = useQuery<unknown>({
@@ -511,6 +517,7 @@ function ProposalsPage({
   const {
     data: rawActivityProposalsData,
     isLoading: activityProposalsLoading,
+    isSuccess: activityProposalsSuccess,
     error: activityProposalsError,
     refetch: refetchActivityProposals,
   } = useQuery<unknown>({
@@ -521,6 +528,7 @@ function ProposalsPage({
   const {
     data: restaurantProposalsData,
     isLoading: restaurantProposalsLoading,
+    isSuccess: restaurantProposalsSuccess,
     error: restaurantProposalsError,
     refetch: refetchRestaurantProposals,
   } = useQuery<unknown>({
@@ -546,6 +554,11 @@ function ProposalsPage({
   const { items: restaurantProposals, isInvalid: restaurantProposalsInvalid } = normalizeArrayData<
     RestaurantProposalWithDetails
   >(restaurantProposalsData);
+
+  const hotelProposalsReady = hotelProposalsSuccess && !hotelProposalsInvalid;
+  const flightProposalsReady = flightProposalsSuccess && !flightProposalsInvalid;
+  const activityProposalsReady = activityProposalsSuccess && !activityProposalsInvalid;
+  const restaurantProposalsReady = restaurantProposalsSuccess && !restaurantProposalsInvalid;
 
   const userId = user?.id ?? null;
 
@@ -3592,17 +3605,17 @@ function ProposalsPage({
                 onRetry={() => void refetchHotelProposals()}
                 testId="error-hotel-proposals"
               />
-            ) : filteredHotelProposals.length > 0 ? (
+            ) : hotelProposalsReady && filteredHotelProposals.length > 0 ? (
               <div data-testid="list-hotel-proposals">
                 {filteredHotelProposals.map((proposal) => (
                   <HotelProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : activeHotelProposalsForCategories.length > 0 ? (
+            ) : hotelProposalsReady && activeHotelProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Hotel" />
-            ) : (
+            ) : hotelProposalsReady ? (
               <EmptyState type="Hotel" icon={Hotel} />
-            )}
+            ) : null}
           </TabsContent>
 
           <TabsContent value="flights" className="space-y-6">
@@ -3616,17 +3629,17 @@ function ProposalsPage({
                 onRetry={() => void refetchFlightProposals()}
                 testId="error-flight-proposals"
               />
-            ) : filteredFlightProposals.length > 0 ? (
+            ) : flightProposalsReady && filteredFlightProposals.length > 0 ? (
               <div data-testid="list-flight-proposals">
                 {filteredFlightProposals.map((proposal) => (
                   <FlightProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : activeFlightProposalsForCategories.length > 0 ? (
+            ) : flightProposalsReady && activeFlightProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Flight" />
-            ) : (
+            ) : flightProposalsReady ? (
               <EmptyState type="Flight" icon={Plane} />
-            )}
+            ) : null}
           </TabsContent>
 
           <TabsContent value="activities" className="space-y-6">
@@ -3640,7 +3653,7 @@ function ProposalsPage({
                 onRetry={() => void refetchActivityProposals()}
                 testId="error-activity-proposals"
               />
-            ) : activeActivityProposalsForCategories.length > 0 ? (
+            ) : activityProposalsReady && activeActivityProposalsForCategories.length > 0 ? (
               <div className="space-y-8" data-testid="list-activity-proposals">
                 <section
                   className="space-y-4"
@@ -3694,9 +3707,9 @@ function ProposalsPage({
                   )}
                 </section>
               </div>
-            ) : (
+            ) : activityProposalsReady ? (
               <EmptyState type="Activity" icon={MapPin} />
-            )}
+            ) : null}
           </TabsContent>
 
           <TabsContent value="restaurants" className="space-y-6">
@@ -3710,17 +3723,17 @@ function ProposalsPage({
                 onRetry={() => void refetchRestaurantProposals()}
                 testId="error-restaurant-proposals"
               />
-            ) : filteredRestaurantProposals.length > 0 ? (
+            ) : restaurantProposalsReady && filteredRestaurantProposals.length > 0 ? (
               <div data-testid="list-restaurant-proposals">
                 {filteredRestaurantProposals.map((proposal) => (
                   <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : activeRestaurantProposalsForCategories.length > 0 ? (
+            ) : restaurantProposalsReady && activeRestaurantProposalsForCategories.length > 0 ? (
               <FilteredEmptyState type="Restaurant" />
-            ) : (
+            ) : restaurantProposalsReady ? (
               <EmptyState type="Restaurant" icon={Utensils} />
-            )}
+            ) : null}
           </TabsContent>
         </Tabs>
       </div>
