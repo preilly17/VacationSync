@@ -4175,13 +4175,46 @@ function FlightCoordination({
   manualFormOpenSignal?: number;
 }) {
   const { toast } = useToast();
+  const { isAuthenticated } = useAuth();
   const queryClient = useQueryClient();
   const { data: flightsData, isLoading } = useQuery({
     queryKey: [`/api/trips/${tripId}/flights`],
     enabled: !!tripId,
   });
 
+  const { data: flightProposalsData } = useQuery({
+    queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+    enabled: !!tripId && isAuthenticated,
+  });
+
   const flights = Array.isArray(flightsData) ? flightsData : [];
+  const isOpenFlightProposal = (status?: string | null) => {
+    const normalized = (status ?? "open").toLowerCase();
+    return ![
+      "canceled",
+      "cancelled",
+      "void",
+      "voided",
+      "archived",
+      "confirmed",
+      "closed",
+    ].includes(normalized);
+  };
+
+  const openFlightProposalIds = useMemo(() => {
+    if (!Array.isArray(flightProposalsData)) {
+      return new Set<number>();
+    }
+
+    return new Set(
+      flightProposalsData
+        .filter((proposal) => isOpenFlightProposal(proposal?.status))
+        .map((proposal) =>
+          typeof proposal?.flightId === "number" ? proposal.flightId : null,
+        )
+        .filter((flightId): flightId is number => typeof flightId === "number"),
+    );
+  }, [flightProposalsData]);
   const currentUserId = user?.id ?? null;
   const isTripAdmin = useMemo(() => {
     if (!trip || !currentUserId) {
@@ -4978,17 +5011,22 @@ function FlightCoordination({
           return (existing as { id: number }[]).filter((proposal) => !ids.has(proposal.id));
         };
 
-        queryClient.setQueryData([`/api/trips/${tripId}/proposals/flights`], removeProposals);
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          removeProposals,
+        );
+        queryClient.setQueryData(
+          [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
           removeProposals,
         );
       }
 
       if (data?.remainingProposalIds?.length) {
-        await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
         await queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+        });
+        await queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
         });
       }
 
@@ -5088,9 +5126,11 @@ function FlightCoordination({
     onSuccess: async () => {
       toast({ title: "Flight proposed to group." });
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
         }),
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
       ]);
@@ -5112,7 +5152,7 @@ function FlightCoordination({
 
   const handleProposeFlight = useCallback(
     async (flight: FlightWithDetails) => {
-      if (flight.proposalId) {
+      if (openFlightProposalIds.has(flight.id)) {
         return;
       }
 
@@ -5125,7 +5165,7 @@ function FlightCoordination({
         setProposingFlightId(null);
       }
     },
-    [proposeFlightMutation],
+    [openFlightProposalIds, proposeFlightMutation],
   );
 
   const handleManualSubmit = useCallback(() => {
@@ -5778,6 +5818,7 @@ function FlightCoordination({
                 : null;
             const permissions = getFlightPermissions(flight);
             const isProposing = proposeFlightMutation.isPending && proposingFlightId === flight.id;
+            const hasOpenProposal = openFlightProposalIds.has(flight.id);
 
             return (
               <AccordionItem
@@ -5791,6 +5832,9 @@ function FlightCoordination({
                       <span>{[flight.airline, flight.flightNumber].filter(Boolean).join(" ") || "Flight"}</span>
                       {flight.flightType ? (
                         <Badge variant="secondary">{formatTitleCase(flight.flightType)}</Badge>
+                      ) : null}
+                      {hasOpenProposal ? (
+                        <Badge className="bg-yellow-100 text-yellow-800">Proposed</Badge>
                       ) : null}
                       {flight.status ? (
                         <Badge variant="outline" className="capitalize">
@@ -5818,14 +5862,14 @@ function FlightCoordination({
                       variant="secondary"
                       size="sm"
                       onClick={() => handleProposeFlight(flight)}
-                      disabled={Boolean(flight.proposalId) || isProposing}
+                      disabled={hasOpenProposal || isProposing}
                     >
                       {isProposing ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Proposing...
                         </>
-                      ) : flight.proposalId ? (
+                      ) : hasOpenProposal ? (
                         "Proposed"
                       ) : (
                         "Propose to Group"

@@ -1993,7 +1993,7 @@ export default function FlightsPage() {
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const currentUserId = user?.id ?? null;
 
   const handleFlightSearch = useCallback(async (trigger: FlightSearchTrigger = "manual") => {
@@ -2301,8 +2301,41 @@ export default function FlightsPage() {
     enabled: !!tripId,
   });
 
+  const { data: flightProposalsData } = useQuery({
+    queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+    enabled: !!tripId && isAuthenticated,
+  });
+
   // Ensure flights is always an array
   const flightsArray = Array.isArray(flights) ? flights : [];
+
+  const isOpenFlightProposal = (status?: string | null) => {
+    const normalized = (status ?? "open").toLowerCase();
+    return ![
+      "canceled",
+      "cancelled",
+      "void",
+      "voided",
+      "archived",
+      "confirmed",
+      "closed",
+    ].includes(normalized);
+  };
+
+  const openFlightProposalIds = useMemo(() => {
+    if (!Array.isArray(flightProposalsData)) {
+      return new Set<number>();
+    }
+
+    return new Set(
+      flightProposalsData
+        .filter((proposal) => isOpenFlightProposal(proposal?.status))
+        .map((proposal) =>
+          typeof proposal?.flightId === "number" ? proposal.flightId : null,
+        )
+        .filter((flightId): flightId is number => typeof flightId === "number"),
+    );
+  }, [flightProposalsData]);
 
   const sortedFlights = useMemo(() => {
     return [...flightsArray].sort((a: FlightWithDetails, b: FlightWithDetails) => {
@@ -2552,17 +2585,22 @@ export default function FlightsPage() {
           return (existing as { id: number }[]).filter((proposal) => !ids.has(proposal.id));
         };
 
-        queryClient.setQueryData([`/api/trips/${tripId}/proposals/flights`], removeProposals);
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          removeProposals,
+        );
+        queryClient.setQueryData(
+          [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
           removeProposals,
         );
       }
 
       if (tripId && data?.remainingProposalIds?.length) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
         });
       }
 
@@ -2610,9 +2648,11 @@ export default function FlightsPage() {
       if (tripId) {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
-          queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] }),
           queryClient.invalidateQueries({
-            queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+            queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          }),
+          queryClient.invalidateQueries({
+            queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
           }),
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] }),
           queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
@@ -2834,9 +2874,11 @@ export default function FlightsPage() {
 
       // Invalidate flight proposals cache to refresh the list
       if (tripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+        });
+        queryClient.invalidateQueries({
+          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
         });
       }
       
@@ -3413,6 +3455,7 @@ export default function FlightsPage() {
               const attendees = flight.attendees ?? [];
               const isConfirmed = statusValue === "confirmed";
               const hasAttendees = attendees.length > 0;
+              const hasOpenProposal = openFlightProposalIds.has(flight.id);
               const isCurrentUserAttendee = Boolean(
                 currentUserId && attendees.some((attendee) => attendee.userId === currentUserId),
               );
@@ -3454,6 +3497,7 @@ export default function FlightsPage() {
                               {directionLabel}
                             </Badge>
                           )}
+                          {hasOpenProposal && <Badge className="bg-yellow-100 text-yellow-800">Proposed</Badge>}
                           {isManualEntry && <Badge variant="outline">Manual</Badge>}
                         </div>
                         <div className="text-sm text-muted-foreground">{routeSummary}</div>
@@ -3605,10 +3649,10 @@ export default function FlightsPage() {
                             onClick={() => {
                               void shareFlightWithGroup(flight);
                             }}
-                            disabled={Boolean(flight.proposalId) || isProposing}
+                            disabled={hasOpenProposal || isProposing}
                           >
                             <Users className="mr-2 h-4 w-4" />
-                            Propose
+                            {hasOpenProposal ? "Proposed" : "Propose"}
                           </Button>
                         )}
                         {isConfirmed && isCurrentUserAttendee && (

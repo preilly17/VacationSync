@@ -4434,10 +4434,15 @@ export function setupRoutes(app: Express) {
         }
 
         const mineOnly = parseBooleanQueryParam(req.query?.mineOnly);
+        const statusParam =
+          typeof req.query?.status === "string" ? req.query.status.trim() : undefined;
         const proposals = await storage.getTripFlightProposals(
           tripId,
           userId,
-          mineOnly ? { proposedBy: userId } : undefined,
+          {
+            ...(mineOnly ? { proposedBy: userId } : {}),
+            status: statusParam,
+          },
         );
 
         res.json(proposals);

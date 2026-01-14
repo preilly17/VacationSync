@@ -78,9 +78,11 @@ export function useTripRealtime(
     };
 
     const invalidateFlightProposals = () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/proposals/flights`] });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
+        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+      });
+      queryClient.invalidateQueries({
+        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
     };
@@ -174,4 +176,3 @@ export function useTripRealtime(
     };
   }, [enabled, queryClient, tripId, userId]);
 }
-
