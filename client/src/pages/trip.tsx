@@ -5016,7 +5016,7 @@ function FlightCoordination({
           removeProposals,
         );
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+          [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
           removeProposals,
         );
       }
@@ -5026,7 +5026,7 @@ function FlightCoordination({
           queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
         });
         await queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
         });
       }
 
@@ -5130,7 +5130,7 @@ function FlightCoordination({
           queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
         }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
         }),
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
       ]);
