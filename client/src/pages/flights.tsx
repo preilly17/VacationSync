@@ -2590,7 +2590,7 @@ export default function FlightsPage() {
           removeProposals,
         );
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+          [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
           removeProposals,
         );
       }
@@ -2600,7 +2600,7 @@ export default function FlightsPage() {
           queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
         });
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
         });
       }
 
@@ -2652,7 +2652,7 @@ export default function FlightsPage() {
             queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
           }),
           queryClient.invalidateQueries({
-            queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+            queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
           }),
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] }),
           queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
@@ -2793,7 +2793,7 @@ export default function FlightsPage() {
           queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
         }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
         }),
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
       ]);

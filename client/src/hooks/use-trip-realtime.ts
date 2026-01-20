@@ -82,7 +82,7 @@ export function useTripRealtime(
         queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
       });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
     };
