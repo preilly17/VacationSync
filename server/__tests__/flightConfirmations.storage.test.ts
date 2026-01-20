@@ -161,6 +161,11 @@ describe("confirmFlightWithAttendees", () => {
       String(sql).includes("INSERT INTO calendar_events"),
     );
     expect(insertCalendarCall?.[1][7]).toEqual(["creator", "member-b"]);
+
+    const proposalUpdateCall = queryMock.mock.calls.find(([sql]) =>
+      String(sql).includes("UPDATE flight_proposals"),
+    );
+    expect(proposalUpdateCall).toBeTruthy();
   });
 
   it("denies confirmation when requester is not the creator", async () => {

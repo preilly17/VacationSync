@@ -114,6 +114,11 @@ const flightProposalRequestSchema = z
     path: ["flightId"],
   });
 
+const tripProposalRequestSchema = z.object({
+  type: z.enum(["flight"]),
+  entityId: z.union([z.number(), z.string()]),
+});
+
 const flightConfirmationSchema = z.object({
   attendeeUserIds: z.array(z.string()).default([]),
   notify: z.boolean().optional(),
@@ -4417,6 +4422,136 @@ export function setupRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch grocery bill" });
     }
   });
+
+  app.get(
+    "/api/trips/:tripId/proposals",
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        if (Number.isNaN(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id" });
+        }
+
+        const userId = getRequestUserId(req);
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found" });
+        }
+
+        const typeParam = typeof req.query?.type === "string" ? req.query.type.trim() : "";
+        if (!typeParam) {
+          return res.status(400).json({ message: "Proposal type is required" });
+        }
+
+        if (typeParam !== "flight") {
+          return res.status(400).json({ message: "Unsupported proposal type" });
+        }
+
+        const statusParam =
+          typeof req.query?.status === "string" ? req.query.status.trim() : undefined;
+        const createdByParam =
+          typeof req.query?.createdBy === "string" ? req.query.createdBy.trim() : undefined;
+        const proposedBy = createdByParam === "me" ? userId : undefined;
+
+        const proposals = await storage.getTripFlightProposals(tripId, userId, {
+          ...(proposedBy ? { proposedBy } : {}),
+          status: statusParam,
+        });
+
+        res.json(proposals);
+      } catch (error: unknown) {
+        console.error("Error fetching proposals:", error);
+        res.status(500).json({ message: "Failed to fetch proposals" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/trips/:tripId/proposals",
+    isAuthenticated,
+    async (req: any, res) => {
+      const correlationId = getCorrelationIdFromRequest(req);
+      res.setHeader("x-correlation-id", correlationId);
+
+      try {
+        const tripId = Number.parseInt(req.params.tripId, 10);
+        if (Number.isNaN(tripId)) {
+          return res.status(400).json({ message: "Invalid trip id", correlationId });
+        }
+
+        const userId = getRequestUserId(req);
+        if (!userId) {
+          return res.status(401).json({ message: "User ID not found", correlationId });
+        }
+
+        const parsedRequest = tripProposalRequestSchema.safeParse(req.body ?? {});
+        if (!parsedRequest.success) {
+          return res.status(400).json({
+            message: "Invalid proposal data",
+            correlationId,
+            issues: parsedRequest.error.issues,
+          });
+        }
+
+        if (parsedRequest.data.type !== "flight") {
+          return res.status(400).json({
+            message: "Unsupported proposal type",
+            correlationId,
+          });
+        }
+
+        const rawEntityId = parsedRequest.data.entityId;
+        const flightId =
+          typeof rawEntityId === "number"
+            ? rawEntityId
+            : rawEntityId != null
+            ? Number.parseInt(String(rawEntityId), 10)
+            : NaN;
+
+        if (!Number.isFinite(flightId)) {
+          return res.status(400).json({
+            message: "Flight ID is required to propose to the group",
+            correlationId,
+            received: { entityId: rawEntityId ?? null },
+          });
+        }
+
+        const result = await storage.ensureFlightProposalForSavedFlight({
+          flightId,
+          tripId,
+          currentUserId: userId,
+        });
+
+        const statusCode = result.wasCreated ? 201 : 200;
+        res.status(statusCode).json(result.proposal);
+
+        broadcastToTrip(tripId, {
+          type: result.wasCreated ? "flight_proposal_created" : "flight_proposal_updated",
+          tripId,
+          proposalId: result.proposal.id,
+          flightId: result.flightId,
+          triggeredBy: userId,
+        });
+      } catch (error: unknown) {
+        console.error("Error creating proposal:", error);
+        if (error instanceof Error) {
+          if (error.message.includes("Flight not found")) {
+            return res.status(404).json({ message: error.message, correlationId });
+          }
+          if (error.message.includes("does not belong to this trip")) {
+            return res.status(400).json({ message: error.message, correlationId });
+          }
+          if (
+            error.message.includes("Only the flight creator") ||
+            error.message.includes("must be a member of this trip")
+          ) {
+            return res.status(403).json({ message: error.message, correlationId });
+          }
+        }
+        return res.status(500).json({ message: "Failed to create proposal", correlationId });
+      }
+    },
+  );
 
   app.get(
     '/api/trips/:tripId/proposals/flights',
