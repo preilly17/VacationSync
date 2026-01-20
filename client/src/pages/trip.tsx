@@ -4183,7 +4183,7 @@ function FlightCoordination({
   });
 
   const { data: flightProposalsData } = useQuery({
-    queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+    queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -5012,21 +5012,21 @@ function FlightCoordination({
         };
 
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
           removeProposals,
         );
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
+          [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
           removeProposals,
         );
       }
 
       if (data?.remainingProposalIds?.length) {
         await queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
         });
         await queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
         });
       }
 
@@ -5103,8 +5103,8 @@ function FlightCoordination({
 
   const proposeFlightMutation = useMutation({
     mutationFn: async (flight: FlightWithDetails) => {
-      const endpoint = `/api/trips/${tripId}/proposals/flights`;
-      const payload = { flightId: flight.id };
+      const endpoint = `/api/trips/${tripId}/proposals`;
+      const payload = { type: "flight", entityId: flight.id };
       const correlationId = generateCorrelationId();
 
       if (import.meta.env?.DEV) {
@@ -5127,10 +5127,10 @@ function FlightCoordination({
       toast({ title: "Flight proposed to group." });
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
         }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
         }),
         queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
       ]);

@@ -79,10 +79,10 @@ export function useTripRealtime(
 
     const invalidateFlightProposals = () => {
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+        queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
       });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
+        queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
     };

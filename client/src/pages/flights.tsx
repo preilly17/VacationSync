@@ -636,7 +636,7 @@ interface FlightSearchPanelProps {
   onFilterChange: (filter: FlightFilterKey) => void;
   cachedSearchParams: CachedFlightSearchParams | null;
   onShareFlight: (flight: any) => void | Promise<void>;
-  onQuickAddFlight: (flight: any) => Promise<void>;
+  onQuickAddFlight: (flight: any, pointsCostOverride?: number | null) => Promise<FlightWithDetails | null>;
   user?: User | null;
   trip?: TripWithDetails | null;
   autoSearch?: boolean;
@@ -2302,7 +2302,7 @@ export default function FlightsPage() {
   });
 
   const { data: flightProposalsData } = useQuery({
-    queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+    queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -2586,21 +2586,21 @@ export default function FlightsPage() {
         };
 
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
           removeProposals,
         );
         queryClient.setQueryData(
-          [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
+          [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
           removeProposals,
         );
       }
 
       if (tripId && data?.remainingProposalIds?.length) {
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
         });
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
         });
       }
 
@@ -2649,10 +2649,10 @@ export default function FlightsPage() {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
           queryClient.invalidateQueries({
-            queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
+            queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
           }),
           queryClient.invalidateQueries({
-            queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
+            queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
           }),
           queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] }),
           queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }),
@@ -2761,134 +2761,57 @@ export default function FlightsPage() {
   const shareFlightWithGroup = async (flight: any, pointsCost?: number | null) => {
     let succeeded = false;
     try {
-      const departureAirportName =
-        flight.departure?.airport ||
-        flight.departureAirport ||
-        extractAirportName(searchFormData.departure) ||
-        searchFormData.departure ||
-        "Departure TBD";
-
-      const arrivalAirportName =
-        flight.arrival?.airport ||
-        flight.arrivalAirport ||
-        extractAirportName(searchFormData.arrival) ||
-        searchFormData.arrival ||
-        "Arrival TBD";
-
-      const departureTimeValue =
-        flight.departure?.time ||
-        flight.departureTime ||
-        (typeof flight.departure_time === "string" ? flight.departure_time : undefined) ||
-        new Date().toISOString();
-
-      const arrivalTimeValue =
-        flight.arrival?.time ||
-        flight.arrivalTime ||
-        (typeof flight.arrival_time === "string" ? flight.arrival_time : undefined) ||
-        new Date().toISOString();
-
-      const stopsValue = (() => {
-        if (typeof flight.stops === "number") {
-          return flight.stops;
-        }
-        if (Array.isArray(flight.layovers)) {
-          return flight.layovers.length;
-        }
-        if (typeof flight.layovers === "string") {
-          try {
-            const parsed = JSON.parse(flight.layovers);
-            if (Array.isArray(parsed)) {
-              return parsed.length;
-            }
-          } catch {
-            return 0;
-          }
-        }
-        return 0;
-      })();
-
-      const durationValue =
-        flight.duration ||
-        (typeof flight.flightDuration === "number" && flight.flightDuration > 0
-          ? formatDuration(flight.flightDuration)
-          : undefined) ||
-        "2h 30m";
-
-      const aircraftSource = flight.aircraft ?? flight.segments?.[0]?.aircraft ?? null;
-      let aircraftValue: string | null = null;
-      if (typeof aircraftSource === "string") {
-        aircraftValue = aircraftSource;
-      } else if (aircraftSource && typeof aircraftSource === "object") {
-        aircraftValue =
-          aircraftSource.code ||
-          aircraftSource.model ||
-          aircraftSource.name ||
-          (typeof aircraftSource.toString === "function" && aircraftSource.toString() !== "[object Object]"
-            ? aircraftSource.toString()
-            : null);
+      if (!tripId) {
+        toast({
+          title: "Trip required",
+          description: "Select a trip before proposing flights.",
+          variant: "destructive",
+        });
+        return false;
       }
 
-      const bookingClassValue =
-        flight.class ||
-        flight.bookingClass ||
-        (typeof flight.seatClass === "string" ? flight.seatClass : null) ||
-        "Economy";
+      let flightToPropose = flight;
+      if (typeof flight?.id !== "number") {
+        const createdFlight = await handleQuickAddFlight(flight, pointsCost ?? null);
+        if (!createdFlight) {
+          return false;
+        }
+        flightToPropose = createdFlight;
+      }
 
-      const bookingUrlValue =
-        flight.bookingUrls?.kayak ||
-        flight.bookingUrls?.expedia ||
-        flight.bookingUrl ||
-        flight.purchaseUrl ||
-        "#";
+      if (typeof flightToPropose?.id !== "number") {
+        throw new Error("Save the flight before proposing it to the group.");
+      }
 
-      const priceValue =
-        parseNumericAmount(flight.price ?? flight.totalPrice) ??
-        (typeof flight.price === "number" ? flight.price : 0);
-
-      const proposalData = {
-        airline:
-          flight.airline ||
-          flight.airlineName ||
-          (typeof flight.airlineCode === "string" ? getAirlineName(flight.airlineCode) : undefined) ||
-          getFlightAirlineName(flight) ||
-          "Various Airlines",
-        flightNumber: flight.flightNumber || flight.number || `Flight-${Date.now()}`,
-        departure: departureAirportName,
-        departureTime: departureTimeValue,
-        arrival: arrivalAirportName,
-        arrivalTime: arrivalTimeValue,
-        duration: durationValue,
-        stops: stopsValue,
-        aircraft: aircraftValue || "Unknown Aircraft",
-        price: priceValue,
-        pointsCost: pointsCost ?? null,
-        bookingClass: bookingClassValue,
-        platform: flight.provider || flight.source || flight.bookingSource || "Trip",
-        bookingUrl: bookingUrlValue,
-      };
-
-      await apiRequest(`/api/trips/${tripId}/flight-proposals`, {
+      await apiRequest(`/api/trips/${tripId}/proposals`, {
         method: "POST",
-        body: proposalData,
+        body: { type: "flight", entityId: flightToPropose.id },
       });
 
-      // Invalidate flight proposals cache to refresh the list
-      if (tripId) {
+      await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN`],
-        });
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
+        }),
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?status=OPEN&mineOnly=true`],
-        });
-      }
-      
+          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN&createdBy=me`],
+        }),
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] }),
+      ]);
+
+      const airlineLabel =
+        flightToPropose.airline ||
+        getFlightAirlineName(flightToPropose) ||
+        "Flight";
+      const flightNumberLabel =
+        flightToPropose.flightNumber || flightToPropose.number || "";
+
       toast({
         title: "Flight Proposed to Group!",
-        description: `${proposalData.airline} flight ${proposalData.flightNumber} has been proposed to your group for ranking and voting.`,
+        description: `${airlineLabel} ${flightNumberLabel}`.trim() +
+          " has been proposed to your group for ranking and voting.",
       });
 
       succeeded = true;
-      
     } catch (error) {
       if (error instanceof Error && isUnauthorizedError(error)) {
         toast({
@@ -2959,7 +2882,7 @@ export default function FlightsPage() {
   };
 
   const handleQuickAddFlight = useCallback(
-    async (flight: any) => {
+    async (flight: any, pointsCostOverride?: number | null) => {
       if (!tripId) {
         toast({
           title: "Unable to add flight",
@@ -3045,6 +2968,11 @@ export default function FlightsPage() {
           ? flight.currency
           : "USD";
 
+      const pointsCostValue =
+        typeof pointsCostOverride === "number"
+          ? pointsCostOverride
+          : parseNumericAmount(flight.pointsCost);
+
       const flightPayload: InsertFlight = {
         tripId: parseInt(tripId, 10),
         flightNumber: (flight.flightNumber || flight.number || flight.id || `Flight-${Date.now()}`).toString(),
@@ -3067,6 +2995,7 @@ export default function FlightsPage() {
         seatNumber: null,
         seatClass: seatClassValue,
         price: parseNumericAmount(normalizedPriceSource),
+        pointsCost: pointsCostValue,
         layovers: flight.layovers ?? flight.segments ?? null,
         bookingSource: bookingSourceValue,
         purchaseUrl: purchaseUrlValue,
@@ -3076,10 +3005,11 @@ export default function FlightsPage() {
       };
 
       try {
-        await apiRequest(`/api/trips/${tripId}/flights`, {
+        const res = await apiRequest(`/api/trips/${tripId}/flights`, {
           method: "POST",
           body: flightPayload,
         });
+        const createdFlight = (await res.json()) as FlightWithDetails;
 
         const filterByKey = (list: any[]) =>
           Array.isArray(list)
@@ -3122,6 +3052,8 @@ export default function FlightsPage() {
           title: "Flight added to Group Flights",
           description: `${airlineName} ${flightPayload.flightNumber} is now in your trip plan.`,
         });
+
+        return createdFlight;
       } catch (error) {
         if (error instanceof Error && isUnauthorizedError(error)) {
           toast({
@@ -3145,6 +3077,8 @@ export default function FlightsPage() {
       } finally {
         setAddingFlightKey(null);
       }
+
+      return null;
     },
     [
       cachedSearchParams,
@@ -3639,7 +3573,7 @@ export default function FlightsPage() {
                             onClick={() => openConfirmDialog(flight, isConfirmed ? "update" : "confirm")}
                           >
                             <Plane className="mr-2 h-4 w-4" />
-                            {isConfirmed ? "Update travelers" : "Confirm"}
+                            {isConfirmed ? "Update travelers" : "Confirm & Add to Calendar"}
                           </Button>
                         )}
                         {!isConfirmed && (
@@ -3894,7 +3828,7 @@ export default function FlightsPage() {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {confirmDialogState?.mode === "update" ? "Update travelers" : "Confirm flight"}
+            {confirmDialogState?.mode === "update" ? "Update travelers" : "Confirm & add to calendar"}
           </DialogTitle>
           <DialogDescription>
             Choose which trip members are on this flight.
@@ -3974,7 +3908,7 @@ export default function FlightsPage() {
               ? "Saving..."
               : confirmDialogState?.mode === "update"
               ? "Update travelers"
-              : "Confirm flight"}
+              : "Confirm & add to calendar"}
           </Button>
         </div>
       </DialogContent>
