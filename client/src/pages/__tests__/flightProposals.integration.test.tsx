@@ -18,7 +18,7 @@ type FlightProposal = {
 
 const FlightProposalsLoader = ({ tripId }: { tripId: number }) => {
   const { data } = useQuery<FlightProposal[]>({
-    queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
+    queryKey: [`/api/trips/${tripId}/proposals?type=flight`],
   });
 
   const proposals = Array.isArray(data) ? data : [];
@@ -38,7 +38,7 @@ describe("flight proposals fetch", () => {
   beforeEach(() => {
     (global.fetch as jest.Mock) = jest.fn((input: RequestInfo) => {
       const url = typeof input === "string" ? input : input.url;
-      if (url === "/api/trips/123/proposals?type=flight&status=OPEN") {
+      if (url === "/api/trips/123/proposals?type=flight") {
         return okJson([{ id: 1, airline: "Test Air" }]);
       }
 
@@ -71,7 +71,7 @@ describe("flight proposals fetch", () => {
 
     const fetchMock = global.fetch as jest.Mock;
     const flightCall = fetchMock.mock.calls.find(([url]) =>
-      String(url).includes("/api/trips/123/proposals?type=flight&status=OPEN"),
+      String(url).includes("/api/trips/123/proposals?type=flight"),
     );
 
     expect(flightCall).toBeDefined();
