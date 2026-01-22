@@ -38,7 +38,17 @@ import { ApiError, apiRequest } from "@/lib/queryClient";
 import { cn, formatCurrency, formatWholeNumber } from "@/lib/utils";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { differenceInCalendarDays, differenceInMinutes, format, formatDistanceToNow } from "date-fns";
-import { filterActiveProposals, isCanceledStatus, normalizeProposalStatus } from "./proposalStatusFilters";
+import {
+  CATEGORY_STATUS_FILTER_OPTIONS,
+  MY_PROPOSAL_STATUS_FILTER_OPTIONS,
+  filterActiveProposals,
+  filterProposalsByStatus,
+  isCanceledStatus,
+  normalizeProposalStatus,
+  type CategoryStatusFilter,
+  type MyProposalStatusFilter,
+} from "./proposalStatusFilters";
+import { filterCategoryProposals, isProposalOwnedByUser } from "./proposalVisibility";
 import {
   scheduledActivitiesQueryKey as buildScheduledActivitiesKey,
   proposalActivitiesQueryKey as buildProposalActivitiesKey,
@@ -407,7 +417,7 @@ const normalizeTripId = (value?: string | number | null): number | undefined => 
 function ProposalsPage({
   tripId: initialTripId,
   embedded = false,
-  includeUserProposalsInCategories = false,
+  includeUserProposalsInCategories = true,
   formatFlightDateTime,
 }: ProposalsPageProps = {}) {
   const { tripId: routeTripId } = useParams<{ tripId?: string }>();
@@ -423,6 +433,11 @@ function ProposalsPage({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<ProposalTab>("hotels");
+  const [hideMyProposalsInCategories, setHideMyProposalsInCategories] = useState(
+    !includeUserProposalsInCategories,
+  );
+  const [categoryStatusFilter, setCategoryStatusFilter] = useState<CategoryStatusFilter>("open");
+  const [myProposalStatusFilter, setMyProposalStatusFilter] = useState<MyProposalStatusFilter>("open");
   const [editingRestaurantProposal, setEditingRestaurantProposal] = useState<RestaurantProposalWithDetails | null>(null);
   const [isRestaurantEditOpen, setIsRestaurantEditOpen] = useState(false);
   const [restaurantEditDate, setRestaurantEditDate] = useState<Date | undefined>(undefined);
@@ -437,6 +452,14 @@ function ProposalsPage({
   );
   const activityProposalsQueryKey = useMemo(
     () => buildProposalActivitiesKey(tripId ?? 0),
+    [tripId],
+  );
+  const flightProposalsQueryKey = useMemo(
+    () => [`/api/trips/${tripId}/proposals?type=flight`],
+    [tripId],
+  );
+  const myFlightProposalsQueryKey = useMemo(
+    () => [`/api/trips/${tripId}/proposals/flights?mineOnly=true`],
     [tripId],
   );
 
@@ -500,7 +523,7 @@ function ProposalsPage({
     error: flightProposalsError,
     refetch: refetchFlightProposals,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
+    queryKey: flightProposalsQueryKey,
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -509,7 +532,7 @@ function ProposalsPage({
     isLoading: myFlightProposalsLoading,
     error: myFlightProposalsError,
   } = useQuery<unknown>({
-    queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
+    queryKey: myFlightProposalsQueryKey,
     enabled: !!tripId && isAuthenticated,
   });
 
@@ -792,8 +815,8 @@ function ProposalsPage({
 
       const now = new Date().toISOString();
       const queryKeys: Array<readonly unknown[]> = [
-        [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
-        [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
+        flightProposalsQueryKey,
+        myFlightProposalsQueryKey,
       ];
 
       context.previousData = queryKeys.map((key) => ({
@@ -820,10 +843,10 @@ function ProposalsPage({
         return;
       }
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
+        queryKey: flightProposalsQueryKey,
       });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
+        queryKey: myFlightProposalsQueryKey,
       });
       toast({
         title: "Vote Recorded",
@@ -893,18 +916,18 @@ function ProposalsPage({
         });
       } else if (type === "flight") {
         queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
+          flightProposalsQueryKey,
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
         queryClient.setQueryData<FlightProposalWithDetails[] | undefined>(
-          [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
+          myFlightProposalsQueryKey,
           (previous) => previous?.filter((proposal) => proposal.id !== proposalId),
         );
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
+          queryKey: flightProposalsQueryKey,
         });
         queryClient.invalidateQueries({
-          queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
+          queryKey: myFlightProposalsQueryKey,
         });
       } else if (type === "restaurant") {
         queryClient.setQueryData<RestaurantProposalWithDetails[] | undefined>(
@@ -974,10 +997,10 @@ function ProposalsPage({
       }
 
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals?type=flight&status=OPEN`],
+        queryKey: flightProposalsQueryKey,
       });
       queryClient.invalidateQueries({
-        queryKey: [`/api/trips/${tripId}/proposals/flights?mineOnly=true&status=OPEN`],
+        queryKey: myFlightProposalsQueryKey,
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/flights`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/calendar`] });
@@ -1375,20 +1398,7 @@ function ProposalsPage({
 
   const isMyProposal = useCallback(
     (proposal: BaseProposal): boolean => {
-      if (proposal.permissions?.canCancel) {
-        return true;
-      }
-
-      const viewerId = normalizeUserId(user?.id);
-      if (!viewerId) {
-        return false;
-      }
-
-      const proposedById = normalizeUserId(proposal.proposedBy);
-      const proposerFallbackId = normalizeUserId(proposal.proposer?.id);
-
-      const proposerId = proposedById ?? proposerFallbackId ?? null;
-      return proposerId !== null && proposerId === viewerId;
+      return isProposalOwnedByUser(proposal, user?.id ?? null);
     },
     [user?.id],
   );
@@ -3145,19 +3155,28 @@ function ProposalsPage({
     );
   };
 
-  const MyProposalsEmptyState = ({ hasAny }: { hasAny: boolean }) => (
-    <div className="text-center py-12" data-testid="empty-my-proposals">
-      <UserIcon className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
-      <h3 className="text-lg font-semibold text-neutral-600 mb-2">
-        {hasAny ? "No proposals match these filters." : "You haven’t proposed anything yet."}
-      </h3>
-      <p className="text-neutral-500">
-        {hasAny
-          ? "Try adjusting the filters to see your proposals."
-          : "Suggest an activity, restaurant, hotel, or flight to get started."}
-      </p>
-    </div>
-  );
+  const MyProposalsEmptyState = ({ hasAny, filter }: { hasAny: boolean; filter: MyProposalStatusFilter }) => {
+    const emptyTitleMap: Record<MyProposalStatusFilter, string> = {
+      open: "No open proposals yet.",
+      closed: "No closed or confirmed proposals yet.",
+      cancelled: "No cancelled proposals yet.",
+      all: "You haven’t proposed anything yet.",
+    };
+
+    return (
+      <div className="text-center py-12" data-testid="empty-my-proposals">
+        <UserIcon className="w-10 h-10 text-neutral-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-neutral-600 mb-2">
+          {hasAny ? emptyTitleMap[filter] : "You haven’t proposed anything yet."}
+        </h3>
+        <p className="text-neutral-500">
+          {hasAny && filter !== "all"
+            ? "Try adjusting the filters to see your proposals."
+            : "Suggest an activity, restaurant, hotel, or flight to get started."}
+        </p>
+      </div>
+    );
+  };
 
   const FilteredEmptyState = ({ type }: { type: string }) => (
     <div className="text-center py-12" data-testid={`empty-filtered-${type.toLowerCase()}-proposals`}>
@@ -3206,60 +3225,65 @@ function ProposalsPage({
 
   const hotelProposalsForCategories = useMemo(
     () =>
-      includeUserProposalsInCategories
-        ? hotelProposals
-        : hotelProposals.filter((proposal) => !isMyProposal(proposal)),
-    [hotelProposals, includeUserProposalsInCategories, isMyProposal],
-  );
-  const activeHotelProposalsForCategories = useMemo(
-    () => filterActiveProposals(hotelProposalsForCategories),
-    [hotelProposalsForCategories],
+      filterCategoryProposals(hotelProposals, {
+        userId: user?.id ?? null,
+        hideMine: hideMyProposalsInCategories,
+        statusFilter: "all",
+      }),
+    [hideMyProposalsInCategories, hotelProposals, user?.id],
   );
   const flightProposalsForCategories = useMemo(
     () =>
-      includeUserProposalsInCategories
-        ? flightProposals
-        : flightProposals.filter((proposal) => !isMyProposal(proposal)),
-    [flightProposals, includeUserProposalsInCategories, isMyProposal],
-  );
-  const activeFlightProposalsForCategories = useMemo(
-    () => filterActiveProposals(flightProposalsForCategories),
-    [flightProposalsForCategories],
+      filterCategoryProposals(flightProposals, {
+        userId: user?.id ?? null,
+        hideMine: hideMyProposalsInCategories,
+        statusFilter: "all",
+      }),
+    [flightProposals, hideMyProposalsInCategories, user?.id],
   );
   const activityProposalsForCategories = useMemo(
     () =>
-      includeUserProposalsInCategories
-        ? activityProposals
-        : activityProposals.filter((proposal) => !isMyProposal(proposal)),
-    [activityProposals, includeUserProposalsInCategories, isMyProposal],
-  );
-  const activeActivityProposalsForCategories = useMemo(
-    () => filterActiveProposals(activityProposalsForCategories),
-    [activityProposalsForCategories],
+      filterCategoryProposals(activityProposals, {
+        userId: user?.id ?? null,
+        hideMine: hideMyProposalsInCategories,
+        statusFilter: "all",
+      }),
+    [activityProposals, hideMyProposalsInCategories, user?.id],
   );
   const restaurantProposalsForCategories = useMemo(
     () =>
-      includeUserProposalsInCategories
-        ? restaurantProposals
-        : restaurantProposals.filter((proposal) => !isMyProposal(proposal)),
-    [restaurantProposals, includeUserProposalsInCategories, isMyProposal],
-  );
-  const activeRestaurantProposalsForCategories = useMemo(
-    () => filterActiveProposals(restaurantProposalsForCategories),
-    [restaurantProposalsForCategories],
+      filterCategoryProposals(restaurantProposals, {
+        userId: user?.id ?? null,
+        hideMine: hideMyProposalsInCategories,
+        statusFilter: "all",
+      }),
+    [hideMyProposalsInCategories, restaurantProposals, user?.id],
   );
 
   const filteredHotelProposals = useMemo(
-    () => filterActiveProposals(hotelProposalsForCategories),
-    [hotelProposalsForCategories],
+    () => filterProposalsByStatus(hotelProposalsForCategories, categoryStatusFilter),
+    [categoryStatusFilter, hotelProposalsForCategories],
   );
   const filteredFlightProposals = useMemo(
-    () => filterActiveProposals(flightProposalsForCategories),
-    [flightProposalsForCategories],
+    () => filterProposalsByStatus(flightProposalsForCategories, categoryStatusFilter),
+    [categoryStatusFilter, flightProposalsForCategories],
+  );
+  const filteredActivityProposals = useMemo(
+    () => filterProposalsByStatus(activityProposalsForCategories, categoryStatusFilter),
+    [activityProposalsForCategories, categoryStatusFilter],
+  );
+  const filteredRestaurantProposals = useMemo(
+    () => filterProposalsByStatus(restaurantProposalsForCategories, categoryStatusFilter),
+    [categoryStatusFilter, restaurantProposalsForCategories],
+  );
+
+  const openActivityProposalsForCategories = useMemo(
+    () => filterProposalsByStatus(activityProposalsForCategories, "open"),
+    [activityProposalsForCategories],
   );
   const needsResponseActivityProposals = useMemo(
     () =>
-      filterActiveProposals(activityProposalsForCategories).filter((proposal) => {
+      openActivityProposalsForCategories.filter((proposal) => {
         if (isMyProposal(proposal)) {
           return false;
         }
@@ -3267,14 +3291,14 @@ function ProposalsPage({
         return getActivityResponseStatus(proposal) === "pending";
       }),
     [
-      activityProposalsForCategories,
       getActivityResponseStatus,
       isMyProposal,
+      openActivityProposalsForCategories,
     ],
   );
   const acceptedActivityProposals = useMemo(
     () =>
-      filterActiveProposals(activityProposalsForCategories).filter((proposal) => {
+      openActivityProposalsForCategories.filter((proposal) => {
         if (isMyProposal(proposal)) {
           return false;
         }
@@ -3282,14 +3306,10 @@ function ProposalsPage({
         return getActivityResponseStatus(proposal) === "accepted";
       }),
     [
-      activityProposalsForCategories,
       getActivityResponseStatus,
       isMyProposal,
+      openActivityProposalsForCategories,
     ],
-  );
-  const filteredRestaurantProposals = useMemo(
-    () => filterActiveProposals(restaurantProposalsForCategories),
-    [restaurantProposalsForCategories],
   );
 
   const myHotelProposals = useMemo(() => {
@@ -3329,64 +3349,54 @@ function ProposalsPage({
     [restaurantProposals, isMyProposal],
   );
 
-  const activeMyHotelProposals = useMemo(
-    () => filterActiveProposals(myHotelProposals),
-    [myHotelProposals],
-  );
-  const activeMyFlightProposals = useMemo(
-    () => filterActiveProposals(myFlightProposals),
-    [myFlightProposals],
-  );
-  const activeMyActivityProposals = useMemo(
-    () => filterActiveProposals(myActivityProposals),
-    [myActivityProposals],
-  );
-  const activeMyRestaurantProposals = useMemo(
-    () => filterActiveProposals(myRestaurantProposals),
-    [myRestaurantProposals],
-  );
-
   const filteredMyHotelProposals = useMemo(
-    () => filterActiveProposals(myHotelProposals),
-    [myHotelProposals],
+    () => filterProposalsByStatus(myHotelProposals, myProposalStatusFilter),
+    [myHotelProposals, myProposalStatusFilter],
   );
   const filteredMyFlightProposals = useMemo(
-    () => filterActiveProposals(myFlightProposals),
-    [myFlightProposals],
+    () => filterProposalsByStatus(myFlightProposals, myProposalStatusFilter),
+    [myFlightProposals, myProposalStatusFilter],
+  );
+  const filteredMyActivityProposals = useMemo(
+    () => filterProposalsByStatus(myActivityProposals, myProposalStatusFilter),
+    [myActivityProposals, myProposalStatusFilter],
   );
   const actionableActivityProposalCount =
     needsResponseActivityProposals.length + acceptedActivityProposals.length;
   const filteredMyRestaurantProposals = useMemo(
-    () => filterActiveProposals(myRestaurantProposals),
-    [myRestaurantProposals],
+    () => filterProposalsByStatus(myRestaurantProposals, myProposalStatusFilter),
+    [myProposalStatusFilter, myRestaurantProposals],
   );
 
   const totalMyProposals =
     filteredMyHotelProposals.length +
     filteredMyFlightProposals.length +
-    activeMyActivityProposals.length +
+    filteredMyActivityProposals.length +
     filteredMyRestaurantProposals.length;
 
-  const totalActiveMyProposals =
-    activeMyHotelProposals.length +
-    activeMyFlightProposals.length +
-    activeMyActivityProposals.length +
-    activeMyRestaurantProposals.length;
+  const totalMyProposalsAll =
+    myHotelProposals.length +
+    myFlightProposals.length +
+    myActivityProposals.length +
+    myRestaurantProposals.length;
 
-  const hasAnyMyProposals = totalActiveMyProposals > 0;
+  const hasAnyMyProposals = totalMyProposalsAll > 0;
 
-  const totalActiveProposals =
-    activeHotelProposalsForCategories.length +
-    activeFlightProposalsForCategories.length +
-    activeActivityProposalsForCategories.length +
-    activeRestaurantProposalsForCategories.length;
+  const activityTabCount =
+    categoryStatusFilter === "open" ? actionableActivityProposalCount : filteredActivityProposals.length;
+
+  const totalProposalsAll =
+    hotelProposals.length +
+    flightProposals.length +
+    activityProposals.length +
+    restaurantProposals.length;
   const hasProposalDataIssues =
     hotelProposalsHasError ||
     flightProposalsHasError ||
     activityProposalsHasError ||
     restaurantProposalsHasError;
 
-  const noProposalsAtAll = !hasProposalDataIssues && totalActiveProposals === 0;
+  const noProposalsAtAll = !hasProposalDataIssues && totalProposalsAll === 0;
 
   const boundaryWrapperClass = embedded
     ? "py-12 flex items-center justify-center"
@@ -3478,7 +3488,7 @@ function ProposalsPage({
     },
     {
       value: "activities" as const,
-      label: `Activities${actionableActivityProposalCount > 0 ? ` (${actionableActivityProposalCount})` : ""}`,
+      label: `Activities${activityTabCount > 0 ? ` (${activityTabCount})` : ""}`,
     },
     {
       value: "restaurants" as const,
@@ -3520,13 +3530,65 @@ function ProposalsPage({
             </TabsTrigger>
             <TabsTrigger value="activities" className="flex items-center gap-2" data-testid="tab-activities">
               <MapPin className="w-4 h-4" />
-              Activities {actionableActivityProposalCount > 0 && `(${actionableActivityProposalCount})`}
+              Activities {activityTabCount > 0 && `(${activityTabCount})`}
             </TabsTrigger>
             <TabsTrigger value="restaurants" className="flex items-center gap-2" data-testid="tab-restaurants">
               <Utensils className="w-4 h-4" />
               Restaurants {filteredRestaurantProposals.length > 0 && `(${filteredRestaurantProposals.length})`}
             </TabsTrigger>
           </TabsList>
+
+          <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+            {activeTab === "my-proposals" ? (
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm font-medium text-neutral-600">Status</span>
+                <Select
+                  value={myProposalStatusFilter}
+                  onValueChange={(value) => setMyProposalStatusFilter(value as MyProposalStatusFilter)}
+                >
+                  <SelectTrigger className="w-[220px]" data-testid="select-my-proposals-status-filter">
+                    <SelectValue placeholder="Filter proposals" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MY_PROPOSAL_STATUS_FILTER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <>
+                <label className="flex items-center gap-2 text-sm font-medium text-neutral-700">
+                  <Checkbox
+                    checked={hideMyProposalsInCategories}
+                    onCheckedChange={(checked) => setHideMyProposalsInCategories(Boolean(checked))}
+                    data-testid="toggle-hide-my-proposals"
+                  />
+                  Hide my proposals
+                </label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-medium text-neutral-600">Status</span>
+                  <Select
+                    value={categoryStatusFilter}
+                    onValueChange={(value) => setCategoryStatusFilter(value as CategoryStatusFilter)}
+                  >
+                    <SelectTrigger className="w-[200px]" data-testid="select-category-status-filter">
+                      <SelectValue placeholder="Filter proposals" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORY_STATUS_FILTER_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+          </div>
 
           <TabsContent value="my-proposals" className="space-y-6">
             {totalMyProposals > 0 ? (
@@ -3563,16 +3625,16 @@ function ProposalsPage({
                   </section>
                 )}
 
-                {activeMyActivityProposals.length > 0 && (
+                {filteredMyActivityProposals.length > 0 && (
                   <section className="space-y-4" data-testid="section-my-activity-proposals">
                     <div className="flex items-center gap-2 text-neutral-700">
                       <MapPin className="w-4 h-4" />
                       <h3 className="text-lg font-semibold">
-                        Activity proposals ({activeMyActivityProposals.length})
+                        Activity proposals ({filteredMyActivityProposals.length})
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      {activeMyActivityProposals.map((proposal) => (
+                      {filteredMyActivityProposals.map((proposal) => (
                         <ActivityProposalCard key={proposal.id} proposal={proposal} />
                       ))}
                     </div>
@@ -3596,7 +3658,7 @@ function ProposalsPage({
                 )}
               </div>
             ) : (
-              <MyProposalsEmptyState hasAny={hasAnyMyProposals} />
+              <MyProposalsEmptyState hasAny={hasAnyMyProposals} filter={myProposalStatusFilter} />
             )}
           </TabsContent>
 
@@ -3617,7 +3679,7 @@ function ProposalsPage({
                   <HotelProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : hotelProposalsReady && activeHotelProposalsForCategories.length > 0 ? (
+            ) : hotelProposalsReady && hotelProposals.length > 0 ? (
               <FilteredEmptyState type="Hotel" />
             ) : hotelProposalsReady ? (
               <EmptyState type="Hotel" icon={Hotel} />
@@ -3641,7 +3703,7 @@ function ProposalsPage({
                   <FlightProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : flightProposalsReady && activeFlightProposalsForCategories.length > 0 ? (
+            ) : flightProposalsReady && flightProposals.length > 0 ? (
               <FilteredEmptyState type="Flight" />
             ) : flightProposalsReady ? (
               <EmptyState type="Flight" icon={Plane} />
@@ -3659,7 +3721,7 @@ function ProposalsPage({
                 onRetry={() => void refetchActivityProposals()}
                 testId="error-activity-proposals"
               />
-            ) : activityProposalsReady && activeActivityProposalsForCategories.length > 0 ? (
+            ) : activityProposalsReady && categoryStatusFilter === "open" && openActivityProposalsForCategories.length > 0 ? (
               <div className="space-y-8" data-testid="list-activity-proposals">
                 <section
                   className="space-y-4"
@@ -3713,6 +3775,14 @@ function ProposalsPage({
                   )}
                 </section>
               </div>
+            ) : activityProposalsReady && categoryStatusFilter !== "open" && filteredActivityProposals.length > 0 ? (
+              <div className="space-y-4" data-testid="list-activity-proposals-history">
+                {filteredActivityProposals.map((proposal) => (
+                  <ActivityProposalCard key={proposal.id} proposal={proposal} />
+                ))}
+              </div>
+            ) : activityProposalsReady && activityProposals.length > 0 ? (
+              <FilteredEmptyState type="Activity" />
             ) : activityProposalsReady ? (
               <EmptyState type="Activity" icon={MapPin} />
             ) : null}
@@ -3735,7 +3805,7 @@ function ProposalsPage({
                   <RestaurantProposalCard key={proposal.id} proposal={proposal} />
                 ))}
               </div>
-            ) : restaurantProposalsReady && activeRestaurantProposalsForCategories.length > 0 ? (
+            ) : restaurantProposalsReady && restaurantProposals.length > 0 ? (
               <FilteredEmptyState type="Restaurant" />
             ) : restaurantProposalsReady ? (
               <EmptyState type="Restaurant" icon={Utensils} />
